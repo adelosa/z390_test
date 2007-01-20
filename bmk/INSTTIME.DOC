@@ -6,46 +6,67 @@ Purpose
 To time instructions being executed in the Z390 enulator.
 To provide useful statistics for release comparison and extrapolation.
 
+From INSTTIME V7, a new feature was added to time a few SVC services,
+see the end of INSTTIME.INS for all the variations supported.
+The instruction displayed is the SVC used.
+
+Services currently timed...
+   GETMAIN  ( 3 forms)
+   FREEMAIN ( 1 form )
+   XLATE    (14 forms)
+   TIME     (26 forms)
+   CTD      (10 forms)
+   CFD      (10 forms)
+
 How it works
 ============
 The main instruction timing is achieved by executing the instruction
 a number of times using a BCT loop and timing the process.
 
-In order to separate the instruction timing from the BCT time
-we must first obtain an accurate timing for the BCT itself.
-This only needs to be done once.
-This time is referred to as timerBCT time in the following text.
+1) BCT timing
+   In order to separate the instruction timing from the BCT time
+   we must first obtain an accurate timing for the BCT itself.
+   This only needs to be done once.
+   This time is referred to as timerBCT time in the following text.
 
-eg.  BCT timing
-     -- save start time --
-     L   R7,bct_spin_count
-     BCT R7,*
-     -- save end time --
-Calculate end-start.
-Save as timerBCT time.
+eg.
+    -- save start time --
+    L   R7,bct_spin_count
+    BCT R7,*
+    -- save end time --
 
-eg.  Instruction timing
+   Calculate end-start.
+   Save as timerBCT time.
+
+2) Instruction timing
+   This covers the majority of instructions.
+
+eg.
      -- save start time --
      L   R7,spin_count
 TEST DS  0H
      -- tested instruction --
      BCT R7,TEST
      -- save end time --
-Calculate end-start-timerBCT time
 
-Instructions like DP, ED and many others cannot be looped because
-they change the destination field. In these cases, one or more
-special instructions are timed before the main loop.
+   Calculate end-start-timerBCT time.
 
-eg.  Special timing
+3) Destination or register modifiers
+   Instructions like DP, ED and many others cannot be looped because
+   they change the destination field or registers.
+   In these cases, one or more special instructions are timed before
+   the main loop.
+
+eg.
      -- save start time --
      L   R7,spin_count
 XTRA DS  0H
      -- tested extra instruction(s) --
      BCT R7,XTRA
      -- save end time --
-Calculate end-start-timerBCT time
-Saved as extra time
+
+   Calculate end-start-timerBCT time.
+   Saved as extra time.
 
      -- save start time --
      L   R7,spin_count
@@ -54,7 +75,18 @@ TEST DS  0H
      -- tested instruction --
      BCT R7,TEST
      -- save end time --
-Calculate end-start-extra time-timerBCT time
+
+   Calculate end-start-extra time-timerBCT time
+
+4) Stack and Unstack instructions
+
+   The stack is limited to 50 entries, so stacks and unstacks are
+   looped 50 at a time until the required loop limit is reached.
+   The reverse operation is also done but untimed.
+
+   If stack/unstack operations are being timed and the spin count
+   is modified with the SPIN= parameter, then the SPIN value must be
+   a multiple of 50 or a SPIN ERROR will occur.
 
 Input and Output
 ================
@@ -62,18 +94,21 @@ Add the SYSPARM statement to the CALL MZ390 as follows, with your own
 path name:
    CALL MZ390 ... "SYSPARM(E:\Z390\PROGRAMS)"
 
-INPUT is the list of instructions to be timed and other special
-parameters. All the options are described later.
+Input...INSTTIME.TXT...
 
-RESULT is the output file. If the output file already exists it will
-be overlayed by the new one.
+   The input file is the list of instructions to be timed and other
+   special parameters. All the options are described later.
 
-The INPUT file is not supplied.
-All the instruction variations are in the file INSTTIME.INS
-Copy what you want timed from this file into INSTTIME.TXT
-Any special parameters can then be added as you wish.
+   The input file is not supplied.
 
-At the time of writing, the complete run takes about 9 mins.
+   All the instruction variations are in the file INSTTIME.INS
+   Copy what you want timed from this file into INSTTIME.TXT
+   Any special parameters can then be added as you wish.
+
+Output...INSTTIME.OUT...
+   If the output file already exists it will be overlayed by the new one.
+
+At the time of writing, the complete run takes about 20 mins.
 
 INPUT parameters
 ================
@@ -83,7 +118,7 @@ All parameters start in col 1 and are generally inflexible.
    A comment line which is ignored.
 
 BCTS=nnnnnnn
-   This alters the number of times the timer-BCT is executed.
+   This alters the number of times the timerBCT is executed.
    Devised in order to optimise the initial BCT timing.
    The default is 5000000.
    The number must be 7 numeric digits.
@@ -106,6 +141,9 @@ SPIN=nnnnnnn
    overhead incurred per execution. These were used to justify the
    default.
 
+   SPIN= must be a multiple of 50 when timing stack/unstack
+   instructions. See above for more information.
+
 STATS ON
    Sets an indicator to start the collection of timings.
    This does no resetting.
@@ -114,7 +152,7 @@ STATS ON
 
 STATS OFF
    Stops the collection of timings, resets everything.
-   Restart the collection with another STATS ON.
+   Restart the collection of timings with another STATS ON.
 
 STATS PRINT
    Note: In V3 the parameters MEAN and VARIANCE were used. These have
@@ -126,8 +164,9 @@ STATS PRINT
 LINREG/LL
 LINREG/L1
 LINREG/L2
-   Linear regression on single length (LL), or on either L1 or L2
-   lengths.
+LINREG/SL
+   Linear regression on single length (LL), on either L1 or L2
+   lengths or string length (SL). The latter only applies to CUSE.
 
    I have imposed a minimum of 3 collected timings.
    This does no resetting, so 'running' linear regression is possible.
@@ -178,7 +217,7 @@ Only length fields may be modified.
 Each instruction is independent of any other, there is no sequencing
 and the same instruction may be repeated.
 
-*FMT  -INST-  TYPE --LL--    COMMENTS
+*FMT  -INST-  TYPE --LL-- -SL   Comments
 *                  L1  L2
 *                  XB
 
@@ -210,6 +249,8 @@ L1  L2 for instructions that use two lengths.
        SRP ignores L2.
        LM/STM types use L1 as no. of registers.
 
+SL     for instructions that use a string length (CUSE)
+
 The RESULT file
 ===============
 INST, TYPE, XB or lengths.
@@ -226,11 +267,13 @@ Other data is used for integrity checking.
    part of which has been used for a decimal instruction after SPIN
    executions.
 
+   Floating point instructions have the resulting value(s) converted to
+   decimal using the CTD macro.
+
 Notes
 =====
-It is worth noting that the EX (Execute) instruction timing is
-the overhead involved and not the timing of an execute and target
-instruction.
+The EX (Execute) instruction timing is the overhead involved and not
+the timing of an execute and target instruction.
 
 Synonyms...only base synonyms are supported as instructions. Others
 can be timed using parameters.
@@ -256,7 +299,7 @@ A1) The Operating System (eg. Windows) has priority over any application
     Prompt window and not in the Z390 GUI.
 
 Author: Melvyn Maltz
-Publication date: July 30, 2006
-Z390 version: V1.1.01
-INSTTIME version : 6
+Publication date: January 14, 2007
+Z390 version: V1.3.00
+INSTTIME version : 8
 
