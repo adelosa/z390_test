@@ -1,0 +1,593 @@
+         MACRO                                                          00050000
+         SGNPGR                                                         00100000
+         GBLA  &AGMAXLB            MAXIMUM NUMBER OF PROGR. LUBS        00150000
+         GBLA  &AGMINLB            MINIMUM NUMBER OF PROGR. LUBS        00200000
+         GBLA  &AGDEFLB            DEFAULT NUMBER OF PROGR. LUBS        00250000
+         GBLA  &AGSYSLB            NUMBER OF SYSTEM LUBS                00300000
+         GBLA  &NPART              NUMBER OF PARTITIONS                 00350000
+         GBLB  &BGDEBUG            DEBUG OPTION                         00400000
+         GBLB  &SGNPGR             PRINT OPTION                         00450000
+         LCLA  &X                  WORK LIST LENGTH                     00500000
+         LCLA  &WLENLEN            WORK LIST ENTRY LENGTH               00550000
+&WLENLEN SETA  2                   SET ENTRY TO ONE HALFWORD            00600000
+         AIF   (NOT &BGDEBUG OR NOT &SGNPGR).NOPRINT                    00650000
+         PRINT GEN                 PRINT MODULE                         00700000
+.NOPRINT ANOP                                                           00750000
+         TITLE 'VSE/AF SUPERVISOR - SGNPGR  PARTITION PROGRAMMER LUB AL*00800000
+               LOCATION ROUTINES'                                       00850000
+*********************************************************************** 00900000
+*                                                                     * 00950000
+*        LICENSED MATERIALS - PROPERTY OF IBM                         * 01000000
+*        "RESTRICTED MATERIALS OF IBM"                                * 01050002
+*        5686-066                                                     * 01100002
+*        (C) COPYRIGHT IBM CORP. 1981,2001                            * 01110002
+*                                                                     * 01200000
+*********************************************************************** 01250000
+.*                                                                      01300000
+.* A000000-999999                                             *@D14BDJB 01350000
+*                                                             *         01400000
+*    MACRO NAME :  SGNPGR                                     *         01450000
+*                                                             *         01500000
+*    DESCRIPTIVE NAME :  PROGRAMMER LUB ALLOCATION ROUTINES   *         01550000
+*                        --- STATIC PARTITIONS ONLY ---       *         01600000
+*                                                             *         01650000
+*    ENTRY POINTS : NPGRSVC                                   *         01700000
+*                   NPGRSTRT                                  *         01750000
+*                                                             *         01800000
+*    FUNCTION :                                               *         01850000
+*       THIS MODULE CONTAINS TWO ROUTINES. THE FIRST ONE IS   *         01900000
+*       IS CALLED BY THE SVC HANDLER (SVC 116) AND THE        *         01950000
+*       SECOND ONE BY THE START COMMAND PROCESSING ROUTINE    *         02000000
+*       (SGTINF). SVC 116 IS USED BY THE JOB CONTROL NPGR     *         02050000
+*       COMMAND PROCESSING ROUTINES.                          *         02100000
+*                                                             *         02150000
+*       THE INTERFACE BETWEEN THE SUPERVISOR AND THE          *         02200000
+*       COMPONENT USING THIS SERVICE IS SET UP BY THE MACRO   *         02250000
+*       NPGR EXPANDING INTO THE SVC AND THE MACRO NPGRLST     *         02300000
+*       EXPANDING INTO THE PARAMETER LIST MAPPING STRUCTURE.  *         02350000
+*                                                             *         02400000
+*      DEPENDENCIES :                                         *         02450000
+*         NPGRLST : PROGRAMMER LUB ALLOCATION PARAMETER       *         02500000
+*                   LIST FORMAT                               *         02550000
+*                                                             *         02600000
+*      RESTRICTIONS :  NONE                                   *         02650000
+*                                                             *         02700000
+*      MODULE TYPE :  MACRO                                   *         02750000
+*                                                             *         02800000
+*      PROCESSOR : ASSEMBLER                                  *         02850000
+*                                                             *         02900000
+*      ATTRIBUTES : REUSABLE                                  *         02950000
+*                                                             *         03000000
+*      LINKAGE :                                              *         03050000
+*         VIA SVC INTERRUPT HANDLER IF A PROGRAM ISSUED       *         03100000
+*         SVC 116 OR A PARTITION IS STARTED.                  *         03150000
+*                                                             *         03200000
+*    INPUT :  REGISTER 1 IN THE PARTITION SAVE AREA CONTAINS  *         03250000
+*       THE ADDRESS OF A PARAMETER LIST.                      *         03300000
+*                                                             *         03350000
+*    OUTPUT :                                                 *         03400000
+*       REGISTER 15 IN THE PARTITION SAVE AREA WILL CONTAIN   *         03450000
+*       A PROCESSING RETURN CODE.                             *         03500000
+*                                                             *         03550000
+*    MESSAGES : NONE                                          *         03600000
+*                                                             *         03650000
+*    EXTERNAL REFERENCES :                                    *         03700000
+*                                                             *         03750000
+*      DATA AREAS : PARTITION SAVE AREA                       *         03800000
+*                   PROGRAMMER LUB ALLOCATION LIST            *         03850000
+*                                                             *         03900000
+*      CONTROL BLOCKS : SYSCOM                                *         03950000
+*                       COMREG                                *         04000000
+*                       PIB                                   *         04050000
+*                       LUB                                   *         04100000
+*                       NICL                                  *         04150000
+*                       FICL                                  *         04200000
+*                                                             *         04250000
+*    MACROS :  NPGR                                           *         04300000
+*              NPGRLST                                        *         04350000
+*                                                             *         04400000
+.* CHANGE ACTIVITIES = AS FOLLOWS                             *         04450000
+.*    MORE PARTITION SUPPORT                                  *@D51IDOW 04500000
+.*    MORE THAN 255 TASKS                                     *@D66ODOW 04510003
+*                                                             *         04550000
+***************************************************************         04600000
+         SPACE 3                                                        04650000
+***************************************************************         04700000
+*                                                             *         04750000
+*   SVC ENTRY FOR NPGR COMMAND FOR STATIC PARTITIONS          *         04800000
+*                                                             *         04850000
+*   MODULE NPGRSVC                                            *         04900000
+*     IF REQUESTOR NOT JOB CONTROL                            *         04950000
+*       THEN CANCEL USER WITH ERROR 21 (ILLEGAL SVC)          *         05000000
+*     EXECUTE NPGRGATE                                        *         05050000
+*     VALIDATE REQUESTOR'S PARAMETER LIST                     *         05100000
+*     COPY PARAMETER LIST INTO WORK LIST                      *         05150000
+*     IF SPECIFIED PARTITION NOT SUPPORTED                    *         05200000
+*       THEN SET RC = 1C                                      *         05250000
+*            EXIT NPGRSVC                                     *         05300000
+*     IF ONE NPGR VALUE < 10 OR ONE NPGR VALUE > 255          *         05350000
+*       THEN SET RC = C                                       *         05400000
+*            EXIT NPGRSVC                                     *         05450000
+*     EXECUTE NPGRCPAR                                        *         05500000
+*     IF RETURN CODE ¬= 0                                     *         05550000
+*       THEN EXIT NPGRSVC                                     *         05600000
+*     EXECUTE NPGRUPIB                                        *         05650000
+*     EXIT NPGRSVC                                            *         05700000
+*   ENDMODULE NPGRSVC                                         *         05750000
+*                                                             *         05800000
+*   INPUT (REGISTERS IN REQUESTOR SAVE AREA) :                *         05850000
+*        R1 ---> LUB ALLOCATION PARAMETER LIST                *         05900000
+*                                                             *         05950000
+*   OUTPUT (REGISTERS IN REQUESTOR SAVE AREA) :               *         06000000
+*        RF  :   RETURN CODE                                  *         06050000
+*                                                             *         06100000
+*   REGISTER USAGE : R0 - RX : WORK                           *         06150000
+*                    R7      : LINK                           *         06200000
+*                    RF      : RETURN CODE REGISTER           *         06250000
+*                                                             *         06300000
+*   EXIT-NORMAL :                                             *         06350000
+*       THE RETURN CODE FIELD IN THE REQUESTOR SAVE AREA      *         06400000
+*       (RF FIELD) WILL CONTAIN A ZERO OR A NON-ZERO VALUE    *         06450000
+*       IF DURING PROCESSING ANY PROBLEMS ARE ENCOUNTERED.    *         06500000
+*       THEN CONTROL IS RETURNED TO THE DISPATCHER VIA        *         06550000
+*       REGISTER 6.                                           *         06600000
+*       THE FOLLOWING ARE THE EXPECTED ERROR CODES            *         06650000
+*       FROM THIS MODULE :                                    *         06700000
+*                                                             *         06750000
+*       00 : THE SPECIFIED PARTITION PROGRAMMER LUB VALUES    *         06800000
+*            ARE ACCEPTED.                                    *         06850000
+*       08 : THE NPGR COMMAND IS REJECTED.                    *         06900000
+*            THE SUM OF ALL PARTITION PROGRAMMER LUBS IS      *         06950000
+*            LARGER THAN THE SUPERVISOR GENERATED NPGR VALUE. *         07000000
+*       0C : THE NPGR COMMAND IS REJECTED.                    *         07050000
+*            AT LEAST ONE OF THE SPECIFIED NPGR VALUE IS      *         07100000
+*            EITHER BELOW THE MINIMUM OF 10 OR ABOVE THE      *         07150000
+*            MAXIMUM OF 255.                                  *         07200000
+*       10 : THE NPGR COMMAND IS REJECTED.                    *         07250000
+*            AT LEAST ONE OF THE SPECIFIED PARTITION HAS      *         07300000
+*            BEEN STARTED BEFORE (MAY BE UNBATCHED NOW).      *         07350000
+*       14 : THE NPGR COMMAND IS REJECTED.                    *         07400000
+*            NPGR FOR BG WAS SPECIFIED BUT ANOTHER PARTITION  *         07450000
+*            WAS ALREADY STARTED BEFORE.                      *         07500000
+*       18 : THE NPGR COMMAND IS REJECTED.                    *         07550000
+*            REALLOCATION OF BG LUBS IS BELOW HIGHEST EVER    *         07600000
+*            ASSIGNED BG LUB.                                 *         07650000
+*       1C : THE NPGR COMMAND IS REJECTED.                    *         07700000
+*            A NON SUPPORTED PARTITION WAS SPECIFIED          *         07750000
+*                                                             *         07800000
+*   EXIT-ABNORMAL :                                           *         07850000
+*         THE REQUESTOR IS CANCELLED WITH ERR21 (ILLEGAL SVC) *         07900000
+*         WHEN IT IS NOT A MAIN TASK OR HAS NOT KEY ZERO.     *         07950000
+*         THE REQUESTOR IS CANCELLED WITH ERR25 (INVALID      *         08000000
+*         ADDRESS) WHEN THE PARAMETER LIST POINTER IS BAD.    *         08050000
+*                                                             *         08100000
+***************************************************************         08150000
+         EJECT                                                          08200000
+         DS    0H                                                       08250000
+         DC    CL8'SGNPGR  '          MODULE                            08300000
+         DC    CL10'02/20/2001'       LAST DEVELOPMENT CHANGE           08400001
+         SPACE 2                                                        08450000
+NPGRRC10 EQU   16                  RC FOR NON-SUPPORTED PARTITION       08500000
+NPGRRC0C EQU   12                  RC FOR INVALID LUB VALUE             08550000
+         SPACE                                                          08600000
+NPGRSVC  DS    0H                                                       08650000
+         USING NPGRSVC,RD          MODULE BASE                          08700000
+***************************************************************         08750000
+*   CHECK USER'S AUTHORITY AND GATE ROUTINE                   *         08800000
+***************************************************************         08850000
+         USING DISP,R6             DISPATCHER ADDRESSABILITY            08900000
+         USING TCBADR,RA           TCB ADDRESSABILITY                   08950000
+         L     RC,CRADDR           GET CURRENT COMREG ADDR     @D51IDOW 09000000
+         USING COMREG,RC                                       @D51IDOW 09050000
+         TM    JCSW5,JCLACTIV      IS REQUESTOR JCL            @D51IDOW 09100000
+         DROP  RC                                                       09150000
+         BNO   ERR21               NO  ===> CANCEL             @D51IDOW 09200000
+         BAL   R7,NPGRGATE         LOAD REQUESTOR'S PARAMETERS         *09250000
+                                   AND GATE ROUTINE                     09300000
+***************************************************************         09350000
+*   NOW VALIDATE REQUESTOR'S PARAMETER LIST.                  *         09400000
+***************************************************************         09450000
+         USING NPGRLST,R1          ALLOCATION PARAMETER LIST            09500000
+         XR    R2,R2                                                    09550000
+         IC    R2,NPGRNOP          # OF ELEMENTS IN PARM. LIST          09600000
+         SLL   R2,2                LENGTH OF PARAMETER LIST             09650000
+         AR    R2,R1               END ADDRESS OF PARM. LIST            09700000
+*SGLINK  VALID,INPUT=(R1,R2,R6,R8),OUTPUT=(R5),WORK=(R2)                09750000
+         BAL   R8,VALID            VALIDATE COMPLETE LIST               09800000
+         DROP  R6                                                       09850000
+***************************************************************         09900000
+*   NOW COPY THE CONTENTS OF THE PARAMTER LIST INTO THE       *         09950000
+*   WORKLIST WITH ID(BG) = 0 AND ID(FN) = N.                  *         10000000
+***************************************************************         10050000
+         XR    R4,R4               CLEAR LOOP CONTROL                   10100000
+         XR    R5,R5               CLEAR NPGRPID REGISTER               10150000
+         XC    NPGRWL,NPGRWL       CLEAR WORK LIST                      10200000
+         MVI   NPGRBGSW,ZERO       RESET BG SPECIFIED SWITCH            10250000
+         IC    R4,NPGRNOP          NO OF ELEMENTS IN PARM.LIST          10300000
+NPGRSVLP EQU   *                                                        10350000
+         LA    R7,&NPART           GET NUMBER OF PARTITIONS             10400000
+         IC    R5,NPGRPID          INSERT PARTITION ID                  10450000
+         CR    R5,R7               IS PARTITION SUPPORTED ?             10500000
+         BNL   NPGRER1C            NO  ===>                             10550000
+         LTR   R5,R5               BG SPECIFIED ?                       10600000
+         BNZ   NPGRSNBG            NO  ===>                             10650000
+         LR    R5,R7               BG VALUE IS AT START OF WORK LIST    10700000
+NPGRSNBG EQU   *                                                        10750000
+         SR    R7,R5               USE IT AS                            10800000
+         AR    R7,R7                       INDEX IN WORKLIST            10850000
+         LH    R3,NPGRVAL          GET LUB VALUE                        10900000
+         CH    R3,NPGRMINL         IS VALUE BELOW MINIMUM               10950000
+         BL    NPGRER0C            YES ===> ERROR                       11000000
+         CH    R3,NPGRMAXL         IS VALUE ABOVE MAXIMUM               11050000
+         BH    NPGRER0C            YES ===> ERROR                       11100000
+         STH   R3,NPGRWL-NPGRSVC(R7,RD)  SAVE RESULT IN WORKLIST        11150000
+         LA    R1,NPGRLEN(,R1)     ADDRESS NEXT PARAMETER               11200000
+         BCT   R4,NPGRSVLP         REPEAT FOR EACH PARAMETER            11250000
+         DROP  R1                                                       11300000
+***************************************************************         11350000
+*   PERFORM PARAMETER CHECKS AND UPDATE PIB IF VALID          *         11400000
+***************************************************************         11450000
+         BAL   R7,NPGRCPAR         CHECK PARAMETER AND                  11500000
+*                                              PARTITION STATUS         11550000
+         LTR   RF,RF               EVERYTHING OKAY ?                    11600000
+         BNZ   NPGRSRET            NO  ===>                             11650000
+         BAL   R7,NPGRUPIB         UPDATE PIB                           11700000
+         B     NPGRSRET            ===> GOTO RETURN                     11750000
+***************************************************************         11800000
+*   RETURN TO CALLER                                          *         11850000
+***************************************************************         11900000
+NPGRER1C LA    RF,NPGRRC10         UNSUPPORTED PARTITION                11950000
+NPGRER0C LA    RF,NPGRRC0C(,RF)    VALUE < 10 OR VALUE > 255            12000000
+NPGRSRET EQU   *                                                        12050000
+         L     RC,TCBSAVE          GET PTR TO USER SAVE AREA            12100000
+         USING SVEARA,RC                                                12150000
+         ST    RF,SVER0F           SET RETURN CODE                      12200000
+         L     R6,DISPAD           GET DISPATCHER ADDRESS               12250000
+         BR    R6                  EXIT TO DISPATCHER                   12300000
+         DROP  RC                                              @D51IDGN 12350000
+         EJECT                                                          12400000
+***************************************************************         12450000
+*                                                             *         12500000
+*  SUBROUTINE FOR GATING THE NPGRSVC ROUTINE :                *         12550000
+*                                                             *         12600000
+*    THIS ROUTINE IS CALLED IN ORDER TO GATE THE NPGRSVC      *         12650000
+*    ROUTINE AND TO LOAD THE REQUESTOR'S SVC PARAMETERS       *         12700000
+*                                                             *         12750000
+*    GATING REQUIRED BECAUSE A PAGE FAULT MAY INTERRUPT       *         12800000
+*    THE NPGR ROUTINE WHILE THE REQUESTOR'S PARAMETER         *         12850000
+*    LIST IS ACCESSED.                                        *         12900000
+*    NO PAGE FAULT MAY OCCUR DURING SETTING OF NPGRSVC GATE.  *         12950000
+*    THE CONTENTS OF THE PARAMETER LIST ASSOCIATED WITH THE   *         13000000
+*    REQUEST IS COPIED TO THE NPGRSVC WORK AREA.              *         13050000
+*    FROM THEN ON THE ROUTINE WILL NOT BE INTERRUPTED,        *         13100000
+*    AND THE SYSTEM STATUS MAY SAFELY BE TESTED, AND THE      *         13150000
+*    LUB ALLOCATIONS MAY BE MODIFIED.                         *         13200000
+*                                                             *         13250000
+*    INPUT  : R6 ---> DISPATCHER                              *         13300000
+*             RA ---> REQUESTOR'S TCB POINTER                 *         13350000
+*    OUTPUT : R1 ---> REQUESTOR'S PARAMETER LIST              *         13400000
+*             RF  :   0                                       *         13450000
+*    LINK   : R7                                              *         13500000
+*    WORK   : R5                                              *         13550000
+*                                                             *         13600000
+*    RETURN: EITHER TO CALLER OR TO SUPERVISOR NUCLEUS        *         13650000
+*            SETTING THE REQUESTOR BOUND AND MAKING HIM       *         13700000
+*            RESVC.                                           *         13750000
+*                                                             *         13800000
+***************************************************************         13850000
+         SPACE 2                                                        13900000
+         USING DISP,R6             DISPATCHER ADDRESSABILITY            13950000
+NPGRGATE DS    0H                                                       14000000
+         CRSECT END=NPGRFIX        PAGE IN BEFORE GATE SETTING          14050000
+         L     R5,ASRQTAB                                      @D62MPGL 14087501
+         LA    R5,SRQNPGR-SRQTAB(,R5) PT TO WAIT QUEUE         @D62MPGL 14125001
+         TM    RBNPGR-SRQNPGR(R5),FREEBIT  IS GATE OPEN?       @D66ODOW 14162503
+         BNO   RESVCX              NO, REISSUE SVC             @D66ODOW 14200003
+         MVI   RID+D1,NPGRBND      IDENTIFY RTN BY RID                  14250000
+NPGRFIX  EQU   *                                                        14300000
+         L     RC,TCBSAVE          GET PTR TO USER SAVE AREA   @D51IDGN 14350000
+         USING SVEARA,RC                                       @D51IDGN 14400000
+         L     R1,SVER01           LOAD REQUESTOR'S PARAMETER           14450000
+         XR    RF,RF               ZERO RETURN CODE REGISTER            14500000
+         BR    R7                  ===> RETURN TO CALLER                14550000
+         DROP  R6,RA,RC                                        @D51IDGN 14600000
+         EJECT                                                          14650000
+***************************************************************         14700000
+*                                                             *         14750000
+*   ROUTINE TO CHECK CONTENTS OF PARAMETER LIST AND           *         14800000
+*   CORRESPONDING PARTITION STATUS                            *         14850000
+*                                                             *         14900000
+*   MODULE NPGRCPAR                                           *         14950000
+*     IF A SPECIFIED PARTITION HAS EVER BEEN STARTED BEFORE   *         15000000
+*       THEN SET RC = 10                                      *         15050000
+*            EXIT NPGRCPAR                                    *         15100000
+*     IF SUM OF ALL NPGR VALUES > GENERATED NPGR VALUE        *         15150000
+*       THEN SET RC = 8                                       *         15200000
+*            EXIT NPGRCPAR                                    *         15250000
+*     IF NPGR FOR BG SPECIFIED                                *         15300000
+*       THEN IF NPGR VALUE < HIGHEST ASSIGNED BG LUB          *         15350000
+*              THEN SET RC = 18                               *         15400000
+*                   EXIT NPGRCPAR                             *         15450000
+*            IF ONE PARTITION HAS EVER BEEN STARTED BEFORE    *         15500000
+*              THEN SET RC = 14                               *         15550000
+*     EXIT NPGRCPAR                                           *         15600000
+*   ENDMODULE NPGRCPAR                                        *         15650000
+*                                                             *         15700000
+*    INPUT  : NONE                                            *         15750000
+*    OUTPUT : RF  :   CORRESPONDING RETURN CODE               *         15800000
+*    LINK   : R7                                              *         15850000
+*    WORK   : R0,R2,R3,R4,R5,R8                               *         15900000
+*                                                             *         15950000
+***************************************************************         16000000
+         SPACE 2                                                        16050000
+NPGRCPAR DS    0H                                                       16100000
+         XR    R0,R0               RESET NPGR SUM COUNTER               16150000
+         LA    R2,NPGRWL           GET START OF WORK LIST               16200000
+         L     R8,APIBTAB          START OF PIB2 TABLE OLD PARTITIONS   16250000
+         LA    R4,(&NPART+1)*PIBLNG(,R8) PIB1 OF OLD PART'S    @D51IDOW 16300000
+***************************************************************         16350000
+*   WORKLIST LOOP FOR CHECKING                                *         16400000
+***************************************************************         16450000
+         USING PIBADR,R4           PIB ADDRESSABILITY                   16500000
+         USING PIB2ADR,R8          PIB2 ADDRESSABILITY         @D51IDOW 16550000
+NPGRCPLP EQU   *                                                        16600000
+         LA    R4,PIBLNG(,R4)      GO TO NEXT PIB                       16650000
+         LA    R8,PIBLNG(,R8)      GO TO NEXT PIB2             @D51IDOW 16700000
+         LH    R5,PIBCOMRA         GET CORRESPONDING COMREG PTR         16750000
+         USING COMREG,R5           COMREG ADDRESSABILITY                16800000
+         LH    R3,D0(,R2)          GET WORKLIST CONTENT                 16850000
+         LTR   R3,R3               NPGR SPECIFIED ?                     16900000
+         BZ    NPGRCPIE            NO  ===>                             16950000
+         C     R2,ANPGRWL          BG VALUE SPECIFIED ?                 17000000
+         BNE   NPGRCPNB            NO  ===>                             17050000
+***************************************************************         17100000
+*   PERFORM SPECIAL HANDLING IF BG SPECIFIED                  *         17150000
+***************************************************************         17200000
+         CH    R3,IJBGHLUB         VALUE < HIGHEST ASSIGNED LUB ?       17250000
+         BNH   NPGRER18            YES ===> ERROR                       17300000
+         MVI   NPGRBGSW,ONE        SET ON BG SPECIFIED SWITCH           17350000
+         B     NPGRCPEL            ===> CONTINUE                        17400000
+***************************************************************         17450000
+*   HANDLE NPGR REQUESTS ¬= BG                                *         17500000
+***************************************************************         17550000
+NPGRCPNB EQU   *                                                        17600000
+         CH    RF,LUBPT            WAS PART. STARTED BEFORE ?           17650000
+         BE    NPGRCPEL            NO  ===>                             17700000
+         B     NPGRER10            YES ===> ERROR                       17750000
+***************************************************************         17800000
+*   PROCESSING FOR NON-SPECIFIED PARTITION                    *         17850000
+***************************************************************         17900000
+NPGRCPIE EQU   *                                                        17950000
+         IC    R3,PIBLUBNO         GET # OF PROGRAMMER LUBS             18000000
+         STH   R3,D0(,R2)          STORE IT IN WORK LIST                18050000
+         CH    RF,LUBPT            WAS PART. STARTED BEFORE ?           18100000
+         BE    NPGRCPEL            NO  ===>                             18150000
+         CLI   NPGRBGSW,ONE        WAS BG SPECIFIED ?                   18200000
+         BE    NPGRER14            YES ===> ERROR                       18250000
+***************************************************************         18300000
+*   CHECK IF END OF WORK LIST REACHED                         *         18350000
+***************************************************************         18400000
+NPGRCPEL EQU   *                                                        18450000
+         AR    R0,R3               SUM OF ALL PROGRAMMER LUBS           18500000
+         LA    R2,&WLENLEN.(,R2)   GOTO NEXT WORK LIST ENTRY            18550000
+         C     R2,ANPGRWLE         END OF WORK LIST REACHED ?           18600000
+         BL    NPGRCPLP            ===> CONTINUE PROCESSING             18650000
+         CH    R0,IJBNPGR          SUM > GENERATED NPGR ?               18700000
+         BNH   NPGRCPRE            NO  ===> RETURN                      18750000
+         B     NPGRER08            YES ===> ERROR                       18800000
+***************************************************************         18850000
+*   SET RETURN CODE AND RETURN TO CALLER                      *         18900000
+***************************************************************         18950000
+NPGRER18 LA    RF,D4               BG VALUE > HIGHEST ASSIGNED LUB      19000000
+NPGRER14 LA    RF,D4(,RF)          BG SPEC. AND ONE PART. STARTED       19050000
+NPGRER10 LA    RF,D4(,RF)          SPEC. PART. WAS STARTED BEFORE       19100000
+         LA    RF,D4(,RF)                                               19150000
+NPGRER08 LA    RF,D8(,RF)          VALUE SUM > GENERATED NPGR           19200000
+NPGRCPRE EQU   *                                                        19250000
+         BR    R7                  ===> RETURN TO CALLER                19300000
+         DROP  R4                                                       19350000
+         DROP  R5                                                       19400000
+         DROP  R8                                              @D51IDOW 19450000
+         EJECT                                                          19500000
+***************************************************************         19550000
+*                                                             *         19600000
+*   ROUTINE TO COPY WORK ENTRIES INTO PIB                     *         19650000
+*                                                             *         19700000
+*   MODULE NPGRUPIB                                           *         19750000
+*     IF NPGR FOR BG WAS SPECIFIED                            *         19800000
+*       THEN UPDATE NICL(BG)                                  *         19850000
+*     UPDATE ALL PIBLUBNO(SYS AND/OR BG AND/OR FI)            *         19900000
+*     EXIT NPGRUPIB                                           *         19950000
+*   ENDMODULE NPGRUPIB                                        *         20000000
+*                                                             *         20050000
+*    INPUT  : NONE                                            *         20100000
+*    OUTPUT : NONE                                            *         20150000
+*    LINK   : R7                                              *         20200000
+*    WORK   : R0,R1,R2,R3,R4,R5,R8                            *         20250000
+*                                                             *         20300000
+***************************************************************         20350000
+         SPACE 2                                                        20400000
+NPGRUPIB DS    0H                                                       20450000
+         LA    R2,NPGRWL           GET START OF WORK LIST               20500000
+         L     R8,APIBTAB          GET START OF PIB2 TABLE              20550000
+         LA    R4,(&NPART+1)*PIBLNG(,R8) GET START OF PIB1 TAB @D51IDOW 20600000
+         USING PIBADR,R4           PIB ADDRESSABILITY                   20650000
+         USING PIB2ADR,R8          PIB2 ADDRESSABILITY         @D51IDOW 20700000
+         CLI   NPGRBGSW,ONE        BG SPECIFIED ?                       20750000
+         BNE   NPGRUPLP            NO  ===>                             20800000
+***************************************************************         20850000
+*  SPECIAL HANDLING IF BG WAS SPECIFIED                       *         20900000
+***************************************************************         20950000
+         XR    R0,R0               CLEAR OLD NICL REGISTER              21000000
+         LH    R3,D0(,R2)          GET BG WORK LIST VALUE               21050000
+*DEL     STC   R3,PIBLUBNO         STORE BG VALUE IN AR PIB    @D61CDOW 21100001
+         LH    R5,PIBCOMRA         GET AR COMREG POINTER                21150001
+         USING COMREG,R5           COMREG ADDRESSABILITY                21200000
+         LH    R5,BGCOMPT          GET BG COMREG POINTER       @D61NDGN 21225001
+         LH    R5,NICLPT           GET BG NICL POINTER                  21250000
+         DROP  R5                                                       21300000
+         IC    R0,D1(,R5)          GET OLD NICL VALUE                   21350000
+         STC   R3,D1(,R5)          STORE NEW NICL VALUE                 21400000
+         LH    R1,NPGRHLUB         GET NEXT AVAILABLE LUB ENTRY         21450000
+         AR    R0,R0               LUB ENTRY IS 2 BYTES LONG            21500000
+         AR    R3,R3               LUB ENTRY IS 2 BYTES LONG            21550000
+         SR    R1,R0               MINUS OLD 'NICL' VALUE               21600000
+         AR    R1,R3               PLUS NEW 'NICL' VALUE                21650000
+         STH   R1,NPGRHLUB         SAVE NEW AVAILABLE LUB ENTRY         21700000
+         MVI   NPGRBGSW,ZERO       RESET BG SPECIFIED SWITCH            21750000
+***************************************************************         21800000
+*  WORK LIST LOOP FOR ALL PARTITIONS                          *         21850000
+***************************************************************         21900000
+NPGRUPLP EQU   *                                                        21950000
+         LA    R4,PIBLNG(,R4)      GO TO NEXT PIB                       22000000
+         LA    R8,PIBLNG(,R8)      GO TO NEXT PIB2             @D51IDOW 22050000
+         LH    R3,D0(,R2)          GET WORK LIST VALUE                  22100000
+         STC   R3,PIBLUBNO         STORE WORK LIST VALUE IN PIB         22150000
+         LA    R2,&WLENLEN.(,R2)   GOTO NEXT WORK LIST ENTRY            22200000
+         C     R2,ANPGRWLE         END OF WORK LIST REACHED ?           22250000
+         BL    NPGRUPLP            NO  ===> CONTINUE PROCESSING         22300000
+         BR    R7                  ===> RETURN TO CALLER                22350000
+         DROP  R4                                                       22400000
+         DROP  R8                                              @D51IDOW 22450000
+         EJECT                                                          22500000
+***************************************************************         22550000
+*                                                             *         22600000
+*   ENTRY ENTERED FROM START COMMAND PROCESSING (SGTINF)      *         22650000
+*         (ONLY FOR STATIC PARTITIONS)                        *         22700000
+*                                                             *         22750000
+*   MODULE NPGRSTRT                                           *         22800000
+*     IF PARTITION WAS STARTED BEFORE                         *         22850000
+*       THEN EXIT NPGRSTRT                                    *         22900000
+*     GATE ROUTINE                                            *         22950000
+*     UPDATE LUBPT(FX)                                        *         23000000
+*     UPDATE FICL(FX)                                         *         23050000
+*     UPDATE NICL(FX)                                         *         23100000
+*     UPDATE LUBEXT(FX)                                       *         23150000
+*     EXIT NPGRSTRT                                           *         23200000
+*   ENDMODULE NPGRSTRT                                        *         23250000
+*                                                             *         23300000
+*   INPUT  : R1  :   PIK                                      *         23350000
+*            R6 ---> DISPATCHER                               *         23400000
+*   OUTPUT : NONE                                             *         23450000
+*   LINK   : R7                                               *         23500000
+*   WORK   : R1,R2,R3,R4,R5,RC                                *         23550000
+*                                                             *         23600000
+*   EXIT   : TO SGTINF VIA R7                                 *         23650000
+*                                                             *         23700000
+***************************************************************         23750000
+         SPACE 2                                                        23800000
+NPGRSTRT DS    0H                                                       23850000
+         BALR  RD,0                GET BASE CURRENT ADDRESS             23900000
+NPGRSTBS EQU   *                                                        23950000
+         LA    R5,NPGRSTBS-NPGRSVC GET DISPLACEMENT TO START            24000000
+         SR    RD,R5               NOW GET BASE REGISTER                24050000
+***************************************************************         24100000
+*   INITIALIZE POINTERS                                       *         24150000
+***************************************************************         24200000
+         L     R4,APIBTAB          GET PIB TABLE POINTER                24250000
+         AR    R4,R1               GOTO CORRESPONDING PIB (STATIC PART) 24300000
+         USING PIB2ADR,R4          PIB2 ADDRESSABILITY         @D51IDOW 24350000
+         LH    R3,PIBCOMRA         GET BG COMREG POINTER                24400000
+         USING COMREG,R3           COMREG ADDRESSABILITY                24450000
+         LH    R2,LUBPT            GET LUB TABLE POINTER                24500000
+         LTR   R2,R2               WAS PARTITION STARTED BEFORE ?       24550000
+         BNZR  R7                  YES ===> RETURN TO CALLER            24600000
+***************************************************************         24650000
+*   GATE ROUTINE                                              *         24700000
+***************************************************************         24750000
+         USING DISP,R6             DISPATCHER ADDRESSABILITY            24800000
+NPGRSTGT EQU   *                                                        24850000
+         CRSECT END=NPGRFOPI       PAGE IN BEFORE GATE SETTING          24900000
+         L     R5,ASRQTAB          GET SRQ TABLE ADDRESS       @D62MPGL 24933301
+         TM    RBNPGR-SRQTAB(R5),FREEBIT            GATE OPEN? @D66ODOW 24966603
+         BO    NPGRSTCO            YES ===> GOTO UPDATE CODE   @D66ODOW 25000003
+         LA    R5,SRQNPGR-SRQTAB(,R5) PT TO WAIT QUEUE         @D62MPGL 25050001
+*SGLINK  RWAIT,INPUT=(R5,RC)                                            25100000
+         BAL   RC,RWAIT            WAIT FOR RESOURCE                    25150000
+         B     NPGRSTGT            TRY AGAIN                            25200000
+         DROP  R6                                                       25250000
+***************************************************************         25300000
+*   UPDATE NICL FICL AND LUBPT                                *         25350000
+***************************************************************         25400000
+NPGRSTCO EQU   *                                                        25450000
+         SRL   R1,D4               TRANSFORM PIK INTO INDEX             25500000
+         LH    R2,FICLPT           GET FICL POINTER                     25550000
+         AR    R2,R1               GET PARTITION FICL ADDRESS           25600000
+         LA    R5,&AGSYSLB         GET SYSTEM LUB VALUE                 25650000
+         STC   R5,D0(,R2)          STORE SYSTEM LUB VALUE               25700000
+         LH    R2,NICLPT           GET NICL POINTER                     25750000
+         AR    R2,R1               GET PARTITION NICL ADDRESS           25800000
+         LA    R4,(&NPART+1)*PIBLNG(,R4) R4 CONTAINS PIB2 ADDR @D51IDOW 25850000
+         USING PIBADR,R4           ... GET RELATED PIB1 ADDR   @D51IDOW 25900000
+         IC    R5,PIBLUBNO         GET PROGR. LUB VALUE                 25950000
+         DROP  R4                                                       26000000
+         STC   R5,D0(,R2)          STORE NEW NICL VALUE                 26050000
+         LH    R4,NPGRHLUB         GET NEXT LUB POINTER                 26100000
+         STH   R4,LUBPT            STORE IT IN COMREG                   26150000
+         LR    RC,R1               COPY INDEX                  @D51IDIS 26200000
+         SLL   RC,2                OFFSET INTO PCBATAB (PIK/4) @D51IDIS 26250000
+         A     RC,APCBATAB         GET ADDR OF PCBADR          @D51IDIS 26300000
+         L     RC,0(,RC)           ... AND PCB ADDR            @D51IDIS 26350000
+         USING PCBADR,RC                                       @D51IDIS 26400000
+         ST    R4,PCEALUB          LUB POINTER TO PCB          @D51IDIS 26450000
+         DROP  RC                                              @D51IDIS 26500000
+         LA    R2,2*&AGSYSLB.(,R4) ADD FOREGROUND SYSTEM LUBS           26550000
+         AR    R5,R5               ADD PROGRAMMER                       26600000
+         AR    R2,R5                              LUBS                  26650000
+         STH   R2,NPGRHLUB         STORE NEW LUB POINTER                26700000
+***************************************************************         26750000
+*   UPDATE LUBEXT                                             *         26800000
+***************************************************************         26850000
+         DROP  R3                                                       26900000
+         LA    R2,BGCOMREG         GET BG COMREG ADDRESS                26950000
+         USING COMREG,R2                                                27000000
+         SH    R4,LUBPT            FXLUB - BGLUB                        27050000
+         L     R2,LUBEXT           GET BG LUBEXT POINTER                27100000
+         DROP  R2                                                       27150000
+         USING COMREG,R3                                                27200000
+         TM    SYSFLAG2,IJBDSDFP   DASD FILE PROTECTION ACTIVE ?        27250000
+         BNO   NPGRNDSD            NO  ===>                             27300000
+         SLL   R4,L1               NUMBER OF LUBEXT ENTRIES             27350000
+NPGRNDSD EQU   *                                                        27400000
+         SLL   R4,L1               NUMBER OF LUBEXT ENTRIES             27450000
+         AR    R4,R2               ADDRESS OF BG LUBEXT START           27500000
+         ST    R4,LUBEXT           STORE IT IN COMREG                   27550000
+         BR    R7                  ===> RETURN TO CALLER                27600000
+         DROP  R3                                                       27650000
+         EJECT                                                          27700000
+***************************************************************         27750000
+*                                                             *         27800000
+*                D A T A   A R E A S                          *         27850000
+*                                                             *         27900000
+***************************************************************         27950000
+         SPACE 2                                                        28000000
+***************************************************************         28050000
+*                                                             *         28100000
+*    LUB ALLOCATION WORK LIST WITH ONE HALFWORD PER           *         28150000
+*    PARTITION.                                               *         28200000
+*                                                             *         28250000
+***************************************************************         28300000
+         SPACE 2                                                        28350000
+         DS    0F                                                       28400000
+&X       SETA  (&NPART)*&WLENLEN                                        28450000
+NPGRWL   DS    CL&X                LUB ALLOCATION WORK LIST             28500000
+NPGRWLEN EQU   *                   END OF WORK LIST                     28550000
+ANPGRWLE DC    A(NPGRWLEN)         END ADDRESS OF WORK LIST             28600000
+ANPGRWL  DC    A(NPGRWL)           ADDRESS OF WORK LIST                 28650000
+         SPACE                                                          28700000
+NPGRMINL DC    H'&AGMINLB'         MINIMUM NUMBER OF LUBS               28750000
+NPGRMAXL DC    H'&AGMAXLB'         MAXIMUM NUMBER OF LUBS               28800000
+NPGRHLUB DC    AL2(LUBTAB-Y0+2*(&AGSYSLB+&AGDEFLB)) POINTER TO          28850000
+*                                      NEXT AVAILABLE LUB               28900000
+NPGRBGSW DC    X'00'               BG SPECIFIED SWITCH                  28950000
+NPGRFOPI EQU   *                                                        29000000
+         AIF   (NOT &BGDEBUG).NOPTCH                                    29050000
+         DS    0F                                                       29100000
+NPGRPTCH DC    10S(*)              PATCH AREA FOR NPGR ROUTINE          29150000
+.NOPTCH  ANOP                                                           29200000
+         SPACE 2                                                        29250000
+         DROP  RD                                                       29300000
+         AIF   (NOT &BGDEBUG OR NOT &SGNPGR).PRINT                      29350000
+         PRINT NOGEN               RESET PRINT OPTION                   29400000
+.PRINT   ANOP                                                           29450000
+         MEND                                                           29500000

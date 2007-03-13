@@ -1,0 +1,305 @@
+         MACRO                                                          00001000
+         SGFCP                                                          00002000
+*********************************************************************** 00003000
+*                                                                     * 00004000
+.*       IBM DISK OPERATING SYSTEM                                    * 00005000
+*        SUPERVISOR - SGFCP - 5686-CF7                                * 00006000
+.*                                                                    * 00007000
+*        LICENSED MATERIALS-PROPERTY OF IBM                           * 00008000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 00009000
+*        5686-CF7 (C)                                                 * 00010000
+*        (C) COPYRIGHT IBM CORP. 2004                                 * 00011000
+*                                                                     * 00012000
+*********************************************************************** 00013000
+         GBLB  &SGFCP             SGERP PRINT CONTROL SWITCH   @D68DDOW 00014000
+.**** START OF SPECIFICATIONS                                           00015000
+.*                                                                      00016000
+.*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                         00017000
+.*                                                                      00018000
+.*01* DESCRIPTIVE NAME = RESIDENT INTERFACE TO FCP SERVICE ROUTINES     00019000
+.*                                                                      00020000
+.* THE FCP SYSTEM TASK IS GENERATED WITH STATUS WAITBND. IT IS          00021000
+.* ACTIVATED WITH TREADY COND=IO. BEFORE ACTIVATING THE FCP SYSTEM      00022000
+.* TASK THE CALLER MUST ENQUEUE A REQUEST CONTROL BLOCK IN THE          00023000
+.* FCP SYSTEM TASK CHAIN POINTED TO BY FCPCHAIN.                        00024000
+.* THE REQUEST CONTROL BLOCK IS DESCRIBED BY DSECT ENQFCPCB IN          00025000
+.* MACRO MAPFCPIF.                                                      00026000
+.* TO ENQUEUE A REQUEST CONTROL BLOCK AND TREADY THE FCP SYSTEM TASK,   00027000
+.* MACRO ENQFCP HAS TO BE USED.                                         00028000
+.* IF THERE IS NO REQUEST ELEMENT AVAILABLE, EACH FUNCTION HAS TO       00029000
+.* DECIDE WHAT TO DO.                                                   00030000
+.* THE REQUEST ELEMENTS ARE CHAINED. A NEW ELEMENT IS ENQUEUED IN       00031000
+.* FRONT, WHEREAS THE LAST ELELMENT IS PROCESSED FIRST.                 00032000
+.* THE SYSTEM TASK CALLS $IJBFCP TO PROCESS THE APPROPRIATE FUNCTION.   00033000
+.*01* NOTES = CHANGE ACTIVITY                                           00034000
+.*                                                                      00035000
+.* IN CASE FCP_RECFLG.FCP_RECOUT IS SET, CHECK FCP_ARECCNT TO PREVENT   00035300
+.* ENDLESS LOOP                                                @ELOOPMZ 00035600
+.**** END OF SPECIFICATIONS                                             00036000
+         SPACE 3                                                        00037000
+         AIF   (NOT &SGFCP).NPRT010                                     00038000
+         PRINT GEN                                                      00039000
+.NPRT010 ANOP                                                           00040000
+         DC    CL8'SGFCP   '                                            00041000
+         DC    CL10'09/09/2005'   LAST CHANGE DDMMYY           @ELOOPMZ 00042490
+         USING FCPENTRY,RC        BASE POINTER                 @D68DDOW 00043000
+FCPENTRY DS    0H                                              @D68DDOW 00044000
+         L     RA,IJBSMCOM        ADDR OF STOR MGMT CB         @D68CDOW 00045000
+         USING SMCOM,RA                                        @D68CDOW 00046000
+         TM    SYSFLAG4,ANCHSVA   31BIT SGETVIS AREA AVAILABLE @D68DDOW 00047000
+         BNO   FCPSTART           NO --> USE RESERVED ELEMENTS @D68DDOW 00048000
+         DROP  RA                                              @D68CDOW 00049000
+         L     RA,TCBPTR          GET CURRENT TCB POINTER      @D68CDOW 00050000
+FCPENT10 NOP   FCPENT13                                        @D68CDOW 00051000
+         MVI   FCPENT10+1,X'F0'   EXECUTED ONLY ONCE           @D68CDOW 00052000
+         L     R0,F4096           GET ONE PAGE FOR MSG ELEMENTS@D68DDOW 00053000
+*        SGETVIS LENGTH=(0),SPID=FCPSTCK,ADDRESS=(1),PFIX=YES,LOC=ANY   00054000
+         SGETVIS LENGTH=(0),SPID=FCPSTCK,ADDRESS=(1),PFIX=YES,LOC=ANY  *00055000
+                                  ...ISSUE SGETVIS             @D68DDOW 00056000
+         LTR   RF,RF              WAS SGETVIS SUCCESSFULL      @D68DDOW 00057000
+         BASR  R5,0               ADDR WHERE HARDWAIT ENTERED  @D68CDOW 00058000
+         BNZ   SYSERROR           NO --->                      @D68DDOW 00059000
+         LR    R2,R1              COPY START ADDR              @D68DDOW 00060000
+         LR    R3,R1              ...TO WORK ........          @D68DDOW 00061000
+         LR    R4,R1              .......... REGISTER          @D68DDOW 00062000
+         A     R3,F4096           END OF AREA                  @D68DDOW 00063000
+FCPENT11 DS    0H                                              @D68CDOW 00064000
+         LA    R2,X'100'(,R2)     NEXT ELEMENT                 @D68CDOW 00065000
+         CR    R2,R3              ELEMENT WITHIN GETVISED PAGE @D68CDOW 00066000
+         BNL   FCPENT12           NO, ALL ELEMENTS ENQUEUED    @D68CDOW 00067000
+         ST    R2,0(,R1)          ENQUEUE ELEMENT IN FREECHAIN @D68CDOW 00068000
+         LR    R1,R2              POINT TO NEW LAST ELEMENT    @D68CDOW 00069000
+         B     FCPENT11           CONTINUE LOOP                @D68CDOW 00070000
+FCPENT12 DS    0H                                              @D68CDOW 00071000
+         L     R2,FCPFREEM        GET CURRENT FREE CHAIN       @D68CDOW 00072000
+         ST    R2,0(,R1)          CHAIN TO NEW ELEMENTS        @D68CDOW 00073000
+         CS    R2,R4,FCPFREEM     SET ANCHOR TO MSG CHAIN      @D68CDOW 00074000
+         BNE   FCPENT12           UPDATE FAILED                @D68CDOW 00075000
+FCPENT13 DS    0H                                              @D68CDOW 00076000
+         CLC   FCP#ACTE,FCP#MINE  FREE CHAIN LARGE ENOUGH      @D68DDOW 00077000
+         BNL   FCPSTART           YES --->                     @D68DDOW 00078000
+         LA    R0,16*EFCPLNG1     GET SPACE FOR 16 REQ ELEMENTS@D68DDOW 00079000
+*        SGETVIS LENGTH=(0),SPID=FCPSTCK,ADDRESS=(1),PFIX=YES,LOC=ANY   00080000
+         SGETVIS LENGTH=(0),SPID=FCPSTCK,ADDRESS=(1),PFIX=YES,LOC=ANY  *00081000
+                                  ...ISSUE SGETVIS             @D68DDOW 00082000
+         LTR   RF,RF              WAS SGETVIS SUCCESSFULL      @D68DDOW 00083000
+         BNZ   FCPSTART           NO --->                      @D68DDOW 00084000
+         LA    R3,16-1            LOOP COUNTER                 @D68CDOW 00085000
+         LR    RE,R1              REMEMBER ADDR OF 1ST ELEMENT @D68CDOW 00086000
+FCPENT20 DS    0H                                              @D68CDOW 00087000
+         LA    RF,EFCPLNG1(,R1)   POINT TO NEXT ELEMENT        @D68CDOW 00088000
+         USING EFCPREQB,R1                                     @D68CDOW 00089000
+         ST    RF,EFCPCPTR        CHAIN TO PREVIOUS ELEMENT    @D68CDOW 00090000
+         LR    R1,RF                                           @D68CDOW 00091000
+         BCT   R3,FCPENT20        CHAIN 16 ELEMENTS            @D68CDOW 00092000
+FCPENT30 DS    0H                                              @D68CDOW 00093000
+         L     R2,FCPFREEC        GET CURRENT CHAIN            @D68CDOW 00094000
+         ST    R2,EFCPCPTR        ...AND CHAIN TO NEW ELEMENTS @D68CDOW 00095000
+         L     R3,FCP#ACTE        GET CURRENT COUNTER          @D68CDOW 00096000
+         LA    RF,16(,R3)         COMPUTE NEW COUNTER          @D68CDOW 00097000
+         CDS   R2,RE,FCPFREEC     TRY TO UPDATE CHAINHEADER    @D68DDOW 00098000
+***                               ...AND COUNTER                        00099000
+         BNE   FCPENT30                                        @D68CDOW 00100000
+         DROP  R1                                              @D68CDOW 00101000
+FCPSTART DS    0H                 PROCESS REQUEST CHAIN        @D68DDOW 00102000
+         ICM   R8,15,FCPCHAIN     GET FIRST/NEXT REQ ELEMENT   @D68DDOW 00103000
+         BZ    FCPCAL90           ZERO, CHECK FOR DEAYED REQ'S @D68DDOW 00104000
+         USING EFCPREQB,R8                                     @D68DDOW 00105000
+FCPLOOP1 DS    0H                                              @D68DDOW 00106000
+         ICM   R2,15,EFCPCPTR     GET NEXT IN CHAIN            @D68DDOW 00107000
+         BZ    FCPCALL            LAST IN CHAIN IS FIRST TO BE @D68CDOW 00108000
+***                               ... PROCESSED                         00109000
+         LR    R8,R2              COPY TO INPUT REGISTER       @D68CDOW 00110000
+         B     FCPLOOP1                                        @D68CDOW 00111000
+FCPCALL  DS    0H                                              @D68DDOW 00112000
+         ASYSCOM (5)                                           @D68DDOW 00113000
+         USING SYSCOM,R5                                       @D68DDOW 00114000
+         L     R5,IJBAFCPA        ADR(FCP COMMUNICATION VECTOR)@D68DDOW 00115000
+         USING FCPTAB,R5                                       @D68DDOW 00116000
+         L     R4,FCPDYN2         GET SYSTEM TASK DYN WORK AREA@D68DDOW 00117000
+         LA    RD,X'10'(,R4)      GET ADDR OF 1ST SAVE AREA    @D68DDOW 00118000
+         SLR   R0,R0                                           @D68DDOW 00119000
+         IC    R0,EFCPFC          GET FUNCTION CODE            @D68DDOW 00120000
+         L     R1,EFCPIPTR        PASS PARAMETER TO IJBFCP     @D68DDOW 00121000
+         ICM   RF,15,FCPAD        ENTRY TO FCP DEVICE DRIVER   @D68DDOW 00122000
+         DROP  R5                                              @D68DDOW 00123000
+         BZ    FCPCAL30           NOT AVAILABLE --> DEQ REQUEST@D68DDOW 00124000
+         BASSM RE,RF              CALL DEVICE DRIVER           @D68CDOW 00125000
+FCPCAL30 DS    0H                                              @D68DDOW 00126000
+         LH    R0,EFCPTID         WAITER                       @D68DDOW 00127000
+         LTR   R0,R0              ...... SPECIFIED             @D68DDOW 00128000
+         BZ    FCPCAL40                                        @D68DDOW 00129000
+         OI    EFCPECB+2,TRABIT   POST REQ                     @D68DDOW 00130000
+         TREADY IO,TASK=(0)       ........ OWNER               @D68DDOW 00131000
+FCPCAL40 DS    0H                 DEQ PROCESSED REQUEST        @D68DDOW 00132000
+         LA    R2,FCPCHAIN-(EFCPCPTR-EFCPREQB) 'PSEUDO' REQ CB @D68DDOW 00133000
+FCPCAL50 DS    0H                                              @D68DDOW 00134000
+         DROP  R8                                              @D68CDOW 00135000
+         USING EFCPREQB,R2                                     @D68CDOW 00136000
+         L     R3,EFCPCPTR        GET 1ST/NEXT REQ CB          @D68DDOW 00137000
+         ICM   R4,15,EFCPCPTR-EFCPREQB(R3) IS FW POINTER ZERO  @D68DDOW 00138000
+         BZ    FCPCAL60           YES                          @D68DDOW 00139000
+         LR    R2,R3              GO TO NEXT CB                @D68DDOW 00140000
+         B     FCPCAL50                                        @D68DDOW 00141000
+FCPCAL60 DS    0H                                              @D68DDOW 00142000
+         CS    R3,R4,EFCPCPTR     DEQ PROCESSED CB             @D68DDOW 00143000
+         BNE   FCPCAL40                                        @D68DDOW 00144000
+         DROP  R2                                              @D68CDOW 00145000
+         USING EFCPREQB,R8                                     @D68CDOW 00146000
+         TM    EFCPFLAG,EFCFREQQ  ELEMENT FROM REQ CHAIN       @D68CDOW 00147000
+         BO    FCPCAL80           YES, --->                    @D68CDOW 00148000
+         TM    EFCPFLAG,EFCFMSGQ  ELEMENT FROM MSG CHAIN       @D68CDOW 00149000
+         BNO   FCPSTART           NO,--->                      @D68CDOW 00150000
+FCPCAL70 DS    0H                                              @D68DDOW 00151000
+         L     R2,FCPFREEM        GET TOP OF FREE CHAIN        @D68CDOW 00152000
+         ST    R2,0(,R8)                                       @D68CDOW 00153000
+         CS    R2,R8,FCPFREEM     ENQ IN FREE CHAIN            @D68CDOW 00154000
+         BE    FCPSTART                                        @D68CDOW 00155000
+         B     FCPCAL70                                        @D68CDOW 00156000
+FCPCAL80 DS    0H                                              @D68DDOW 00157000
+         L     R2,FCPFREEC        GET TOP OF FREE CHAIN        @D68CDOW 00158000
+         ST    R2,0(,R8)                                       @D68CDOW 00159000
+         L     R3,FCP#ACTE        GET CURRENT COUNTER          @D68CDOW 00160000
+         LA    R9,1(,R3)          COMPUTE NEW COUNTER          @D68CDOW 00161000
+         CDS   R2,R8,FCPFREEC     TRY TO UPDATE CHAINHEADER    @D68DDOW 00162000
+***                               ...AND COUNTER                        00163000
+         BE    FCPSTART                                        @D68DDOW 00164000
+         B     FCPCAL80                                        @D68CDOW 00165000
+         DROP  R8                                              @D68DDOW 00166000
+FCPCAL90 DS    0H                                              @D68DDOW 00167000
+         L     R5,PCBPTR          GET CURRENT (SYSTEM) PCB     @D68CDOW 00168000
+         USING PCBADR,R5                                       @D68CDOW 00169000
+         L     R5,PCBAPCBX        GET SYSTEM PCB EXTENSION     @D68CDOW 00170000
+         USING PCBXADR,R5                                      @D68CDOW 00171000
+         ICM   R5,15,PCBXOSAC     GET FCP CONTROL BLOCK        @D68CDOW 00172000
+         BZ    FCPCDOWT           ZERO, NOTHING TO DO          @D68CDOW 00173000
+         USING FCP_CARD,R5                                     @D68CDOW 00174000
+.* IF THERE IS NO REQUEST ELEMENT, RECOVERY REQUESTS ARE       @D68DDOW 00175000
+.* INDICATED BY A BIT (EG FCP_RECOUT)                          @D68DDOW 00176000
+FCPCALA0 DS    0H                                              @D68DDOW 00177000
+         TM    FCP_RECFLG,FCP_RECOUT ADAPTER RECOVERY OUTSTAND.@D68CDOW 00178000
+         BZ    FCPCALB0           NO, GOTO CHECK IF ANY PORT   @D68CDOW 00179490
+***                               ...RECOVERY OUTSTANDING               00180000
+***  FCP_RECEQ CAN'T BE SET SINCE FCP_RECOUT IS CHECKED AFTER ALL       00180100
+***  REQUEST ELEMENTS HAVE BEEN PROCESSED                               00180200
+         CLC   FCP_ARECCNT,FCP_MRECCNT REC. COUNT EXHAUSTED    @ELOOPMZ 00180300
+         BL    FCPCALA1           NO, ENQ. ADAPTER RECOVERY    @ELOOPMZ 00180400
+         OI    FCP_RECFLG,FCP_TERMONLY TERMINATION ONLY REQUEST@ELOOPMZ 00180500
+FCPCALA1 DS    0H                                              @ELOOPMZ 00180600
+*        ENQFCP FUNC=GETREQE      GET A REQUEST ELEMENT                 00181000
+         ENQFCP FUNC=GETREQE                                   @D68CDOW 00182000
+         LTR   RE,R1              DID WE GOT ONE               @D68CDOW 00183000
+         BZ    FCPCDOWT           NO, SHOULD NOT OCCUR         @D68CDOW 00184000
+         NI    FCP_RECFLG,XFF-FCP_RECOUT                       @ELOOPMZ 00184500
+         LA    R3,FCP_ERP         GET ERP CNTRL BLOCK          @D68CDOW 00185000
+         USING FERPREQ,R3                                      @D68CDOW 00186000
+         MVI   FERP_ACTION,FERP_ROADAPT REQ ADAPTER RECOVERY   @D68CDOW 00187000
+         OI    FCP_RECFLG,FCP_RECEQ  RECOVERY ENQ'D NOW        @ELOOPMZ 00188490
+         ICM   R8,15,FCP_PORTC    GET FIRST PORT AT ADAPTER    @D68CDOW 00189000
+         USING FCPPORT,R8                                      @D68CDOW 00190000
+         TM    FCP_RECFLG,FCP_TERMONLY TERMINATION ONLY REQUEST@D68CDOW 00191000
+         BNO   FCPCALA2           NO,                          @D68CDOW 00192000
+         NI    FCP_RECFLG,XFF-FCP_TERMONLY                     @D68CDOW 00193000
+         OI    FERP_ACTION,FERP_TERMONLY REQUEST ADAPTER TERMIN@D68CDOW 00194000
+FCPCALA2 DS    0H                                              @D68DDOW 00195000
+         MVI   PORT_RECFLG,PORTRECEQ RECOVERY ENQ'D NOW        @D68CDOW 00196000
+         ICM   RF,15,PORTLUNC     GET FIRST LUN                @D68CDOW 00197000
+         USING FCPLUN,RF                                       @D68CDOW 00198000
+FCPCALA4 DS    0H                                              @D68DDOW 00199000
+         MVI   LUN_RECFLG,LUNRECEQ                             @D68CDOW 00200000
+         ICM   RF,15,LUNNEXT                                   @D68CDOW 00201000
+         BNZ   FCPCALA4                                        @D68CDOW 00202000
+FCPCALA6 DS    0H                                              @D68DDOW 00203000
+         ICM   R8,15,PORTNEXT                                  @D68CDOW 00204000
+         BNZ   FCPCALA2                                        @D68CDOW 00205000
+         B     FCPCALD0           SCHEDULE ADAPTER RECOVERY    @D68CDOW 00206000
+         DROP  R3                                              @D68CDOW 00207000
+FCPCALB0 DS    0H                                              @D68DDOW 00208000
+         ICM   R8,15,FCP_PORTC    GET FIRST PORT AT ADAPTER    @D68CDOW 00209000
+FCPCALB2 DS    0H                                              @D68DDOW 00210000
+         TM    PORT_RECFLG,PORTRECOUT RECOVERY OUTSTANDING     @D68CDOW 00211000
+         BNO   FCPCALC0           NO, GOTO CHECK IF ANY LUN    @D68CDOW 00212000
+***                               ...RECOVERY OUTSTANDING               00213000
+*        ENQFCP FUNC=GETREQE      GET A REQUEST ELEMENT                 00214000
+         ENQFCP FUNC=GETREQE                                   @D68CDOW 00215000
+         LTR   RE,R1              DID WE GOT ONE               @D68CDOW 00216000
+         BZ    FCPCDOWT           NO, SHOULD NOT OCCUR         @D68CDOW 00217000
+         LA    R3,PORT_ERP        GET ERP CNTRL BLOCK          @D68CDOW 00218000
+         USING FERPREQ,R3                                      @D68CDOW 00219000
+         MVI   FERP_ACTION,FERP_ROPORT REQ PORT RECOVERY       @D68CDOW 00220000
+         MVI   PORT_RECFLG,PORTRECEQ RECOVERY ENQ'D NOW        @D68CDOW 00221000
+         ICM   RF,15,PORTLUNC     GET FIRST LUN                @D68CDOW 00222000
+FCPCALB4 DS    0H                                              @D68DDOW 00223000
+         MVI   LUN_RECFLG,LUNRECEQ                             @D68CDOW 00224000
+         ICM   RF,15,LUNNEXT                                   @D68CDOW 00225000
+         BNZ   FCPCALB4                                        @D68CDOW 00226000
+         B     FCPCALD0           GOTO SCHEDULE PORT RECOVERY  @D68CDOW 00227000
+         DROP  R3                                              @D68CDOW 00228000
+FCPCALC0 DS    0H                                              @D68DDOW 00229000
+         ICM   RF,15,PORTLUNC     GET FIRST LUN                @D68CDOW 00230000
+FCPCALC2 DS    0H                                              @D68DDOW 00231000
+         TM    LUN_RECFLG,LUNRECOUT RECOVERY OUTSTANDING       @D68CDOW 00232000
+         BNO   FCPCALC4           NO, GOTO NEXT LUN            @D68CDOW 00233000
+*        ENQFCP FUNC=GETREQE      GET A REQUEST ELEMENT                 00234000
+         ENQFCP FUNC=GETREQE                                   @D68CDOW 00235000
+         LTR   RE,R1              DID WE GOT ONE               @D68CDOW 00236000
+         BZ    FCPCDOWT           NO, SHOULD NOT OCCUR         @D68CDOW 00237000
+         LA    R3,LUN_ERP         GET ERP CNTRL BLOCK          @D68CDOW 00238000
+         USING FERPREQ,R3                                      @D68CDOW 00239000
+         MVI   FERP_ACTION,FERP_ROLUN  REQ LUN  RECOVERY       @D68CDOW 00240000
+         MVI   LUN_RECFLG,LUNRECEQ                             @D68CDOW 00241000
+         DROP  R3                                              @D68CDOW 00242000
+         B     FCPCALD0           SCHEDULE LUN RECOVERY        @D68DDMZ 00243000
+FCPCALC4 DS    0H                                              @D68DDOW 00244000
+         ICM   RF,15,LUNNEXT      GET NEXT  LUN                @D68CDOW 00245000
+         BNZ   FCPCALC2           CHECK NEXT LUN               @D68CDOW 00246000
+         B     FCPCALF0           NOT AVAIL ---> NEXT PORT     @D68CDOW 00247000
+FCPCALD0 DS    0H                                              @D68DDOW 00248000
+         LA    R0,EFCPREC         FUNCTION IS RECOVERY         @D68CDOW 00249000
+*        ENQFCP INPUT=(R3),REQ=(RE),WAIT=NO,TYPE=INT ENQUEUE INTO       00250000
+***                               REQUEST CHAIN                         00251000
+         ENQFCP INPUT=(R3),REQ=(RE),WAIT=NO,TYPE=INT           @D68CDOW 00252000
+         B     FCPSTART                                        @D68CDOW 00253000
+FCPCALF0 DS    0H                                              @D68DDOW 00254000
+         ICM   R8,15,PORTNEXT     GOTO NEXT PORT               @D68CDOW 00255000
+         BNZ   FCPCALB2           AVAILABLE, ---> PROCESS IT   @D68CDOW 00256000
+         ICM   R5,15,FCP_CARD_NEXT GOTO NEXT ADAPTER           @D68CDOW 00257000
+         BNZ   FCPCALA0           AVAILABLE ---> PROCESS IT    @D68CDOW 00258000
+         DROP  R5                 DROP ADAPTER ADDRESSABILITY  @D68CDOW 00259000
+         DROP  R8                 DROP PORT ADDRESSABILITY     @D68CDOW 00260000
+         DROP  RF                 DROP LUN ADDRESSABILITY      @D68CDOW 00261000
+FCPCDOWT DS    0H                                              @D68DDOW 00262000
+         LA    R1,FCPECB                                       @D68DDOW 00263000
+         B     FCPSVC7                                         @D68DDOW 00264000
+.******* DON'T MODIFY NEXT 4 STATEMENTS BECAUSE OF WAIT MACRO LOGIC     00265000
+.******* IN DISPATCHER. AFTER SVC 7, PSW IN FCP SAVE AREA POINTS TO     00266000
+.******* FCPWAIT. AFTER TREADY THE FCP TASK IS DISPATCHED AT FCPWAIT.   00267000
+         DS    0F                                              @D68DDOW 00268000
+FCPWAIT  B     FCPENTRY           WAIT                         @D68DDOW 00269000
+FCPECB   DC    A(0)               .....MACRO                   @D68DDOW 00270000
+FCPSVC7  SVC   7                  ...........IMAGE             @D68DDOW 00271000
+         DS    0F                                              @D68DDOW 00272000
+         DC    CL8'FCPCHAIN'                                   @D68DDOW 00273000
+FCPCHAIN DC    A(0)               ANCHOR OF REQUEST CHAIN      @D68DDOW 00274000
+FCPSTCK  CRSPID NAME=IFCPST                                    @D68DDOW 00275000
+         DS    0D             |MUST BE DOUBBLE WORD            @D68CDOW 00276000
+FCPFREEC DC    A(REQELEM1)    |   FREE CHAIN OF REQ ELEMENTS   @D68DDOW 00277000
+FCP#ACTE DC    A(4)           |   ACTUAL NUMBER OF ENTRIES     @D68DDOW 00278000
+***                           V   ...IN FREE CHAIN                      00279000
+FCP#MINE DC    A(5)               MINIMUM NUMBER OF ENTRIES    @D68DDOW 00280000
+FCPFREEM DC    A(MSGELEM1)        FREE CHAIN OF MSG ELEMENTS   @D68DDOW 00281000
+***                                                                     00282000
+REQELEM1 DC    A(REQELEM2),(EFCPLNG1-4)X'00'                   @D68CDOW 00283000
+REQELEM2 DC    A(REQELEM3),(EFCPLNG1-4)X'00'                   @D68CDOW 00284000
+REQELEM3 DC    A(REQELEM4),(EFCPLNG1-4)X'00'                   @D68CDOW 00285000
+REQELEM4 DC    A(0),(EFCPLNG1-4)X'00'                          @D68CDOW 00286000
+***                                                                     00287000
+MSGELEM1 DC    A(MSGELEM2),252X'00'                            @D68CDOW 00288000
+MSGELEM2 DC    A(MSGELEM3),252X'00'                            @D68CDOW 00289000
+MSGELEM3 DC    A(MSGELEM4),252X'00'                            @D68CDOW 00290000
+MSGELEM4 DC    A(0),252X'00'                                   @D68CDOW 00291000
+         DROP  RC                                              @D68DDOW 00292000
+         AIF   (NOT &SGFCP).NPRT030                            @D68DDOW 00293000
+         PRINT NOGEN                                           @D68DDOW 00294000
+.NPRT030 ANOP                                                  @D68DDOW 00295000
+         MEND                                                  @D68DDOW 00296000

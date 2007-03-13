@@ -1,0 +1,251 @@
+         MACRO                                                          00020000
+         SGTSLICE                                                       00040000
+***************************************************************         00060000
+*                                                             *         00080000
+.*       IBM DISK OPERATING SYSTEM                            *         00100000
+*        SUPERVISOR - SGTSLICE - 5686-066                     *@D61NDIS 00120001
+.*                                                            *         00140000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00160000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *         00180000
+*        5686-066 (C) COPYRIGHT IBM CORP. 1990, 2003          *@DSCSI   00200008
+*        SEE COPYRIGHT INSTRUCTIONS                           *         00220000
+*                                                             *         00240000
+***************************************************************         00260000
+         GBLA  &NPART             NUMB.PARTITIONS              @D51IDIS 00280000
+         GBLA  &NCLASS            NUMB.DYNAMIC CLASSES         @D51IDIS 00300000
+         GBLB  &SGTSLI            PRINT OPTION                 @D51IDIS 00380000
+         GBLB  &VSE280            RELEASE CONTROL SWITCH       @DSCSI   00390008
+         LCLA  &NUM               NUMB.OF STATIC PART.S+CLASSES@D51IDIS 00420000
+         LCLA  &Y                                              @D51IDIS 00440000
+         ACTR  1000                                            @D51IDIS 00480000
+.* /* START OF SPECIFICATIONS *********************************@D51IDIS 00500000
+.*                                                                      00520000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00540000
+.*                                                                      00560000
+.*01* DESCRIPTIVE NAME = PARTITION BALANCING, PRIORITY ROUTINES,        00580000
+.*                       AND DYNAMIC CLASS SERVICES                     00600000
+.*                                                                      00620000
+.*01* NOTES = CHANGE ACTIVITY                                           00640000
+.*                                                                      00660000
+.* 31 BIT ADDRESSING ADAPTATIONS                               @D52VDIS 00670001
+.* SET/RESET SECURITY INITIALIZATION BIT DURING PREPARE/CLEANUP@D52VDIS 00675001
+.* PARTITION BALANCING TIME COUNTERS NOT RESET DURING          @DY41852 00676601
+.* DYNAMIC CLASS DEACTIVATION                                  @DY41852 00678201
+.* RESET TPBAL INDICATION AND DO TPOUT                         @KD40259 00679101
+.* SET PCB TOKEN DURING PARTITION ACTIVATION FOR JOB ACCOUNTING@KD40376 00679501
+.* DYNAMIC PARTITION CODE SEPARATED FROM SGTSLICE              @D61NDIS 00679701
+.* TURBO DISPATCHER SUPPORT                                    @D61RDIS 00679801
+.* ALLOW GET/SET-PRTY REQUEST FROM RMODE=ANY                   @D66ADAP 00679904
+.**** END OF SPECIFICATIONS ***************************************** / 00680000
+         SPACE 2                                               @D51IDIS 00700000
+         AIF   (NOT &SGTSLI).NPRT010                           @D61NDIS 00720001
+         PRINT GEN                                             @D51IDIS 00740000
+.NPRT010 ANOP                                                  @D51IDIS 00760000
+&NUM     SETA  &NPART+&NCLASS    NUMBER OF CLASSES AND PART.S  @D51IDIS 00800000
+         DC    CL8'SGTSLICE'     MACRO NAME                    @D51IDIS 00900000
+         DC    CL8'02/19/01'     MACRO DATE                    @D61MPIS 00920004
+         DC    CL8'VSE 2.6 '     LAST APAR FIX                 @D66ADAP 00940004
+         SPACE 2                                               @D51IDIS 00960000
+*********************************************************************** 00980000
+*                                                                     * 01000000
+*        EXTERNAL INTERRUPT PROCESSING   (CPU TIMER INTERRUPT)        * 01020000
+*                                                                     * 01040000
+*********************************************************************** 01060000
+         SPACE 3                                                        01080000
+         USING EXTCPUT,RD         ESTABLISH BASE ADDRESS       @D51IDIS 01100000
+         USING DISP,R6            DISPATCHER BASE POINTER      @D14BDAP 01120000
+EXTCPUT  DS    0H                                              @D61RDIS 01128001
+         MVC   INITTIME,CPUTIME   SET NEW BEGIN OF INTERVAL    @D14BDFR 01200000
+*        SGVSEPT PROBE=16         CPU TIMER TO BE SET          @D51MDIS 01220000
+         SGVSEPT PROBE=16         CODE WILL NOT BE ACCOUNTED   @D51MDIS 01240000
+         SPT   INITTIME           RELOAD TIME VALUE            @D14BDFR 01260000
+         LR    R9,R6              FORCE JA TO EXIT TO DISP     @D14BDFR 01280000
+*        B     UPDJA                                           @D51IDIS 01300001
+*SGLINK  UPDJA,INPUT=(R6,R9,RD),WORK=(R0,R1,R2,R3,R4,R5)                01320000
+         TITLE 'VSE/AF SUPERVISOR  SGTSLICE JA COUNTERS UPDATE'         05900000
+*********************************************************************** 05920000
+*                                                                     * 05940000
+*        UPDJA:                                                       * 05960000
+*              JOB ACCOUNTING COUNTERS UPDATE                         * 05980000
+*                                                                     * 06000000
+*********************************************************************** 06020000
+*                                                                     * 06040000
+*        FUNCTION:                                                    * 06060000
+*              UPDATES:                                               * 06080000
+*              TOTAL SYSTEM OVERHEAD TIME IN SYSTEM PCB               * 06100000
+*              TOTAL SYSTEM ALLBOUND TIME IN SYSTEM PCB               * 06120000
+*              TOTAL USER CPU TIME IN USER PCB                        * 06140000
+*              DISTRIBUTES:                                           * 06160000
+*              ALLBOUND TIME EQUALLY UNDER THE ACTIVE PARTITIONS      * 06180000
+*              OVERHEAD TIME IN RELATION OF USER CPU TIME             * 06200000
+*                                                                     * 06220000
+*********************************************************************** 06240000
+         SPACE 2                                               @D36IDFR 06260000
+*SGLINK  UPDJA,S,INPUT=(R6,R9,RD),WORK=(R0,R1,R2,R3,R4,R5)     @D149DIS 06300000
+UPDJA    DS    0H                                              @D14BDFR 06320000
+*        DISPMAC FUNC=UPDJA                                    @D61RDIS 06370001
+         DISPMAC FUNC=UPDJA                                    @D61RDIS 06420001
+         BR    R9                 RETURN TO CALLER             @D14BDFR 06470001
+         EJECT ,                                                        11640000
+*------------------------------------------------------------* @D51IDIS 11660000
+* WORK AREAS AND CONSTANTS                                     @D51IDFR 11680000
+*------------------------------------------------------------* @D51IDIS 11700000
+         DS    0F                                              @D14BDFR 11720000
+EPCBATAB DC    A(PRETABLC-4)      END OF PCBATAB, INITIALIZED  @D51IDIS 12180000
+*                                 DURING DYNCLASS ID=INITAL    @D51IDIS 12200000
+         DS    0F                 START OF ALLBOUND PCB        @D51IDIS 12320000
+         DC    CL8'CPCBTAB'       CPCB TABLE EYE CATCHER       @D51IDIS 12340000
+*------------------------------------------------------------* @D51IDIS 12360000
+* PCBCTAB  - TABLE OF ALLOCATED CLASS PCBS                     @D51IDFR 12380000
+*------------------------------------------------------------* @D51IDIS 12400000
+PCBCTAB  DS    0F                                              @D51IDIS 12420000
+         DC    &NCLASS.A(0)                                    @D51IDIS 12440000
+         DC    A(PCBCTAB)         ADDRESS OF TABLE             @D61RDIS 12470001
+         DROP  RD                 RELEASE CPU TIMER BASE       @D51IDIS 12500000
+         TITLE 'VSE SUPERVISOR  SGTSLICE TURBO DISPATCHER INTERFACES'   20760401
+**************************************************************          20760601
+*                                                            *          20760801
+*        PARTITION BALANCING INTERFACE ROUTINES              *          20761001
+*                                                            *          20761201
+**************************************************************          20761401
+* SVC57    - PROVIDES ROUTINES TO INITIALIZE AND TERMINATE   *          20761601
+*            PARTITION BALANCING. THE DISPATCHER SYSTEM TASK *          20761801
+*            IS RESPONSIBLE FOR THE PARTITION PRIORITY       *          20762001
+*            MANAGEMENT.                                     *          20762201
+*            INPUT: R6 - PBAL INTERFACE AREA ADDRESS         *          20762401
+*                   RD - IJBPBAL BASE ADDRESS                *          20762601
+*                   RF - FUNCTION CODE                       *          20762801
+**************************************************************          20763001
+         USING TCBADR,RA         TCB BASE POINTER              @D66ADAP 20763104
+         USING SVC57,RC          SVC ROUTINE BASE              @D66ADAP 20763205
+SVC57    DS    0F                GET/SET-PRTY PROCESSING       @D61RDIS 20763304
+         LA    RF,0              SET FUNCTION CODE (PRTY)      @D61RDIS 20763404
+         LR    RE,R6             SET RETURN ADDRESS            @D61RDIS 20763601
+         TM    TCBEXFLG,TCBEXAM  31 BIT MODE                   @D66ADAP 20763704
+         BO    PBALGO            YES, LET IT GO                @D66ADAP 20763804
+         CLM   R1,8,BIT0OMSK     IS THIS A VALID REQUEST       @D66ADAP 20763904
+         BE    PBALGO            YES, ITS A GETPRTY REQUEST    @D66ADAP 20764004
+         BH    ERR45             NO,  =====================>>> @D66ADAP 20764104
+         CLM   R1,8,H0           IS THIS A VALID REQUEST       @D66ADAP 20764204
+         BNE   ERR45             NO,  =====================>>> @D66ADAP 20764304
+         DROP  RA                RELEASE TCBADR BASE           @D66ADAP 20764404
+*-------------------------------------------------------------          20764501
+* PBALGO   - CALL IJBDISPM ROUTINES                                     20764601
+*            INPUT: RC - SVC 57 BASE REGISTER                           20764701
+*                   RE - RETURN ADDRESS (OPTIONAL - 24 BIT ONLY)        20764801
+*                   RF - FUNCTION CODE                                  20764901
+*-------------------------------------------------------------          20765001
+*SGLINK  PBALGO,S,INPUT=(RC,RE,RF)                                      20765101
+PBALGO   DS    0H                                              @D61RDIS 20765201
+*        DISPMAC FUNC=SVC57       CALL IJBDISP ROUTINE         @D61RDIS 20765401
+         DISPMAC FUNC=SVC57       CALL IJBDISP ROUTINE         @D61RDIS 20765601
+         BR    RE                RETURN TO CALLER              @D61RDIS 20765801
+         DROP  RC                RELEASE SVC57 BASE            @D66ADAP 20765905
+         EJECT ,                                                        20766401
+**************************************************************          20766601
+* DSPERRAD - DISPATCHER SYSTEM TASK IN ERROR                            20766801
+*            INPUT: RF - DSPERRAD BASE ADDRESS                          20767001
+**************************************************************          20767201
+         USING DSPERRAD,RF                                     @D61RDIS 20767401
+*SGLINK  DSPERRAD,S,INPUT=(RF)                                          20767601
+DSPERRAD DS    0H                                              @D61RDIS 20767801
+         L     RC,ASVC57X        GET SVC 57 BASE ADDRESS       @D61RDIS 20768001
+         DROP  RF                                              @D61RDIS 20768201
+         USING SVC57,RC                                        @D61RDIS 20768401
+         LA    RF,12             GET FUNCTION CODE             @D61RDIS 20768601
+         B     PBALGO            CALL PBAL ROUTINE             @D61RDIS 20768801
+*SGLINK  PBALGO,INPUT=(RC,RF)                                           20769001
+         SPACE 2                                                        20769201
+**************************************************************          20769401
+* DSPSTADR - DISPATCHER SYSTEM TASK END OF TASK EXIT                    20769601
+*            INPUT: RF - DSPERRAD BASE ADDRESS                          20769801
+**************************************************************          20770001
+         USING DSPSTADR,RF                                     @D61RDIS 20770201
+*SGLINK  DSPSTADR,S,INPUT=(RF)                                          20770401
+DSPSTADR DS    0H                                              @D61RDIS 20770601
+         L     RC,ASVC57X        GET SVC 57 BASE ADDRESS       @D61RDIS 20770801
+         DROP  RF                                              @D61RDIS 20771001
+         LA    RF,8              GET FUNCTION CODE             @D61RDIS 20771201
+         B     PBALGO            CALL PBAL ROUTINE             @D61RDIS 20771401
+*SGLINK  PBALGO,INPUT=(RC,RF)                                           20771601
+         SPACE 2                                                        20771801
+**************************************************************          20772001
+* CLTABINT - GET CPCB ADDRESS, CALLED BY IJBPBAL ROUTINE                20772201
+*            INPUT:  R1 - PRTYLIST ENTRY (CLASS CHARACTER)              20772401
+*                    R7 - RETURN ADDRESS                                20772601
+*                    R8 - BASE ADDRESS                                  20772801
+*            OUTPUT: R4 - CPCB ADDRESS                                  20773001
+*                    R7 - RETURN ADDRESS                                20773201
+**************************************************************          20773401
+         USING DISP,R6                                         @D61RDIS 20773601
+*SGLINK  CLTABINT,S,INPUT=(R1,R7,R8),OUTPUT=(R4,R7)                     20773801
+CLTABINT DS    0H                                              @D61RDIS 20774001
+         L     R8,ATSSERV        GET BASE FOR SERVICE ROUTINES @D61RDIS 20774201
+         USING TSSERV,R8                                       @D61RDIS 20774401
+         MVC   CLASSWRK(1),1(R1) MOVE CLASS CHARACTER TO WORK  @D61RDIS 20774601
+         B     TSRCHCL           LOOK FOR CPCB ADDRESS         @D61RDIS 20774801
+*SGLINK  TSRCHCL,INPUT=(R7,R8),OUTPUT=(R4,R7)                           20775001
+*        TSRCHCL RETURNS TO IJBPBAL VIA REGISTER 7             @D61RDIS 20775201
+         DROP  R8                                              @D61RDIS 20775401
+         DROP  RC                                              @D61RDIS 20775601
+         EJECT ,                                                        20775701
+**************************************************************          20775801
+* WORK AREAS AND CONSTANTS                                              20776001
+**************************************************************          20776201
+         DS    0F                                              @D61RDIS 20776401
+         DC    CL8'DISPINF'                                    @D61RDIS 20776601
+*-------------------------------------------------------------          20776801
+* DISPINF  - IJBDISPM INTERFACE AREA                                    20777001
+*-------------------------------------------------------------          20777201
+*        MAPDISPI                                              @D61RDIS 20777401
+         MAPDISPI                                              @D61RDIS 20777601
+         SPACE 2                                                        20788201
+*-------------------------------------------------------------          20798801
+* TDATAB   - TD ADDRESS TABLE                                           20799001
+*-------------------------------------------------------------          20799201
+TDATAB   DS    0F                                                       20799401
+         DC    A(TDCOMREG) TD COMREG ADDRESS                   @D61RDIS 20799601
+         DC    A(TCPU0)    CONTROL BLOCK FOR CPU 0             @D61RDIS 20799801
+         DC    X'80000000' CONTROL BLOCK FOR CPU 1             @D61RDIS 20800001
+         DC    A(0)        CONTROL BLOCK FOR CPU 2             @D61RDIS 20800201
+         DC    A(0)        CONTROL BLOCK FOR CPU 3             @D61RDIS 20800401
+         DC    A(0)        CONTROL BLOCK FOR CPU 4             @D61RDIS 20800601
+         DC    A(0)        CONTROL BLOCK FOR CPU 5             @D61RDIS 20800801
+         DC    A(0)        CONTROL BLOCK FOR CPU 6             @D61RDIS 20801001
+         DC    A(0)        CONTROL BLOCK FOR CPU 7             @D61RDIS 20801201
+         DC    A(0)        CONTROL BLOCK FOR CPU 8             @D61RDIS 20801401
+         DC    A(0)        CONTROL BLOCK FOR CPU 9             @D61RDIS 20801601
+         DC    A(0)        CONTROL BLOCK FOR CPU 10            @D61RDIS 20801801
+         DC    X'FFFFFFFF' END OF ADDRESS TABLE                @D61RDIS 20802001
+         EJECT ,                                                        20802501
+*-------------------------------------------------------------          20803001
+*          - TD CONTROL BLOCKS                                          20803201
+*-------------------------------------------------------------          20803401
+         MAPTDADR DSECT=NO,TYPE=COMREG                                  20803601
+         MAPTDADR DSECT=NO,TYPE=CPU,CPU=0                               20803701
+*-------------------------------------------------------------          20803801
+*          - TD WORK AREA  (IPLED CPU)                                  20803901
+*-------------------------------------------------------------          20804001
+*        BEGIN OF CPU-0 WORK AREA                              @DSCSI   20804106
+CPU0WRK  DC    (TWLNGS)X'00' WORK AREA FOR CPU 0 1ST PART      @DSCSI   20804206
+         AIF   (NOT &VSE280).N280020                           @DSCSI   20804308
+         DC    CL8'I/O-CNTL' EYE-CATCHER                       @DSCSI   20804406
+TW0IOORB DS    0H                                              @DSCSI   20804507
+         ORB   DSECT=NO,VERSION=EXT ORB CONTROL BLOCK          @DSCSI   20804606
+         DC    0D'0'        ALIGN TO DOUBLEWORD BOUNDARY       @DSCSI   20804706
+TW0IOIRB DS    0H                                              @DSCSI   20804807
+         IRB   DSECT=NO,VERSION=EXT IRB CONTROL BLOCK          @DSCSI   20804906
+         DC    0D'0'        ALIGN TO DOUBLEWORD BOUNDARY       @DSCSI   20805006
+TW0IOSCH DS    0H                                              @DSCSI   20805107
+         SCHIB DSECT=NO,VERSION=EXT SCHIB CONTROL BLOCK        @DSCSI   20805206
+         DC    0D'0'        ALIGN TO DOUBLEWORD BOUNDARY       @DSCSI   20805306
+*        END   OF CPU-0 WORK AREA                              @DSCSI   20805406
+         EJECT ,                                                        20805501
+.N280020 ANOP                                                           20805608
+         MAPTDADR DSECT=YES,TYPE=CPU                                    20805701
+IJBSUP50 CSECT                  RESUME CSECT                   @D61RDIS 20805801
+         EJECT ,                                                        20806001
+         AIF   (NOT &SGTSLI).NPRT020                           @D61NDIS 20806201
+         PRINT NOGEN                                           @D37ZDFG 20806401
+.NPRT020 ANOP                                                  @D37ZDFG 20806601
+         MEND                                                           20806801

@@ -1,0 +1,161 @@
+         MACRO                                                          00001000
+&NAME    EDCPRLG &USRDSAL=0,      Requested user's DSA size            100002000
+               &LASTREG=12,       Save Caller's registers              200003000
+               &BASEREG=3,        Base register to use                 300004000
+               &DSALEN=120        Total request (&USRDSAL+&BASDSAL)     00005000
+.********************************************************************** 00006000
+.***                                                                *** 00007000
+.***  IBM Language Environment C for VSE/ESA V1 R4 M0               *** 00008000
+.***                                                                *** 00009000
+.***  Licensed Materials - Property of IBM                          *** 00010000
+.***                                                                *** 00011000
+.***  5686-094 (C) Copyright IBM Corp. 1988, 1996.                  *** 00012000
+.***  All rights reserved.                                          *** 00013000
+.***                                                                *** 00014000
+.********************************************************************** 00015000
+.********************************************************************** 00016000
+.*                                                                    * 00017000
+.*  EDCPRLG - C/370 Prolog                                            * 00018000
+.*                                                                    * 00019000
+.*  FUNCTION:                                                         * 00020000
+.*      This macro will generate assembler prolog code for use with   * 00021000
+.*      C/370 assembler Library Routines.  This macro replaces the    * 00022000
+.*      macro EDCPROL.                                                * 00023000
+.*                                                                    * 00024000
+.*  PARAMETERS:                                                       * 00025000
+.*      &USRDSAL=0,  Size of requested User's save area               * 00026000
+.*      &BASEREG=3,  base register, if "NONE" don't generate code base* 00027000
+.*      &DSALEN=120, max(&DSALEN,&USRDSAL+BASDSAL) is acquired, if    * 00028000
+.*                   "NONE" don't acquire DSA                         * 00029000
+.*      &NAME        to be entered in the prolog's name field, if     * 00030000
+.*                   absent the current CSECT si used                 * 00031000
+.*                                                                    * 00032000
+.*  OPERATION:                                                        * 00033000
+.*      Sets global variable &SYSDSAL for use in EDCDSAD,             * 00034000
+.*      creates code for saving Caller's registers (default),         * 00035000
+.*      creates code for DSA acquisition (default),                   * 00036000
+.*      creates code for setting base register(default 3)             * 00037000
+.*                                                                    * 00038000
+.*      NOTE: Resulting DSALEN is rounded up to double-words.         * 00039000
+.*                                                                    * 00040000
+.*   WARNING: EDCPRLG does NOT create CSECT, RMODE, AMODE statements. * 00041000
+.*                                                                    * 00042000
+.*  CHANGES:                                                          * 00043000
+.*  PQ03669 adds Year 2000 support                                    * 00044000
+.*  c00051000-00053000,c00119000                                      * 00045000
+.*                                                                    * 00046000
+.********************************************************************** 00047000
+         GBLC  &EPNAME,&SYSDSAL                                         00048000
+         GBLB  &CEESTART                                                00049000
+         LCLC  &UU,&YY,&MM,&DD,&HH,&MIN,&PL,&RE,&EO,&PA,&RD             00050000
+         LCLC  &BASDSAL                                                 00051000
+         LCLA  &NAMLN                                                   00052000
+         LCLB  &DSANO                                                   00053000
+&UU      SETC  '&SYSNDX'(2,3)                                           00054000
+&YY      SETC  '&SYSDATC'(1,4)    PQ03669 Year 2000 support             00055000
+&MM      SETC  '&SYSDATC'(5,2)    PQ03669                               00056000
+&DD      SETC  '&SYSDATC'(7,2)    PQ03669                               00057000
+&HH      SETC  '&SYSTIME'(1,2)                                          00058000
+&MIN     SETC  '&SYSTIME'(4,2)                                          00059000
+&PL      SETC  '3'                                                      00060000
+&RE      SETC  '3'                                                      00061000
+&EO      SETC  '16'                                                     00062000
+&RD      SETC  '0'                                                      00063000
+&PA      SETC  '0'                                                      00064000
+***-------------------------------------------------------------------- 00065000
+&BASDSAL SETC  '120'                                                    00066000
+&SYSDSAL SETC  '&BASDSAL'                                               00067000
+&DSANO   SETB  ('&DSALEN' EQ 'NONE')                                    00068000
+         AIF   (&DSANO).NODSAL                                          00069000
+IHB&UU.DS DSECT                                                         00070000
+         DS    D                                                        00071000
+         DS    CL(&BASDSAL+&USRDSAL)                                    00072000
+         ORG   IHB&UU.DS                                                00073000
+         DS    CL(&DSALEN+8)                                            00074000
+         ORG                                                            00075000
+         DS    0D                                                       00076000
+IHB&UU.LG EQU   *-IHB&UU.DS-8                                           00077000
+&SYSECT  CSECT                                                          00078000
+         AGO   .DSA1                                                    00079000
+.NODSAL  ANOP                                                           00080000
+IHB&UU.LG EQU   0                                                       00081000
+.DSA1    ANOP                                                           00082000
+.*--------------------------------------------------------------        00083000
+.F1      ANOP                                                           00084000
+&EPNAME  SETC  '&SYSECT'                                                00085000
+         AIF   (T'&NAME EQ 'O').NONAME                                  00086000
+&EPNAME  SETC  '&NAME'                                                  00087000
+.NONAME  ANOP                                                           00088000
+&NAMLN   SETA  K'&EPNAME                                                00089000
+*--------------------------------------------------------------         00090000
+         DS    0H                                                       00091000
+         USING *,15                                                     00092000
+&NAME    B     IHB&UU.B       branch around prologue's constant areas   00093000
+* PPA1 constant area                                                    00094000
+         DC    AL1(IHB&UU.N+4-*)   offset to the name                   00095000
+         DC    X'CE' .             CEE signature                        00096000
+         DC    X'A0' .             CEE flags (ext proc, has DSA)        00097000
+         DC    AL1(&PA+&RD+&EO) .  member flags                         00098000
+         DC    AL4(IHB&UU.P) .       A(PPA2)                            00099000
+         DC    AL4(0) .              A(PPA3) or zero                    00100000
+         DC    AL4(IHB&UU.LG)        total DSA length                   00101000
+IHB&UU.N DC    AL2(&NAMLN) .       length of name                       00102000
+         DC    C'&EPNAME'          untruncated name                     00103000
+*--------------------------------------------------------------         00104000
+         AIF   (&CEESTART).NOCEE  only once per compilation unit        00105000
+         EXTRN CEESTART                                                 00106000
+*---------------------------------------------------------------        00107000
+&CEESTART SETB 1                                                        00108000
+.NOCEE   ANOP                                                           00109000
+.*---------------------------------------------------------------       00110000
+* PPA2 constant area                                                    00111000
+IHB&UU.P DS    0F                  force fwrd alignment                 00112000
+         DC    X'03' .             member identifier (C)                00113000
+         DC    X'00' .             member subid                         00114000
+         DC    X'&PL&RE' .         plistfmt/runenv (nibbles)            00115000
+         DC    X'00' .             CEE control block level              00116000
+         DC    AL4(CEESTART)                                            00117000
+         DC    AL4(0)                A(PPA4) or zero                    00118000
+         DC    AL4(IHB&UU.T) .       A(time stamp) or zero              00119000
+*                                                                       00120000
+* Time stamp area                                                       00121000
+IHB&UU.T DS    0F                                                       00122000
+         DC    CL4'&YY' .          yyyy PQ03669 Year 2000               00123000
+         DC    CL4'&MM&DD' .       mmdd                                 00124000
+         DC    CL6'&HH&MIN.00' .   hhmmss                               00125000
+         DC    CL2'01' .           version                              00126000
+         DC    CL4'0100' .         release / modif level                00127000
+*                                                                       00128000
+IHB&UU.B DS    0H                                                       00129000
+.**-------------------------------------------------------------------- 00130000
+         AIF   ('&LASTREG' EQ 'NONE').NOSAVE   don't save regs          00131000
+***-------------------------------------------------------------------- 00132000
+         STM   14,12,12(13) .      save Caller's registers              00133000
+.NOSAVE  ANOP                                                           00134000
+***-------------------------------------------------------------------- 00135000
+         AIF   (&DSANO).NODSA    don't get DSA                          00136000
+.**-------------------------------------------------------------------- 00137000
+         L     2,76(,13)           get current NAB                      00138000
+         L     0,16(,15)           size of DSA                          00139000
+         ALR   0,2                 old NAB + DSA size = new NAB         00140000
+         CL    0,12(,12)           check for stack overflow             00141000
+         BNH   *+10                branch if enough space               00142000
+         L     15,116(,12)         load overflow rtn entry address      00143000
+         BALR  14,15               invoke overflow routine              00144000
+* at this point R0 has the new NAB, R2 has the newly acquired address   00145000
+         L     15,72(,13)                                               00146000
+         STM   15,0,72(2)                                               00147000
+         MVI   0(2),X'10'                                               00148000
+         ST    13,4(,2)            back chain DSA                       00149000
+         LR    13,2                activate this DSA                    00150000
+.NODSA   ANOP                                                           00151000
+***-------------------------------------------------------------------- 00152000
+         DROP  15                                                       00153000
+.**-------------------------------------------------------------------- 00154000
+         AIF   ('&BASEREG' EQ 'NONE').NOBASE   do not generate base     00155000
+.**-------------------------------------------------------------------- 00156000
+         BALR  &BASEREG,0                                               00157000
+         USING *,&BASEREG                                               00158000
+.NOBASE  ANOP                                                           00159000
+***-------------------------------------------------------------------- 00160000
+         MEND                                                           00161000

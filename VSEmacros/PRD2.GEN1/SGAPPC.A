@@ -1,0 +1,676 @@
+         MACRO                                                          00050000
+         SGAPPC                                                         00100000
+         GBLB  &SGAPPC            PRINT OPTION FOR SGAPPC               00300000
+         AIF   (NOT &SGAPPC).NOPRINT                                    00350061
+         PRINT GEN                PRINT MODULE                          00400000
+.NOPRINT ANOP                                                           00450000
+***************************************************************         00500000
+*                                                             *         00550000
+*        LICENSED MATERIALS-PROPERTY OF IBM                   *         00900000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *         00925052
+*        5686-066 (C) COPYRIGHT IBM CORP. 1989, 1995          *         00950061
+*        SEE COPYRIGHT INSTRUCTIONS                           *         00975052
+*                                                             *         01000000
+***************************************************************         01025052
+.*                                                            *         01050000
+.* A000000-999999                                             *@D31BDUL 01100000
+.*                                                            *         01150000
+*                                                             *         01200000
+*    MACRO NAME  : SGAPPC                                     *         01250000
+*                                                             *         01300000
+*    DESCRIPTION : INTERRUPT HANDLER                          *         01350000
+*                      FOR APPC/VM EXTERNAL INTERRUPTS        *         01400000
+*                                                             *         01450000
+*    DEPENDENCIES : VM/SP 5 AND FOLLOW ON VM/SPS AS HOST      *         01500000
+*                                                             *         01550000
+*    RESTRICTIONS : NONE                                      *         01600000
+*                                                             *         01650000
+*    REGISTER CONVENTIONS :                                   *         01700000
+*                   SEE MODULE DESCRIPTION                    *         01750000
+*                                                             *         01800000
+*    MODULE TYPE : INNER SUPERVISOR MACRO                     *         01850000
+*                                                             *         01900000
+*    PROCESSOR   : ASSEMBLER                                  *         01950000
+*                                                             *         02000000
+*    ATTRIBUTES  : SERIALLY REUSABLE                          *         02050000
+*                                                             *         02100000
+*    LINKAGE     : VIA EXTERNAL INTERRUPT HANDLER IF AN IUCV  *         02150000
+*                  OR AN APPC/VM EXTERNAL INTERRUPT OCCURRED. *         02200000
+*                                                             *         02250000
+*    MESSAGES    : NONE                                       *         02300000
+*                                                             *         02350000
+*    SUPERVISOR HOOKS :                                       *         02400000
+*                                                             *         02450000
+*        IOTAB  : INVOCATION OF MACRO SGAPPC.                 *         02500000
+*                 ADDRESS OF APPC/VM VECTOR TABLE IN SVIPL.   *         02550000
+*        SGEND  : MAPPING OF APPC/VM VECTOR TABLE, APPC/VM    *         02600000
+*                 PATH TABLE, AND OF XPCC CRCB.               *         02650000
+*        SGLOWC : ADD ANCHOR OF APPC/VM VECTOR TABLE TO       *         02700000
+*                 SYSCOM. ADDRESS CONSTANT OF APPCEXIN.       *         02750000
+*        SMICR  : RECOGNIZE IUCV/APPC/VM EXTERNAL INTERRUPT   *         02800000
+*                 TO SGAPPC EXTERNAL INTERRUPT HANDLER.       *         02850000
+*                                                             *         02900000
+*    NON SUPERVISOR HOOKS :                                   *         02950000
+*                                                             *         03000000
+*        $IPLRT2 :  ANCHOR SET XPCC COMMAND.                  *         03050000
+*        $IPLRT4 :  ROUTE SET XPCC COMMAND.                   *         03100000
+*        $IPLRT6 :  RELOCATE TEMPORARY RESOURCE TABLE ADDRESS *         03150000
+*        $IPLRT7 :  ALLOCATE SPACE FOR APPC/VM RESOURCE TABLE *         03200000
+*                   IN SYSTEM GETVIS SPACE. COPY TABLE.       *         03250000
+*                   INITIALIZE PATH TABLE AND ENABLE          *         03300000
+*                   IUCV/APPC/VM EXTERNAL INTERRUPTS.         *         03350000
+*                   UPDATE EIB ADDRESS TABLE IN SGIUCV.       *         03400000
+*        $IPLRTC :  GET LENGTH OF EIB AND PATH ID TABLE,      *         03450000
+*                   ALLOCATE SPACE FOR THEM FOR COMMON USE    *         03500000
+*                   BY IUCV AND APPC/VM. PASS EIB AND PATH    *         03550000
+*                   ADDRESSES TO SUPERVISOR.                  *         03600000
+*        $IPLRTD :  ANALYZE SET XPCC COMMAND TO BUILD         *         03650000
+*                   TEMPORARY APPC/VM RESOURCE TABLE.         *         03700000
+*                                                             *         03750000
+*   CHANGE ACTIVITY :                                         *         03800000
+*   HARDWAIT FFF BECAUSE BASE INCORRECT ON ENTRY FROM IJBSXPC  @DA40367 03825052
+*                                                             *         03850000
+***************************************************************         03900000
+         EJECT                                                          03950000
+         SPACE 2                                                        04000000
+         DC    CL8'SGAPPC'        MODULE NAME                           04100000
+         DC    CL8'02/07/94'      LAST APAR/DEVELOPMENT CHANGE          04150061
+         SPACE 2                                                        04250000
+APPCEXMC MC    EXFIELDS,XXDBGMC   MONITOR CALL FOR ENTRY FROM IJBSXPC   04350000
+***                               ENTERED IN 31 BIT MODE IF ESA SUPVR   04375052
+         ENTRY APPCEXIN                                                 04400000
+         BALR  RD,0                                            @D52VDOW 04425052
+         SPACE 1                                                        04450000
+APPCEXIN DS    0H                                                       04500000
+         USING APPCEXIN,RD        MODULE ADDRESSABILITY                 04550000
+         AMODESW SET,AMODE=31,WR=(RF)                          @D52VDOW 04575052
+         SPACE 1                                                        04600000
+***************************************************************         04650000
+*                                                             *         04700000
+*   ROUTINE TO PROCESS APPC EXTERNAL INTERRUPTS               *         04750000
+*                                                             *         04800000
+*   MODULE APPCEXIN                                           *         04850000
+*     INPUT : EXTERNAL INTERRUPT BUFFER                       *         04900000
+*     LABEL : APPCEXIN                                        *         04950000
+*     GET PATHID FROM EIB                                     *         05000000
+*       IF CORRESPONDING PATH IS MARKED 'APPCVM'              *         05050000
+*          THEN                                               *         05100000
+*          DO                                                 *         05150000
+*             SELECT DEPENDING APPC EXTERNAL INTERRUPT TYPE   *         05200000
+*               WHEN UNEXPECTED INTERRUPT :                   *         05250000
+*                  SET ERROR CODE AND SEVER PATH              *         05300000
+*               WHEN CONNECT COMPLETE :                       *         05350000
+*                  POST XPCC/APPC/VM EXIT                     *         05400000
+*               WHEN SEVER INTERRUPT :                        *         05450000
+*                  SEVER THIS SIDE OF PATH                    *         05500000
+*               WHEN FUNCTION COMPLETE INTERRUPT :            *         05550000
+*                  SELECT DEPENDING INTERRUPT REASON CODE     *         05600000
+*                    WHEN FCN COMPLETE WITH/WITHOUT DATA      *         05650000
+*                       RECEIVED, WITH/WITHOUT STATE SWITCH : *         05700000
+*                       DO                                    *         05750000
+*                       FLAG PURGE COMPLETE IF PURGE PENDING  *         05800000
+*                       PASS INTERRUPT INFO TO XPCC/APPC/VM   *         05850000
+*                       POST XPCC/APPC/VM EXIT                *         05900000
+*                       ENDDO                                 *         05950000
+*                    WHEN FCN COMPLETE BY PARTNER'S SENDERR : *         06000000
+*                       FLAG PURGE PENDING FOR XPCC, IGNORE   *         06050000
+*                    WHEN FCN COMPLETE BY PARTNER'S SEVER :   *         06100000
+*                       SEVER THIS SIDE OF THE PATH           *         06150000
+*                    WHEN UNEXPECTED REASON CODE :            *         06200000
+*                       SEVER PATH                            *         06250000
+*                  ENDSELECT                                  *         06300000
+*               WHEN SENDREQ INTERRUPT :                      *         06350000
+*                  SET ERROR CODE AND SEVER PATH              *         06400000
+*               WHEN MESSAGE PENDING INTERRUPT :              *         06450000
+*                  IF PURGE PENDING                           *         06500000
+*                     THEN POST XPCC EXIT                     *         06550000
+*                     ELSE SET ERROR CODE AND SEVER PATH      *         06600000
+*                  ENDIF                                      *         06650000
+*            ENDSELECT                                        *         06700000
+*            RETURN TO DISPATCHER                             *         06750000
+*          ENDDO                                              *         06800000
+*          ELSE                                               *         06850000
+*               DO                                            *         06900061
+*                 PASS INTERRUPT TO IUCV EXTERNAL INT HANDLER *         06950061
+*               ENDDO                                         *         07000061
+*        ENDIF                                                *         07250000
+*   ENDMODULE APPCEXIN                                        *         07300000
+*                                                             *         07350000
+*   DEPENDENCIES : FORMAT OF EXTERNAL INTERRUPT BUFFER        *         07400000
+*                  CONTENTS OF PATH ID TABLE ENTRY            *         07450000
+*                                                             *         07500000
+*   REGISTER USAGE : R0    : NOT USED                         *         07550000
+*                    R1    : ADDRESS OF EIB/APPC PARMLIST     *         07600000
+*                    R2,R3 : NOT USED                         *         07650000
+*                    R4    : WORK                             *         07700000
+*                    R5    : ADDRESS OF PATH TABLE ENTRY      *         07750000
+*                    R6    : ADDRESS OF DISPATCHER            *         07800000
+*                    R7    : NOT USED                         *         07850000
+*                    R8    : ADDRESS OF TIB                   *         07900000
+*                    R9    : ADDRESS OF CR-CB                 *         07950000
+*                    RA    : NOT USED                         *         08000000
+*                    RB    : BEBUG WORK                       *         08050000
+*                    RC    : NOT USED                         *         08100000
+*                    RD    : BASE REGISTER                    *         08150000
+*                    RE    : NOT USED                         *         08200000
+*                    RF    : LINKAGE                          *         08250000
+*                                                             *         08300000
+*                                                             *         08350000
+***************************************************************         08400000
+         EJECT                                                          08450000
+***************************************************************         08500000
+*   SET UP PROCESSING OF EIB                                  *         08550000
+***************************************************************         08600000
+         L     R1,VMEIBA          GET PTR TO EIB                        08650000
+         USING IPARML,R1          EIB ADDRESSABILITY                    08700000
+         USING VMDSPID,R5         PATH ID ENTRY ADDRESSABILITY          08750000
+         USING VMCRCB,R9          CRCB ADDRESSABILITY                   08800000
+         SR    R4,R4              CLEAR PATH ID REGISTER                08850000
+         ICM   R4,M3,IPPATHID     GET PATH ID                           08900000
+         LA    R5,DSPIDELN        GET LENGTH OF PATH ID ENTRY           08950000
+         MR    R4,R4              GET OFFSET IN PATH ID TABLE           09000000
+         A     R5,VMPIDA          GET PTR TO PATH ID ENTRY              09050000
+         L     R4,VMPIDE          END OF PATH TABLE                     09100000
+         CR    R5,R4              PATH OUTSIDE DEFINED TABLE?           09150000
+         BH    VMINVXIP           ---> NOT EXPECTED, TRY IUCV SEVER     09200000
+         TM    DSPIDSW2,DSPIDAPC  IS IT AN APPC PATH ?                  09250000
+         BO    APPCPATH           ---> YES                              09300000
+         CLI   IPTYPE,IPTYPPCA    APPC CONNECTION PENDING ?             09400000
+         BE    VMINVXI            ---> NOT EXPECTED, TRY IUCV SEVER     09450000
+         L     RD,AIUCVEX         GET ADDRESS OF IUCV EXT INT HANDLER   09500061
+         BR    RD                 PASS TO IUCV                          09550000
+         SPACE 1                                                        09850000
+***************************************************************         09900000
+*   APPC/VM PATH: ANALYZE INTERRUPT TYPE                      *         09950000
+***************************************************************         10000000
+APPCPATH DS    0H                                                       10050000
+         ICM   RB,M15,XXARPTR     IS DEBUG INITIALIZED ?                10100000
+         BZ    VMNODBG1           NO, --> SKIP                          10150000
+         L     RB,VMAPCTRA        GET CURRENT TRACE ENTRY               10200000
+         USING VMAPCTR,RB                                               10250000
+         MVC   VMAPCOP(L'VMAPCOP),APEXINMN INSERT EXT INTERRUPT MNEMONC 10300000
+         MVC   VMAPCPID(L'VMAPCPID),DSPIDID INSERT PATH ID              10350000
+         MVC   VMAPCRCB(L'VMAPCRCB),DSPIDCRB INSERT ASSOCIATED CRCB ADR 10400000
+         MVC   VMAPCITY(L'VMAPCITY),IPTYPE INSERT INTERRUPT TYPE        10450000
+         MVC   VMAPCWRC(L'VMAPCWRC),IPWHATRC INSERT IPWHATRC VALUE      10500000
+         MVC   VMAPCIPC(L'VMAPCIPC),IPCODE   INSERT IPCODE VALUE        10550000
+         MVC   VMAPCAUD(L'VMAPCAUD),IPAUDIT  INSERT IPAUDIT VALUE       10600000
+         LA    RB,VMAPCLEN(RB)    GET NEXT FREE ENTRY                   10650000
+         C     RB,VMAPCTRE        IS IT END ADDRESS                     10700000
+         BNE   VMEXTLE3           NO  ===>                              10750000
+         L     RB,VMAPCTRB        GET START ADDRESS                     10800000
+VMEXTLE3 DS    0H                                                       10850000
+         ST    RB,VMAPCTRA        STORE NEW CURRENT TRACE ENTRY         10900000
+         DROP  RB                                                       10950000
+VMNODBG1 DS    0H                                                       11000000
+         L     R9,DSPIDCRB        GET CORRESPONDING CRCB                11050000
+         TM    IPTYPE,APPCFL      IS APPC FLAG SET?                     11100000
+         BZ    VMAPCUEX           ILLEGAL CODE     --->                 11150000
+         TM    IPTYPE,APPCFLT-APPCFL NO OTHER BUT APPC FL SET?          11200000
+         BNZ   VMAPCUEX           ILLEGAL CODE     --->                 11250000
+         XR    R4,R4              CLEAR                                 11300000
+         IC    R4,IPTYPE          GET APPC INTERRUPTION CODE            11350000
+         IC    R4,VMICTRT(R4)     FIND ROUTINE INDEX                    11400000
+         L     R4,VMICADR(R4)     GET ROUTINE ADDRESS                   11450000
+         BR    R4                 BRANCH TO SPECIFIED ROUTINE           11500000
+         EJECT                                                          11550000
+***************************************************************         11600000
+*   PROCESS INCOMING CONNECT                                  *         11650000
+***************************************************************         11700000
+VMAPCPCA DS    0H                 HANDLE CONNECTION PENDING             11750000
+         B     VMAPCUEX           ---> ILLEGAL INTTERRUPT CODE          11800000
+         SPACE 1                                                        11850000
+***************************************************************         11900000
+*   PROCESS CONNECT COMPLETE                                  *         11950000
+***************************************************************         12000000
+VMAPCCCA DS    0H                 HANDLE CONNECTION COMPLETE            12050000
+         CLI   DSPIDST,DSPIDSC    CONNECT STATE?                        12100000
+         BNE   VMSEVER            ---> NO, DO INTERNAL SEVER            12150000
+         MVI   DSPIDST,DSPIDSS    SET SEND STATE IN PATH TAB            12200000
+         B     VMTREADY           ---> POST XPCC EXIT                   12250000
+         SPACE 1                                                        12300000
+***************************************************************         12350000
+*   PROCESS SEVER INTERRUPT                                   *         12400000
+***************************************************************         12450000
+VMAPCSVA DS    0H                 HANDLE SEVER INTERRUPT                12500000
+         B     VMSEVER            ---> DO INTERNAL SEVER                12550000
+         SPACE 2                                                        12600000
+***************************************************************         12650000
+*   PROCESS FUNCTION COMPLETE INTERRUPT                       *         12700000
+***************************************************************         12750000
+         SPACE 1                                                        12800000
+***************************************************************         12850000
+*   ANALYZE FUNCTION COMPLETE SEND OPTION CODE IPSENDOP       *         12900000
+***************************************************************         12950000
+VMAPCFCA DS    0H                 HANDLE FUNCTION COMPLETE              13000000
+         CLI   IPSENDOP,VMSOTRTE  TABLE COVERS CODES UP TO X'0F'        13050000
+         BNL   VMSEVER            ---> UNEXPECTED, SEVER                13100000
+         XR    R4,R4                                                    13150000
+         ICM   R4,M1,IPSENDOP     GET APPC SEND OPTION                  13200000
+         BZ    VMSEVER            ---> UNEXPECTED, SEVER                13250000
+         IC    R4,VMSOTRT(R4)     FIND ROUTINE INDEX                    13300000
+         L     R4,VMSOADR(R4)     GET ROUTINE ADDRESS                   13350000
+         BR    R4                 BRANCH TO SPECIFIED ROUTINE           13400000
+VMSENDOP DS    0H                 INDICATE SEND STATE                   13450000
+         MVI   DSPIDST,DSPIDSS    SET SEND STATE IN PATH TAB            13500000
+         B     VMAPCFC1           ---> SKIP                             13550000
+VMRECVOP DS    0H                 INDICATE RECEIVE STATE                13600000
+         MVI   DSPIDST,DSPIDSR    SET RECEIVE STATE IN PATH TAB         13650000
+         SPACE 1                                                        13700000
+***************************************************************         13750000
+*   ANALYZE FUNCTION COMPLETE REASON CODE IPWHATRC            *         13800000
+***************************************************************         13850000
+VMAPCFC1 DS    0H                                                       13900000
+         CLI   IPWHATRC,VMRCTRTE  TABLE COVERS CODES UP TO X'0F'        13950000
+         BNL   VMSEVER            ---> UNEXPECTED, SEVER                14000000
+         XR    R4,R4                                                    14050000
+         ICM   R4,M1,IPWHATRC     GET APPC INTER REASON CODE            14100000
+         BZ    VMTREADY           ---> POST XPCC EXIT                   14150000
+         IC    R4,VMRCTRT(R4)     FIND ROUTINE INDEX                    14200000
+         L     R4,VMRCADR(R4)     GET ROUTINE ADDRESS                   14250000
+         BR    R4                 BRANCH TO SPECIFIED ROUTINE           14300000
+         SPACE 2                                                        14350000
+VMFCSEND DS    0F                                                       14400000
+         MVI   DSPIDST,DSPIDSS    SET SEND STATE IN PATH TAB            14450000
+         TM    XPZVMFLG,XPZPURGP  PURGE PENDING ?                       14500000
+         BZ    VMTREADY           ---> NO, POST XPCC EXIT NOW           14550000
+         OI    XPZVMFLG,XPZPURGC  FLAG PURGE COMPLETE                   14600000
+         B     VMTREADY           ---> POST XPCC EXIT                   14650000
+VMFCSEVR DS    0F                                                       14700000
+         MVI   DSPIDST,DSPIDSV    SET SEVER STATE IN PATH TAB           14750000
+         B     VMSEVER            ---> DO INTERNAL SEVER                14800000
+         SPACE 1                                                        14850000
+***************************************************************         14900000
+**   NOTE:                                                   **         14950000
+**   XPCC PURGE IS SIMULATED BY A CERTAIN SEQUENCE OF APPCVM **         15000000
+**   REQUESTS OF THE COMMUNICATION PARTNER AND VSE.          **         15050000
+**           VSE                       VM                    **         15100000
+**                                     S STATE               **         15150000
+**   APPCVM SENDDATA RECEIVE=YES                             **         15200000
+**                   PENDING                                 **         15250000
+**                                     APPCVM SENDERR        **         15300000
+**                       <------FCI                          **         15350000
+**           R STATE                                         **         15400000
+**   ************PURGE PENDING                               **         15450000
+**                     FCI------>                            **         15500000
+**                                     APPCVM RECEIVE        **         15550000
+**                       <------MPI                          **         15600000
+**   APPCVM RECEIVE                                          **         15650000
+**              <------FC(CC=2)                              **         15700000
+**                     FCI------>                            **         15750000
+**                                     R STATE               **         15800000
+**   ************PURGE COMPLETE                              **         15850000
+**           S STATE                                         **         15900000
+**                                                           **         15950000
+***************************************************************         16000000
+VMFCSERR DS    0F                                                       16050000
+         OI    XPZVMFLG,XPZPURGP  FLAG PURGE PENDING                    16100000
+         MVI   DSPIDST,DSPIDSR    IPERROR FORCES RECEIVE STATE          16150000
+         B     VMEXDISP           DON'T TELL XPCC BEFORE RECEIVE MPI    16200000
+         SPACE 1                                                        16250000
+***************************************************************         16300000
+*   PROCESS SENDREQ INTERRUPT                                 *         16350000
+***************************************************************         16400000
+VMAPCSRA DS    0H                 HANDLE SENDREQ INTERRUPT              16450000
+         OI    XPZVMFLG,XPZINPRO  FLAG PROTOCOL ERROR                   16500000
+         B     VMSEVER            ---> DO INTERNAL SEVER                16550000
+         SPACE 1                                                        16600000
+***************************************************************         16650000
+*   PROCESS MESSAGE PENDING INTERRUPT                         *         16700000
+***************************************************************         16750000
+VMAPCMPA DS    0H                 HANDLE MESSAGE PENDING INT            16800000
+         B     VMTREADY           POST XPCC EXIT TO RECEIVE DATA        16850000
+*                                 OR TO IGNORE INTERRUPT                16900000
+         SPACE 2                                                        16950000
+***************************************************************         17000000
+*   ROUTINE'S TRANSLATE/BRANCH TABLES                         *         17050000
+***************************************************************         17100000
+         SPACE 1                                                        17150000
+***************************************************************         17200000
+*   TABLES FOR ANALYZING APPCVM INTERRUPT CODE  IPTYPE        *         17250000
+***************************************************************         17300000
+VMICADR  DS    0F                                                       17350000
+VMICADR1 DC    A(VMAPCUEX)         INVALID INTERRUPT CODE               17400000
+VMICADR2 DC    A(VMAPCPCA)         HANDLE CONNECTION PENDING            17450000
+VMICADR3 DC    A(VMAPCCCA)         HANDLE CONNECTION COMPLETE           17500000
+VMICADR4 DC    A(VMAPCSVA)         HANDLE SEVER INTERRUPT               17550000
+VMICADR5 DC    A(VMAPCFCA)         HANDLE FUNCTION COMPLETE             17600000
+VMICADR6 DC    A(VMAPCSRA)         HANDLE SENDREQ INTERRUPT             17650000
+VMICADR7 DC    A(VMAPCMPA)         HANDLE MESSAGE PENDING INT           17700000
+         ORG   *-X'80'                                                  17750000
+VMICTRT  DS    0X                                                       17800000
+         ORG   ,                                                        17850000
+         DC    XL16'00'                                                 17900000
+         ORG   VMICTRT+IPTYPPCA     APPC PENDING CONNECTION - X'81'     17950000
+         DC    AL1(VMICADR2-VMICADR)                                    18000000
+         ORG   VMICTRT+IPTYPCCA     APPC CONNECTION COMPLETE - X'82'    18050000
+         DC    AL1(VMICADR3-VMICADR)                                    18100000
+         ORG   VMICTRT+IPTYPSVA     APPC SEVER INTERRUPT - X'83'        18150000
+         DC    AL1(VMICADR4-VMICADR)                                    18200000
+         ORG   VMICTRT+IPTYPFCA     APPC FUNCTION COMPLETE - X'87'      18250000
+         DC    AL1(VMICADR5-VMICADR)                                    18300000
+         ORG   VMICTRT+IPTYPSRA     APPC SENDREQ INTERRUPT - X'88'      18350000
+         DC    AL1(VMICADR6-VMICADR)                                    18400000
+         ORG   VMICTRT+IPTYPMPA     APPC MESSAGE PENDING INTERR - X'89' 18450000
+         DC    AL1(VMICADR7-VMICADR)                                    18500000
+         ORG   ,                                                        18550000
+         SPACE 2                                                        18600000
+***************************************************************         18650000
+*   TABLES FOR ANALYZING FUNCTION COMPLETE REASON CODE        *         18700000
+*                  IPWHATRC                                   *         18750000
+***************************************************************         18800000
+VMRCADR  DS    0F                                                       18850000
+VMRCADR1 DC    A(VMSEVER)          UNEXPECTED - INTERNAL SEVER          18900000
+VMRCADR2 DC    A(VMTREADY)         POST XPCC EXIT                       18950000
+VMRCADR3 DC    A(VMFCSEND)         HANDLE SWITCH TO SEND STATE          19000000
+VMRCADR4 DC    A(VMFCSERR)         HANDLE SENDERR                       19050000
+VMRCADR5 DC    A(VMFCSEVR)         HANDLE SEVER                         19100000
+VMRCTRT  DS    0X                                                       19150000
+         ORG   ,                                                        19200000
+         DC    XL16'00'                                                 19250000
+         ORG   VMRCTRT+IPCOMP       FNC COMP, NO DATA RECEIVED - X'00'  19300000
+         DC    AL1(VMRCADR2-VMRCADR)                                    19350000
+         ORG   VMRCTRT+IPDATA       FN CMP, ONLY DATA RECEIVED - X'01'  19400000
+         DC    AL1(VMRCADR2-VMRCADR)                                    19450000
+         ORG   VMRCTRT+IPSEND       APPC STATE SWITCH TO SEND - X'02'   19500000
+         DC    AL1(VMRCADR3-VMRCADR)                                    19550000
+         ORG   VMRCTRT+IPERROR      APPC SENDERR WAS ISSUED - X'03'     19600000
+         DC    AL1(VMRCADR4-VMRCADR)                                    19650000
+         ORG   VMRCTRT+IPSNORM      APPC SEVER NORMAL OCCURRED - X'08'  19700000
+         DC    AL1(VMRCADR5-VMRCADR)                                    19750000
+         ORG   VMRCTRT+IPSABEND     APPC SEVER ABEND OCCURRED - X'09'   19800000
+         DC    AL1(VMRCADR5-VMRCADR)                                    19850000
+         ORG   ,                                                        19900000
+VMRCTRTE EQU   *-VMRCTRT            TABLE COVERS CODES UP TO X'0F'      19950000
+         SPACE 2                                                        20000000
+***************************************************************         20050000
+*   TABLES FOR ANALYZING FUNCTION COMPLETE SEND OPTION        *         20100000
+*                  IPSENDOP                                   *         20150000
+***************************************************************         20200000
+VMSOADR  DS    0F                                                       20250000
+VMSOADR1 DC    A(VMSEVER)          NOT EXPECTED - SEVER                 20300000
+VMSOADR2 DC    A(VMSENDOP)         INDICATE SEND STATE                  20350000
+VMSOADR3 DC    A(VMRECVOP)         INDICATE RECEIVE STATE               20400000
+VMSOADR4 DC    A(VMAPCFC1)         NO STATE CHANGE - CONTINUE           20450000
+VMSOTRT  DS    0X                                                       20500000
+         ORG   ,                                                        20550000
+         DC    XL16'00'                                                 20600000
+         ORG   VMSOTRT+IPDATA       SENDDATA RECEIVE=NO - X'01'         20650000
+         DC    AL1(VMSOADR2-VMSOADR)                                    20700000
+         ORG   VMSOTRT+IPSNDRCV     SENDDATA RECEIVE=YES - X'02'        20750000
+         DC    AL1(VMSOADR3-VMSOADR)                                    20800000
+         ORG   VMSOTRT+IPERROR      SENDERR - X'03'                     20850000
+         DC    AL1(VMSOADR2-VMSOADR)                                    20900000
+         ORG   VMSOTRT+IPSNORM      SEVER TYPE=NORMAL - X'08'           20950000
+         DC    AL1(VMSOADR4-VMSOADR)                                    21000000
+         ORG   VMSOTRT+IPSABEND     SEVER TYPE=ABEND - X'09'            21050000
+         DC    AL1(VMSOADR4-VMSOADR)                                    21100000
+         ORG   VMSOTRT+IPRECV       RECEIVE - X'0A'                     21150000
+         DC    AL1(VMSOADR3-VMSOADR)                                    21200000
+         ORG   ,                                                        21250000
+VMSOTRTE EQU   *-VMSOTRT            TABLE COVERS CODES UP TO X'0F'      21300000
+         SPACE 2                                                        21350000
+***************************************************************         21400000
+***************************************************************         21450000
+**            E X I T  ROUTINES                              **         21500000
+***************************************************************         21550000
+***************************************************************         21600000
+         SPACE 2                                                        21650000
+***************************************************************         21700000
+*   RETURN TO DISPATCHER                                      *         21750000
+***************************************************************         21800000
+VMEXDISP DS    0H                                                       21850000
+         L     R6,DISPAD          RESTORE DISPATCHER ADDRESS            21900000
+         BR    R6                 ==> RETURN TO DISPATCHER              21950000
+         SPACE 1                                                        22000000
+***************************************************************         22050000
+*   POST XPCC EXIT READY AND RETURN TO DISPATCHER             *         22100000
+*                                                             *         22150000
+*              INPUT:  R9 CR-CB ADDR                          *         22200000
+*              WORK :  R4, R8, RF                             *         22250000
+***************************************************************         22300000
+VMTREADY DS    0H                                                       22350000
+         LA    R4,XPZPARML        GET ADDRESS OF PARAMETER LIST         22400000
+         MVC   0(XPZPLEN,R4),0(R1)  PASS INTERRUPT INFORMATION          22450000
+VMTRDY01 DS    0H                                                       22500000
+         TM    XPZFLG1,XPCINTIB    ALREADY IN EXIT TIB-CHAIN            22550000
+         BO    VMEXDISP            ---> YES, RETURN                     22600000
+         LH    R4,XPZTID           GET TID TO COMPUTE TIBADDR           22650000
+         ALR   R4,R4               DISPL TO TIB ADDR TABLE              22700000
+         ALR   R4,R4                                                    22750000
+         L     R8,ATIBATAB         START OF TIB-ADDR-TABLE              22800000
+         L     R8,0(R8,R4)         TIB POINTER                          22850000
+         USING TIBADR,R8                                                22900000
+         OI    XPZFLG1,XPCINTIB    NOW IN TIB CHAIN                     22950000
+         L     R4,TIBCRCBC         GET CR-CB CHAIN IN TIB               23000000
+         ST    R9,TIBCRCBC         CHAIN CURRENT CR-CB                  23050000
+         ST    R4,XPZTIBC                                               23100000
+         OI    TIBFLAG,TIBDELMV    SET ON DISPATCHER EXIT FLAGS         23150000
+         OI    TIBDMFLG,TIBXPCEX                                        23200000
+         DROP  R8                                                       23250000
+         L     R6,DISPAD           RESTORE DISPATCHER ADDRESS           23300000
+         USING DISP,R6             MAKE IOPOST RTN ADDRESSABLE          23350000
+         BAL   RF,IOPOST1          POST XPCC EXIT TO BE DISP            23400000
+         BR    R6                  RETURN TO DISPATCHER                 23450000
+         DROP  R6                                                       23500000
+         SPACE 2                                                        23550000
+***************************************************************         23600000
+*   DO INTERNAL APPC/VM OR IUCV SEVER                         *         23650000
+***************************************************************         23700000
+VMAPCUEX DS    0H                 UNEXPECTED INTERRUPT CODE             23750000
+         OI    XPZVMFLG,XPZUEXIN  FLAG UNEXPECTED EXTERNAL INT          23800000
+         XC    XPZVMEI(L'XPZVMEI),XPZVMEI CLEAR USER AREA +1            23850061
+         MVC   XPZVTYP,IPTYPE     PASS APPC/VM EXTERNAL INTER           23900000
+         B     VMAPCSV1           ---> CONTINUE                         23950000
+VMSEVER  DS    0H                 INTERNAL SEVER REQUIRED               24000000
+         XC    XPZVMEI(L'XPZVMEI),XPZVMEI CLEAR USER AREA +1            24050061
+         MVC   XPZVTYP,IPTYPE     PASS APPC/VM EXTERNAL INTER           24100000
+         MVC   XPZVCOD,IPCODE       ***  INTERRUPT FIELDS IN            24150000
+         MVC   XPZVWRC,IPWHATRC     ***  CRCB USER AREA COPY            24200000
+VMAPCSV1 DS    0H                                                       24250000
+         OI    XPZVMFLG,XPZINSEV  FLAG INTERNAL SEVER                   24300000
+         CLI   DSPIDST,DSPIDSV    IS STATE SEVER                        24350000
+         BE    VMAPPCSV           ---> YES, DO APPC SEVER               24400000
+         SPACE 1                                                        24450000
+***************************************************************         24500000
+*   PERFORM IUCV SEVER                                        *         24550000
+***************************************************************         24600000
+VMIUCVSV DS    0H                                                       24650000
+         L     R1,VMEIBA          BEGIN OF EXT INTERRUPT BUFFER         24700000
+         L     R4,VMEIBE          END OF EXT INTERRUPT BUFFER           24750000
+         SR    R4,R1              LENGTH OF INTERRUPT BUFFER            24800000
+         BCTR  R4,R0                 ****   MINUS                       24850000
+         BCTR  R4,R0                 ****   PATHID FIELD                24900000
+         EX    R4,VMEIBCLR        CLEAR PARAMETER LIST                  24950000
+*        IUCV  SEVER,                                                   25000000
+*              PRMLIST=(1)                                              25050000
+         IUCV  SEVER,                                                  *25100000
+               PRMLIST=(1)                                              25150000
+         LA    R1,SEVRIIUM        POINT TO INTERNAL SEVER MNEMONIC      25200000
+         LA    R4,VMIUCVTR        LOAD RETURN ADDR             @D52VDOW 25230052
+         BC    CC2,VMTRACC2       DO TRACE ENTRY CC 2          @D52VDOW 25260052
+         B     VMTRACC1           DO TRACE ENTRY CC 1          @D52VDOW 25290052
+VMIUCVTR XC    VMDSPID+2(DSPIDELN-2),VMDSPID+2  CLEAR PATH TAB          25320052
+*                                      ENTRY BEHIND PATHID              25350000
+         B     VMTRDY01           ---> POST XPCC EXIT                   25400000
+VMEIBCLR XC    2(0,R1),2(R1)      CLEAR PARM LST BEHIND PATHID          25450000
+         SPACE 1                                                        25500000
+***************************************************************         25550000
+*   PERFORM APPCVM SEVER TYPE=NORMAL                          *         25600000
+***************************************************************         25650000
+VMAPPCSV DS    0H                                                       25700000
+*        USE EIB AS PARAMETER LIST                                      25750000
+         L     R1,VMEIBA          BEGIN OF EXT INTERRUPT BUFFER         25800000
+         L     R4,VMEIBE          END OF EXT INTERRUPT BUFFER           25850000
+         SR    R4,R1              LENGTH OF INTERRUPT BUFFER            25900000
+         BCTR  R4,R0                 ****   MINUS                       25950000
+         BCTR  R4,R0                 ****   PATHID FIELD                26000000
+         EX    R4,VMEIBCLR        CLEAR PARAMETER LIST                  26050000
+*        APPCVM SEVER,                                                  26100000
+*              PRMLIST=(1),                                             26150000
+*              TYPE=NORMAL                                              26200000
+         APPCVM SEVER,                                                 *26250000
+               PRMLIST=(1),                                            *26300000
+               TYPE=NORMAL                                              26350000
+         LA    R1,SEVRIMN         POINT TO INTERNAL SEVER MNEMONIC      26400000
+         LA    R4,VMIUCVSV        RETURN ADDR                  @D52VDOW 26437552
+         BC    CC1,VMTRACC1       NOT SUCCESSFUL, DO IUCV SEVER@D52VDOW 26475052
+         BAL   R4,VMTRACC2        SUCCESSFUL, DO TRACE ENTRY   @D52VDOW 26512552
+         XC    VMDSPID+2(DSPIDELN-2),VMDSPID+2  CLEAR PATH TAB          26550000
+*                                      ENTRY BEHIND PATHID              26600000
+         B     VMTRDY01           ---> POST XPCC EXIT                   26650000
+         SPACE 2                                                        26700000
+***************************************************************         26750000
+*   INVALID EXTERNAL INTERRUPT - TRY IUCV SEVER               *         26800000
+***************************************************************         26850000
+VMINVXIP DS    0H                                                       26900000
+         XR    R5,R5              INDICATE NO VALID PATH                26950000
+VMINVXI  DS    0H                                                       27000000
+         L     R1,VMEIBA          BEGIN OF EXT INTERRUPT BUFFER         27050000
+         L     R4,VMEIBE          END OF EXT INTERRUPT BUFFER           27100000
+         SR    R4,R1              LENGTH OF INTERRUPT BUFFER            27150000
+         BCTR  R4,R0                 ****   MINUS                       27200000
+         BCTR  R4,R0                 ****   PATHID FIELD                27250000
+         EX    R4,VMEIBCLR        CLEAR PARAMETER LIST                  27300000
+*        IUCV  SEVER,                                                   27350000
+*              PRMLIST=(1)                                              27400000
+         IUCV  SEVER,                                                  *27450000
+               PRMLIST=(1)                                              27500000
+         LA    R1,SEVRIIUM        POINT TO INTERNAL SEVER MNEMONIC      27550000
+         LA    R4,VMINVXRT        RETURN ADDR                  @D52VDOW 27580052
+         BC    CC1,VMTRACC1       TRACE FOR CC1                @D52VDOW 27610052
+         B     VMTRACC2           TRACE FOR CC2                @D52VDOW 27640052
+VMINVXRT LTR   R5,R5              PATH DEFINED FOR SYSTEM ?             27670052
+         BZ    VMEXDISP           NO, ---> SKIP CLEARING OF PATH        27700000
+         XC    VMDSPID+2(DSPIDELN-2),VMDSPID+2  CLEAR PATH TAB          27750000
+*                                      ENTRY BEHIND PATHID              27800000
+         B     VMEXDISP           ---> IGNORE INTERRUPT                 27850000
+         SPACE 2                                                        27900000
+***************************************************************         27950000
+*   ADD APPC EVENT TRACE ENTRY - AFTER INTERNAL SEVER         *         28000000
+***************************************************************         28050000
+VMTRACC1 MVI   VMTRAMVI+1,X'10'   CC1 TO MVI INSTRUCTION       @D52VDOW 28062552
+         B     VMTRACE                                         @D52VDOW 28075052
+VMTRACC2 MVI   VMTRAMVI+1,X'20'   CC2 TO MVI INSTRUCTION       @D52VDOW 28087552
+VMTRACE  DS    0H                 PUT AN ENTRY INTO THE TRACE TABLE     28100000
+         ICM   RB,M15,XXARPTR     IS DEBUG INITIALIZED ?                28150000
+         BZ    VMNODBG2           NO, --> SKIP                          28200000
+         L     RB,VMAPCTRA        GET CURRENT TRACE ENTRY               28250000
+         USING VMAPCTR,RB                                               28300000
+         XC    0(L'VMAPCENT,RB),0(RB)     CLEAR ENTRY                   28350000
+         MVC   VMAPCOP(L'VMAPCOP),0(R1) INSERT INTERNAL SEVER MNEMONIC  28400000
+VMTRAMVI MVI   VMAPCONC,0         CC TO TRACE                  @D52VDOW 28425052
+         LTR   R5,R5              PATH DEFINED FOR SYSTEM ?             28450000
+         BZ    VMTRAC1            NO, ---> SKIP SAVING INFO             28500000
+         MVC   VMAPCPID(L'VMAPCPID),DSPIDID INSERT PATH ID              28550000
+         MVC   VMAPCRCB(L'VMAPCRCB),DSPIDCRB INSERT ASSOCIATED CRCB ADR 28600000
+VMTRAC1  DS    0H                 PUT AN ENTRY INTO THE TRACE TABLE     28650000
+         LA    RB,VMAPCLEN(RB)    GET NEXT FREE ENTRY                   28800000
+         C     RB,VMAPCTRE        IS IT END ADDRESS                     28850000
+         BNE   VMEXTLE8           NO  ===>                              28900000
+         L     RB,VMAPCTRB        GET START ADDRESS                     28950000
+VMEXTLE8 DS    0H                                                       29000000
+         ST    RB,VMAPCTRA        STORE NEW CURRENT TRACE ENTRY         29050000
+         DROP  RB                                                       29100000
+VMNODBG2 DS    0H                                                       29150000
+         BR    R4                 RETURN TO CALLER                      29250000
+         SPACE 2                                                        29300000
+***************************************************************         29350000
+*     EQUATES                                                 *         29400000
+***************************************************************         29450000
+APPCFL   EQU   X'80'              APPC FLAG IN IPTYPE                   29500000
+APPCFLT  EQU   X'F0'              APPC TEST FLAG                        29550000
+CC1      EQU   4                  SEVER ERROR CONDITION                 29600000
+CC2      EQU   2                  SEVER EXEC SUCCESSFULLY      @D52VDOW 29625052
+         SPACE 2                                                        29650000
+***************************************************************         29700000
+*     APPC/VM VECTOR TABLE                                    *         29750000
+*     THE FOLLOWING FIVE CONSTANTS MUST ALWAYS BE IN THE SAME *         29800000
+*     ORDER AND CONTIGUOUS.                                   *         29850000
+***************************************************************         29900000
+         SPACE 2                                                        29950000
+VMAPCVEC DS    0F                 DSECT NAME                            30000000
+VMEIBA   DC    F'0'               PTR TO IUCV EXT. INT. BUFFER          30050000
+VMEIBE   DC    F'0'               PTR TO LAST BYTE OF EIB               30100000
+VMPIDA   DC    F'0'               PTR TO PATH ID TABLE                  30150000
+VMPIDE   DC    F'0'               PTR TO LAST ENTRY OF TABLE            30200000
+VMPIDNUM DC    H'0'               NUMBER OF ENTRIES IN TABLE            30250000
+**                                                                      30300000
+         DC    H'0'               RESERVED                              30350000
+VMRESA   DC    F'0'               PTR TO APPCVM RESOURCE TABLE          30400000
+VMIUCVEB DC    A(AEXIBUF)         PTR TO IUCV EXT. INT. BUF ADR         30500000
+.********************************************************************** 30531261
+.********* WARNING                            ************************* 30562461
+.*********  IF LAYOUT OF TRACE ENTRY          ************************* 30593661
+.*********  IF SEQUENCE OF TRACE POINTERS     ************************* 30624861
+.*********    IS CHANGED                      ************************* 30656061
+.*********       REQUEST ALSO IJBAR TO CHANGE ************************* 30687261
+.********************************************************************** 30718461
+VMAPCTRB DC    A(APCTRB)          ADDRESS OF START OF TRACE AREA        30750000
+VMAPCTRA DC    A(APCTRB)          ADDRESS OF CURRENT TRACE ENTRY        30800000
+VMAPCTRE DC    A(APCTRE)          ADDRESS OF END OF TRACE AREA          30850000
+VMAPCVE  EQU   *                  END OF VECTOR TABLE                   30900000
+         DROP  R1                 IPARML                                30950000
+         DROP  R5                 PATH ID                               31000000
+         DROP  R9                 CRCB                                  31050000
+         DROP  RD                 BASE                                  31100000
+         EJECT                                                          31150000
+*********************************************************************** 31200000
+*                DESCRIPTION OF APPC/VM TRACE TABLE                   * 31250000
+*********************************************************************** 31300000
+         SPACE 1                                                        31350000
+*                                                                       31400000
+*VMAPCTRE (POINTS TO TRACE AREA END)                                    31450000
+*|                                                                      31500000
+*| VMAPCTRB (POINTS TO TRACE AREA BEGIN)                                31550000
+*| |                                                                    31600000
+*| |     VMAPCTRA (POINTS TO NEXT FREE TRACE AREA ENTRY)                31650000
+*| |     |                                                              31700000
+*| |     |   0      2      4        8    9    A    B    C         F     31750000
+*| +-----+->+------+------+--------+----+----+----+-------------------+ 31800000
+*|       |  |      | PATH |  CRCB  |APPC|SEND|    |                   | 31850000
+*|SVC    |  | 'XP' |  ID  |  ADDR  | FC | OP | CC |                   | 31900000
+*|       +->+------+------+--------+----+----+----+----+---------+----+ 31950000
+*|EXTERNAL  |      | PATH |  CRCB  |INT |INT | IPCODE  |IPAUDIT  |    | 32000000
+*|INTERRUPT | 'EX' |  ID  |  ADDR  |TYPE|WRC | (SEVER) |(S/R ERR)|    | 32050000
+*|          +------+------+--------+----+----+----+----+---------+----+ 32100000
+*|INTERNAL  |      | PATH |  CRCB  |APPC|    |    |                   | 32150000
+*|APPCVM SVR| 'IV' |  ID  |  ADDR  | FC |    | CC |                   | 32200000
+*|          +------+------+--------+----+----+----+-------------------+ 32250000
+*|INTERNAL  |      | PATH |  CRCB  |APPC|    |    |                   | 32300000
+*|IUCV SEVER| 'IU' |  ID  |  ADDR  | FC |    | CC |                   | 32350000
+*|          +------+------+--------+----+----+----+-------------------+ 32400000
+*|XPCC      |      |      |  CRCB  |                                  | 32450000
+*|DISCONNECT| 'DC' |      |  ADDR  |                                  | 32500000
+*|          +------+------+--------+----------------------------------+ 32550000
+*|          |                                                         | 32600000
+*|                                                                      32650000
+*|          |                                                         | 32700000
+*+--------->+------+------+--------+----------------------------------+ 32750000
+*           | EVENT| PATH |  CRCB  |                                  | 32800000
+*           |  ID  |  ID  |  ADDR  |                                  | 32850000
+*           +------+------+--------+----------------------------------+ 32900000
+*                                                                       32950000
+         SPACE 1                                                        33000000
+         ORG   IJBSUP50+(*-IJBSUP50+15)/16*16 TRACE AREA ALIGNMENT      33050000
+         DC    CL16'APPC-EVENT-TRACE'                                   33100000
+APCTRB   DC    (50*4)F'0'         TRACE AREA FOR APPC EVENTS            33150000
+APCTRE   DS    0X                                                       33200000
+         VMAPCTR  DSECT=NO                                              33250000
+         SPACE 2                                                        33300000
+         VMAPCTR  DSECT=YES                                             33350000
+         SPACE 2                                                        33400000
+         EJECT                                                          33450000
+IJBSUP50 CSECT                                                          33500000
+         USING APPCEXIN,RD                                              33600000
+         DS    0F                                                       33650000
+APCPATCH DC    CL8'PTCHAREA'      PATCH AREA START                      33700000
+         DC    S(APCPATCH+8)      BASE-DISPL. FORM OF PATCH             33750000
+*                                                   AREA START          33800000
+         DC    CL78' '            PATCH AREA                            33850000
+         DC    CL8'PATCHEND'      PATCH AREA END                        33900000
+         DROP  RD                 BASE                                  33950000
+         AIF   (NOT &SGAPPC).PRINT                                      34000061
+         PRINT NOGEN              RESET PRINT OPTION                    34100000
+.PRINT   ANOP                                                           34150000
+         MEND                                                           34200000

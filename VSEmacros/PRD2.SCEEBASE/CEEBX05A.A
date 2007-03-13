@@ -1,0 +1,378 @@
+         TITLE 'Sample Assembler User Exit under VSE for COBOL'         00001000
+*/*******************************************************************/  00002000
+*/*                                                                 */  00003000
+*/*    LICENSED MATERIALS - PROPERTY OF IBM                         */  00004000
+*/*                                                                 */  00005000
+*/*    5686-CF7  (C) COPYRIGHT IBM CORP. 1991,  2003                */  00006000
+*/*    ALL RIGHTS RESERVED.                                         */  00007000
+*/*                                                                 */  00008000
+*/*   US Government Users Restricted Rights - Use, duplication or   */  00009000
+*/*   disclosure restricted by GSA ADP Schedule Contract with IBM   */  00010000
+*/*   Corp.                                                         */  00011000
+*/*                                                                 */  00012000
+*/*******************************************************************/  00013000
+CEEBXITA CSECT                                                          00014000
+CEEBXITA AMODE  ANY                                                     00015000
+CEEBXITA RMODE  ANY                                                     00016000
+         ENTRY  CEEBXITA                                                00017000
+*/*-----------------------------------------------------------------*/  00018000
+*/* CEEBX05A - Sample Assembler User Exit under VSE for COBOL       */  00019000
+*/*                                                                 */  00020000
+*/* Function code:                                                  */  00021000
+*/*    1 - first enclave initialization                             */  00022000
+*/*    2 - first enclave termination                                */  00023000
+*/*    3 - nested enclave initialization                            */  00024000
+*/*    4 - nested enclave termination                               */  00025000
+*/*    5 - PROCESS TERMINATION                                      */  00026000
+*/*                                                                 */  00027000
+*/* Register Usage:                                                 */  00028000
+*/*    Input                                                        */  00029000
+*/*       R1  - A(A(Assembler User Exit Plist cntrl blk)) - CEEAUE  */  00030000
+*/*             NOTE: CEEAUE  contains the address of a 256 Byte    */  00031000
+*/*                   work area initialized to zero which is used   */  00032000
+*/*                   as the CEEBXITA's Save Area                   */  00033000
+*/*       R15 - Entry Point Address                                 */  00034000
+*/*       R14 - Return Address                                      */  00035000
+*/*       R13 - Caller's save area address                          */  00036000
+*/*       R12 - Pointer to CAA                                      */  00037000
+*/*    Output                                                       */  00038000
+*/*       CEEAUE  altered                                           */  00039000
+*/*    Work Regs                                                    */  00040000
+*/*       R3 - Code Base                                            */  00041000
+*/*       R2 - Base for User Exit Control Block (CEEAUE)            */  00042000
+*/*                                                                 */  00043000
+*/* Modifications for COBOL:                                        */  00044000
+*/*                                                                 */  00045000
+*/*  - If an enclave is ending abnormally (due to an unhandled      */  00046000
+*/*    condition with a severity >= 2), then force an abend         */  00047000
+*/*    with a dump. Note that if the abend is NOT forced, the       */  00048000
+*/*    following will happen:                                       */  00049000
+*/*                                                                 */  00050000
+*/*      * When the error condition is in the first enclave,        */  00051000
+*/*        the run time will return to the system with a return     */  00052000
+*/*        code that is greater than zero.                          */  00053000
+*/*                                                                 */  00054000
+*/*      * When the error condition is in a nested enclave,         */  00055000
+*/*        the run time will return to the previous enclave         */  00056000
+*/*        with a return code that is greater than zero.            */  00057000
+*/*                                                                 */  00058000
+*/*    By forcing an abend when the enclave is ending abnormally    */  00059000
+*/*    you ensure the following behavior:                           */  00060000
+*/*                                                                 */  00061000
+*/*      * DL/I transactions that end abnormally will               */  00062000
+*/*        cause transaction backout to be initiated.               */  00063000
+*/*      * SQL/DS transactions that end abnormally will             */  00064000
+*/*        cause transaction backout to be initiated.               */  00065000
+*/*                                                                 */  00066000
+*/*  - There is code (that is commented out) that will set the      */  00067000
+*/*    abend code to 1xxx for IGZ conditions where xxx is the       */  00068000
+*/*    IGZ message number. Customers that are coming from           */  00069000
+*/*    VS COBOL II may want to enable this code so that they        */  00070000
+*/*    continue to get the 1xxx user abends for IGZ messages.       */  00071000
+*/*-----------------------------------------------------------------*/  00072000
+         SPACE 2                                                        00073000
+         USING CEEBXITA,R3        Code Base                             00074000
+         USING CEEAUE,R2         User Exit Control Block                00075000
+         SPACE 1                                                        00076000
+         STM   14,12,12(13)       Save Registers in caller's S.A.       00077000
+         LR    R3,R15             Set Module Base                       00078000
+         B     AROUND                                                   00079000
+         DC    CL8'CEEBXITA'      Eye-catcher for Debugging        @02C 00080000
+         DC    CL8'V1.R4.M4'                                       @02C 00081000
+         DC    CL10'29.04.2003'                                    @02A 00082000
+*                                                                       00083000
+AROUND   DS    0H                                                       00084000
+         L     R2,0(,R1)          Get the parm passed                   00085000
+         L     R10,CEEAUE_A_WORK    Obtain the workarea                 00086000
+*                                 Chain the Save Areas                  00087000
+         ST    R10,8(,R13)        Old points to new                     00088000
+         ST    R13,4(,R10)        New SaveArea points to old            00089000
+         LR    R13,R10            R13 points to new SaveArea            00090000
+*                                                                       00091000
+         L    R4,CEEAUE_FUNC        Get the function code.              00092000
+         C    R4,FRST_INIT_CODE   First EnclaveInitialization Exit?     00093000
+         BE   FRST_INIT_EXIT      Yes. Branch to it?                    00094000
+*                                                                       00095000
+         C    R4,FRST_TERM_CODE   First Enclave Termination Exit?       00096000
+         BE   FRST_TERM_EXIT      Yes. Branch to it?                    00097000
+*                                                                       00098000
+         C    R4,NSTD_INIT_CODE   Nested Enclave Initialization Exit?   00099000
+         BE   NSTD_INIT_EXIT      Yes. Branch to it?                    00100000
+*                                                                       00101000
+         C    R4,NSTD_TERM_CODE   Nested Enclave Termination Exit?      00102000
+         BE   NSTD_TERM_EXIT      Yes. Branch to it?                    00103000
+*                                                                       00104000
+         C    R4,PROC_TERM_CODE   Process Termination Exit?             00105000
+         BE   PROC_TERM_EXIT      Yes. Branch to it?                    00106000
+*                                                                       00107000
+         B    RETURN              It is neither Init nor Term           00108000
+*                                 ...exit code. Simply Return           00109000
+         EJECT                                                          00110000
+*/*=================================================================*/  00111000
+*/*      First enclave initialization exit.                         */  00112000
+*/*=================================================================*/  00113000
+FRST_INIT_EXIT DS   0H                                                  00114000
+         SPACE 1                                                        00115000
+*                                                                       00116000
+*  To activate the abend codes table, uncomment the next 2 lines        00117000
+*                                                                       00118000
+*        LA    R4,ABEND_CODES     Get addr(abend codes table)           00119000
+*        ST    R4,CEEAUE_A_AB_CODES Store it in slot                    00120000
+*                                                                       00121000
+         B     RETURN                                                   00122000
+         SPACE 1                                                        00123000
+*/*=================================================================*/  00124000
+*/*      First enclave termination exit.                            */  00125000
+*/*=================================================================*/  00126000
+         SPACE 1                                                        00127000
+*                                                                       00128000
+FRST_TERM_EXIT DS   0H                                                  00129000
+*                                                                       00130000
+* If the enclave is terminating abnormally, then force an abend with    00131000
+* a dump.                                                               00132000
+*                                                                       00133000
+         TM    CEEAUE_FLAG1,CEEAUE_ABTERM  Abormal termination?         00134000
+*                                                                       00135000
+         BZ    FRST_TERM_NORM     Do not set dump and abend flags       00136000
+*                                 if it is a normal termination.        00137000
+*                                                                       00138000
+* Must be an abnormal termination, set the abend and dump flags.        00139000
+*                                                                       00140000
+         OI    CEEAUE_FLAG1,CEEAUE_ABND Indicate that a ABEND           00141000
+*                                 should be issued.                     00142000
+         OI    CEEAUE_FLAG1,CEEAUE_DUMP Indicate that the ABEND         00143000
+*                                 should be issued with a dump.         00144000
+*                                                                       00145000
+**-----------------------------------------------------------------*    00146000
+** If the token is an IGZ token (COBOL specific), then set the     *    00147000
+** abend return code to be compatible with                         *    00148000
+** VS COBOL II: abend U1xxx, where xxx is the message number.      *    00149000
+**                                                                 *    00150000
+** Note that this code is commented out. To enable the code        *    00151000
+** shift it to the left 1 character. Also note that the same       *    00152000
+** piece of code is found in nested enclave termination.           *    00153000
+**                                                                 *    00154000
+*         L     R6,CEEAUE_FBCODE   Put the address of the token    *    00155000
+**                                 into R6.                        *    00156000
+**                                                                 *    00157000
+*         USING TOK,R6                                             *    00158000
+*         CLC   TOK_FACID,TOK_FACID_CBL Facility id is IGZ?        *    00159000
+**                                                                 *    00160000
+**                                                                 *    00161000
+*         BNE   FRST_TERM_NORM     Do not modify the return code   *    00162000
+**                                 if its anything but an IGZ      *    00163000
+**                                 condition.                      *    00164000
+**                                                                 *    00165000
+*         LH    R7,TOK_MSGNUM      Move the message number in      *    00166000
+*         AL    R7,L_1THOU         Add 1000                        *    00167000
+*         ST    R7,CEEAUE_RETC     Modify the return code          *    00168000
+**-----------------------------------------------------------------*    00169000
+*                                                                       00170000
+FRST_TERM_NORM DS   0H                                                  00171000
+         B     RETURN                                                   00172000
+         SPACE 1                                                        00173000
+*/*=================================================================*/  00174000
+*/*      Nested enclave initialization exit.                        */  00175000
+*/*=================================================================*/  00176000
+         SPACE 1                                                        00177000
+*                                                                       00178000
+NSTD_INIT_EXIT DS   0H                                                  00179000
+         B     RETURN                                                   00180000
+         SPACE 1                                                        00181000
+*/*=================================================================*/  00182000
+*/*      Nested enclave termination exit.                           */  00183000
+*/*=================================================================*/  00184000
+         SPACE 1                                                        00185000
+*                                                                       00186000
+NSTD_TERM_EXIT DS   0H                                                  00187000
+*                                                                       00188000
+* If the enclave is terminating abnormally, then force an abend with    00189000
+* a dump.                                                               00190000
+*                                                                       00191000
+         TM    CEEAUE_FLAG1,CEEAUE_ABTERM  Abormal termination?         00192000
+*                                                                       00193000
+         BZ    NSTD_TERM_NORM     Do not set dump and abend flags       00194000
+*                                 if it is a normal termination.        00195000
+*                                                                       00196000
+* Must be an abnormal termination, set the abend and dump flags.        00197000
+*                                                                       00198000
+         OI    CEEAUE_FLAG1,CEEAUE_ABND Indicate that a ABEND           00199000
+*                                 should be issued.                     00200000
+         OI    CEEAUE_FLAG1,CEEAUE_DUMP Indicate that the ABEND         00201000
+*                                 should be issued with a dump.         00202000
+*                                                                       00203000
+**-----------------------------------------------------------------*    00204000
+** If the token is an IGZ token (COBOL specific), then set the     *    00205000
+** abend return code to be compatible with                         *    00206000
+** VS COBOL II: abend U1xxx, where xxx is the message number.      *    00207000
+**                                                                 *    00208000
+** Note that this code is commented out. To enable the code        *    00209000
+** shift it to the left 1 character.                               *    00210000
+**                                                                 *    00211000
+*         L     R6,CEEAUE_FBCODE   Put the address of the token    *    00212000
+**                                 into R6.                        *    00213000
+**                                                                 *    00214000
+*         USING TOK,R6                                             *    00215000
+*         CLC   TOK_FACID,TOK_FACID_CBL Facility id is IGZ?        *    00216000
+**                                                                 *    00217000
+**                                                                 *    00218000
+*         BNE   NSTD_TERM_NORM     Do not modify the return code   *    00219000
+**                                 if its anything but an IGZ      *    00220000
+**                                 condition.                      *    00221000
+**                                                                 *    00222000
+*         LH    R7,TOK_MSGNUM      Move the message number in      *    00223000
+*         AL    R7,L_1THOU         Add 1000                        *    00224000
+*         ST    R7,CEEAUE_RETC     Modify the return code          *    00225000
+**-----------------------------------------------------------------*    00226000
+*                                                                       00227000
+NSTD_TERM_NORM DS   0H                                                  00228000
+         B     RETURN                                                   00229000
+*                                                                       00230000
+         SPACE 1                                                        00231000
+*/*=================================================================*/  00232000
+*/*      Process termination exit.                                  */  00233000
+*/*=================================================================*/  00234000
+         SPACE 1                                                        00235000
+*                                                                       00236000
+PROC_TERM_EXIT DS   0H                                                  00237000
+*        B     RETURN                                                   00238000
+*                                                                       00239000
+         SPACE 1                                                        00240000
+*/*=================================================================*/  00241000
+*/*               R E T U R N     T O    C A L L E R                */  00242000
+*/*=================================================================*/  00243000
+RETURN   DS    0H                                                       00244000
+         L     R13,4(,R13)        Get A(caller's save area)             00245000
+         LM    R14,R12,12(R13)    Restore caller's regs                 00246000
+         BR    R14                Go home                               00247000
+         EJECT                                                          00248000
+*              CONSTANTS AND WORKAREAS                                  00249000
+*                                                                       00250000
+FRST_INIT_CODE  DC  F'1'          First enclave initialization code     00251000
+FRST_TERM_CODE  DC  F'2'          First enclave termination code        00252000
+NSTD_INIT_CODE  DC  F'3'          Nested enclave initialization code    00253000
+NSTD_TERM_CODE  DC  F'4'          Nested enclave termination code       00254000
+PROC_TERM_CODE  DC  F'5'          Process termination code              00255000
+*                                                                       00256000
+*                                                                       00257000
+*   The first field in the following table is a count                   00258000
+*   of how many abend codes are not to be trapped by                    00259000
+*   the LE/VSE error handler.                                           00260000
+*                                                                       00261000
+*   If you want the LE/VSE error handler NOT to trap:                   00262000
+*      - a system cancel code ss, enter X'000000ss' into the table      00263000
+*      - a program interruption code ii, enter X'800000ii' into the     00264000
+*      - table                                                          00265000
+*      - a user uuuu abend, enter F'uuuu' into the table                00266000
+*                                                                       00267000
+ABEND_CODES DS 0H                                                       00268000
+*                                                                       00269000
+           DC  A(((ABEND_CODES_END-ABEND_CODES)/4)-1)                   00270000
+*                                                                       00271000
+*          DC  F'uuu'             LE/VSE won't trap user uuuu abends    00272000
+*          DC  X'000000ss'        LE/VSE won't trap system cancel       00273000
+*                                 code ss                               00274000
+*          DC  X'800000ii'        LE/VSE won't trap program interrupt   00275000
+*                                 code ii                               00276000
+*                                                                       00277000
+ABEND_CODES_END DS 0H                                                   00278000
+*                                                                       00279000
+*                                                                       00280000
+*-------------------------------------------------------------------    00281000
+* Condition token constants                                             00282000
+*-------------------------------------------------------------------    00283000
+* Facility id for COBOL (IGZ)                                           00284000
+*                                                                       00285000
+TOK_FACID_CBL        DC C'IGZ'                                          00286000
+*                                                                       00287000
+*-------------------------------------------------------------------    00288000
+* Misc constants                                                        00289000
+*-------------------------------------------------------------------    00290000
+L_CONST              DS 0H                                              00291000
+*                                                                       00292000
+L_1THOU              DC F'1000'                                         00293000
+*                                                                       00294000
+                     SPACE 1                                            00295000
+*===================================================================    00296000
+*         Parameter list passed to the User Exit.                       00297000
+*         Addressed by Reg 1 = A(A(CEEAUE))                             00298000
+*===================================================================    00299000
+CEEAUE               DSECT 0D                                           00300000
+CEEAUE_LEN           DS  F        Len of user exit Ctl Blk              00301000
+CEEAUE_FUNC          DS  F        Function Code                         00302000
+*                                 1 ==> Initialization Exit             00303000
+*                                 2 ==> Termination Exit                00304000
+*                                 3 ==> Init exit for nested enclave    00305000
+*                                 4 ==> Term exit for nested enclave    00306000
+*                                 5 ==> Process termination exit        00307000
+CEEAUE_RETC          DS  F        Return or ABEND code                  00308000
+CEEAUE_RSNC          DS  F        Return or ABEND Reason Code           00309000
+*                                                                       00310000
+CEEAUE_FLAGS         DS  0F       Flags                                 00311000
+CEEAUE_FLAG1         DS  X                                              00312000
+CEEAUE_ABTERM        EQU X'80'    0 = normal termination                00313000
+*                                 1 = abnormal termination. There       00314000
+*                                     was a condition of severity 2 or  00315000
+*                                     greater and the condition was     00316000
+*                                     not handled.                      00317000
+CEEAUE_ABND          EQU X'40'    0 = terminate pgm with Return/Reason  00318000
+*                                 1 = terminate pgm with ABEND/Reason   00319000
+CEEAUE_DUMP          EQU X'20'    0 = Do not include a dump on an ABEND 00320000
+*                                 1 = Include a dump on an ABEND        00321000
+                     SPACE 1                                            00322000
+CEEAUE_FLAG2         DS  X        Reserved                              00323000
+CEEAUE_FLAG3         DS  X        Reserved                              00324000
+CEEAUE_FLAG4         DS  X        Reserved                              00325000
+                     SPACE 1                                            00326000
+CEEAUE_A_CC_PLIST    DS  A        Ptr to Reg 1 upon invocation          00327000
+*                                 ...Initialization Exit Only           00328000
+CEEAUE_A_WORK        DS  A        Ptr to 256-byte work area             00329000
+CEEAUE_A_OPTIONS     DS  A        A(A(Run-Time Options string))         00330000
+CEEAUE_USERWD        DS  F        User word. Retained thru Termination  00331000
+CEEAUE_A_AB_CODES    DS  A        Ptr to list of abend codes that       00332000
+*                                 LE/VSE  error handler shouldn't trap. 00333000
+*                                  format of table is:                  00334000
+*                                    fullword: # of entries             00335000
+*                                    fullword: error code               00336000
+*                                    fullword: error code               00337000
+*                                      ...                              00338000
+*                                  Use X'000000ss' for system cancel    00339000
+*                                                  codes                00340000
+*                                      X'800000ii' for program          00341000
+*                                                  interruption codes   00342000
+*                                      F'uuuu'     for user abends      00343000
+CEEAUE_FBCODE        DS  A        Feedback code                         00344000
+CEEAUE_PAGE          DS  F        Minimum value for page allocations    00345000
+                     SPACE 1                                            00346000
+*                                                                       00347000
+*   Condition token structure                                           00348000
+*                                                                       00349000
+TOK                  DSECT 0F                                           00350000
+TOK_DATA             DS 0CL8                                            00351000
+TOK_SEV              DS CL2       Severity                              00352000
+TOK_MSGNUM           DS CL2       Message number                        00353000
+TOK_CASE             DS CL1       Case                                  00354000
+TOK_FACID            DS CL3       Facility id                           00355000
+TOK_ISA              DS F         Instance specific info                00356000
+*/*=================================================================*/  00357000
+*/*      E N D     O F     P A R A M E T E R    L I S T             */  00358000
+*/*=================================================================*/  00359000
+                     SPACE 1                                            00360000
+CEEBXITA CSECT                                                          00361000
+R0       EQU   0                                                        00362000
+R1       EQU   1                                                        00363000
+R2       EQU   2                                                        00364000
+R3       EQU   3                                                        00365000
+R4       EQU   4                                                        00366000
+R5       EQU   5                                                        00367000
+R6       EQU   6                                                        00368000
+R7       EQU   7                                                        00369000
+R8       EQU   8                                                        00370000
+R9       EQU   9                                                        00371000
+R10      EQU   10                                                       00372000
+R11      EQU   11                                                       00373000
+R12      EQU   12                                                       00374000
+R13      EQU   13                                                       00375000
+R14      EQU   14                                                       00376000
+R15      EQU   15                                                       00377000
+         END                                                            00378000

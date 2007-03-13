@@ -1,0 +1,1951 @@
+         MACRO                                                          00001000
+         SGSERI                                                         00002000
+         GBLB  &SGSERI      SGSERI PRINT CONTROL SWITCH        @D37DDAP 00003000
+         GBLB  &BGDEBUG     DEBUG SUPERVISOR                   @D61ADAP 00004000
+         GBLB  &VSE270      RELEASE CONTROL SWITCH             @DY46120 00005000
+         GBLA  &AG1         NUMBER OF PUBS (FOR MORE DEVICES)  @D51ODGL 00006000
+         ACTR  50           LOOP CONTROL                       @D37DDAP 00007000
+***************************************************************@D356DAP 00008000
+*                                                             *@D356DAP 00009000
+.*       IBM DISK OPERATING SYSTEM                            *@D356DAP 00010000
+*        SUPERVISOR - SGSERI - 5686-CF7-06                    *@DA37206 00011000
+.*                                                            *@D356DAP 00012000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *@D41TDKY 00013000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *@D41TDKY 00014000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 1979, 2004          *@DA44069 00015000
+*        SEE COPYRIGHT INSTRUCTIONS                           *@D41TDKY 00016000
+*                                                             *@D356DAP 00017000
+***************************************************************@D356DAP 00018000
+.* /* START OF SPECIFICATIONS ***************************************** 00019000
+.*                                                                    * 00020000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                       * 00021000
+.*                                                                    * 00022000
+.*01* DESCRIPTIVE NAME = INTERFACE TO SERVICE TASK                    * 00023000
+.*                                                                    * 00024000
+.*01* NOTES = CHANGE ACTIVITY                                         * 00025000
+.*    NEW MODULE FIRST RELEASE IS 35                           @D35CDFG 00026000
+.*    TASKING CHANGES                                          @D36IDAP 00027000
+.*    NEW DEVICE SUPPORT (3375 AND 3380)                       @D131DAP 00028000
+.*    SUPPORT OF EXTERNAL DEVICE CODE                          @D14BDAP 00029000
+.*    WRONG SECTOR VALUE CALCULATED FOR 3375 3380              @DA30657 00030000
+.*    CHANNEL PROGRAM CHK AFTER D/T3540 INTERVENTION REQUIRED  @DA37010 00031000
+.*    GETVCE/MODVCE FOR TAPE                   (SPE DY37265)   @D21LDRP 00032000
+.*    SAVE CHANQ ENTRY ADDRESS IN SUBROUTINE SERADD            @DA38776 00033000
+.*    INCORRECT CONSTANT USED FOR TRACK CAPACITY FOR 3340      @DA41083 00034000
+.*    MSG03PI IS ISSUED WHEN D/T3480 IS ADDED AS SWITCHABLE    @DA40763 00035000
+.*    MORE I/O DEVICES                                         @D51ODGL 00036000
+.*    3390-06 SUPPORT                                          @D61ADMK 00037000
+.*    MTC AFTER ENDSD LEADS TO PARTITION HANG                  @DA43510 00038000
+.*    PPRC SUPPORT                                             @DA44069 00039000
+.*    INTERNAL DISK MIRRORING SUPPORT                          @DA44364 00040000
+.*    3590 SUPPORT ENHENCEMENTS                                @D63TAAP 00041000
+.*    PROVIDE INTERFACE FOR LOAD DISPLAY COMMAND               @DA44471 00042000
+.*    ENSURE 1H09 ERROR STATUS CHANGE MSG'S TO BE HIGHLIGHTED  @DA44616 00043000
+.*    CORRECT THE TEST FOR SYSTEM USAGE                        @DA44841 00044000
+.*    CHANGED INTERFACE TO CALCPUB ROUTINE                     @DY45385 00045000
+.*    ENHANCED TAPE DEVICE SUPPORT                             @DY46120 00046000
+.*                                                                      00047000
+.**** END OF SPECIFICATIONS ******************************************* 00048000
+         SPACE 3                                               @D369DAP 00049000
+         AIF   (NOT &SGSERI).NPRT010                           @D14BDAP 00050000
+         PRINT GEN                                             @D37DDAP 00051000
+.NPRT010 ANOP                                                  @D37DDAP 00052000
+         TITLE 'VSE SUPERVISOR     SGSERI     VCTE     MAPPING MACRO  ' 00053000
+         MAPVCTE                   VCTE MAPPING MACRO          @D51GDAP 00054000
+&SYSECT  CSECT                                                 @D51GDAP 00055000
+         TITLE 'VSE SUPERVISOR     SGSERI    RESIDENT PART OF SVT TASK' 00056000
+         DC    CL8'SGSERI  '                                   @D369DAP 00057000
+         DC    CL8'DY46120 '         LAST APAR FIX             @DY46120 00058000
+         USING SGSERI,RC                                       @D35CDFG 00059000
+         USING DISP,R6                                         @D36IDAP 00060000
+         ENTRY SGSERI                                          @D36IDAP 00061000
+SGSERI   DC    0H'0'                                           @D369DAP 00062000
+         TITLE 'VSE SUPERVISOR     SGSERI    QUIESCE/RESUME PROCESSING' 00063000
+.********************************************************************** 00064000
+.*                                                                    * 00065000
+.* FUNCTION-      ACTIVATE SERVICE TASK TO INITIATE QUIESCE/RESUME    * 00066000
+.*                PROCESSING                                          * 00067000
+.* ENTRY POINT-   SERADDQR                                            * 00068000
+.*                CALLED BY IOINTER WHENEVER A DEVICE                 * 00069000
+.*                (DASD OR TAPE) ISSUES AN ATTENTION INTERRUPT        * 00070000
+.* INPUTS-                                                            * 00071000
+.*                RC= BASE ADDRESS OF SERVICE TASK INTERFACE          * 00072000
+.*                RE= RETURN ADDRESS                                  * 00073000
+.* OUTPUTS-       NONE                                                * 00074000
+.*                                                                    * 00075000
+.********************************************************************** 00076000
+SERADDQR BAL   R7,SERACT    ACTIVATE SERVICE SYSTEM TASK       @D52BDGL 00077000
+*SGLINK  SERACT,INPUT=(R6,R7,RC),WORK=(R8,RF)                  @D52BDGL 00078000
+         OI    SERFLGPR,SERRQTQR  QUIESCE/RESUME WORK TO DO    @D52BDGL 00079000
+         BR    RE           RETURN TO CALLER                   @D52BDGL 00080000
+         DROP  R6           RELEASE DISPATCHER BASE            @D61PDAP 00081000
+         DROP  RC           RELEASE SGSERI BASE                @D61PDAP 00082000
+         AGO   .SKIP020                                                 00083000
+         SPACE ,                                               @D52BDGL 00084000
+.********************************************************************** 00085000
+.*                                                                    * 00086000
+.* FUNCTION-      ACTIVATE SERVICE TASK TO INITIATE MESSAGING         * 00087000
+.*                PROCESSING                                          * 00088000
+.* ENTRY POINT-   SERFCMSG                                            * 00089000
+.*                CALLED BY SPECIAL ROUTINES TO INITIATE              * 00090000
+.*                ASYNCHRONEOUS MESSAGING TO SYSLOG DEVICE            * 00091000
+.* INPUTS-                                                            * 00092000
+.*                RC= SGSERI BASE ADDRESS                             * 00093000
+.*                RE= RETURN ADDRESS                                  * 00094000
+.* OUTPUTS-       RF= RETURN CODE                                     * 00095000
+.*                    0 FUNCTION INITIATED                            * 00096000
+.*                    4 NO REQUEST ELEMENT AVAILABLE                  * 00097000
+.*                                                                    * 00098000
+.********************************************************************** 00099000
+         ORG   PUBRES+4           OVERLAY RESERVED SYSCOM FIELD@D61PDAP 00100000
+         DC    A(SERFCMSG)        ACTIVATE MESSAGING SERVICE   @D61PDAP 00101000
+         ORG   ,                  BACK TO OLD LOCATION COUNTER @D61PDAP 00102000
+         USING SERFCMSG,RF        TEMP BASE REGISTER           @D61PDAP 00103000
+SERFCMSG STM   R6,RE,SERFCMSV     SAVE USERS REGISTERS         @D61PDAP 00104000
+         L     R6,DISPAD          GET DISPATCHER BASE          @D61PDAP 00105000
+         USING DISP,R6            DISPATCHER BASE POINTER      @D61PDAP 00106000
+         L     RC,BASESERI        GET SGSERI BASE ADDRESS      @D61PDAP 00107000
+         DROP  RF                 RELEASE TEMP BASE POINTER    @D61PDAP 00108000
+         USING SGSERI,RC          SGSERI BASE                  @D61PDAP 00109000
+         LA    RF,4               SET RC=FAIL                  @D61PDAP 00110000
+         L     RE,RQTFLPTR        GET A FREE REQUEST ENTRY     @D61PDAP 00111000
+         USING RQTE,RE            REQUEST ELEMENT BASE         @D61PDAP 00112000
+         LTR   RE,RE              IS REQUEST ELEMENT AVAILABLE @D61PDAP 00113000
+         BNP   SERFCXIT           NO, INFORM USER              @D61PDAP 00114000
+         OI    SERFLGPR,SERRQTMS  MESSAGING WORK TO DO         @D61PDAP 00115000
+         MVC   RQTFLPTR,RQTNEXT   DEQUEUE FROM FREE CHAIN      @D61PDAP 00116000
+         MVI   RQTFLG,RQTDOWTO+RQTINUSE DO MESSAGING NO RC     @D61PDAP 00117000
+         ST    R1,RQTWTOAD        SAVE PARAMETER ALL           @D61PDAP 00118000
+         MVC   RQTTID(2),TID      SAVE TASK-ID                 @D61PDAP 00119000
+         BAL   R7,SERACT          ACTIVATE SERVICE TASK        @D61PDAP 00120000
+*SGLINK  SERACT,INPUT=(R6,R7,RC),WORK=(R8,RF)                  @D61PDAP 00121000
+         SLR   RF,RF              SET RETURN CODE              @D61PDAP 00122000
+SERFCXIT LM    R6,RE,SERFCMSV     RESTORE USERS REGISTERS      @D61PDAP 00123000
+         DROP  R6                 RELEASE DISP BASE            @D61PDAP 00124000
+         DROP  RC                 RELEASE SGSERI BASE          @D61PDAP 00125000
+         BR    RE                 RETURN TO CALLER             @D61PDAP 00126000
+         SPACE 1                                               @D61PDAP 00127000
+         DROP  RE                 RELEASE RQTE BASE POINTER    @DA44201 00128000
+         SPACE 1                                               @D61PDAP 00129000
+SERFCMSV DC    9F'0'              SAVE AREA                    @D61PDAP 00130000
+.SKIP020 ANOP                                                           00131000
+         TITLE 'VSE SUPERVISOR     SGSERI     INITIATE IXFP PROCESSING' 00132000
+.********************************************************************** 00133000
+.*                                                                    * 00134000
+.* FUNCTION-      ACTIVATE SERVICE TASK TO INITIATE IXFP OR FLASH-COPY* 00135000
+.*                PROCESSING AFTER REQUEST HAS BEEN VALIDATED         * 00136000
+.* ENTRY POINT-   SERIXCPY (RUNNING IN 31-BIT ADDRESSING MODE)        * 00137000
+.*                CALLED BY SGIOS WHENEVER AN IXFP PROCESS IS TO      * 00138000
+.*                STARTED.                                            * 00139000
+.* INPUTS-                                                            * 00140000
+.*                R1= POINTER TO PARAMETER LIST                       * 00141000
+.*                RC= BASE ADDRESS OF SERVICE TASK INTERFACE          * 00142000
+.*                RE= RETURN ADDRESS                                  * 00143000
+.* OUTPUTS-       NONE                                                * 00144000
+.*                RF= RETURN CODE                                     * 00145000
+.*                                                                    * 00146000
+.********************************************************************** 00147000
+         USING DISP,R6            DISPATCHER BASE POINTER      @D25IDAP 00148000
+         USING SGSERI,RC          SGSERI BASE                  @D25IDAP 00149000
+         USING SNPLIST,R1         PARAMETER LIST BASE          @D25IDAP 00150000
+*SGLINK  SERIXCPY,INPUT=(R1,R6,RC,RE),WORK=(R0,R2,R3,R4,R5,R7,R8,RF)    00151000
+SERIXCPY DS    0H'0'              VALIDATE PARAMETER LIST      @D25IDAP 00152000
+         LA    R5,SNPVFLAG        ADDRESS OF VOLUME ENTRY      @D25IDAP 00153000
+         LH    R0,SNPCOUNT        GET ENTRY COUNT              @D25IDAP 00154000
+         USING SNPVFLAG,R5        VOLUME ENTRY BASE            @D25IDAP 00155000
+SERIX100 TM    SNPVFLAG,SNPNOVOL  DID USER PASS VOLID          @D66ADAP 00156000
+         BZ    SERIX120           YES, HE GAVE A VOLID         @D66ADAP 00157000
+         LA    R2,SNPDEVID        POINT TO CUU FIELD           @D66ADAP 00158000
+         TM    SNPVFLAG,SNPLNOID  DID USER PROVIDE LOG.UNIT    @D66ADAP 00159000
+         BZ    SERIX110           NO, MUST HAVE BEEN CUU THEN  @D66ADAP 00160000
+         SLR   R3,R3              CLEAR REGISTER               @D66ADAP 00161000
+         ICM   R3,B'0011',0(R2)   GET LNO INFO                 @D66ADAP 00162000
+         BAL   R7,CALCPUB         CALCULATE PUB ADDRESS        @D66ADAP 00163000
+*SGLINK  CALCPUB,INPUT=(R3,R6,R7,RC),OUTPUT=(R3,R4),WORK=R8    @D66ADAP 00164000
+         B     SERIXE10         0 INVALID PARM LIST            @D66ADAP 00165000
+         LTR   R3,R3            4 IS A PUB ASSIGNED            @D66ADAP 00166000
+         BZ    SERIXE08           NO PUB ASSIGNED              @D66ADAP 00167000
+         BM    SERIXE04           PUB IS ASSIGNED IGNORE       @D66ADAP 00168000
+         B     SERIX130           JOIN MAIN LINE               @D66ADAP 00169000
+SERIX110 TM    SNPVFLAG,SNPCUUID  DID USER PROVIDE CUU ADDRESS @D66ADAP 00170000
+         BZ    SERIXE10           NO, ERROR IN PARM LIST       @D66ADAP 00171000
+         BAL   R7,AVRCUUT1        GET PUB ADDRESS              @D66ADAP 00172000
+*SGLINK  AVRCUUT1,INPUT=(R2,R7,RC),OUTPUT=R3                   @D66ADAP 00173000
+         B     SERIXE08         0 CUU NOT FOUND                @D66ADAP 00174000
+         B     SERIX130         4 JOIN MAIN LINE               @D66ADAP 00175000
+SERIX120 DS    0H'0'                                           @D66ADAP 00176000
+         LA    R3,SNPVOLID        POINT TO VOLID               @D25IDAP 00177000
+         BAL   R7,AVRFVOL1        FIND SOURCE DEVICE           @D25IDAP 00178000
+*SGLINK  AVRFVOL1,INPUT=(R3,R5,R6,R7,RC),OUTPUT=(R3,R4,RF)              00179000
+         LTR   RF,RF              WAS VOLID UNIQUE AND FOUND   @D25IDAP 00180000
+         BNZ   SERIXXIT           NO,                          @D25IDAP 00181000
+         USING PUBADR,R3          DECLARE PUB BASE             @D25IDAP 00182000
+SERIX130 TM    SNPVFLAG,SNPSVIND  IS THIS A SOURCE DEVICE      @D25IDAP 00183000
+         BZ    SERIXE10           NO, ERROR IN PARM LIST       @D25IDAP 00184000
+         AGO   .SKIP040                                                 00185000
+         TM    SNPVFLAG,SNPVOLDN  MUST VOLUME BE DOWN          @D66ADAP 00186000
+         BZ    SERIX140           NO, IT SHOULD BE DVCUP       @D66ADAP 00187000
+         TM    PUBJCFLG,PUBDVCUP  IS DEVICE UP                 @D66ADAP 00188000
+         BNZ   SERIXE0C           YES, INVALID DEVICE STATUS   @D66ADAP 00189000
+         B     SERIX150           JOIN MAIN LINE               @D66ADAP 00190000
+SERIX140 TM    PUBJCFLG,PUBDVCUP  IS DEVICE UP                 @D25IDAP 00191000
+         BNO   SERIXE0C           NO, INVALID DEVICE STATUS    @D25IDAP 00192000
+.SKIP040 ANOP                                                           00193000
+SERIX150 BCT   R0,SERIX200        IS A NEXT ENTRY AVAILABLE    @D25IDAP 00194000
+         B     SERIXE10           NO, ERROR IN PARM LIST       @D25IDAP 00195000
+         DROP  R3                 RELEASE PUBADR BASE          @D66ADAP 00196000
+SERIX200 LA    RF,SNPENTLN        BASIC ENTRY LENGTH           @D66ADAP 00197000
+         CLI   SNPLEVEL,SNPLEV#1  IS THIS LEVEL-1 PARM         @D66ADAP 00198000
+         BL    SERIX210           NO,                          @D66ADAP 00199000
+         ST    R3,SNPUPUBA        SAVE PUB ADDRESS             @D66ADAP 00200000
+         LA    RF,SNPENTLN(,RF)   DOUBLE THE ENTRY LENGTH      @D66ADAP 00201000
+SERIX210 AR    R5,RF              NEXT ENTRY ADDRESS           @D66ADAP 00202000
+         TM    SNPVFLAG,SNPTVIND  IS THIS A TARGET DEVICE      @D25IDAP 00203000
+         BZ    SERIXE10           NO, ERROR IN PARM LIST       $D25IDAP 00204000
+         TM    SNPVFLAG,SNPNOVOL  DID USER PASS VOLID          @D66ADAP 00205000
+         BZ    SERIX230           YES, HE GAVE A VOLID         @D66ADAP 00206000
+         LA    R2,SNPDEVID        POINT TO CUU FIELD           @D66ADAP 00207000
+         TM    SNPVFLAG,SNPLNOID  DID USER PROVIDE LOG.UNIT    @D66ADAP 00208000
+         BZ    SERIX220           NO, MUST HAVE BEEN CUU THEN  @D66ADAP 00209000
+         SLR   R3,R3              CLEAR REGISTER               @D66ADAP 00210000
+         ICM   R3,B'0011',0(R2)   GET LNO INFO                 @D66ADAP 00211000
+         BAL   R7,CALCPUB         CALCULATE PUB ADDRESS        @D66ADAP 00212000
+*SGLINK  CALCPUB,INPUT=(R3,R6,R7,RC),OUTPUT=(R3,R4),WORK=R8    @D66ADAP 00213000
+         B     SERIXE10         0 INVALID PARM LIST            @D66ADAP 00214000
+         LTR   R3,R3            4 IS A PUB ASSIGNED            @D66ADAP 00215000
+         BZ    SERIXE08           NO PUB ASSIGNED              @D66ADAP 00216000
+         BM    SERIXE04           PUB IS ASSIGNED IGNORE       @D66ADAP 00217000
+         B     SERIX250           JOIN MAIN LINE               @D66ADAP 00218000
+SERIX220 TM    SNPVFLAG,SNPCUUID  DID USER PROVIDE CUU ADDRESS @D66ADAP 00219000
+         BZ    SERIXE10           NO, ERROR IN PARM LIST       @D66ADAP 00220000
+         BAL   R7,AVRCUUT1        GET PUB ADDRESS              @D66ADAP 00221000
+*SGLINK  AVRCUUT1,INPUT=(R2,R7,RC),OUTPUT=R3                   @D21LDAP 00222000
+         B     SERIXE08         0 CUU NOT FOUND                @D66ADAP 00223000
+         B     SERIX250         4 JOIN MAIN LINE               @D66ADAP 00224000
+SERIX230 LA    R3,SNPVOLID        POINT TO VOLID               @D25IDAP 00225000
+         BAL   R7,AVRFVOL1        FIND TARGET DEVICE           @D25IDAP 00226000
+*SGLINK  AVRFVOL1,INPUT=(R3,R5,R6,R7,RC),OUTPUT=(R3,R4,RF)              00227000
+         LTR   RF,RF              WAS VOLID UNIQUE AND FOUND   @D25IDAP 00228000
+         BNZ   SERIXXIT           NO,                          @D25IDAP 00229000
+         USING PUBADR,R3          DECLARE PUB BASE             @D25IDAP 00230000
+         AGO   .SKIP060                                                 00231000
+         TM    SNPVFLAG,SNPVOLDN  MUST VOLUME BE DOWN          @D66ADAP 00232000
+         BZ    SERIX240           NO, IT SHOULD BE DVCUP       @D66ADAP 00233000
+         TM    PUBJCFLG,PUBDVCUP  IS DEVICE DOWN               @D66ADAP 00234000
+         BZ    SERIX250           YES, IT IS DOWN              @D66ADAP 00235000
+         B     SERIXE0C           NO,  INVALID DEVICE STATUS   @D66ADAP 00236000
+SERIX240 TM    PUBJCFLG,PUBDVCUP  IS DEVICE UP                 @D66ADAP 00237000
+         BO    SERIX250           YES, THEN ITS OK             @D66ADAP 00238000
+         B     SERIXE0C           NO, INVALID DEVICE STATUS    @D25IDAP 00239000
+.SKIP060 ANOP                                                           00240000
+SERIX250 LA    RF,SNPENTLN        BASIC ENTRY LENGTH           @D66ADAP 00241000
+         CLI   SNPLEVEL,SNPLEV#1  IS THIS LEVEL-1 PARM         @D66ADAP 00242000
+         BL    SERIX260           NO,                          @D66ADAP 00243000
+         ST    R3,SNPUPUBA        SAVE PUB ADDRESS             @D66ADAP 00244000
+         LA    RF,SNPENTLN(,RF)   DOUBLE THE ENTRY LENGTH      @D66ADAP 00245000
+SERIX260 AR    R5,RF              NEXT ENTRY ADDRESS           @D66ADAP 00246000
+         BCT   R0,SERIX100        CHECK NEXT ENTRY             @D25IDAP 00247000
+         DROP  R5                 RELEASE SNPVFLAG BASE        @D25IDAP 00248000
+         DROP  R1                 RELEASE PARMLIST BASE        @D25IDAP 00249000
+SERIXA00 L     R8,RQTFLPTR        GET A FREE REQUEST ENTRY     @D25IDAP 00250000
+         USING RQTE,R8            REQUEST ELEMENT BASE         @D25IDAP 00251000
+         LR    R2,R1              SAVE PARAMETER ADDRESS       @D25IDAP 00252000
+         LTR   R1,R8              IS REQUEST ELEMENT AVAILABLE @D25IDAP 00253000
+         BP    SERIXA20           YES, PROCEED                 @D25IDAP 00254000
+         SR    R1,R1              INDICATE UNCOND. POSTING     @D25IDAP 00255000
+         L     R5,ASRQTAB         RESOURCE DESCRIPTOR TABLE    @D25IDAP 00256000
+         LA    R5,SRQAVR-SRQTAB(,R5) AVR BOUND QUEUE           @D25IDAP 00257000
+         DROP  RC                 RELEASE SGSERI BASE          @D25IDAP 00258000
+         BAL   RC,RWAIT               =====================>>> @D25IDAP 00259000
+*SGLINK  RWAIT,INPUT=(R1,R5,RC)                                @D25IDAP 00260000
+         L     RC,BASESERI        SGSERI BASE ADDRESS          @D25IDAP 00261000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D25IDAP 00262000
+         LR    R1,R2              RESTORE PARAMETER ADDRESS    @D25IDAP 00263000
+         B     SERIXA00           TRY AGAIN                    @D25IDAP 00264000
+         DROP  R8                 RELEASE RQT BASE             @D25IDAP 00265000
+         USING RQTE,R1            REQUEST ELEMENT BASE         @D25IDAP 00266000
+SERIXA20 OI    SERFLGPR,SERRQTIX  INDICATE FLASH-COPY WANTED   @D25IDAP 00267000
+         MVC   RQTFLPTR,RQTNEXT   DEQUEUE FROM FREE CHAIN      @D25IDAP 00268000
+         MVI   RQTFLG,RQTDOIXF+RQTINUSE+RQTSET15 SET FLAG BITS @D25IDAP 00269000
+         ST    R2,RQTIXFAD        SAVE PARAMETER LIST ADDRESS  @D25IDAP 00270000
+         STH   R3,RQTPUB          PASS ALONG THE PUB ADDRESS   @D66ADAP 00271000
+         MVC   RQTTID,TID         SAVE TASK-ID                 @D25IDAP 00272000
+         BAL   R7,SERACT          ACTIVATE SERVICE TASK        @D25IDAP 00273000
+*SGLINK  SERACT,INPUT=(R6,R7,RC),WORK=(R8,RF)                  @D25IDAP 00274000
+         L     R5,ASRQTAB         RESOURCE DESCRIPTOR TABLE    @D25IDAP 00275000
+         LA    R5,SRQAVR-SRQTAB(,R5) AVR WAIT QUEUE            @D25IDAP 00276000
+         DROP  RC                 RELEASE SGSERI BASE          @D25IDAP 00277000
+         BAL   RC,RWAIT           SET CALLING TASK SVT-BOUND   @D25IDAP 00278000
+*SGLINK  RWAIT,INPUT=(R1,R5,RC)                                @D25IDAP 00279000
+.*                                                             @D25IDAP 00280000
+.*       SVT TASK HAS NOW COMPLETED THE REQUEST                @D25IDAP 00281000
+.*                                                             @D25IDAP 00282000
+         L     RC,BASESERI        RESTORE SGSERI BASE ADDRESS  @D25IDAP 00283000
+         USING SGSERI,RC          ADDRESSABLE                  @D25IDAP 00284000
+         L     RF,RQTRETCD        GET RETURN CODE              @D25IDAP 00285000
+         L     RA,TCBPTR          GET TCB ADDRESS              @D25IDAP 00286000
+         USING TCBADR,RA          TCB BASE POINTER             @D25IDAP 00287000
+         L     RB,TCBSAVE         GET SAVE AREA ADDRESS        @D25IDAP 00288000
+         USING SVEARA,RB          SAVE AREA BASE POINTER       @D25IDAP 00289000
+         ST    RF,SVER0F          SET RETURN INFORMATION       @D25IDAP 00290000
+         MVC   RQTNEXT,RQTFLPTR   ADD ENTRY TO FREELIST        @D25IDAP 00291000
+         ST    R1,RQTFLPTR        STORE NEW FREE LIST POINTER  @D25IDAP 00292000
+         BR    R6                 NO,  ====================>>> @D25IDAP 00293000
+         SPACE ,                                               @D25IDAP 00294000
+         DROP  RB                 RELEASE SAVE AREA BASE       @D25IDAP 00295000
+         DROP  RA                 RELEASE TCB BASE             @D25IDAP 00296000
+         DROP  R1                 RELEASE RQT BASE             @D25IDAP 00297000
+         DROP  R6                 RELEASE DISP BASE            @D25IDAP 00298000
+         USING SGSERI,RC          ADDRESSABLE                  @D25IDAP 00299000
+         USING SNPVFLAG,R2        VOLUME ENTRY BASE            @D25IDAP 00300000
+SERIXE10 LA    RF,16              PARAMETER LIST ERROR         @D25IDAP 00301000
+         B     SERIXXIT           USE GENERAL RETURN           @D25IDAP 00302000
+SERIXE0C LA    RF,12              INVALID DEVICE STATUS        @D25IDAP 00303000
+         B     SERIXXIT           USE GENERAL RETURN           @D25IDAP 00304000
+SERIXE08 LA    RF,8               DEVICE NOT FOUND             @D66ADAP 00305000
+         B     SERIXXIT           USE GENERAL RETURN           @D66ADAP 00306000
+SERIXE04 LA    RF,4               DEVICE ASSIGNED IGNORE       @D66ADAP 00307000
+         B     SERIXXIT           USE GENERAL RETURN           @D66ADAP 00308000
+SERIXXIT LA    R1,SNPVFLAG        POINT TO ENTRY IN ERROR      @D25IDAP 00309000
+         L     RA,TCBPTR          GET TCB ADDRESS              @D25IDAP 00310000
+         USING TCBADR,RA          TCB BASE POINTER             @D25IDAP 00311000
+         L     RB,TCBSAVE         GET SAVE AREA ADDRESS        @D25IDAP 00312000
+         USING SVEARA,RB          SAVE AREA BASE POINTER       @D25IDAP 00313000
+         ST    RF,SVER0F          SET RETURN INFORMATION       @D25IDAP 00314000
+         ST    R1,SVER01          SET RETURN INFORMATION       @D25IDAP 00315000
+         BR    RE                      =====================>> @D25IDAP 00316000
+         DROP  RB                 RELEASE SAVE AREA BASE       @D25IDAP 00317000
+         DROP  RA                 RELEASE TCB BASE             @D25IDAP 00318000
+         DROP  R2                 RELEASE SNPVFLAG BASE        @D25IDAP 00319000
+         DROP  R3                 RELEASE PUBADR BASE          @D25IDAP 00320000
+         DROP  RC                 RELEASE SGSERI BASE          @D25IDAP 00321000
+         SPACE ,                                               @D25IDAP 00322000
+         TITLE 'VSE SUPERVISOR     SGSER  FIND JOBNAME OF DEVICE OWNER' 00323000
+         USING RQTE,R2            RQT-ENTRY BASE               @DBOC    00324000
+         USING PUBADR,R3          PUBADR BASE POINTER          @D68ADAP 00325000
+         USING VCTEADR,R4         VCTE ENTRY BASE POINTER      @D61ADAP 00326000
+         USING SERILDSP,R8        SERILDSP BASE POINTER        @D68ADAP 00327000
+         USING PBXADR,R9          PUBX BASE POINTER            @D68ADAP 00328000
+         USING SGSERI,RC          SGSERI BASE                  @D68ADAP 00329000
+.*                                                             @D61ADAP 00330000
+.*       PREPARE LOAD-DISPLAY MESSAGE                          @D61ADAP 00331000
+.*                                                             @D61ADAP 00332000
+SERILDSP DS    0H'0'              PREPARE LAOD DISPLAY MESSAGES@D61ADAP 00333000
+         STM   RE,R1,SERILDSV     SAVE CALLERS REGISTERS       @D68ADAP 00334000
+         MVC   RQTTMSG1(L'AVRTMNLB),AVRTMNLB ASSUME NO LABEL   @DBOC    00335000
+         MVC   RQTTMSG2(L'AVRTMPRO),AVRTMPRO ASSUME PROTECTED  @DBOC    00336000
+         MVI   RQTTMSGP,X'20'     DISPLAY UNTIL DEMOUNTED      @DBOC    00337000
+         TM    IJBAIDID,X'80'     JOBNAME TO BE DISPLAYED      @DA44471 00338000
+         BZ    SERILD40           NO, STANDARD LDSP MESSAGE    @DA44471 00339000
+         MVI   RQTTMSG1+7,C'W'    ASSUME WRITE ACCESS          @DBOC    00340000
+         TM    RQTSNSDT+1,X'02'   ANY WRITE PROECTION          @DBOC    00341000
+         BZ    SERILD20           NO, LEAVE WRITE INDICATION   @DA44471 00342000
+         MVI   RQTTMSG1+7,C'R'    ASSUME READ ACCESS           @DBOC    00343000
+SERILD20 BAL   RE,SERIGETO        GET OWNER INFORMATION        @DA44471 00344000
+*SGLINK  SERIGETO,INPUT=(R2,R3,RC,RE)                          @DA44471 00345000
+         B     SERILD60           JOIN MAIN PATH               @DA44471 00346000
+         SPACE 1                                                        00347000
+SERILD40 DS    0H'0'              STANDARD DISPLAY MODE        @DBOC    00348000
+         TM    RQTSNSDT+1,X'02'   IS IT WRITE PROTECTED        @DBOC    00349000
+         BZ    SERILD60           NO, ALL WORK IS DONE         @D61ADAP 00350000
+         OI    RQTTMSGP,X'10'     DISPLAY MSG0 AND MSG1        @D68ADAP 00351000
+SERILD60 NI    VCTAPROC,XFF-VCTAPWTD RESET WORK TO DO FLAG     @DBOC    00352000
+         LM    RE,R1,SERILDSV     RELOAD CALLERS REGISTERS     @D68ADAP 00353000
+         BR    RE                      ======================>          00354000
+SERILDSV DC    4F'0'              REGISTER SAVE AREA                    00355000
+         SPACE 2                                                        00356000
+*SGLINK  SERIGETO INPUT=(R2,R3,RC,RE)                          @DA44471 00357000
+SERIGETO DS    0H'0'              FIND THE DEVICE OWNER        @DA44471 00358000
+         MVC   RQTTMSG2(8),AVRTINTV BLANK THE MSG-2 FIELD      @DBOC    00359000
+         LR    R0,R3              COPY PUB POINTER             @DA44471 00360000
+         SH    R0,YPUBTAB         PUB OFFSET                   @DA44471 00361000
+         SRL   R0,3               PUB INDEX                    @DA44471 00362000
+         GETFLD FIELD=OWNER,PU=(0) FIND DEVICE OWNER IF ANY    @DA44471 00363000
+         LTR   RF,RF              ANY OWNER                    @DA44471 00364000
+         BZ    SERIGO99           NO,                          @DA44471 00365000
+         CH    RF,H4              UNIQUE OWNER PRESENT         @DA44471 00366000
+         BNE   SERIGO99           NO,                          @DA44471 00367000
+         OI    RQTTMSGP,X'10'     DISPLAY MSG0 AND MSG1        @D68ADAP 00368000
+         LTR   R1,R1              SYSTEM USE                   @DA44841 00369000
+         BZ    SERIGO20           YES,                         @DA44471 00370000
+         GETFLD FIELD=COMRGPTR,PART=(1) GET COMREG ADDRESS     @DA44471 00371000
+         LTR   RF,RF              DID WE GET THE ADDRESS       @DA44471 00372000
+         BNZ   SERIGO99           NO,                          @DA44471 00373000
+         MVC   RQTTMSG2(8),COMNAME-COMREG(R1) SAVE JOB NAME    @DBOC    00374000
+         B     SERIGO99                                        @DA44471 00375000
+SERIGO20 MVC   RQTTMSG2(8),SERISYSO INDICATE SYSTEM IS OWNER   @DBOC    00376000
+SERIGO99 BR    RE                      ======================> @DA44471 00377000
+         SPACE 1                                               @DA44471 00378000
+SERISYSO DC    CL8'*SYSTEM*'      CONSTANT                     @DA44471 00379000
+         DROP  RC                 RELEASE SGSERI BASE          @D68ADAP 00380000
+         DROP  R9                 RELEASE PBXADR   BASE        @D68ADAP 00381000
+         DROP  R8                 RELEASE SERILDSP BASE        @D68ADAP 00382000
+         DROP  R4                 RELEASE VCTEADR BASE         @D68ADAP 00383000
+         DROP  R3                 RELEASE PUBADR BASE          @D68ADAP 00384000
+         DROP  R2                 RELEASE RQTE   BASE          @D68ADAP 00385000
+         SPACE 3                                                        00386000
+.********************************************************************** 00387000
+.*                                                                    * 00388000
+.* FUNCTION- UNASSGN A DEVICE FROM VSE USAGE                          * 00389000
+.* ENTRY POINT-SERUASGN- CALLED BY SGTINF WHEN NO DEVICE OWNER EXISTS * 00390000
+.*           (APPLICABLE TO TAPE DEVICES ONLY)                        * 00391000
+.* INPUTS-   R3= PUB INDEX OF PUB HAVING BEEN LOGICALLY UNASSIGNED    * 00392000
+.*           RC= BASE ADDRESS OF SGSERI                               * 00393000
+.*           RE= RETURN ADDRESS                                       * 00394000
+.* OUTPUTS-  NONE                                                     * 00395000
+.* REGISTERS-R3=ADDRESS OF PUB                                        * 00396000
+.*           R4=ADDRESS OF VCTE ENTRY                                 * 00397000
+.*           R7=LINKAGE REG TO SUBROUTINES                            * 00398000
+.*           R8=WORK REGISTER                                         * 00399000
+.* SUBROUTNIES- AVRFVCTE - FIND VCT ENTRY FOR THIS DEVICE             * 00400000
+.*                                                                    * 00401000
+.********************************************************************** 00402000
+         USING SGSERI,RC          SGSERI BASE                  @D61ADAP 00403000
+         DC    C'NOPUASGN'  EYE CATCHER TO NOP THE SERVICE     @D61ADAP 00404000
+SERUASGN NOP   SERUARC0     BYPASS UNASSGN PROCESSING          @D61ADAP 00405000
+         LR    R8,R3        PUB INDEX                          @D61ADAP 00406000
+         SLL   R3,3         PUB OFFSET                         @D61ADAP 00407000
+         AH    R3,YPUBTAB   PUB ADDRESS                        @D61ADAP 00408000
+         USING PUBADR,R3    PUB BASE POINTER                   @D61ADAP 00409000
+         CLI   PUBDEVTY,TTPA IS THIS A TPA DEVICE              @D62TAAP 00410000
+         BE    SERUAS10     YES,                               @D62TAAP 00411000
+         CLI   PUBDEVTY,T3480 IS THIS A 3480/3490 DEVICE       @D61ADAP 00412000
+         BNE   SERUARC0     NO,                                @D61ADAP 00413000
+SERUAS10 SLL   R8,2         PUBX ADDRESS VECTOR OFFSET         @D61ADAP 00414000
+         A     R8,APBXAREA  ADDRESS OF PUBX ADDRESS            @D61ADAP 00415000
+         L     R8,0(R8)     ADDRESS OF PUBX                    @D61ADAP 00416000
+         USING PBXADR,R8    PUBX BASE POINTER                  @D61ADAP 00417000
+         OI    PBXFLAG2,PBXNOVOL TRIGGER SERVICE TASK          @DA43510 00418000
+         DROP  R8           RELEASE PUBX BASE POINTER          @D61ADAP 00419000
+         BAL   R7,AVRFVCTE  FIND RELATED VCT-ENTRY             @D61ADAP 00420000
+*SGLINK  AVRFVCTE,INPUT=(R3,R7,RC),OUTPUT=R4,WORK=R8           @D61ADAP 00421000
+         LTR   R4,R4        DID WE FIND AN ASSOCIATED ENTRY    @D61ADAP 00422000
+         BNP   SERUARC4     NO,                                @D61ADAP 00423000
+         USING VCTEADR,R4   VCT ENTRY                          @D61ADAP 00424000
+         L     R6,DISPAD    DISPATCHER BASE ADDRESS            @D61ADAP 00427000
+         USING DISP,R6      DISPATCHER BASE POINTER            @D61ADAP 00428000
+         BAL   R7,SERACT    ACTIVATE SERVICE SYSTEM TASK       @D61ADAP 00429000
+*SGLINK  SERACT,INPUT=(R6,R7,RC),WORK=(R8,RF)                  @D61ADAP 00430000
+         OI    SERFLGPR,SERDORDY INDICATE VCTE ENTRY PROCESSING@D61ADAP 00431000
+         OI    VCTAPROC,VCTAUASN+VCTAPWTD UNASSGN REQUESTED    @D61ADAP 00432000
+SERUARC0 SLR   RF,RF        SET RC TO SUCCESS                  @D61ADAP 00433000
+SERUASXT BSM   0,RE              ==========================>>> @D61ADAP 00434000
+SERUARC4 LA    RF,4         SET RC TO UNSUCCESSFUL             @D61ADAP 00435000
+         B     SERUASXT                                        @D61ADAP 00436000
+         DROP  R3           RELEASE PUB  BASE POINTER          @D61ADAP 00437000
+         DROP  R4           RELEASE VCTE BASE POINTER          @D61ADAP 00438000
+         DROP  R6           RELEASE DISP BASE                  @D61ADAP 00439000
+         DROP  RC           RELEASE SGSERI BASE                @D61ADAP 00440000
+         EJECT ,                                                        00441000
+.********************************************************************** 00442000
+.*                                                                      00443000
+.* FUNCTION- DO SYSREC RECORDING FOR THE PREVIOUS VOLUME ON THIS DEV.   00444000
+.* ENTRY POINT- AVRREC00                                                00445000
+.* INPUTS-        R3= ADDR OF PUB FOR REQUESTED DEVICE                  00446000
+.*                R4= VCTE ADDRESS                                      00447000
+.*                R8= RETURN ADDRESS                                    00448000
+.*                RC= SGSERI BASE POINTER                               00449000
+.*           AVRSVOL= VOLID IN VOL1 LABEL JUST READ                     00450000
+.* OUTPUTS-  SVC44 WILL ACTIVATE RECORDING TRANSIENTS TO                00451000
+.*                 OUTPUT THE REQUIRED RECORDS                          00452000
+.*                 THEY WILL ALSO UPDATE THE VOLID IN PUB2              00453000
+.* EXIT-     TO CALLER                                                  00454000
+.*                                                                      00455000
+.* REGISTERS-RF= ADDR OF VOLID FOR A NEWLY MOUNTED DEVICE               00456000
+.*           R1= ADDR OF PARAMETER LIST TO SVC44                        00457000
+.*                                                                      00458000
+.********************************************************************** 00459000
+         USING PUBADR,R3          PUB BASE POINTER             @D14BDAP 00460000
+         USING VCTEADR,R4         VCT ENTRY FOR THIS REQUEST   @D149DAP 00461000
+*        USING LINKREG,R8         LINK REGISTER                @D14BDAP 00462000
+         USING PBXADR,R9          PUBX BASE POINTER            @D28ADAP 00463000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D62NDAP 00464000
+*        USING PROCESS,RF         PROCESSING FUNCTION BASE     @D149DAP 00465000
+*SGLINK  AVRREC00,INPUT=(R3,R4,R8,R9,RC,RF),WORK=R1            @D28ADAP 00466000
+AVRREC00 DS    0H                 ENTRY POINT FOR NO NEW VOLID @D35VDEP 00467000
+         AGO   .SKIP080                                        @D28ADAP 00468000
+         LTR   RF,RF              GOOD VOLUME MOUNTED BEFORE   @D35VDEP 00469000
+         BZR   R8                 NO,  =====================>> @D35VDEP 00470000
+.SKIP080 ANOP                                                  @D28ADAP 00471000
+         CLI   PUBDEVTY,T3540     IS THIS A DISKETTE           @D14BDAP 00472000
+         BER   R8                 YES, =====================>> @D14BDAP 00473000
+         L     R1,RFTABAD         CHECK IF RMSR IS READY       @D14BDAP 00474000
+         USING RFTABLE,R1                                      @D35VDEP 00475000
+         TM    RFFLAGS1,RFREADY   IS SYSREC OPEN               @D35VDEP 00476000
+         BNOR  R8                 NO,  =====================>> @D35VDEP 00477000
+         DROP  R1                 RELEASE RFTABAD BASE         @D28ADAP 00478000
+         CLC   PBXSCH,XFFFF       IS THIS A VIRTUAL DEVICE     @D28ADAP 00479000
+         BER   R8                 YES, =====================>> @D28APAP 00480000
+         MVC   AVRRECID,VCTFDTYP  SAVE OS DEVICE TYPE CODE     @D35VDEP 00481000
+         CLI   VCTATYPE,VCTAFBA   IS THIS FBA DEVICE           @D51EDAP 00482000
+         BE    AVRREC10           YES                          @D51EDAP 00483000
+         MVC   AVRRECID,VCTCDCLS  SAVE OS DEVICE TYPE CODE     @D35VDEP 00484000
+AVRREC10 ST    R3,AVRRECPB        ADDR OF PUB FOR DEVICE       @D35VDEP 00485000
+         LA    R1,AVRRECPL        POINT TO SVC44 PARM LIST     @D35VDEP 00486000
+         MVI   AVRRECNM,C'B'      BYTE IS OVERLAYED BY SVC44   @D35VDEP 00487000
+         SVC   44                 DO RECORDING                 @D35VDEP 00488000
+         WAIT  (1)                                             @D35VDEP 00489000
+         BR    R8                 RETRN=====================>> @D51EDAP 00490000
+         DROP  R3                 RELEASE PUBADR BASE          @DA44841 00491000
+         DROP  R4                 RELEASE VCT-ENTRY BASE       @DA44841 00492000
+         DROP  R9                 RELEASE PUBXADR BASE         @D28ADAP 00493000
+         DROP  RC                 RELEASE SGSERI BASE          @D28ADAP 00494000
+         SPACE 1                                                        00495000
+         TITLE 'VSE SUPERVISOR     SGSER     MARK DUPLICATE VOLIDS    ' 00496000
+         USING VCTEADR,R4         VCT ENTRY FOR THIS REQUEST   @D149DAP 00497000
+*        USING LINKREG,R8         LINK REGISTER                @D14BDAP 00498000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D62NDAP 00499000
+*SGLINK  AVRDUPCH INPUT=(R4,RC,RE),WORK=(R1,RF)                @D28ADAP 00500000
+AVRDUPCH L     R1,AAVRTAB         POINT AT 1ST VCTE            @D61ADAP 00501000
+         LH    RF,AVRCOUNT        GET NO. OF ENTRIES           @D61ADAP 00502000
+         DROP  R4                 RELEASE PERM VCT-ENTRY BASE  @D28ADAP 00503000
+         USING VCTEADR,R1         TEMP VCT-ENTRY BASE          @D61ADAP 00504000
+AVRDUP10 CR    R1,R4              IS THIS OUR OWN ENTRY        @D61ADAP 00505000
+         BE    AVRDUP20           YES,                         @D61ADAP 00506000
+         TM    VCTAFLG,VCTAFOP+VCTARDY COULD DEVICE BE ACCESSED@D61ADAP 00507000
+         BNO   AVRDUP20           NO, LOOK AT NEXT ENTRY       @D61ADAP 00508000
+         CLC   VCTAVOL1,AVRSVOL   IS THIS A DUPLICATE VOLID    @D61ADAP 00509000
+         BNE   AVRDUP20           NO, SCAN NEXT ENTRY          @D61ADAP 00510000
+         CLC   VCTATYPE,VCTATYPE-VCTEADR(R4) SAME CLASS        @D61ADAP 00511000
+         BNE   AVRDUP20           NO, SCAN NEXT ENTRY          @D61ADAP 00512000
+         OI    VCTAPROC,VCTAPWTD  INITIATE VOL1 PROCESSING     @D61ADAP 00513000
+         OI    SERFLGPR,SERDORDY  INITIATE READY PROCESSING    @D61ADAP 00514000
+AVRDUP20 AH    R1,VCTELEN         BUMP TO NEXT ENTRY           @D61ADAP 00515000
+         BCT   RF,AVRDUP10        CHECK WHOLE TABLE            @D61ADAP 00516000
+         BR    RE                      ======================> @D61ADAP 00517000
+         DROP  R1                 RELEASE TEMP VCT-ENTRY BASE  @D61ADAP 00518000
+         DROP  RC                 RELEASE SGSERI BASE          @D62NDAP 00519000
+         SPACE 3                                                        00520000
+.********************************************************************** 00521000
+.*                                                                    * 00522000
+.* FUNCTION- LET SERVICE TASK KNOW A DEVICE BECAME READY              * 00523000
+.* ENTRY POINT- SERADD - CALLED BY IOINTER WHENEVER A DEVICE          * 00524000
+.*           (DASD OR TAPE) BECOMES READY.                            * 00525000
+.* INPUTS-   R3= ADDR OF PUB CAUSING INTERRUPT                        * 00526000
+.*           RC= BASE ADDRESS OF SGSERI                               * 00527000
+.*           RE= RETURN ADDRESS                                       * 00528000
+.* OUTPUTS-  NONE                                                     * 00529000
+.* REGISTERS-R4=ADDR OF VCTE ENTRY                                    * 00530000
+.*           R7=LINKAGE REG TO SUBROUTINES                            * 00531000
+.*           R8=WORK REGISTER                                         * 00532000
+.* SUBROUTNIES- AVRFVCTE - FIND VCT ENTRY FOR THIS DEVICE             * 00533000
+.*                                                                    * 00534000
+.********************************************************************** 00535000
+         USING PUBADR,R3          PUBADR BASE POINTER          @D28ADAP 00536000
+         USING DISP,R6            DISPATCHER BASE POINTER      @D61PDAP 00537000
+         USING SGSERI,RC          SGSERI BASE                  @D61PDAP 00538000
+*        USING LINKREG,RE                                               00539000
+*SGLINK  SERADD INPUT=(R3,R6,RC,RE),WORK=(R7,R8,RF)                     00540000
+SERADD   BAL   R7,SERACT          ACTIVATE SVT-TASK            @D35VDEP 00541000
+*SGLINK  SERACT,INPUT=(R6,R7,RC),WORK=(R8,RF)                  @D369DAP 00542000
+         L     R7,RQTFLPTR        GET A FREE REQUEST ENTRY     @D28ADAP 00543000
+         LTR   R7,R7              IS REQUEST ELEMENT AVAILABLE @D28ADAP 00544000
+         BZ    SERADD10           NO,                          @DBOC    00545000
+         USING RQTE,R7            REQUEST ELEMENT BASE         @D28ADAP 00546000
+         OI    SERFLGPR,SERRQTMV  INDICATE AVR SERVICE NEEDED  @D35VDEP 00547000
+         MVC   RQTFLPTR,RQTNEXT   DEQUEUE FROM FREE CHAIN      @DBOC    00548000
+         XC    RQTFLG(RQTOTAPE-RQTFLG),RQTFLG RESET OLD DATA   @D28ADAP 00549000
+         XC    RQTOTAPE(RQTEND-RQTOTAPE+RQTFLG),RQTOTAPE RESET @D28ADAP 00550000
+         MVI   RQTFLG,RQTREADY+RQTINUSE IND. READY PROCESSING  @DBOC    00551000
+         STH   R3,RQTPUB          SAVE PUB ADDRESS             @DBOC    00552000
+         LA    RF,SVTTID          OWN TIB                      @DBOC    00553000
+         STH   RF,RQTTID          SET OUR OWN TID              @DBOC    00554000
+         BR    RE                 RETRN=====================>> @D28ADAP 00555000
+         DROP  R7                 RELEASE RQT-ENTRY BASE       @D28ADAP 00556000
+         SPACE 1                                               @DBOC    00557000
+SERADD10 DS    0H'0'              NO RQTE-ENTRY FREE PROCESSING@DBOC    00558000
+         ST    R4,SERR4SV         SAVE REGISTER CONTENTS       @D28ADAP 00559000
+         BAL   R7,AVRFVCTE        FIND VCT-ENTRY               @D35VDEP 00560000
+*SGLINK  AVRFVCTE,INPUT=(R3,R7,RC),OUTPUT=R4,WORK=R8           @D369DAP 00561000
+         LTR   R4,R4              ENTRY FOUND                  @D35VDEP 00562000
+         BNP   SERADDEX           NO, VERY STRANGE             @DA38776 00563000
+         USING VCTEADR,R4         VCT ENTRY BASE               @D35VDEP 00564000
+         OI    SERFLGPR,SERDORDY  RE-INITIATE READY PROCESSING @DBOC    00565000
+         OI    VCTAPROC,VCTAPWTD  MARK ENTRY AS WORK-TO-DO     @D52VDAP 00566000
+         TM    VCTATYPE,VCTATAPE  IS THIS A TAPE DEVICE        @D61ADAP 00567000
+         BO    SERADDEX           YES                          @D61ADAP 00568000
+*HERE    WE MAY HAVE TO DELAY THE RESETTING TO AFTER VOL1-READ          00569000
+         NI    VCTAFLAG,XFF-VCTARSV RESET DEVICE RESERVED BIT  @D356DAP 00570000
+SERADDEX L     R4,SERR4SV         RESTORE REGISTER CONTENTS    @DA38776 00571000
+         DROP  R4                 RELEASE VCT-ENTRY BASE       @D35VDEP 00572000
+         BR    RE                 RETRN====================>>> @D35VDEP 00573000
+         SPACE 1                                               @D5IODAP 00574000
+SERR4SV  DC    A(0)               SAVE AREA FOR R4 (CHANQ)     @DA38776 00575000
+         SPACE 1                                               @D5IODAP 00576000
+         DROP  R3                 RELEASE PUBADR BASE                   00577000
+         DROP  R6                 RELEASE DISP BASE                     00578000
+         DROP  RC                 RELEASE SGSERI BASE                   00579000
+         TITLE 'VSE SUPERVISOR     SGSERI     ACTIVATE SERVICE TASK'    00580000
+.********************************************************************** 00581000
+.*                                                                      00582000
+.* FUNCTION- ACTIVATE SERVICE TASK                                      00583000
+.* ENTRY POINT- SERACT  USED BY ALL FUNCTIONS OF SERVICE TASK           00584000
+.*              L    RC,BASESERI  LOAD BASE REGISTER                    00585000
+.*              BAL  R7,SERACT-SGSERI(RC) INVOKE SUBROUTINE             00586000
+.* INPUTS-   RC= SGSERI BASE POINTER                                    00587000
+.*           R7= RETURN REGISTER                                        00588000
+.* OUTPUTS-  SERVICE TASK IS ACTIVATED                                  00589000
+.* REGISTERS-R8=ADDR OF SVTTIB                                          00590000
+.*                                                                      00591000
+.********************************************************************** 00592000
+         USING DISP,R6            DISP BASE POINTER                     00593000
+*        USING LINKREG,R7         LINK REGISTER                         00594000
+         USING SGSERI,RC          SGSERI BASE POINTER                   00595000
+*SGLINK  SERACT,INPUT=(R6,R7,RC),WORK=(R8,RF)                  @D52VDAP 00596000
+SERACT   L     R8,ASVTTIB         ADDRESS OF SVT TIB           @D14BDFR 00597000
+         USING TIBADR,R8          SVT TIB                      @D14BDFR 00598000
+         ST    RE,SERACTRE        SAVE CONTENTS OF RE          @D28ADAP 00599000
+         CLI   TIBRQID,SYSBND     SERVICE TASK INACTIVE        @D14BDFR 00600000
+         BE    SERACT10           YES, GET IT ACTIVATED        @D28ADAP 00601000
+         CLI   TIBRQID,WAITBND    IS SVT TASK I/O-BOUND        @D28ADAP 00602000
+         BNER  R7                 NO,  ======================> @D28ADAP 00603000
+         OI    SERWTDECB+2,TRABIT POST WORK-TO-DO ECB          @D28ADAP 00604000
+         BAL   RF,IOPOST1         MAKE SVT-TASK READY          @D28ADAP 00605000
+*SGLINK  IOPOST1,INPUT=(R6,R8,RF),WORK=RE                      @D28ADAP 00606000
+         B     SERACT20           RESTORE RE AND RETURN        @D28ADAP 00607000
+SERACT10 BAL   RF,POST            MAKE SERVICE TASK READY      @D14BDAP 00608000
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=RE                         @D14BDAP 00609000
+SERACT20 L     RE,SERACTRE        RESTORE CONTENTS OF RE       @D14BDAP 00610000
+         BR    R7                 RETRN====================>>> @D35VDEP 00611000
+         DROP  R8                 RELEASE TIB BASE             @D14BDAP 00612000
+         SPACE 1                                               @D5IODAP 00613000
+SERACTRE DC    A(0)               SAVE AREA FOR RE             @D14BDAP 00614000
+         SPACE 1                                               @D5IODAP 00615000
+         DROP  R6                 RELEASE DISP BASE            @D28ADAP 00616000
+         DROP  RC                 RELEASE SGSERI BASE          @D28ADAP 00617000
+         SPACE 3                                               @D5IODAP 00618000
+MODOPTN  DC    F'0'               OPTIONS SPECIFIED FOR MODVCE @D61NDAP 00619000
+SERFLGPR DC    X'0'               FLAGS FOR REQUEST TABLE      @D36IDAP 00620000
+SERDORDY EQU   X'80'              DEVICE READY PROCESSING      @D37DDAP 00621000
+SERRQTQR EQU   X'40'              QUIESCE RESUME WORK TO DO    @D51ODAP 00622000
+SERRQTMV EQU   X'20'              MODVCE PROCESSING            @D61ADAP 00623000
+SERRQTMS EQU   X'10'              MESSAGE FUNCTION REQUIRED    @D61PDAP 00624000
+SERUPSLD EQU   X'08'              SECOND LEVEL DIRECTORY CHANGE@D52VDAP 00625000
+SERRQTIX EQU   X'04'              IXFP PROCESS REQUEST         @D51ODAP 00626000
+*        EQU   X'02'              RESERVED                     @D51ODAP 00627000
+*        EQU   X'01'              RESERVED                     @D51ODAP 00628000
+SERFLGP1 DC    X'0'               RESERVED                     @D51ODAP 00629000
+         TITLE 'VSE SUPERVISOR     SGSERI     SERVICE TASK SUBROUTINES' 00630000
+.********************************************************************** 00631000
+.*                                                                      00632000
+.* FUNCTION- SEARCH FOR A VCT ENTRY FOR GIVEN DEVICE                    00633000
+.* ENTRY POINT-  AVRFVCTE - FROM AVRTSK,MODVCE,LNOAVR1,CUUAVR1          00634000
+.* INPUTS-   R3= ADDR OF PUB TO BE MATCHED IN VCTETAB                   00635000
+.*           R7= RETURN ADDRESS                                         00636000
+.*               VOLUME CHARACTERISTICS TABLE (VCTE)                    00637000
+.* OUTPUTS-  R4= ADDR OF VCTE    OR                                     00638000
+.*           R4= 0 IF NO VCTE ENTRY DOES EXIST                          00639000
+.* EXITS-        TO CALLER                                              00640000
+.* REGISTERS-R8= VCTE ENTRY NUMBER                                      00641000
+.* SUBROUTINES-  NONE                                                   00642000
+.*                                                                      00643000
+.********************************************************************** 00644000
+         USING PUBADR,R3          PUBADR BASE POINTER                   00645000
+*        USING LINKREG,R7         LINK REGISTER                         00646000
+         USING SGSERI,RC          SGSERI BASE POINTER                   00647000
+*SGLINK  AVRFVCTE,INPUT=(R3,R7,RC),OUTPUT=R4,WORK=R8           @D52VDAP 00648000
+AVRFVCTE L     R4,AAVRTAB         POINT AT FIRST VCT-ENTRY     @D35VDEP 00649000
+         USING VCTEADR,R4         VCT ENTRY                    @D35VDEP 00650000
+         LH    R8,AVRCOUNT        GET SIZE OF TABLE            @D35CDFG 00651000
+AVRFVCT1 CLM   R3,7,VCTAPUB+1     IS THIS VCTE FOR THIS PUB    @D35VDEP 00652000
+         BER   R7                 YES, =====================>> @D35VDEP 00653000
+         AH    R4,VCTELEN         BUMP TO NEXT VCT ENTRY       @D51EDAP 00654000
+         BCT   R8,AVRFVCT1        LOOP THRU WHOLE TABLE        @D35VDEP 00655000
+         SLR   R4,R4              INDICATE NO VCT-ENTRY FOUND  @D35VDEP 00656000
+         BR    R7                 ERR  =====================>> @D35VDEP 00657000
+         SPACE 1                                                        00658000
+         DROP  R4                 RELEASE VCTE BASE POINTER    @D35VDEP 00659000
+         TITLE 'VSE SUPERVISOR     SGSERI     SERVICE TASK SUBROUTINES' 00660000
+.********************************************************************** 00661000
+.*                                                                      00662000
+.* FUNCTION- SEARCH FOR A MATCHING VOLUME LABEL                         00663000
+.* ENTRY POINT-  AVRFVOL1 - FROM                                        00664000
+.* INPUTS-   R3= ADDRESS OF VOL1 LABEL THAT IS TO BE FOUND              00665000
+.*           R5= SNPVFLAG POINTER                                       00666000
+.*           R7= RETURN ADDRESS                                         00667000
+.*           RC= SGSERI BASE POINTER                                    00668000
+.* OUTPUTS-  R3= ADDR OF PUB     OR                                     00669000
+.*           R3= 0 IF NO VCTE ENTRY DOES EXIST                          00670000
+.*           R4= ADDR OF VCTE    OR                                     00671000
+.*           R4= 0 IF NO VCTE ENTRY DOES EXIST                          00672000
+.*           RF= 0 REQUEST HAS BEEN ACCEPTED                            00673000
+.*               4 NON-UNIQUE VOLID                                     00674000
+.*               8 VOLID NOT FOUND                                      00675000
+.* WORK-     R2= WORK REGISTER                                          00676000
+.*           R8= WORK REGISTER                                          00677000
+.* EXITS-        TO CALLER                                              00678000
+.* SUBROUTINES-  NONE                                                   00679000
+.*                                                                      00680000
+.********************************************************************** 00681000
+*        USING POINTER,R3         POINTER TO VOL1 LABEL        @D28ADAP 00682000
+         USING SNPVFLAG,R5        PARAMETER FLAG BASE POINTER  @D28ADAP 00683000
+*        USING LINKREG,R7         LINK REGISTER                @D28ADAP 00684000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00685000
+*SGLINK  AVRFVOL1,INPUT=(R3,R5,R6,R7,RC),OUTPUT=(R3,R4,RF)              00686000
+AVRFVOL1 DS    0H'0'              FIND DEVICE VIA VOLID        @D25IDAP 00687000
+         STM   RE,R1,AVRSAVRE     SAVE REGISTER CONTENTS       @D25IDAP 00688000
+         L     R4,AAVRTAB         POINT AT FIRST VCT-ENTRY     @D25IDAP 00689000
+         USING VCTEADR,R4         VCT ENTRY BASE               @D25IDAP 00690000
+         LH    R0,AVRCOUNT        GET NUMBER OF VCT-ENTRIES    @D25IDAP 00691000
+         SLR   R1,R1              CLEAR VCTE-SAFE POINTER      @D25IDAP 00692000
+         SLR   RF,RF              FORCE RETURN CODE ZERO       @D25IDAP 00693000
+AVRFVO10 CLC   VCTAVOL1,0(R3)     IS THIS THE RIGHT ENTRY      @D25IDAP 00694000
+         BNE   AVRFVO50           NO, KEEP GOING               @D25IDAP 00695000
+         CLI   VCTATYPE,VCTAECKD  IS THIS AN ECKD DEVICE       @D25IDAP 00696000
+         BNE   AVRFVO50           NO, NOT WHAT WE WANT         @D25IDAP 00697000
+         TM    VCTAFLG,VCTAFOP+VCTARDY IS DEVICE READY         @D25IDAP 00698000
+         BNO   AVRFVO50           NO, BUMP TO NEXT ENTRY       @D25IDAP 00699000
+         TM    VCTAFLAG,VCTACOPY  IS THIS A DUPLEX DEVICE      @D25IDAP 00700000
+         BO    AVRFVO50           YES, DONT USE IT             @D25IDAP 00701000
+         L     RE,VCTAPUB         LOAD PUB POINTER             @D28ADAP 00702000
+         USING PUBADR,RE          PUB BASE POINTER             @D28ADAP 00703000
+         TM    SNPVFLAG,SNPVOLDN  MUST VOLUME BE DOWN          @D28ADAP 00704000
+         BZ    AVRFVO20           NO, IT SHOULD BE DVCUP       @D28ADAP 00705000
+.*       DVCDN PROCESSING                                      @D28ADAP 00706000
+         TM    PUBJCFLG,PUBDVCUP  IS DEVICE UP                 @D28ADAP 00707000
+         BO    AVRFVO50           YES, BUT WE NEED A DOWN ONE  @D28ADAP 00708000
+         B     AVRFVO30           SAVE IT FOR NOW              @D28ADAP 00709000
+.*       DVCUP PROCESSING                                      @D28ADAP 00710000
+AVRFVO20 TM    PUBJCFLG,PUBDVCUP  IS DEVICE UP                 @D28ADAP 00711000
+         BNO   AVRFVO50           NO, ITS NOT WHAT WE NEED     @D28ADAP 00712000
+         DROP  RE                 RELEASE PUBADR BASE          @D28ADAP 00713000
+AVRFVO30 LTR   R1,R1              DID WE HAVE A MATCH BEFORE   @D28ADAP 00714000
+         BNZ   AVRFVO40           YES,                         @D28ADAP 00715000
+         LR    R1,R4              SAVE VCTE ADDRESS            @D25IDAP 00716000
+         B     AVRFVO50           CHECK NEXT DEVICE            @D25IDAP 00717000
+AVRFVO40 LA    RF,4               INDICATE NON-UNIQUE VOLID    @D25IDAP 00718000
+AVRFVO50 AH    R4,VCTELEN         BUMP TO NEXT VCT ENTRY       @D25IDAP 00719000
+         BCT   R0,AVRFVO10        LOOP THRU WHOLE TABLE        @D25IDAP 00720000
+         LTR   RF,RF              DID WE FIND A UNIQUE ENTRY   @D25IDAP 00721000
+         BNZ   AVRFVOX4           NO, VOLID IS NON-UNIQUE      @D25IDAP 00722000
+         LTR   R4,R1              DID WE FIND AN ENTRY         @D25IDAP 00723000
+         BZ    AVRFVOX8           NO, RETURN                   @D25IDAP 00724000
+         L     R3,VCTAPUB         LOAD PUB POINTER             @D25IDAP 00725000
+         USING PUBADR,R3          PUB BASE POINTER             @D28ADAP 00726000
+         LA    R3,0(R3)           CLEAR HIGH ORDER BYTE        @D25IDAP 00727000
+         B     AVRFVOXT           REURN TO CALLER              @D25IDAP 00728000
+AVRFVOX8 LA    RF,8               INDICATE VOLID NOT FOUND     @D25IDAP 00729000
+AVRFVOX4 SLR   R4,R4              INDICATE NO VCTE FOUND       @D25IDAP 00730000
+         SLR   R3,R3              INDICATE NO PUB  FOUND       @D25IDAP 00731000
+AVRFVOXT ST    RF,AVRSAVRE+4      PROVIDE RETURN CODE          @D28ADAP 00732000
+         LM    RE,R1,AVRSAVRE     SAVE REGISTER CONTENTS       @D28ADAP 00733000
+         BR    R7                 RETRN======================> @D25IDAP 00734000
+         SPACE 1                                               @D28ADAP 00735000
+AVRSAVRE DC    4F'0'              SAVE AREA                    @D28ADAP 00736000
+         DROP  R3                 RELEASE PUBADR BASE          @D28ADAP 00737000
+         DROP  R4                 RELEASE VCTE BASE POINTER    @D25IDAP 00738000
+         DROP  R5                 RELEASE SNPVFLAG BASE        @D28ADAP 00739000
+         DROP  RC                 RELEASE SGSERI BASE          @D25IDAP 00740000
+         SPACE 3                                               @D25IDAP 00741000
+.********************************************************************** 00742000
+.*                                                                      00743000
+.* FUNCTION- CALCULATE PUB ADDRESS FROM LOGICAL UNIT NUMBER             00744000
+.* ENTRY POINT- CALCPUB - FROM LNO PROCESSING AND                       00745000
+.*           FROM EXTENT SVC.                                           00746000
+.* INPUTS-   R3= LNO NUMBER                                             00747000
+.*           R7= RETURN ADDRESS                                         00748000
+.* OUTPUTS-  R3= PUB ADDRESS   OR                                       00749000
+.*               0        LUB ASSIGNED UA                               00750000
+.*               NEGATIVE LUB ASSIGNED IGNORE                           00751000
+.*           R4= LUB ADDRESS                                            00752000
+.* EXITS-    TO R7 LNO FIELD NOT VALID                                  00753000
+.*           TO R7+4 IF R3,R4 CONTAIN VALID OUTPUT                      00754000
+.*                                                                      00755000
+.********************************************************************** 00756000
+*        USING LNO-IN,R3          DEVID BASE POINTER           @D52VDAP 00757000
+*        USING LINKREG,R7         LINK REGISTER                @D28ADAP 00758000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00759000
+*SGLINK  CALCPUB,INPUT=(R3,R7,RC),OUTPUT=(R3,R4),WORK=R8       @DY45385 00760000
+CALCPUB  L     R8,PCBPTR          LOAD PCB BASE ADDRESS        @D51IDAP 00761000
+         USING PCBADR,R8          PCB BASE POINTER             @D51IDAP 00762000
+         L     R8,PCEPIB          PIB BASE ADDRESS             @D51IDAP 00763000
+         USING PIBADR,R8          PARTITION INFO BLOCK         @D36IDAP 00764000
+         LA    R4,X'FFF'          LOAD VALIDATION MASK         @DY45385 00765000
+         NR    R3,R4              TURN OFF ALL UNUSED BITS     @DY45385 00766000
+         LA    R4,X'7FF'          LOAD COMPARAND VALUE         @DY45385 00767000
+         CLR   R3,R4              IS THIS PHYSICAL ADDRESSING  @DY45385 00768000
+         BHR   R7                 YES, =====================>> @DY45385 00769000
+         LA    R4,X'01FF'         GET HIGHEST PROG.LUB NUMBER  @DY45385 00770000
+         NR    R3,R4              TURN OFF ALL UNUSED BITS     @DY45385 00771000
+         CLM   R3,B'1110',F1+1    IS IT A PROGR.LOGICAL UNIT   @DY45385 00772000
+         BL    CALCPUBS           NO ITS A SYSEM LOGICAL UNIT  @DY45385 00773000
+CALCPUBU LR    R4,R3              SAVE USERS REGISTER          @DY45385 00774000
+         ICM   R4,B'0010',H0      LEAVE PROGR.LUB NUMBER ONLY  @DY45385 00775000
+         CLM   R4,B'0001',PIBLUBNO IS LUB DEFINED              @DY45385 00776000
+         BNLR  R7                 NO,  =====================>> @DY45385 00777000
+         LR    R3,R4              SAVE PROG.LUB NUMBER         @DY45385 00778000
+         IC    R4,PIBLUBID        GET SYSTEM LUB NUMBER        @D35VDEP 00779000
+         AR    R3,R4              INDEX TO 1ST PROGR. LUB      @DY45385 00780000
+         B     CALCPUB2           JOIN MAIN LINE               @DY45385 00781000
+CALCPUBS LA    R4,LUBNO           GET NO OF SYSTEM LUBS        @DY45385 00782000
+         CLR   R3,R4              IS IT A VALID SYSTEM LUB     @DY45385 00783000
+         BNLR  R7                 NO,  =====================>> @D35VDEP 00784000
+CALCPUB2 LA    R4,0(R3,R3)        OFFSET WITHIN LUB TABLE      @DY45385 00785000
+         L     R8,PCBPTR          LOAD PCB BASE ADDRESS        @D51IDAP 00786000
+         USING PCBADR,R8          PCB BASE POINTER             @D51IDAP 00787000
+         A     R4,PCEALUB         GET ADDRESS OF LUB           @D51IDAP 00788000
+         ICM   R3,2,1(R4)         GET PUB INDEX HIGH ORDER BYTE@D35VDEP 00789000
+         BNM   CALCPUB3           DEVICE IS ASSIGNED           @D35VDEP 00790000
+         SLR   R3,R3              CLEAR REGISTER               @D51GDAP 00791000
+         CLI   0(R4),X'FE'        IS DEVICE AVAILABLE          @D35VDEP 00792000
+         BH    CALCPUB5           DEVICE IS UNASSGNED          @D35VDEP 00793000
+         BE    CALCPUB4           ASSIGNED IGNORE              @D35VDEP 00794000
+CALCPUB3 IC    R3,0(,R4)          GET PUB INDEX                @D35VDEP 00795000
+         SLL   R3,PUBSLEN         GET PUB DISP.                @D51ODGL 00796000
+         AH    R3,YPUBTAB         GET PUB ADDRESS              @D35VDEP 00797000
+         B     4(R7)              O.K. =====================>> @D35VDEP 00798000
+CALCPUB4 ICM   R3,8,H128+1        SET NEGATIVE VALUE           @D52VDAP 00799000
+         B     4(R7)              O.K. =====================>> @D35VDEP 00800000
+CALCPUB5 SLR   R3,R3              LOGICAL UNIT NOT ASSIGNED    @D35VDEP 00801000
+         B     4(R7)            4 O.K  =====================>> @D35VDEP 00802000
+         SPACE 1                                                        00803000
+         DROP  R8                 RELEASE PCB BASE             @D61ADAP 00804000
+         DROP  RC                 RELEASE SGSERI BASE          @D28ADAP 00805000
+         SPACE 3                                                        00806000
+.********************************************************************** 00807000
+.*                                                                      00808000
+.* FUNCTION- SEARCH FOR A PUB WITH MATCHING DEVICE ADDRESS              00809000
+.* ENTRY POINT-  AVRCUUT1                                               00810000
+.* INPUTS-   R2= ADDR OF HALFWORD CHANNEL ADDRESS (X'0CUU')             00811000
+.*           R7= RETURN ADDRESS                                         00812000
+.*               PUB TABLE                                              00813000
+.* OUTPUTS-  R3= ADDR OF PUB ENTRY                                      00814000
+.* EXITS-        TO R7 IF NO PUB FOUND                                  00815000
+.*               TO R7+4  PUB WAS FOUND                                 00816000
+.* REGISTERS-    NONE                                                   00817000
+.* SUBROUTINES-  NONE                                                   00818000
+.*                                                                      00819000
+.********************************************************************** 00820000
+*        USING CUU_ADDR,R2        INPUT REGISTER               @D28ADAP 00821000
+*        USING LINKREG,R7         LINK REGISTER                @D28ADAP 00822000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00823000
+*SGLINK  AVRCUUT1,INPUT=(R2,R7,RC),OUTPUT=R3                   @D21LDAP 00824000
+AVRCUUT1 DS    0H'0'              TRANSLATE CUU TO PUB ADDRESS @D35VDEP 00825000
+         LH    R3,YPUBTAB         GET ADDRESS OF 1ST PUB       @D35VDEP 00826000
+         USING PUBADR,R3                                       @D35VDEP 00827000
+AVRCUUT2 CLI   PUBCHANN,XFF       END OF PUB TABLE             @D35VDEP 00828000
+         BER   R7                 YES, =====================>> @D35VDEP 00829000
+         CLC   PUBCHANN(2),0(R2)  MATCHING CUU FOR THIS PUB    @D14BDAP 00830000
+         BE    4(R7)              YES, =====================>> @D35VDEP 00831000
+         LA    R3,NEXTPUB         NO, BUMP TO NEXT PUB         @D35VDEP 00832000
+         B     AVRCUUT2           CONTINUE SEARCH              @D35VDEP 00833000
+         SPACE 1                                                        00834000
+         DROP  R3                 DROP PUB BASE                @D35VDEP 00835000
+         DROP  RC                 RELEASE SGSERI BASE                   00836000
+.********************************************************************** 00837000
+.*                                                                      00838000
+.* FUNCTION- CHECK WHETHER PUB ENTRY IS FOR SAME CLASS AS               00839000
+.*           REQUESTED BY GETVCE/MODVCE                                 00840000
+.* ENTRY POINT- AVRCLTST - FROM LNOGIVEN, CUUGIVEN, MODVCE              00841000
+.* INPUTS-   R1+AVRIFLD-AVRIADR = BYTE CONTAINING CLASS IDENTIFICATION  00842000
+.*                         X'8X' CLASS=TAPE                             00843000
+.*                         X'0X  CLASS=DASD                             00844000
+.*                         X'FX  CLASS=ANY                              00845000
+.*           R3= ADDR OF PUB TO BE CHECKED                              00846000
+.*           R7= RETURN ADDR                                            00847000
+.* OUTPUTS-  NONE                                                       00848000
+.* EXITS-    R7 + 4 GIVEN CLASS CONSISTENT   WITH PUB DEVICE TYPE       00849000
+.*           R7 + 0 GIVEN CLASS INCONSISTENT WITH PUB DEVICE TYPE       00850000
+.* REGISTERS-NO REGISTERS CHANGED                                       00851000
+.* SUBROUTINES- NONE                                                    00852000
+.*                                                                      00853000
+.********************************************************************** 00854000
+         USING AVRIADR,R1         BASE FOR CLASS BYTE          @D21LDRP 00855000
+         USING PUBADR,R3          BASE FOR PUB                 @D21LDRP 00856000
+*        USING LINKREG,R7         LINK REGISTER                @D28ADAP 00857000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00858000
+*SGLINK  AVRCLTST,INPUT=(R1,R3,R7,RC)                                   00859000
+AVRCLTST DS    0H                                              @D21LDRP 00860000
+         TM    AVRIFLG,AVRIANY    IS SPECIFIC CLASS REQUESTED  @D21LDRP 00861000
+         BO    4(R7)              NO,  ======================> @D21LDRP 00862000
+         CLI   PUBDEVTY,TTAPE     IS THIS A TAPE DEVICE        @D21LDRP 00863000
+         BL    AVRCLT10           NO,                          @D21LDRP 00864000
+         CLI   PUBDEVTY,TTAPE+X0F SURE ITS A TAPE              @D21LDRP 00865000
+         BH    AVRCLT10           NO, IT IS NOT A TAPE         @D21LDRP 00866000
+         TM    AVRIFLG,AVRITAPE   DID USER ASK FOR TAPE DEVICE @D21LDRP 00867000
+         BO    4(R7)              YES, ======================> @D21LDRP 00868000
+         BR    R7                 NO,  ======================> @D21LDRP 00869000
+.*       PUB IS NOT FOR TAPE, CHECK FOR DASD NOW               @D21LDRP 00870000
+AVRCLT10 DS    0H                                              @D21LDRP 00871000
+         TM    AVRIFLG,AVRIANY-AVRIDASD CLASS OTHER THAN DASD  @D21LDRP 00872000
+         BZ    4(R7)              NO,  ======================> @D21LDRP 00873000
+         BR    R7                 YES, ======================> @D21LDRP 00874000
+         SPACE 1                                                        00875000
+         DROP  R1                 RELEASE BASE FOR CLASS BYTE  @D21LDRP 00876000
+         DROP  R3                 RELEASE BASE FOR PUB         @D21LDRP 00877000
+         DROP  RC                 RELEASE SGSERI BASE                   00878000
+         SPACE 3                                               @D35VDAP 00879000
+.********************************************************************** 00880000
+.*                                                                      00881000
+.* FUNCTION     ISSUE SPECIAL MESSAGES ONTO SYSLOG                      00882000
+.* ENTRY POINT  AVRMSGRT  FROM SGSER                                    00883000
+.*                                                                      00884000
+.* INPUT        AVRMSINF FIELD CONTAINING MESSAGE INFORMATION           00885000
+.*              R7= RETURN ADDRESS                                      00886000
+.* OUTPUT       MESSAGE PRINTED ON SYSLOG DEVICE                        00887000
+.* EXIT         TO R7                                                   00888000
+.*                                                                      00889000
+.********************************************************************** 00890000
+*        USING LINKREG,R7         LINK REGISTER                @D28ADAP 00891000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00892000
+         USING VCTEADR,R4         AVR-ENTRY BASE POINTER       @D31..AP 00893000
+*SGLINK  AVRMSGRT INPUT=(R4,R7,RC),WORK=RE                              00894000
+AVRMSGRT DS    0H'0'                                           @D61ADAP 00895000
+         OC    AVRMSINF(2),AVRMSINF ANY MESSAGE TO BE SUPPLIED @D31..AP 00896000
+         BZR   R7                 NO,  =====================>> @D31..AP 00897000
+         AIF   (&BGDEBUG).YDBG010                              @D61ADAP 00898000
+         TM    SYSFLAG2,IPLBIT    IS IPL IN PROCESS            @D31..AP 00899000
+         BZ    AVRMSG10           NO,                          @DA44364 00900000
+         CLI   AVRMSINF+1,AVRFFDX1 ANY DEVICE ERROR CONDITION  @DA44364 00901000
+         BLR   R7                 NO,  =====================>> @DA44364 00902000
+         CLI   AVRMSINF+1,AVRFMIRF SURE ITS AN ERROR CONDITION @DA44364 00903000
+         BHR   R7                 NO,  =====================>> @DA44364 00904000
+         MVI   AVRMSINF,0         CLEAR SUBSYSTEM INFO         @DA44364 00905000
+.YDBG010 ANOP                                                  @D61ADAP 00906000
+AVRMSG10 L     RE,AAVRMSGP        PRINT ROUTINE BASE ADDRESS   @DA44201 00907000
+         USING AVRMSGPR,RE        SET MESSAGE ROUTINE BASE     @DA44201 00908000
+         SLR   R1,R1              INDICATE FIRST TIME TROUGH   @D52VDAP 00909000
+         B     AVRMSGPR           PRINT STATUS MESSAGE         @D31..AP 00910000
+         DROP  RE                 RELEASE AVRMSGPR BASE POINTER@DA44201 00911000
+         SPACE 1                                                        00912000
+         DROP  R4                 RELEASE VCTENTRY BASE        @D28ADAP 00913000
+         DROP  RC                 RELEASE SGSERI BASE          @D28ADAP 00914000
+         EJECT ,                                                        00915000
+         USING PUBADR,R3          USING PUBADR BASE            @D28ADAP 00916000
+*        USING LINKREG,R8         LINK REGISTER                @D28ADAP 00917000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00918000
+*SGLINK  AVRGPUBX,INPUT=(R3,R8,RC),OUTPUT=R9                   @D52VDAP 00919000
+AVRGPUBX LR    R9,R3              COPY PUB POINTER             @D52VDAP 00920000
+         SH    R9,YPUBTAB         OFFSET IN PUB TABLE          @D52VDAP 00921000
+         SRL   R9,PUBSLEN-PBXISLEN OFFS. IN PUBX ADDRESS TABLE @D52VDAP 00922000
+         A     R9,APBXAREA        ADDRESS OF PUBX ADDRESS      @D52VDAP 00923000
+         L     R9,0(,R9)          PUBX ADDRESS                 @D52VDAP 00924000
+         USING PBXADR,R9          PUBXADR BASE POINTER                  00925000
+         BR    R8                      =====================>> @D52VDAP 00926000
+         SPACE 1                                                        00927000
+         DROP  R3                                              @D28ADAP 00928000
+         DROP  R9                 RELEASE PBXADR BASE          @D28ADAP 00929000
+         DROP  RC                 RELEASE SGSERI BASE          @D28ADAP 00930000
+         SPACE 3                                               @D52VDAP 00931000
+         USING RQTE,R2            RQT-ENTRY BASE               @D28ADAP 00932000
+*        USING LINKREG,R8         LINK REGISTER                @D28ADAP 00933000
+         USING PBXADR,R9          PUBX BASE POINTER            @D52VDAP 00934000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00935000
+*SGLINK  AVRUPUBX,INPUT=(R2,R8,R9,RC),WORK=R5                  @D28ADAP 00936000
+AVRUPUBX DS    0H'0'              SENSE ID VALID               @D52VDAP 00937000
+         LA    R5,SIDAREA         POINT TO SNSID AREA          @DBOC    00938000
+         TM    PBXFLAG,PBXTAPE    IS THIS A TAPE DEVICE        @DBOC    00939000
+         BZ    AVRUPX05           NO                           @DBOC    00940000
+         LA    R5,RQTSNID         POINT TO SNSID AREA          @DBOC    00941000
+AVRUPX05 CLI   0(R5),XFF          SENSE ID VALID               @DBOC    00942000
+         BNE   0(R8)              NO,  =====================>> @D52VDAP 00943000
+         MVC   PBXSNSID(7),0(R5)  UPDATE SENSE ID INFORMATION  @DBOC    00944000
+         LA    R5,SIDXTENT        POINT TO COMMAND INFO WORD   @DBOC    00945000
+         TM    PBXFLAG,PBXTAPE    IS THIS A TAPE DEVICE        @DBOC    00946000
+         BZ    AVRUPX10           NO                           @DBOC    00947000
+         LA    R5,RQTXTENT        POINT TO COMMAND INFO WORD   @D52VDAP 00948000
+         DROP  R2                 RELEASE RQTE BASE            @DBOC    00949000
+AVRUPX10 TM    0(R5),X'40'        IS THIS A CIW                @D52VDAP 00950000
+         BZ    4(R8)              NO,  =====================>> @D52VDAP 00951000
+         TM    0(R5),X'BF'        IS THIS A RCD CIW            @D52VDAP 00952000
+         BNZ   AVRUPX30           NO                           @D52VDAP 00953000
+         CLI   PBXRCDCC,XFF       INITIAL VALUE                @D52VDAP 00954000
+         BE    AVRUPX20           YES,                         @D52VDAP 00955000
+         CLC   PBXRCDCC(1),1(R5)  IS THE COMMAND CODE THE SAME @D52BDAP 00956000
+         B     8(R8)                   ======================> @D52VDAP 00957000
+AVRUPX20 MVC   PBXRCDCC(3),1(R5)  SAVE RCD COMMAND AND LENGTH  @D52BDAP 00958000
+         B     8(R8)                   ======================> @D52VDAP 00959000
+AVRUPX30 LA    R5,4(,R5)          POINT TO NEXT CIW            @D52VDAP 00960000
+         CLI   0(R5),ZERO         ANY MORE ENTRIES             @DBOC    00961000
+         BNE   AVRUPX10           YES, CHECK NEXT ENTRY        @DBOC    00962000
+         B     4(R8)                    =====================> @D52VDAP 00963000
+         SPACE 1                                                        00964000
+         DROP  R9                 RELEASE PUBX BASE POINTER    @D52VDAP 00965000
+         DROP  RC                 RELEASE SGSERI BASE          @D28ADAP 00966000
+         EJECT ,                                                        00967000
+*        USING LINKREG,R8         LINK REGISTER                @D28ADAP 00968000
+         USING PBXADR,R9          PUBX BASE POINTER            @D52VDAP 00969000
+         USING SGSERI,RC          SGSERI BASE POINTER          @D28ADAP 00970000
+*SGLINK  AVRUMDR INPUT=(R8,R9,RC),WORK=R1                      @D28ADAP 00971000
+AVRUMDR  MVC   SNSIDTBL(3),PBXDVTYP FORCE A TABLE MATCH        @D21IDAP 00972000
+         LA    R1,SNSIDTBB        POINT TO SENSE ID TABLE      @D21IDAP 00973000
+AVRUMDR4 CLC   0(3,R1),PBXDVTYP   IS THIS A MATCHING ID        @D21IDAP 00974000
+         BNE   AVRUMDR8           NO                           @D21IDAP 00975000
+         MVC   PBXMDR(1),3(R1)    UPDATE PUBX ENTRY            @D21IDAP 00976000
+         BR    R8                      =====================>> @D21IDAP 00977000
+AVRUMDR8 LA    R1,L'SNSIDTBL(,R1) POINT TO NEXT ENTRY          @D21IDAP 00978000
+         B     AVRUMDR4           POINT TO NEXT ENTRY          @D21IDAP 00979000
+         SPACE 1                                                        00980000
+         DROP  R9                 RELEASE PUBX BASE POINTER    @D21IDAP 00981000
+         DROP  RC                 RELEASE SGSERI BASE          @D21IDAP 00982000
+         EJECT ,                                                        00983000
+***************************************************************@D25IDAP 00984000
+* FUNCTION: NEW BAKR INTERFACE FOR SECTOR CALCULATION.        *@D25IDAP 00985000
+* ON ENTRY:                                                   *@D25IDAP 00986000
+*   R0 = DATALNG/KEYLNG/RECORDNR                              *@D25IDAP 00987000
+*   R1 = LOGICAL UNIT FIELD (AS USED IN CCB)                  *@D25IDAP 00988000
+* ON EXIT TO RE:                                              *@D25IDAP 00989000
+*   R0 = SECTOR VALUE OR XFF                                  *@D25IDAP 00990000
+***************************************************************@D25IDAP 00991000
+*SGLINK  BAMSECT,INPUT=(R0,R1)                                 @D25IDAP 00992000
+BAMSECT  DS    0H'0'              ENTRY POINT                  @D25IDAP 00993000
+         BASSM RD,0               ROUTINE BASE ADDRESS         @D25IDAP 00994000
+         USING BAMSE010,RD        ROUTINE BASE POINTER         @D25IDAP 00995000
+BAMSE010 DS    0H'0'                                           @D25IDAP 00996000
+         L     R6,DISPAD          DISPATCHER BASE              @D25IDAP 00997000
+         USING DISP,R6            DISP    BASE POINTER         @D25IDAP 00998000
+         L     RC,BASESERI        SGSERI BASE ADDRESS          @D25IDAP 00999000
+         USING SGSERI,RC          SGSERI BASE                  @D25IDAP 01000000
+         LR    R3,R1              COPY LNO INFORMATION         @D25IDAP 01001000
+         ICM   R3,B'1100',H0      CLEAR UNUSED DATA            @D25IDAP 01002000
+         BAL   R7,CALCPUB         FIND PUB ADDRESS             @D25IDAP 01003000
+*SGLINK  CALCPUB,INPUT=(R3,R6,R7,RC),OUTPUT=(R3,R4),WORK=R8    @D25IDAP 01004000
+         B     BAMSECFF         0 ERROR                        @D25IDAP 01005000
+         BAL   R7,AVRFVCTE      4 FIND RELATED VCT ENTRY       @D25IDAP 01006000
+*SGLINK  AVRFVCTE,INPUT=(R3,R7,RC),OUTPUT=R4,WORK=R8           @D25IDAP 01007000
+         LTR   R4,R4              WE FOUND THE VCT-ENTRY       @D25IDAP 01008000
+         BZ    BAMSECFF           NO,                          @D25IDAP 01009000
+         USING VCTEADR,R4         VCT-ENTRY BASE               @D25IDAP 01010000
+         SLR   R1,R1              CLEAR REGISTER               @D25IDAP 01011000
+         SLR   R8,R8              CLEAR REGISTER               @D25IDAP 01012000
+         CLI   VCTCFORM,X'02'     FORMULAR-2 TO BE USED        @D25IDAP 01013000
+         BNE   BAMSE020           NO, ASSUME FORMULAR-1        @D25IDAP 01014000
+.*                                                             @D25IDAP 01015000
+.*       CALCULATE AMOUNT OF SPACE OCCUPIED BY ONE RECORD      @D25IDAP 01016000
+.*                                                             @D25IDAP 01017000
+         IC    R1,VCTCCF5         (DATA BYTES/SUB BLOCK)/2 (F5)@D25IDAP 01018000
+         AR    R1,R1              SUB-BLOCK SIZE  (2*F5)       @D25IDAP 01019000
+         LR    R9,R0              COPY INPUT DATA              @D25IDAP 01020000
+         SRL   R9,16              LEAVE DATA LENGTH ONLY       @D25IDAP 01021000
+         IC    R8,VCTCCF6         BLOCK CHECK+CRC BYTES (F6)   @D25IDAP 01022000
+         ALR   R9,R8              DL+F6                        @D25IDAP 01023000
+         LR    R7,R9              SAVE DL+F6 FOR LATER USE     @D25IDAP 01024000
+         ALR   R9,R1              ADD BYTES FOR SUB-BLOCK      @D25IDAP 01025000
+         BCTR  R9,0               ADJ. FOR NEXT HIHEST INTEGER @D25IDAP 01026000
+         SLR   R8,R8              CLEAR REGISTER               @D25IDAP 01027000
+         DR    R8,R1              SUB-BLOCKS FOR DATA-RECORD   @D25IDAP 01028000
+         SLR   R1,R1              CLEAR REGISTER               @D25IDAP 01029000
+         IC    R1,VCTCCF4         CHECK BYTES PER SUB-BLOCK    @D25IDAP 01030000
+         MR    R8,R1              TOTAL CHECK BYTES/DATA-RECORD@D25IDAP 01031000
+         ALR   R7,R9              TOTAL BYTES PER DATA-RECORD  @D25IDAP 01032000
+         SLR   R9,R9              CLEAR REGISTER               @D25IDAP 01033000
+         IC    R9,VCTCCF2         DATA-RECORD GAP IN CELLS     @D25IDAP 01034000
+         IC    R1,VCTCCF1         NUMBER OF BYTES/CELL         @D25IDAP 01035000
+         MR    R8,R1              GAP SIZE (F1*F2) IN BYTES    @D25IDAP 01036000
+         ALR   R7,R9              TOTAL BYTES/DATA-RECORD      @D25IDAP 01037000
+         LR    R9,R7              COPY BYTES PER DATA-RECORD   @D25IDAP 01038000
+         ALR   R9,R1              ADD BYTES PER CELL           @D25IDAP 01039000
+         BCTR  R9,0               ADJUST FOR SMALLER INTEGER   @D25IDAP 01040000
+         DR    R8,R1              HIGH INTEGER CELL/DATA-RECORD@D25IDAP 01041000
+         MR    R8,R1              REAL BYTES USED/KEY-RECORD   @D25IDAP 01042000
+         LR    R9,R0              COPY INPUT DATA              @D25IDAP 01043000
+         ICM   R9,B'1100',H0      CLEAR DATA LENGTH            @D25IDAP 01044000
+         SRL   R9,8               LEAVE KEY LENGTH ONLY        @D25IDAP 01045000
+         LTR   R9,R9              IS THIS KEYED RECORD         @D25IDAP 01046000
+         BZ    BAMSE050           UNKEYED RECORDS              @D25IDAP 01047000
+         IC    R1,VCTCCF5         (DATA BYTES/SUB BLOCK)/2 (F5)@D25IDAP 01048000
+         AR    R1,R1              SUB-BLOCK SIZE  (2*F5)       @D25IDAP 01049000
+         IC    R8,VCTCCF6         BLOCK CHECK+CRC BYTES (F6)   @D25IDAP 01050000
+         ALR   R9,R8              KL+F6                        @D25IDAP 01051000
+         LR    R5,R9              SAVE KL+F6 FOR LATER USE     @D25IDAP 01052000
+         ALR   R9,R1              ADD BYTES FOR SUB-BLOCK      @D25IDAP 01053000
+         BCTR  R9,0               ADJ. FOR NEXT HIHEST INTEGER @D25IDAP 01054000
+         DR    R8,R1              SUB-BLOCKS FOR KEY-DATA      @D25IDAP 01055000
+         SLR   R1,R1              CLEAR REGISTER               @D25IDAP 01056000
+         IC    R1,VCTCCF4         CHECK BYTES PER SUB-BLOCK    @D25IDAP 01057000
+         MR    R8,R1              TOTAL CHECK BYTES/KEY FIELD  @D25IDAP 01058000
+         ALR   R5,R9              TOTAL BYTES PER KEY FIELD    @D25IDAP 01059000
+         SLR   R9,R9              CLEAR REGISTER               @D25IDAP 01060000
+         IC    R9,VCTCCF3         KEY GAP IN CELLS             @D25IDAP 01061000
+         IC    R1,VCTCCF1         NUMBER OF BYTES/CELL         @D25IDAP 01062000
+         MR    R8,R1              GAP SIZE (F1*F3) IN BYTES    @D25IDAP 01063000
+         ALR   R5,R9              TOT. NO. OF BYTES/KEY FIELD  @D25IDAP 01064000
+         LR    R9,R5              COPY BYTES PER KEY           @D25IDAP 01065000
+         ALR   R9,R1              ADD BYTES PER CELL           @D25IDAP 01066000
+         BCTR  R9,0               ADJUST FOR SMALLER INTEGER   @D25IDAP 01067000
+         DR    R8,R1              HI.INTEGER OF CELL/KEY FIELD @D25IDAP 01068000
+         MR    R8,R1              REAL BYTES USED PER KEY      @D25IDAP 01069000
+         AR    R7,R9              BYTES FOR COMPLETE RECORD    @D25IDAP 01070000
+         B     BAMSE050                                        @D25IDAP 01071000
+BAMSE020 CLI   VCTCFORM,X'01'     FORMULAR 1 TO BE USED        @D25IDAP 01072000
+         BNE   BAMSECFF           NO, VERY STRANGE             @D25IDAP 01073000
+         LR    R9,R0              COPY INPUT DATA              @D25IDAP 01074000
+         SRL   R9,16              LEAVE DATA LENGTH ONLY       @D25IDAP 01075000
+         AH    R9,VCTCCF23        ADD RECORD OVERHEAD          @D25IDAP 01076000
+         IC    R1,VCTCCF1         NUMBER OF BYTES/CELL         @D25IDAP 01077000
+         ALR   R9,R1              ADD BYTES/CELL               @D25IDAP 01078000
+         BCTR  R9,0               ADJUST FOR INTEGER CALC.     @D25IDAP 01079000
+         DR    R8,R1              CELLS PER DATA-FIELD         @D25IDAP 01080000
+         MR    R8,R1              TOTAL BYTES FOR DATA-RECORD  @D25IDAP 01081000
+         LR    R7,R9              SAVE LENGTH OF DATA RECORD   @D25IDAP 01082000
+         LR    R9,R0              COPY INPUT DATA              @D25IDAP 01083000
+         ICM   R9,B'1100',H0      CLEAR DATA LENGTH            @D25IDAP 01084000
+         SRL   R9,8               LEAVE KEY LENGTH ONLY        @D25IDAP 01085000
+         LTR   R9,R9              IS THIS KEYED RECORD         @D25IDAP 01086000
+         BZ    BAMSE050           UNKEYED RECORDS              @D25IDAP 01087000
+         AH    R9,VCTCCF45        ADD KEY OVERHEAD             @D25IDAP 01088000
+         ALR   R9,R1              ADD BYTES/CELL               @D25IDAP 01089000
+         BCTR  R9,0               ADJUST FOR INTEGER CALC.     @D25IDAP 01090000
+         SLR   R8,R8              CLEAR REGISTER               @D25IDAP 01091000
+         DR    R8,R1              CELLS PER KEY-FIELD          @D25IDAP 01092000
+         MR    R8,R1              TOTAL BYTES FOR KEY-RECORD   @D25IDAP 01093000
+         LR    R5,R9              SAVE BYTES FOR KEY-FIELD     @D25IDAP 01094000
+         AR    R7,R5              BYTES FOR COMPLETE RECORD    @D25IDAP 01095000
+BAMSE050 DS    0H'0'              R7=TOTAL BYTES PER RECORD    @D25IDAP 01096000
+         LR    R1,R0              SAVE INPUT DATA              @D25IDAP 01097000
+         SLR   R8,R8              CLEAR REGISTER               @D25IDAP 01098000
+         SLR   R0,R0              SET SECTOR VALUE TO ZERO     @D25IDAP 01099000
+         ICM   R1,B'1110',F0      CLEAR UNUSED BYTES           @D25IDAP 01100000
+         LTR   R1,R1              IS RECORD NUMBER 0           @D25IDAP 01101000
+         BZ    BAMSECXT           IF RECORD NUMBER IS ZERO     @D25IDAP 01102000
+         BCTR  R1,0               RECORDS ALREADY PROCESSED    @D25IDAP 01103000
+         LR    R9,R7              COPY TOTAL BYTES PER RECORD  @D25IDAP 01104000
+         MR    R8,R1              BYTES ALREADY USED ON TRACK  @D25IDAP 01105000
+         LR    R5,R9              SAVE BYTE COUNT              @D25IDAP 01106000
+         IC    R1,VCTCCF7         GET HALF OF RECORD-0 OVERHEAD@D25IDAP 01107000
+         AR    R1,R1              REAL R0 GAP BYTES            @D25IDAP 01108000
+         AH    R1,VCTCHAR0        ADD HA+R0 BYTES              @D25IDAP 01109000
+         ALR   R1,R5              BYTES OCCUPIED ON TRACK      @D25IDAP 01110000
+         SLR   R9,R9              CLEAR REGISTER               @D25IDAP 01111000
+         SLR   R5,R5              CLEAR REGISTER               @D25IDAP 01112000
+         IC    R5,VCTCCF1         GET BYTES/CELL               @D25IDAP 01113000
+         IC    R9,VCTCCF8         GET CELLS PER SECTOR         @D25IDAP 01114000
+         LTR   R9,R9              IS THAT VALUE KNOWN          @D25IDAP 01115000
+         BNZ   BAMSE060           YES,                         @D25IDAP 01116000
+         ICM   R9,7,VCTCBTRK      GET BYTES PER TRACK          @D25IDAP 01117000
+         AH    R9,VCTCHAR0        ADD HA AND R0 LENGTH         @D25IDAP 01118000
+         AR    R9,R5              ADD BYTES PER CELL           @D25IDAP 01119000
+         BCTR  R9,0               PREPARE FOR NEXT HIGH.INTEGER@D25IDAP 01120000
+         SLR   R8,R8              CLEAR REGISTER               @D25IDAP 01121000
+         DR    R8,R5              NUMBER OF CELLS PER TRACK    @D25IDAP 01122000
+         IC    R5,VCTCSECT        GET SECTORS PER TRACK        @D25IDAP 01123000
+         SLR   R8,R8              CLEAR REGISTER               @D25IDAP 01124000
+         AR    R9,R5              ADD NUMBER OF SECTORS        @D25IDAP 01125000
+         BCTR  R9,0               PREPARE FOR NEXT HIGH.INTEGER@D25IDAP 01126000
+         DR    R8,R5              CELLS PER SECTOR             @D25IDAP 01127000
+         SLR   R5,R5              CLEAR REGISTER               @D25IDAP 01128000
+         IC    R5,VCTCCF1         GET BYTES/CELL               @D25IDAP 01129000
+BAMSE060 MR    R8,R5              BYTES PER SECTOR             @D25IDAP 01130000
+         DR    R0,R9              CALCULATE SECTOR NUMBER      @D25IDAP 01131000
+         LR    R0,R1              COPY SECTOR VALUE            @D25IDAP 01132000
+         SLR   R1,R1              CLEAR REGISTER               @D25IDAP 01133000
+         IC    R1,VCTCSECT        GET SECTORS PER TRACK        @D25IDAP 01134000
+         CLR   R0,R1              IS CALCULATED VALUE CORRECT  @D25IDAP 01135000
+         BNH   BAMSECXT           NO, LET IT GO                @D25IDAP 01136000
+BAMSECFF LA    R0,XFF             SET SECTOR TO FF             @D25IDAP 01137000
+BAMSECXT EREG  R1,R1              RESTORE R1 CONTENTS          @D25IDAP 01138000
+         PR                       RETURN===================>>> @D25IDAP 01139000
+         DROP  R4                 RELEASE VCTEADR BASE         @D25IDAP 01140000
+         DROP  R6                 RELEASE DISP    BASE         @D25IDAP 01141000
+         DROP  RC                 RELEASE SGSERI  BASE         @D25IDAP 01142000
+         DROP  RD                 RELEASE ROUTINE BASE         @D25IDAP 01143000
+         EJECT ,                                                        01144000
+SNSIDTBB DC    X'0671002A'        0671 FBA                     @D21UZAP 01145000
+         DC    X'0671012A'        0671 FBA                     @D21UZAP 01146000
+         DC    X'0671042A'        0671 FBA                     @D21UZAP 01147000
+         DC    X'0671082A'        0671 FBA                     @D21UZAP 01148000
+         DC    X'0675002C'        0675 FBA                     @D31DMAP 01149000
+         DC    X'0675042C'        0675 FBA                     @D31DMAP 01150000
+         DC    X'0675082C'        0675 FBA                     @D31DMAP 01151000
+         DC    X'33100016'        3310 FBA                     @D21IDAP 01152000
+         DC    X'33700017'        3370 FBA                     @D21IDAP 01153000
+         DC    X'3370041A'        3370 FBA                     @D21IDAP 01154000
+         DC    X'9332001E'        9332 FBA                     @D21IDAP 01155000
+         DC    X'9332011E'        9332 FBA                     @D21LDAP 01156000
+         DC    X'9335011D'        9335 FBA                     @D21IDAP 01157000
+         DC    X'9336002B'        9336 FBA                     @D31CMAP 01158000
+         DC    X'9336042B'        9336 FBA                     @D31CMAP 01159000
+         DC    X'9336082B'        9336 FBA                     @D31CMAP 01160000
+         DC    X'9336102B'        9336 FBA                     @D31CMAP 01161000
+         DC    X'9336142B'        9336 FBA                     @D31CMAP 01162000
+         DC    X'9336182B'        9336 FBA                     @D31CMAP 01163000
+SNSIDDCP DC    X'00005000'        DUAL COPY SIMPLEX MODE       @D31ODAP 01164000
+SNSIDTBL DC    X'00000016'        3310 DEFAULT ENTRY FOR FBA   @D21IDAP 01165000
+         TITLE 'VSE SUPERVISOR     SGSERI     SVT CONSTANTS AND AREAS'  01166000
+         SPACE 1                                               @D52VDAP 01167000
+         AIF   (NOT &VSE270).N270020                           @DY46120 01168000
+AVRTCCW0 CCW   X'C2',RQTMESN-RQTE,SLI,L'RQTMESN     MESN       @DY46120 01169000
+.N270020 ANOP                                                  @DY46120 01170000
+AVRTCCW1 CCW   RDC,RQTRDC-RQTE,CC+SLI,L'RQTRDC      RDC        @DBOC    01171000
+         CCW   SNSID,RQTSNID-RQTE,CC+SLI,L'RQTSNID  SNSID      @DBOC    01172000
+AVRTCCW2 CCW   NOP,RQTSNSDT-RQTE,CC+SLI,1           NOP        @DBOC    01173000
+         CCW   SNS,RQTSNSDT-RQTE,SLI,L'RQTSNSDT     SNS        @DBOC    01174000
+         SPACE 1                                               @DBOC    01175000
+AVRTCCW3 CCW   RDCOM,RQTVOL1-RQTE,CC+SLI,L'RQTVOL1  RD VOL1    @DBOC    01176000
+AVRTCCW4 CCW   X'07',RQTSNSDT-RQTE,SLI,1            REW        @DBOC    01177000
+         SPACE 1                                               @DBOC    01178000
+AVRTCCW5 CCW   X'9F',RQTTMSGP-RQTE,SLI,17           LDSP       @DBOC    01179000
+         SPACE 1                                               @DBOC    01180000
+AVRTCCW6 CCW   X'77',RQTACBUF-RQTE,SLI,L'RQTACBUF   ACC        @DBOC    01181000
+         SPACE 1                                               @DBOC    01182000
+AVRTCCW7 CCW   X'0F',RQTSNSDT-RQTE,SLI,1            UNL        @DBOC    01183000
+         SPACE 1                                               @DBOC    01184000
+AVRTCCW8 CCW   X'B7',RQTZAREA-RQTE,SLI,L'RQTZAREA   ASSGN      @DBOC    01185000
+         SPACE 1                                               @DBOC    01186000
+AVRTCCW9 CCW   X'C7',RQTZAREA-RQTE,SLI,L'RQTZAREA   UNASSGN    @DBOC    01187000
+         SPACE 1                                               @DBOC    01188000
+AVRTCCWA CCW   X'CB',RQTDCPGE-RQTE,SLI,L'RQTDCPGE   MS         @DBOC    01189000
+         SPACE 1                                               @DBOC    01190000
+         AGO   .SKIP100                                                 01191000
+AVRTCCWB CCW   X'9F',RQTTMSGP-RQTE,SLI,17 LOAD DISPLAY COMMAND @DBOC    01192000
+         SPACE 1                                               @D52VDAP 01193000
+.SKIP100 ANOP                                                           01194000
+AVRTCCWC CCW   X'43',RQTSNSDT-RQTE,SLI,1            SYNC       @DBOC    01195000
+         SPACE 3                                               @D52VDAP 01196000
+AVRDSNSS CCW   SNSS,SSSAREA,SLI,L'SSSAREA SUBSYSTEM STATUS     @D52WDAP 01197000
+AVRDPSF  CCW   X'27',PSFIAREA,CC+SLI,L'PSFIAREA PERFORM SUBSYS @D28DR06 01198000
+         CCW   X'3E',PSFOAREA,X'20',L'PSFOAREA READ SUBSYS DATA@D28DR06 01199000
+AVRDRDC  CCW   RDC,RDCCAREA,CC+SLI,L'RDCCAREA READ DEV. CHAR.  @D52WDAP 01200000
+AVRDSNID CCW   SNSID,SIDAREA,SLI,L'SIDAREA SENSE ID            @DA44471 01201000
+AVRCKSEK CCW   SEEK,VOLBB,CC+SLI,6 CKD SEEK TO VOL1 LABEL      @DA44069 01202000
+AVRCKDCS CCW   SEARCH,VOLCC,CC+SLI,5 CKD SEARCH TO VOL1 LABEL  @D35VDEP 01203000
+         CCW   TIC,AVRCKDCS,CC+SLI,1                           @D35VDEP 01204000
+         CCW   X'06',AVRVOL1,CC+SLI,L'AVRVOL1 READ VOL1 LABEL  @D35VDAP 01205000
+         CCW   SNS,SERSNSDT,SLI,L'SERSNSDT CKD SENSE CCW       @D35VDAP 01206000
+AVRFBACW CCW   SNSID,SIDAREA,CC+SLI,L'SIDAREA SENSE IDENT      @D28ADAP 01207000
+         CCW   RDC,RDCFAREA,CC+SLI,L'RDCFAREA READ DEV. CHAR.  @D61ADAP 01208000
+         CCW   FBAEXT,AVRFBADE,CC+SLI,L'AVRFBADE               @D35DDEP 01209000
+         CCW   FBALOC,AVRFBALO,CC+SLI,L'AVRFBALO               @D35DDEP 01210000
+         CCW   FBAREAD,AVRVOL1,SLI,L'AVRVOL1 READ VOL1 LABEL   @D35DDEP 01211000
+* AVRFBAPS CCW   PSF,PSFAREA,SLI,L'PSFAREA PERFORM SUBSYSTEM   @D31ODAP 01212000
+* AVRFBASS CCW   SNSS,SSSAREA,SLI,L'SSSAREA SENSE CURRENT STATUS 31ODAP 01213000
+AVRDSKTE CCW   X'2F',DSKTEDO,CC+SLI,4 DISKETTE DEFINE OPERATION@D14BDAP 01214000
+         CCW   SEEK,DSKTESK,CC+SLI,4 DISKETTE SEEK VOL1 LABEL  @D14BDAP 01215000
+         CCW   RDDATA,AVRVOL1,SLI,L'AVRVOL1 READ VOL1 LABEL    @D52VDAP 01216000
+AVRCCB   CCB   SYS000,0,X'1500',SERSNSDT                       @D61ADAP 01217000
+         ORG   AVRCCB+6                                        @D35VDEP 01218000
+         DC    X'08'              CCBCLS=PHYSICAL ADDRESSING   @D35VDEP 01219000
+         ORG   ,                                               @D61ADAP 01220000
+SERAWTDCB DC   A(SERWTDECB)       WORK-TO-DO ECB ADDRESS       @DBOC    01221000
+SERECBLST DC   16F'0',X'80000000' SERVICE TASK ECB LIST        @DBOC    01222000
+SERWTDECB DC   F'0'               WORK-TO-DO ECB               @DBOC    01223000
+RQTE     DSECT                                                 @D52VDAP 01224000
+RQTNEXT  DS    0F              0  NEXT RQT ENTRY ADDRESS       @DBOC    01225000
+RQTFLG   DS    X               0  CONTROL FLAGS                @D52VDAP 01226000
+RQTINUSE EQU   X'80'              ENTRY IS CURRENTLY IN USE    @D52VDAP 01227000
+RQTREADY EQU   X'40'              DO READY PROCESSING          @DA45062 01228000
+RQTSET15 EQU   X'20'              FORCE SETTING OF RETURN CODE @D52VDAP 01229000
+RQTISBAL EQU   X'10'              ISSUER USED BAL INTERFACE    @D61ADAP 01230000
+RQTDOWTO EQU   X'08'              REQUEST FOR MESSAGING        @D61PDAP 01231000
+RQTDOIXF EQU   X'04'              REQUEST FOR SNAP/FLASH       @D25IDAP 01232000
+RQTOPTN  EQU   X'03'              OPTIONS PASSED FROM USER     @D52VDAP 01233000
+RQTOPRLS EQU   X'02'              DEVICE IS TO BE RELEASED     @D52VDAP 01234000
+RQTOPRSV EQU   X'01'              DEVICE IS TO BE RESERVED     @D52VDAP 01235000
+RQTOPCMD DS    X               1  COMMAND CODE                 @D61ADAP 01236000
+RQTOPPLF EQU   X'04'              ISSUE LOAD DISPLAY MOUNT     @D3570   01237000
+RQTOPRUN EQU   X'03'              ISSUE RUN COMMAND            @D61ADAP 01238000
+RQTOPAAC EQU   X'02'              ACTIVATE ACCESS CONTROL      @D61ADAP 01239000
+RQTOPDAC EQU   X'01'              DEACTIVATE ACCESS CONTROL    @D61ADAP 01240000
+RQTTID   DS    XL2             2  TID OF REQUESTOR             @D52VDAP 01241000
+RQTPUB   DS    XL2             4  PUB INDEX                    @D52VDAP 01242000
+         DS    XL2             6  RESERVED                     @D61PDAP 01243000
+         ORG   RQTPUB             PROVIDE FOR OVERLAY          @D61PDAP 01244000
+RQTRETCD DS    XL4             4  RETURN CODE                  @D61PDAP 01245000
+RQTVCTAD DS    XL4             8  VCTE ADRRESS                 @D61PDAP 01246000
+         AGO   .SKIP120                                                 01247000
+         ORG   RQTVCTAD           PROVIDE FOR OVERLAY          @D3570   01248000
+RQTPLFAD DS    XL4             8  PLF PARAMETER LIST           @D3570   01249000
+.SKIP120 ANOP                                                           01250000
+         ORG   RQTVCTAD           PROVIDE FOR OVERLAY          @D61PDAP 01251000
+RQTWTOAD DS    XL4             8  WTO PARAMETER LIST           @D61ADAP 01252000
+         ORG   RQTVCTAD           PROVIDE FOR OVERLAY          @D25IDAP 01253000
+RQTIXFAD DS    XL4             8  IXFP PARAMETER LIST          @D25IDAP 01254000
+RQTPRFLG DS    XL1            12  PROCESSING FLAG              @DBOC    01255000
+RQTPSTRT EQU   X'80'              REQUEST HAS BEEN STARTED     @DBOC    01256000
+         DS    XL3            13  RESERVED                     @DBOC    01257000
+RQTCCB   DS    XL24           16  CCB WITH SENSE-CCW           @DBOC    01258000
+         DS    0D                 FORCE DWORD ALIGNMENT        @D28ADAP 01259000
+RQTCCW   DS    XL32           40  CCW AREA                     @DBOC    01260000
+RQTIOINP DS    4F             72  RE-R1 IO-ROUTOINE SAVE       @DBOC    01261000
+RQTIOREG DS    16F            88  SAVE AREA                    @DBOC    01262000
+RQTVOL1  DS    CL10          152  VOLID                        @DBOC    01263000
+RQTSVOL  EQU   RQTVOL1+4          VOLUME IDENTIFIER            @DBOC    01264000
+RQTTMSGP DS    X'00',XL16'00' 162 TAPE DISPLAY MESSAGE TEXT    @DBOC    01265000
+         ORG   RQTTMSGP+1         POINT TO MESSAGE BYTE 1-8    @DBOC    01266000
+RQTTMSG1 DS    CL8           163  UNLABELED TAPE               @DBOC    01267000
+RQTTMSG2 DS    CL8           171  INDICATE FILE PROTECTED      @DBOC    01268000
+         DS    X'00'         179  RESERVED                     @DBOC    01269000
+         ORG   ,                                               @DBOC    01270000
+RQTMESN  DS    XL128         180  MEDIA SENSE DATE (TPA)       @DY46120 01271000
+         ORG   RQTMESN       180  OVERLAY                      @DY46120 01272000
+RQTRDC   DS    XL64          180  TAPE RDC BUFFER              @DBOC    01273000
+RQTOTAPE DS    XL64          244  CONSTANTS USED FOR OLD TAPES @DBOC    01274000
+         ORG   ,                                               @DY46120 01275000
+RQTSNID  DS    XL32,XL2'00'  308  SENSE-ID DATA                @DBOC    01276000
+RQTDEVCD EQU   RQTSNID+4          DEVICE TYPE CODE             @DBOC    01277000
+RQTXTENT EQU   RQTSNID+8          EXTENDED SNSID INFORMATION   @DBOC    01278000
+RQTSNSDT DS    XL32          342  OUTPUT OF SENSE COMMAND      @DBOC    01279000
+RQTACBUF DC    XL8'0000000000000000' 374 LOGICAL WRITE PROTECT @DBOC    01280000
+RQTDCPGE DC    XL36'00'      382  DEVICE CONTROL PAGE          @DBOC    01281000
+RQTZAREA DC    XL11'00'      418  ASSGN INFORMATION            @DBOC    01282000
+*                          - 429                               @DBOC    01283000
+         DS    0D            432  FORCE AGAIN DW-BOUNDARY      @DBOC    01284000
+RQTEND   EQU   *-RQTE             LENGTH OF REQUEST ELEMENT    @D52VDAP 01285000
+         SPACE 3                                                        01286000
+&SYSECT  CSECT                                                 @D52VDAP 01287000
+*        MODVCE RETURN CODES                                   @D52VDAP 01288000
+MODVCEOK EQU   0                  REQUEST COMPLETED SUCCESSFUL @D52VDAP 01289000
+MODVCELN EQU   4                  INPUT INVALID (LOGICAL UNIT) @D52VDAP 01290000
+MODVCECU EQU   8                  INPUT INVALID (CHANNEL ADDR) @D52VDAP 01291000
+MODVCENO EQU   12                 DEVICE IS NOT READY          @D52VDAP 01292000
+MODVCENV EQU   16                 VOL1 LABEL NOT FOUND/INVALID @D52VDAP 01293000
+MODVCEER EQU   20                 ANY OTHER I/O ERROR          @D52VDAP 01294000
+MODVCNOP EQU   24                 NOT OPERATIONAL              @D52VDAP 01295000
+MODVCRSV EQU   28                 CONFLICT WITH RESERVE OPTION @D52VDAP 01296000
+MODVCEAE EQU   32                 ASSIGNED ELSEWHER            @D61ADAP 01297000
+         SPACE 3                                               @D52VDAP 01298000
+         SPACE 1                                                        01299000
+RQTCNT   EQU   (RQTNDPTR-RQTTAB)/(RQTNDPTR-RQTTBLST) ENTRIES   @D52VDAP 01300000
+RQTBEGIN DC    A(RQTTAB)          REQUEST QUEUE TABLE ADDRESS  @DBOC    01301000
+RQTENDAD DC    A(RQTNDPTR)        REQUEST QUEUE TABLE END      @DBOC    01302000
+RQTFLPTR DC    A(RQTTAB)          HEADER OF FREE REQUEST ELES  @D35VDEP 01303000
+AAVRTAB  DC    A(0)               AVR TABLE ADDRESS(SET BY IPL)@D35VDAP 01304000
+AVRCOUNT DC    H'1'               NO.OF AVR ENTRIES(SET BY IPL)@D35VDAP 01305000
+AVRLPCNT DC    H'0'               SAVE AREA FOR LOOP COUNTER   @D36IDAP 01306000
+ADCTTAB  DC    A(DCTTABLE)        DEVICE CHARACTERISTICS TABLE @D35VDEP 01307000
+ADVCLST  DC    A(DVCLST)          ADDRESS OF DEVICE LIST       @D25IDAP 01308000
+ADVCLSTL DC    A(DLSTLAST)        LAST DEVICE LIST ENTRY ADDR. @D25IDAP 01309000
+AADDRTAB DC    A(ADDRTAB)         SPECIAL PROCESS ACTION TABLE @D25IDAP 01310000
+AUPDSLD  DC    A(UPDSLD)          2ND LEV.DIREC. UPDATE ROUTINE@D36SDAP 01311000
+AQRSGLOB DC    A(QRSGLOB)         SGCUIR WORK AREA             @D61PDAP 01312000
+ASERMSG  DC    A(SERMSGRT)        MESSAGING ROUTINE            @D61PDAP 01313000
+ASERFCPY DC    A(SERFLCPY)        FLASH-COPY PROCESSING        @D25IDAP 01314000
+ASERSV18 DC    A(SERSAV18)        ADDRESS OF SAVE AREA         @D25IDAP 01315000
+ASERDEVT DC    A(SERDEVTB)        DASD DEVICE VECTOR TABLE     @D37ADAP 01316000
+ASV101BA DC    A(SV101BAL)        SV101BAL ADDRESS             @D61ADAP 01317000
+AAVRMINI DC    A(AVRMINI)         AVRMINI PROCESSING ROUTINE   @D61ADAP 01318000
+AAVRADCT DC    A(AVRADCT)         AVRADCT  PROCESSING ROUTINE  @DA44471 01319000
+AAVRTAER DC    A(AVRTAERR)        AVRTAERR PROCESSING ROUTINE  @D25IDAP 01320000
+AAVRDCTP DC    A(AVRDCTPR)        AVRDCTPR PROCESSING ROUTINE  @DA44364 01321000
+AAVRSSSP DC    A(AVRSSSPR)        AVRSSSPR PROCESSING ROUTINE  @D28ADAP 01322000
+AAVRUCKM DC    A(AVRUCKMR)        AVRUCKMR PROCESSING ROUTINE  @DA44364 01323000
+AAVRREC0 DC    A(AVRREC00)        RECORDING PROCESSING ROUTINE @DA44069 01324000
+AAVRMSGP DC    A(AVRMSGPR)        MESSAGE   PROCESSING ROUTINE @DA44069 01325000
+AAVRASNP DC    A(AVRASNPR)        ASSGN   PROCESSING ROUTINE   @D68ADAP 01326000
+ASERUASG DC    A(SERUASGN)        UNASSGN INITIATION ROUTINE   @D61ADAP 01327000
+ASERILDS DC    A(SERILDSP)        SERILDSP PROCESSING ROUTINE  @D68ADAP 01328000
+         AIF   (NOT &VSE270).N270040                           @DY46120 01329000
+AAVRMESN DC    A(AVRMESNPR)       MESN    PROCESSING           @DY46120 01330000
+.N270040 ANOP                                                  @DY46120 01331000
+         TITLE 'VSE SUPERVISOR     SGSERI     DASD DEVICE TABLES      ' 01332000
+SERDEVTB DC    AL2(0,AVRDEVER-SERTASK)                 X'60'   @D52VDAP 01333000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'61'   @D21LDAP 01334000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'62'   @D52VDAP 01335000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'63'   @D52VDAP 01336000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'64'   @D21LDAP 01337000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'65'   @D52VDAP 01338000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'66'   @D21LDAP 01339000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'67'   @D25IDAP 01340000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'68'   @D52VDAP 01341000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'69'   @D52VDAP 01342000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'6A'   @D52VDAP 01343000
+         DC    AL2(DCT3375-DCTTABLE,AVRUCK10-SERTASK)  X'6B'   @D21LDAP 01344000
+         DC    AL2(DCT3380-DCTTABLE,AVRA3380-SERTASK)  X'6C'   @D51EDAP 01345000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'6D'   @D21LDAP 01346000
+         DC    AL2(DCTNFND-DCTTABLE,AVRAECKD-SERTASK)  X'6E'   @D21LDAP 01347000
+         DC    AL2(0,AVRDEVER-SERTASK)                 X'6F'   @D21LDAP 01348000
+         SPACE 3                                                        01349000
+SERDSKTB DC    AL2(DCT3540-DCTTABLE,AVRUCK10-SERTASK)  X'80'   @D21LDAP 01350000
+         EJECT ,                                               @D51IDAP 01351000
+*        THE FOLLOWING TABLE CONTAINS THE DEVICE CONSTANTS     @D51EDAP 01352000
+*        WHICH ARE REQUIRED TO PROPERLY BUILD THE VCTE TABLE   @D51EDAP 01353000
+         SPACE 3                                                        01354000
+         DC    C'DCTTABLE'         FORCE NON-ZERO ENTRY OFFSET @D3CADAP 01355000
+DVCCNTAB DSECT                         SPECIAL DEVICE MAPPING  @D51EDAP 01356000
+DVCCNPCD DC    XL2'0000'              VSE DEVICE TYPE CODES    @D51EDAP 01357000
+DVCCNOSC DC    XL2'0000'              OS  DEVICE TYPE CODES    @D51EDAP 01358000
+DVCCNCLS DC    XL2'0000'              DEVICE CLASS AND TYPE    @D51EDAP 01359000
+DVCCNCYL DC    AL2(0)                 NUMBER OF CYLINDERS      @D51EDAP 01360000
+DVCCNTRK DC    AL2(0)                 TRACKS PER CYLINDER      @D51EDAP 01361000
+DVCCNSEC DC    AL1(0)                 NUMBER OF SECTORS        @D51EDAP 01362000
+DVCCNBYT DC    AL3(0)                 BYTES PER TRACK          @D51EDAP 01363000
+DVCCNHR0 DC    AL2(0)                 R0 OVERHEAD              @D51EDAP 01364000
+DVCCNCON DC    XL6'000000000000'      CAPACITY CONSTANTS       @D51EDAP 01365000
+DVCCNACY DC    AL2(0)                 FIRST ALTERNATE CYL      @D51EDAP 01366000
+DVCCNATR DC    AL2(0)                 NO. OF ALTERNATE TRACKS  @D51EDAP 01367000
+DVCCNTGC DC    AL4(0)                 TRACK GROSS CAPACITY     @D51EDAP 01368000
+DVCCNEXC DC    CL6' '                 EXTERNAL DEVCIE CODE     @D51EDAP 01369000
+DVCCNLEN EQU   *-DVCCNTAB                                      @D51EDAP 01370000
+         SPACE 2                                               @D51EDAP 01371000
+&SYSECT  CSECT                                                 @D51EDAP 01372000
+DCTTABLE DC    0H'0'               DEVICE CHARACTERISTICS TABLE@D35VDEP 01373000
+         SPACE 1                                                        01374000
+         AGO   .SKIP140                                        @D52VDAP 01375000
+DCT2311  DC    X'6000'             PUB AND DTF DEVICE TYPES    @D37DDAP 01376000
+         DC    X'30C0'             OS/VS UCB DEVICE TYPE       @D37DDAP 01377000
+         DC    X'2001'             OS/VS UCB DEVICE TYPE       @D37DDAP 01378000
+         DC    AL2(200)            PRIMARY CYLINDERS           @D37DDAP 01379000
+         DC    AL2(10)             TRACKS PER CYLINDER         @D37DDAP 01380000
+         DC    AL1(0)              NO RPS                      @D37DDAP 01381000
+         DC    AL3(3625)           BYTES PER TRACK             @D37DDAP 01382000
+         DC    AL2(0)              RECORD ZERO OVERHEAD        @D37DDAP 01383000
+         DC    XL6'001451140219'   CAPACITY CONSTANTS          @D37DDAP 01384000
+         DC    AL2(200)            FIRST ALTERNATE CYLINDER    @D51EDAP 01385000
+         DC    AL2(30)             NO. OF ALTERNATE TRACKS     @D37DDAP 01386000
+         DC    AL4(3625)           TRACK GROSS CAPACITY        @D37DDAP 01387000
+         DC    CL6'2314  '         EXTERNAL DEVICE CODE        @D14BDAP 01388000
+         SPACE 1                                                        01389000
+DCT2314  DC    X'6201'             PUB AND DTF DEVICE TYPES    @D37DDAP 01390000
+         DC    X'30C0'             OS/VS UCB DEVICE TYPE       @D37DDAP 01391000
+         DC    X'2008'             OS/VS UCB DEVICE TYPE       @D37DDAP 01392000
+         DC    AL2(200)            PRIMARY CYLINDERS           @D37DDAP 01393000
+         DC    AL2(20)             TRACKS PER CYLINDER         @D37DDAP 01394000
+         DC    AL1(0)              NO RPS                      @D37DDAP 01395000
+         DC    AL3(7294)           BYTES PER TRACK             @D37DDAP 01396000
+         DC    AL2(0)              RECORD ZERO OVERHEAD        @D37DDAP 01397000
+         DC    XL6'002D922D0216'   CAPACITY CONSTANTS          @D37DDAP 01398000
+         DC    AL2(200)            FIRST ALTERNATE CYLINDER    @D51EDAP 01399000
+         DC    AL2(30)             NO. OF ALTERNATE TRACKS     @D37DDAP 01400000
+         DC    AL4(7294)           TRACK GROSS CAPACITY        @D37DDAP 01401000
+         DC    CL6'2314  '         EXTERNAL DEVICE CODE        @D14BDAP 01402000
+         SPACE 1                                                        01403000
+DCT33301 DC    X'6304'             PUB AND DTF DEVICE TYPES    @D37DDAP 01404000
+         DC    X'3050'             OS/VS UCB DEVICE TYPE       @D37DDAP 01405000
+         DC    X'2009'             OS/VS UCB DEVICE TYPE       @D37DDAP 01406000
+         DC    AL2(404)            PRIMARY CYLINDERS           @D37DDAP 01407000
+         DC    AL2(19)             TRACKS PER CYLINDER         @D37DDAP 01408000
+         DC    AL1(128)            SECTORS PER TRACK           @D37DDAP 01409000
+         DC    AL3(13165)          BYTES PER TRACK             @D37DDAP 01410000
+         DC    AL2(237)            RECORD ZERO OVERHEAD        @D37DDAP 01411000
+         DC    XL6'010000870038'   CAPACITY CONSTANTS          @D37DDAP 01412000
+         DC    AL2(404)            FIRST ALTERNATE CYLINDER    @D51EDAP 01413000
+         DC    AL2(133)            NO. OF ALTERNATE TRACKS     @D37DDAP 01414000
+         DC    AL4(13440)          TRACK GROSS CAPACITY        @D37DDAP 01415000
+         DC    CL6'333001'         EXTERNAL DEVICE CODE        @D14BDAP 01416000
+         SPACE 1                                                        01417000
+DCT3330B DC    X'6505'             PUB AND DTF DEVICE TYPES    @D37DDAP 01418000
+         DC    X'3050'             OS/VS UCB DEVICE TYPE       @D37DDAP 01419000
+         DC    X'200D'             OS/VS UCB DEVICE TYPE       @D37DDAP 01420000
+         DC    AL2(808)            PRIMARY CYLINDERS           @D37DDAP 01421000
+         DC    AL2(19)             TRACKS PER CYLINDER         @D37DDAP 01422000
+         DC    AL1(128)            SECTORS PER TRACK           @D37DDAP 01423000
+         DC    AL3(13165)          BYTES PER TRACK             @D37DDAP 01424000
+         DC    AL2(237)            RECORD ZERO OVERHEAD        @D37DDAP 01425000
+         DC    XL6'010000870038'   CAPACITY CONSTANTS          @D37DDAP 01426000
+         DC    AL2(808)            FIRST ALTERNATE CYLINDER    @D51EDAP 01427000
+         DC    AL2(133)            NO. OF ALTERNATE TRACKS     @D37DDAP 01428000
+         DC    CL6'333011'         EXTERNAL DEVICE CODE        @D14BDAP 01429000
+         DC    AL4(13440)          TRACK GROSS CAPACITY        @D37DDAP 01430000
+         SPACE 1                                                        01431000
+DCT33403 DC    X'6909'             PUB AND DTF DEVICE TYPES    @D37DDAP 01432000
+         DC    X'3040'             OS/VS UCB DEVICE TYPE       @D37DDAP 01433000
+         DC    X'200A'             OS/VS UCB DEVICE TYPE       @D37DDAP 01434000
+         DC    AL2(348)            PRIMARY CYLINDERS           @D37DDAP 01435000
+         DC    AL2(12)             TRACKS PER CYLINDER         @D37DDAP 01436000
+         DC    AL1(64)             SECTORS PER TRACK           @D37DDAP 01437000
+         DC    AL3(8535)           BYTES PER TRACK             @DA41083 01438000
+         DC    AL2(353)            RECORD ZERO OVERHEAD        @D37DDAP 01439000
+         DC    XL6'010000A7004B'   CAPACITY CONSTANTS          @D37DDAP 01440000
+         DC    AL2(348)            FIRST ALTERNATE CYLINDER    @D51EDAP 01441000
+         DC    AL2(12)             NO. OF ALTERNATE TRACKS     @D37DDAP 01442000
+         DC    AL4(8960)           TRACK GROSS CAPACITY        @D37DDAP 01443000
+         DC    CL6'334035'         EXTERNAL DEVICE CODE        @D14BDAP 01444000
+         SPACE 1                                                        01445000
+DCT33407 DC    X'6A0A'             PUB AND DTF DEVICE TYPES    @D37DDAP 01446000
+         DC    X'3040'             OS/VS UCB DEVICE TYPE       @D37DDAP 01447000
+         DC    X'200A'             OS/VS UCB DEVICE TYPE       @D37DDAP 01448000
+         DC    AL2(696)            PRIMARY CYLINDERS           @D37DDAP 01449000
+         DC    AL2(12)             TRACKS PER CYLINDER         @D37DDAP 01450000
+         DC    AL1(64)             SECTORS PER TRACK           @D37DDAP 01451000
+         DC    AL3(8535)           BYTES PER TRACK             @DA41083 01452000
+         DC    AL2(353)            RECORD ZERO OVERHEAD        @D37DDAP 01453000
+         DC    XL6'010000A7004B'   CAPACITY CONSTANTS          @D37DDAP 01454000
+         DC    AL2(696)            FIRST ALTERNATE CYLINDER    @D51EDAP 01455000
+         DC    AL2(24)             NO. OF ALTERNATE TRACKS     @D37DDAP 01456000
+         DC    AL4(8960)           TRACK GROSS CAPACITY        @D37DDAP 01457000
+         DC    CL6'334070'         EXTERNAL DEVICE CODE        @D14BDAP 01458000
+         SPACE 1                                                        01459000
+DCT3350  DC    X'6707'             PUB AND DTF DEVICE TYPES    @D37DDAP 01460000
+         DC    X'3010'             OS/VS UCB DEVICE TYPE       @D37DDAP 01461000
+         DC    X'200B'             OS/VS UCB DEVICE TYPE       @D37DDAP 01462000
+         DC    AL2(555)            PRIMARY CYLINDERS           @D37DDAP 01463000
+         DC    AL2(30)             TRACKS PER CYLINDER         @D37DDAP 01464000
+         DC    AL1(128)            SECTORS PER TRACK           @D37DDAP 01465000
+         DC    AL3(19254)          BYTES PER TRACK             @D37DDAP 01466000
+         DC    AL2(389)            RECORD ZERO OVERHEAD        @D37DDAP 01467000
+         DC    XL6'010000B90052'   CAPACITY CONSTANTS          @D37DDAP 01468000
+         DC    AL2(555)            FIRST ALTERNATE CYLINDER    @D51EDAP 01469000
+         DC    AL2(150)            NO. OF ALTERNATE TRACKS     @D37DDAP 01470000
+         DC    AL4(19968)          TRACK GROSS CAPACITY        @D37DDAP 01471000
+         DC    CL6'3350  '         EXTERNAL DEVICE CODE        @D14BDAP 01472000
+         SPACE 1                                                        01473000
+.SKIP140 ANOP                                                  @D25IDAP 01474000
+DCT3375  DC    X'6B0B'             PUB AND DTF DEVICE TYPES    @D37DDAP 01475000
+         DC    X'3010'             OS/VS UCB DEVICE TYPE       @D37DDAP 01476000
+         DC    X'200C'             OS/VS UCB DEVICE TYPE       @D37DDAP 01477000
+         DC    AL2(959)            PRIMARY CYLINDERS           @D37DDAP 01478000
+         DC    AL2(12)             TRACKS PER CYLINDER         @D37DDAP 01479000
+         DC    AL1(196)            SECTORS PER TRACK           @D37DDAP 01480000
+         DC    AL3(36000)          BYTES PER TRACK             @D37DDAP 01481000
+         DC    AL2(832)            RECORD ZERO OVERHEAD        @D37DDAP 01482000
+         DC    XL6'0120018000A0'   CAPACITY CONSTANTS          @D37DDAP 01483000
+         DC    AL2(959)            FIRST ALTERNATE CYLINDER    @D51EDAP 01484000
+         DC    AL2(12)             NO. OF ALTERNATE TRACKS     @D37DDAP 01485000
+         DC    AL4(37632)          TRACK GROSS CAPACITY        @D37DDAP 01486000
+         DC    CL6'3375  '         EXTERNAL DEVICE CODE        @D14BDAP 01487000
+         SPACE 1                                                        01488000
+DCT3380  DC    X'6C0C'             PUB AND DTF DEVICE TYPES    @D37DDAP 01489000
+         DC    X'3010'             OS/VS UCB DEVICE TYPE       @D37DDAP 01490000
+         DC    X'200E'             OS/VS UCB DEVICE TYPE       @D37DDAP 01491000
+         DC    AL2(885)            PRIMARY CYLINDERS           @D37DDAP 01492000
+         DC    AL2(15)             TRACKS PER CYLINDER         @D37DDAP 01493000
+         DC    AL1(222)            SECTORS PER TRACK           @D37DDAP 01494000
+         DC    AL3(47968)          BYTES PER TRACK             @D37DDAP 01495000
+         DC    AL2(1088)           RECORD ZERO OVERHEAD        @DA99999 01496000
+         DC    XL6'012001EC00EC'   CAPACITY CONSTANTS          @D37DDAP 01497000
+         DC    AL2(885)            FIRST ALTERNATE CYLINDER    @D51EDAP 01498000
+         DC    AL2(15)             NO. OF ALTERNATE TRACKS     @D37DDAP 01499000
+         DC    AL4(49504)          TRACK GROSS CAPACITY        @D37DDAP 01500000
+         DC    CL6'3380  '         EXTERNAL DEVICE CODE        @D14BDAP 01501000
+         SPACE 1                                                        01502000
+DCT3540  DC    X'8000'             PUB AND DTF DEVICE TYPES    @D37DDAP 01503000
+         DC    X'0844'             OS/VS UCB DEVICE TYPE       @D37DDAP 01504000
+         DC    X'2001'             OS/VS UCB DEVICE TYPE       @D37DDAP 01505000
+         DC    AL2(1)              PRIMARY CYLINDERS           @D37DDAP 01506000
+         DC    AL2(75)             TRACKS PER CYLINDER         @D37DDAP 01507000
+         DC    AL1(26)             SECTORS PER TRACK           @D37DDAP 01508000
+         DC    AL3(3328)           BYTES PER TRACK             @D37DDAP 01509000
+         DC    AL2(0)              RECORD ZERO OVERHEAD        @D37DDAP 01510000
+         DC    XL6'000000000000'   CAPACITY CONSTANTS          @D37DDAP 01511000
+         DC    AL2(0)              FIRST ALTERNATE CYLINDER    @D51EDAP 01512000
+         DC    AL2(0)              NO. OF ALTERNATE TRACKS     @D37DDAP 01513000
+         DC    AL4(3328)           TRACK GROSS CAPACITY        @D37DDAP 01514000
+         DC    CL6'3540  '         EXTERNAL DEVICE CODE        @D14BDAP 01515000
+         SPACE 1                                                        01516000
+DCTFBA   DC    X'9090'             PUB AND DTF DEVICE TYPES    @D37DDAP 01517000
+         DC    X'3008'             OS/VS UCB DEVICE TYPE       @D37DDAP 01518000
+         DC    X'2101'             OS/VS UCB DEVICE TYPE       @D37DDAP 01519000
+         DC    AL2(512)            PRIMARY CYLINDERS           @D37DDAP 01520000
+         DC    AL4(32)             BLOCKS PER GROUP            @D37DDAP 01521000
+         DC    AL4(352)            BLOCKS PER ACCESS POSITION  @D37DDAP 01522000
+         DC    AL4(126016)         BLOCKS PER DEVICE           @D37DDAP 01523000
+         DC    AL4(0)              BLOCKS UNDER FIXED ACCESS   @D51EDAP 01524000
+         DC    AL2(0)              NUMBER OF ALTERNATE BLOCKS  @D37DDAP 01525000
+         DC    AL2(352)            BLOCKS IN CE AREA           @D37DDAP 01526000
+         DC    AL2(0)              RESERVED                    @D37DDAP 01527000
+         DC    CL6'FBA   '         EXTERNAL DEVICE CODE        @D52VDAP 01528000
+         SPACE 1                                                        01529000
+DCTNFND  DC    X'6E00'             PUB AND DTF DEVICE TYPES    @D51EDAP 01530000
+         DC    X'3010'             OS/VS UCB DEVICE TYPE       @D51EDAP 01531000
+         DC    X'2000'             OS/VS UCB DEVICE TYPE       @D51EDAP 01532000
+         DC    AL2(0)              PRIMARY CYLINDERS           @D51EDAP 01533000
+         DC    AL2(0)              TRACKS PER CYLINDER         @D51EDAP 01534000
+         DC    AL1(0)              SECTORS PER TRACK           @D51EDAP 01535000
+         DC    AL3(0)              BYTES PER TRACK             @D51EDAP 01536000
+         DC    AL2(0)              RECORD ZERO OVERHEAD        @D51EDAP 01537000
+         DC    XL6'000000000000'   CAPACITY CONSTANTS          @D51EDAP 01538000
+         DC    AL2(0)              FIRST ALTERNATE CYLINDER    @D51EDAP 01539000
+         DC    AL2(0)              NO. OF ALTERNATE TRACKS     @D51EDAP 01540000
+         DC    AL4(0)              TRACK GROSS CAPACITY        @D51EDAP 01541000
+         DC    CL6'ECKD  '         EXTERNAL DEVICE CODE        @D51EDAP 01542000
+DCTTEND  EQU   *                   END OF THIS TABLE           @D51EDAP 01543000
+.*                                                             @D37DDAP 01544000
+.*       THE DTFDI DEVICE DEVICE INDICATOR (BYTE 29)           @D37DDAP 01545000
+.*       WILL BE USED TO INDEX THE FOLLOWING TABLE             @D37DDAP 01546000
+.*                                                             @D37DDAP 01547000
+DCTRPSTB DC    A(0)                DTFDI DEVICE INDICATOR 00   @D37DDAP 01548000
+         DC    A(0)                DTFDI DEVICE INDICATOR 01   @D37DDAP 01549000
+         DC    A(0)                DTFDI DEVICE INDICATOR 02   @D37DDAP 01550000
+         DC    A(0)                DTFDI DEVICE INDICATOR 03   @D37DDAP 01551000
+         DC    A(0)                DTFDI DEVICE INDICATOR 04   @D37DDAP 01552000
+         DC    A(0)                DTFDI DEVICE INDICATOR 05   @D37DDAP 01553000
+         DC    A(0)                DTFDI DEVICE INDICATOR 06   @D37DDAP 01554000
+         DC    A(0)                DTFDI DEVICE INDICATOR 07   @D25IDAP 01555000
+         DC    A(0)                DTFDI DEVICE INDICATOR 08   @D37DDAP 01556000
+         DC    A(0)                DTFDI DEVICE INDICATOR 09   @D37DDAP 01557000
+         DC    A(0)                DTFDI DEVICE INDICATOR 0A   @D37DDAP 01558000
+         DC    A(DCR3375)          DTFDI DEVICE INDICATOR 0B   @D131DAP 01559000
+         DC    A(DCR3380)          DTFDI DEVICE INDICATOR 0C   @D131DAP 01560000
+         DC    A(0)                DTFDI DEVICE INDICATOR 0D   @D37DDAP 01561000
+         DC    A(0)                DTFDI DEVICE INDICATOR 0E   @D37DDAP 01562000
+         DC    A(0)                DTFDI DEVICE INDICATOR 0F   @D37DDAP 01563000
+         SPACE 1                                               @D37DDAP 01564000
+DCRADR   DSECT ,                   RPS DEVICE EXTENTION DSECT  @D37DDAP 01565000
+DCRBYTOT DS    AL4                 TOTAL NUMBER OF BYTES/TRACK @D37DDAP 01566000
+DCRR0OVH DS    AL2                 R0 OVERHEAD                 @D37DDAP 01567000
+DCRNOSEC DS    AL1                 NUMBER OF SECTORS / TRACK   @D37DDAP 01568000
+DCRDCTAD DS    AL3                 POINTER TO DCT ENTRY        @D37DDAP 01569000
+         SPACE 1                                               @D37DDAP 01570000
+&SYSECT  CSECT ,                                               @D37DDAP 01571000
+         AGO   .SKIP160                                        @D52VDAP 01572000
+DCR3330  DS    0H'0'                                           @D37DDAP 01573000
+         DC    AL4(13440)          TOTAL NO. OF BYTES / TRACK  @D37DDAP 01574000
+         DC    AL2(237)            R0 OVERHEAD                 @D37DDAP 01575000
+         DC    AL1(128)            NO. OF SECTORS / TRACK      @D37DDAP 01576000
+         DC    AL3(DCT33301)       3330 DCT TABLE ENTRY        @D21LDAP 01577000
+         SPACE 1                                               @D37DDAP 01578000
+DCR3340  DS    0H'0'                                           @D37DDAP 01579000
+         DC    AL4(8960)           TOTAL NO. OF BYTES / TRACK  @D37DDAP 01580000
+         DC    AL2(353)            R0 OVERHEAD                 @D3CADAP 01581000
+         DC    AL1(64)             NO. OF SECTORS / TRACK      @D37DDAP 01582000
+         DC    AL3(DCT33403)       3340 DCT TABLE ENTRY        @D21LDAP 01583000
+         SPACE 1                                               @D37DDAP 01584000
+DCR3350  DS    0H'0'                                           @D37DDAP 01585000
+         DC    AL4(19968)          TOTAL NO. OF BYTES / TRACK  @D3CADAP 01586000
+         DC    AL2(389)            R0 OVERHEAD                 @D37DDAP 01587000
+         DC    AL1(128)            NO. OF SECTORS / TRACK      @D37DDAP 01588000
+         DC    AL3(DCT3350)        3350 DCT TABLE ENTRY        @D21LDAP 01589000
+         SPACE 1                                               @D37DDAP 01590000
+.SKIP160 ANOP                                                  @D52VDAP 01591000
+DCR3375  DS    0H'0'                                           @D131DAP 01592000
+         DC    AL4(37632)          TOTAL NO. OF BYTES / TRACK  @DA30657 01593000
+         DC    AL2(832)            R0 OVERHEAD                 @DA30657 01594000
+         DC    AL1(196)            NO. OF SECTORS / TRACK      @D131DAP 01595000
+         DC    AL3(DCT3375)        3375 DCT TABLE ENTRY        @D21LDAP 01596000
+         SPACE 1                                               @D131DAP 01597000
+DCR3380  DS    0H'0'                                           @D131DAP 01598000
+         DC    AL4(49504)          TOTAL NO. OF BYTES / TRACK  @D3CADAP 01599000
+         DC    AL2(1248)           R0 OVERHEAD                 @D3CADAP 01600000
+         DC    AL1(221)            NO. OF SECTORS / TRACK      @D131DAP 01601000
+         DC    AL3(DCT3380)        3380 DCT TABLE ENTRY        @D21LDAP 01602000
+         SPACE 1                                                        01603000
+AVRFBADE DC    0XL16'0'           FBA DEFINE EXTENT FIELD      @D35DDEP 01604000
+         DC    X'40000000'        FBA DEFINE EXTENT FLAGS      @D35DDEP 01605000
+         DC    AL4(1)             EXTENT INFO FOR VOL1 LABEL   @D35DDEP 01606000
+         DC    AL4(1)             SAME- BLOCK 1 OF VOLUME      @D35DDEP 01607000
+         DC    AL4(1)             SAME GARBAGE                 @D35DDEP 01608000
+AVRFBALO DC    0XL8'0'            LOCATE FIELD                 @D35DDEP 01609000
+         DC    X'0600'            LOCATE FOR READ              @D35DDEP 01610000
+         DC    AL2(1)             PROCESS 1 BLOCK              @D35DDEP 01611000
+         DC    AL4(1)             BLOCK DISPL. TO VOL1 LABEL   @D35DDEP 01612000
+FBADEXLT EQU   16                 DEFINE EXTENT LENGTH         @D35DDEP 01613000
+SVC99WRK DC    XL(AVRLEN)'00'     WORK AND I/O AREA            @D61NDAP 01613500
+         SPACE 2                                                        01614000
+         DS    0D                 ENSURE SERIWORK ON DW-BOUND. @DAOME05 01614100
+SERIPAK8 DC    D'0'               WORKFIELD FOR CVD / CVB      @D27ADAP 01614200
+         ORG   SERIPAK8           OVERLAY                      @DAOME05 01614300
+SERIWORK DC    XL9'00'            WORKFIELD                    @DAOME05 01614400
+ZEROAREA DC    XL11'00'           ASSGN INFORMATION            @D51TDAP 01614500
+PSFIAREA DC    XL12'180000000000410000000000' READ FEATURE CODE@D28ADAP 01614600
+RDCFAREA DC    XL32'0'            READ DEVICE CHAR. BUFFER     @D61ADAP 01615000
+RDCRCOVH DC    XL8'0000000802000000' FBA RECORD INFORMATION    @D14BDAP 01616000
+HEXCHTAB DC    C'0123456789ABCDEF'                             @D51GDAP 01616500
+SIDAREA  DC    XL32'0',XL2'00'    BUFFER FOR SENSE ID          @D52VDAP 01617000
+SIDDEVCD EQU   SIDAREA+4          FBA TYPE                     @D14CDOW 01618000
+SIDXTENT EQU   SIDAREA+8          EXTENDED SENSE ID INFORMATION@D52VDAP 01619000
+         SPACE 3                                               @D14COM1 01623000
+RDCCAREA DC    XL64'0'            CKD RDC BUFFER               @D61NDAP 01625000
+PSFOAREA DC    XL40'00'           PSF RESPONSE BUFFER          @DGA270  01627000
+* PSFAREA  DC    XL10'14000000000000000000'                    @D61NDAP 01628490
+SSSAREA  DC    XL44'0'            SUBSYSTEM STATUS INFORMATION @D61ADMK 01629000
+RDCOTAPE DC    XL64'00'           CONSTANTS USED FOR OLD TAPES @D62TAAP 01630000
+         ORG   RDCOTAPE                                        @D62TAAP 01631000
+         DC    XL6'00'             0- 5 CONTROL/DEVICE TYPE    @D62TAAP 01632000
+         DC    XL1'00'             6  6 RDC FORMAT             @D62TAAP 01633000
+         DC    XL1'00'             7    SUBSYTEM FACILITIES  1 @D62TAAP 01634000
+         DC    XL1'00'             8    SUBSYTEM FACILITIES  1 @D62TAAP 01635000
+         DC    XL1'00'             9    SUBSYTEM FACILITIES  1 @D62TAAP 01636000
+         DC    XL2'00'            10-11 RESERVED               @D62TAAP 01637000
+         DC    XL1'00'            12    SUBSYSTEM FACILITIES 2 @D62TAAP 01638000
+         DC    AL1(VCTTRDBW)      13    SUBSYSTEM FACILITIES 2 @D62TAAP 01639000
+         DC    XL1'00'            14    SUBSYSTEM FACILITIES 2 @D62TAAP 01640000
+         DC    XL1'00'            15    SUBSYSTEM FACILITIES 2 @D62TAAP 01641000
+         DC    XL16'00'           16-31 RESERVED               @D62TAAP 01642000
+         DC    XL3'00'            32-34 LIBRARY IDENTIFIER     @D62TAAP 01643000
+         DC    XL1'00'            35    DEVICE GROUP IDENTIFIER@D62TAAP 01644000
+         DC    XL2'00'            36-37 RESERVED               @D62TAAP 01645000
+         DC    XL2'00'            38-39 DEVICE IDENTIFIER      @D62TAAP 01646000
+         DC    XL1'00'            40    MDR RECORD-ID          @D62TAAP 01647000
+         DC    XL1'00'            41    OBR RECORD-ID          @D62TAAP 01648000
+         DC    XL1'80'            42    DEVICE CLASS CODE      @D62TAAP 01649000
+         DC    XL21'00'           43-63 RESERVED               @D62TAAP 01650000
+MODEDFLT DC    0XL36'00'                                       @D63TAAP 01651000
+         DC    XL4'01020000'      BYTE  0    4                 @D63TAAP 01652000
+         DC    XL4'40000100'      BYTE  4 -  7                 @D63TAAP 01653000
+         DC    XL4'00000000'      BYTE  8 - 11                 @D63TAAP 01654000
+         DC    XL4'00002F00'      BYTE 12 - 15                 @D63TAAP 01655000
+         DC    XL4'00000000'      BYTE 16 - 19                 @D63TAAP 01656000
+         DC    XL15'00'           BYTE 20 - 34                 @D63TAAP 01657000
+         DC    XL1'00'            BYTE 35                      @D63TAAP 01658000
+         SPACE 3                                               @D14COM1 01659000
+         DS    0F'0'                                                    01660000
+         AGO   .SKIP180                                                 01661000
+         DC    CL8'AVRDEBUG'      EYE CATCHER                  @D61ADAP 01662000
+AVRDBG   DSECT ,                  AVR DEBUG INFO MAPPING       @D61ADAP 01663000
+AVRDBGCU DS    AL2                CUU BEING HANDLED            @D61ADAP 01664000
+AVRDBGCM DS    AL2                COMMAND SEQUENCE CODE        @D61ADAP 01665000
+*        EQU   X'8000'            RESERVED                     @D61NDAP 01666000
+*        EQU   X'4000'            RDC+SNSID                    @D61NDAP 01667000
+*        EQU   X'2000'            SNSID                        @D61NDAP 01668000
+*        EQU   X'1000'            ASN                          @D61NDAP 01669000
+*        EQU   X'0800'            NOP+SNS                      @D61NDAP 01670000
+*        EQU   X'0400'            READ+REW                     @D61NDAP 01671000
+*        EQU   X'0200'            LDSP                         @D61NDAP 01672000
+*        EQU   X'0100'            RDC                          @D61NDAP 01673000
+AVRDBGCR DS    AL2                                             @D61ADAP 01674000
+*        EQU   X'8000'            RESERVED                     @D61NDAP 01675000
+*        EQU   X'4000'            SNSID      RETRY             @D61NDAP 01676000
+*        EQU   X'2000'            RESERVED                     @D61NDAP 01677000
+*        EQU   X'1000'            RESERVED                     @D61NDAP 01678000
+*        EQU   X'0800'            SNS        RETRY             @D61NDAP 01679000
+*        EQU   X'0400'            REW        RETRY             @D61NDAP 01680000
+*        EQU   X'0200'            RESERVED                     @D61NDAP 01681000
+*        EQU   X'0100'            RESERVED                     @D61NDAP 01682000
+AVRDBGLB DS    AL1                LABEL INFO                   @D61ADAP 01683000
+*        EQU   C'N'               NO LABEL                     @D61ADAP 01684000
+*        EQU   C'A'               ASCII LABEL                  @D61ADAP 01685000
+*        EQU   C'S'               STANDARD LABEL               @D61ADAP 01686000
+AVRDBGPR DS    AL1                PROCESSING FLAGS             @D61ADAP 01687000
+*        EQU   X'80'              AT LOAD POINT                @D61ADAP 01688000
+*        EQU   X'40'              WRITE PROTECTED              @D61ADAP 01689000
+*        EQU   X'20'              DUPLICATE VOLID              @D61ADAP 01690000
+AVRDBGEC DS    AL2                                             @D61ADAP 01691000
+*        EQU   X'8000'            RESERVED                     @D61NDAP 01692000
+*        EQU   X'4000'            RDC+SNSID  ERROR             @D61NDAP 01693000
+*        EQU   X'2000'            SNSID      ERROR             @D61NDAP 01694000
+*        EQU   X'1000'            ASN        ERROR             @D61NDAP 01695000
+*        EQU   X'0800'            NOP+SNS    ERROR             @D61NDAP 01696000
+*        EQU   X'0400'            READ+REW   ERROR             @D61NDAP 01697000
+*        EQU   X'0200'            LDSP       ERROR             @D61NDAP 01698000
+*        EQU   X'0100'            RESERVED                     @D61NDAP 01699000
+AVRDBGRC DS    AL1                                             @D61ADAP 01700000
+*        EQU   X'80'              COMMAND    REJECT            @D61NDAP 01701000
+*        EQU   X'40'              INTERVENTION REQUIRED        @D61NDAP 01702000
+*        EQU   X'20'              NOT OPERATIONAL              @D61NDAP 01703000
+*        EQU   X'10'              ASSIGNED ELSEWHERE           @D61NDAP 01704000
+*        EQU   X'01'              PERMANENT ERROR              @D61NDAP 01705000
+AVRDBGF1 DS    AL1                RESERVED                     @D61ADAP 01706000
+AVRDBGF2 DS    AL4                RESERVED                     @D61ADAP 01707000
+         SPACE 1                                               @D37DDAP 01708000
+&SYSECT  CSECT ,                                               @D37DDAP 01709000
+AVRDEBUG DC    4XL16'00'          DEBUG STRING                 @D61ADAP 01710000
+AVRDEBCC DC    XL2'00'            DEBUG CODE                   @D61ADAP 01711000
+.SKIP180 ANOP                                                           01712000
+DSKTEDO  DC    XL4'00800000'      DISKETTE DEFINE OPERATION    @D14BDAP 01713000
+DSKTESK  DC    XL4'07'            DISKETTE ADDRESS OF VOL1     @D14BDAP 01714000
+CCMS1    DC    CL4'CMS1'          CHECK IF VOLUME IS CMS DISK  @D21LDAP 01715000
+CVOL1    DC    CL4'VOL1'          CHECK IF VOLUME HAS A VOL1   @D35VDEP 01716000
+CCSTX    DC    CL4'CSTX'          TAPE UNKNOWN MEDIA TYPE      @DY46120 01717000
+CTAPE    DC    CL6'TAPE'          EXTERNAL DEVICE CODE FOR TAPE@D52VDAP 01718000
+CVTAPE   DC    CL6'VTAP00'        EXTERNAL DEVICE CODE FOR VTAP@D66ADAP 01719000
+SERSNSDT DC    XL32'00'           OUTPUT OF SENSE COMMAND      @D35VDEP 01720000
+SERSNSDA EQU   SERSNSDT+2         ADDR OF 3340 SIZE INFO       @D35VDEP 01721000
+SERSNSDF EQU   SERSNSDA           ADDR OF 3350 FIXED-HEAD INFO @D35VDEP 01722000
+FX3340   EQU   X'04'              3340 FIXED HEAD BIT          @D35VDEP 01723000
+FX3350   EQU   X'04'              3350 FIXED HEAD BIT          @D35VDEP 01724000
+VOLBB    DC    XL7'03'            CKD ADDR OF VOL1 LABEL       @D35VDEP 01725000
+VOLCC    EQU   VOLBB+2            CCHHR OF VOL1 LABEL          @D35VDEP 01726000
+AVRVOL1  DC    XL29'0'            VOL1 LABEL READ FROM DASD    @D35VDEP 01727000
+AVRSVOL  EQU   AVRVOL1+4          VOLUME IDENTIFIER            @D35VDEP 01728000
+AVRSVTOC EQU   AVRVOL1+11         DASD ADDR OF VTOC FOR VOLUME @D35VDEP 01729000
+AVRSBPCI EQU   AVRVOL1+28         BLOCKS/CI IN VTOC            @D35DDEP 01730000
+         SPACE 2                                                        01731000
+AVRTMNLB DC    CL8'       N'      UNLABELED TAPE INITIAL VALUE @D51GDAP 01732000
+AVRTRERR DC    CL8'RD ERROR'      ERROR DURING VOL1 READ       @D51GDAP 01733000
+AVRTINTV DC    CL8'        '      UNLABELED TAPE INITIAL VALUE @D51GDAP 01734000
+AVRTMPRO DC    CL8'PROTECT '      CONSTANT                     @DA44471 01735000
+         SPACE 2                                                        01736000
+AVRRECPL DC    0F'0'              SVC44 PARM LIST              @D35VDEP 01737000
+         DC    XL2'12FF'          INPUT FLAGS                  @D35VDEP 01738000
+AVRRECNM DC    C'BE'              DISK RECORDING TRANSIENT     @D35VDEP 01739000
+AVRRECPB DC    A(0)               ADDR OF PUB                  @D35VDEP 01740000
+AVRRECID DC    X'0'               OS DEVICE TYPE ID            @D35VDEP 01741000
+         DC    X'0'               FORCE ALIGNMENT              @D35VDEP 01742000
+         SPACE 1                                                        01743000
+AVRMSINF DC    F'0'               MESSAGE INFORMATION          @DA44172 01744000
+AVRMSCUU EQU   AVRMSINF+2         CUU IDENTIFICATION           @DA44172 01745000
+         EJECT ,                                               @D52VDAP 01746000
+         USING VCTEADR,R4         VCT-ENTRY BASE               @D25IDAP 01747000
+         USING SGSERI,RC          SGSERI BASE                  @DA44172 01748000
+         USING AVRMSGPR,RE        SET MESSAGE ROUTINE BASE     @D61PDAP 01749000
+AVRMSGPR DS    0H'0'              STATUS MESSAGE PRINT ROUTINE @D31..AP 01750000
+         STM   R0,R5,AVRMSGSV     SAVE CALLERS REGISTERS       @D28ADAP 01751000
+AVRMS020 MVI   AVRMSTX1,C' '      MOVE A BLANK                 @D31..AP 01752000
+         MVC   AVRMSTX1+1(L'AVRMSTX1+L'AVRMSTX2+L'AVRMSTX3-1),AVRMSTX1  01753000
+         UNPK  AVRMSGCU(4),AVRMSINF+2(3) GET CUU ADDRESS       @D31..AP 01754000
+         MVI   AVRMSGCU+3,C' '    BLANK UNUSED BYTE            @D31..AP 01755000
+         TR    AVRMSGCU(3),AVRTRTAB-X'F0' PRINTABLE CHARACTERS @D31..AP 01756000
+         MVC   AVRMSTX1(L'AVRMSG01),AVRMSG01 MOVE HEADING LINE @D31..AP 01757000
+         MVC   AVRMSTX3(L'AVRMSGS1),AVRMSGS1 MOVE 2ND LINE     @D31..AP 01758000
+         CLI   AVRMSINF+1,ZERO    IS IT DEVICE STATUS INFO     @D31ODAP 01759000
+         BE    AVRMS030           NO, CACHE INFO               @D31ODAP 01760000
+*                                                              @D52VDAP 01761000
+*        DEVICE    STATUS CHANGE MESSAGES                      @D52VDAP 01762000
+*                                                              @D52VDAP 01763000
+         SLR   R2,R2              CLEAR REGISTER               @DA44364 01764000
+         IC    R2,AVRMSINF+1      GET MESSAGE NUMBER           @DA44364 01765000
+         CLM   R2,1,AVRFMAX       GREATER MAXIMUM              @DA44364 01766000
+         BH    AVRMSP20           YES, DONT GIVE A MESSAGE     @DA44364 01767000
+         BCTR  R2,0               SUBTRACT 1 FROM MSG-NO       @DA44364 01768000
+         SLL   R2,5               MSG-NO TIMES 32              @DGA270  01769000
+         LA    R2,AVRDCMSG(R2)    ADDRESS OF MESSAGE TEXT      @DGA270  01770000
+         MVC   AVRMSGV2(L'AVRDCMSG-1),1(R2) MOVE MESSAGE TEXT  @D28ADAP 01771000
+         OC    AVRMSCCB+2(1),0(R2) PROVIDE ACTION INFORMATION  @D28ADAP 01772000
+         B     AVRMSPRT           GET MESSAGE PRINTED          @D31ODAP 01773000
+*                                                              @D52VDAP 01774000
+*        SUBSYSTEM STATUS CHANGE MESSAGES                      @D52VDAP 01775000
+*                                                              @D52VDAP 01776000
+AVRMS030 TM    AVRMSINF,VCTASACT+VCTASFST+VCTASNVS SUBSYS INFO @D52VDAP 01777000
+         BZ    AVRMS150           NO, DEVICE RELATED INFO      @D52VDAP 01778000
+         TM    AVRMSINF,VCTASFST  IS CACHE FAST WRITE CHANGE   @D52VDAP 01779000
+         BZ    AVRMS040           NO,                          @D52VDAP 01780000
+*                                                              @D52VDAP 01781000
+*        SUBSYSTEM STATUS CACHE FAST WRITE ON/OFF              @D52VDAP 01782000
+*                                                              @D52VDAP 01783000
+         NI    AVRMSINF,XFF-VCTASFST RESET IF MORE MESSAGES    @D52VDAP 01784000
+         TM    VCTAFLG,VCTASFST   IS CACHE FAST WRITE ACTIVE   @D52VDAP 01785000
+         BZ    AVRMSPRT           NO,                          @D52VDAP 01786000
+         MVC   AVRMSGV4(L'AVRCNON),AVRCNON CACHE-FAST-WRT=ON   @D52VDAP 01787000
+         B     AVRMSPRT           PRINT MESSAGE                @D52VDAP 01788000
+*                                                              @D52VDAP 01789000
+*        SUBSYSTEM STATUS CACHE ON/OFF                         @D52VDAP 01790000
+*                                                              @D52VDAP 01791000
+AVRMS040 TM    AVRMSINF,VCTASACT  BASIC CACHING CHANGE         @D52VDAP 01792000
+         BZ    AVRMS050           NO,                          @D52VDAP 01793000
+         NI    AVRMSINF,XFF-VCTASACT RESET IF MORE MESSAGES    @D52VDAP 01794000
+         MVC   AVRMSGV2(L'AVRCNCAC),AVRCNCAC BASIC CACHE OFF   @D52VDAP 01795000
+         TM    VCTAFLG,VCTASACT   IS SUBSYSTEM NOW ACTIVE      @D52VDAP 01796000
+         BZ    AVRMSPRT           NO,                          @D52VDAP 01797000
+         MVC   AVRMSGV3(L'AVRCNON),AVRCNON BASIC CACHE ON      @D52VDAP 01798000
+         B     AVRMSPRT           PRINT MESSAGE                @D52VDAP 01799000
+*                                                              @D52VDAP 01800000
+*        SUBSYSTEM STATUS NVS ON/OFF                           @D52VDAP 01801000
+*                                                              @D52VDAP 01802000
+AVRMS050 NI    AVRMSINF,XFF-VCTASNVS RESET IF MORE MESSAGES    @D52VDAP 01803000
+         MVC   AVRMSGV2(L'AVRCNNVS),AVRCNNVS INDICATE NVS      @D52VDAP 01804000
+         TM    VCTAFLG,VCTASNVS   WAS NVS ACTIVATED            @D52VDAP 01805000
+         BZ    AVRMSPRT           NO,                          @D52VDAP 01806000
+         MVC   AVRMSGV3(L'AVRCNON),AVRCNON INDICATE NVS ON     @D52VDAP 01807000
+         B     AVRMSPRT           PRINT MESSAGE                @D52VDAP 01808000
+*                                                              @D52VDAP 01809000
+*        DEVICE    STATUS CHANGE MESSAGES                      @D52VDAP 01810000
+*                                                              @D52VDAP 01811000
+AVRMS150 MVC   AVRMSTX3(L'AVRMSGDV),AVRMSGDV DEVICE CHANGE     @D52VDAP 01812000
+         TM    AVRMSINF,VCTADACT  BASIC DEVICE CACHING CHANGE  @D52VDAP 01813000
+         BZ    AVRMS160           NO,                          @D52VDAP 01814000
+         NI    AVRMSINF,XFF-VCTADACT RESET IF MORE MESSAGES    @D52VDAP 01815000
+         MVC   AVRMSGV2(L'AVRCNCAC),AVRCNCAC BASIC CACHING OFF @D52VDAP 01816000
+         TM    VCTAFLG,VCTADACT   WAS BASIC CACHING ACTIVATED  @D52VDAP 01817000
+         BZ    AVRMSPRT           NO,                          @D52VDAP 01818000
+         MVC   AVRMSGV3(L'AVRCNON),AVRCNON BASIC DEV. CACHE ON @D52VDAP 01819000
+         B     AVRMSPRT           PRINT MESSAGE                @D52VDAP 01820000
+AVRMS160 MVC   AVRMSGV2(L'AVRCNDFW),AVRCNDFW INDICATE DASD FAST@D52VDAP 01821000
+         NI    AVRMSINF,XFF-VCTADFST RESET IF MORE MESSAGES    @D52VDAP 01822000
+         TM    VCTAFLG,VCTADFST   IS DASD FAST WRITE ACTIVE    @D52VDAP 01823000
+         BZ    AVRMS170           NO, TAKE ERROR EXIT          @D52VDAP 01824000
+         MVC   AVRMSGV4(L'AVRCNON),AVRCNON CACHE-FAST-WRT=ON   @D52VDAP 01825000
+AVRMS170 MVI   AVRMSINF,ZERO      CLEAR WORK TO DO FLAG        @D52VDAP 01826000
+         SPACE 2                                                        01827000
+AVRMSPRT LTR   R1,R1              FIRST TIME THROUGH           @D52VDAP 01828000
+         BNZ   AVRMSP10           NO                           @D52VDAP 01829000
+         LA    R1,AVRMSCCW        GET HEADER LINE ADDRESS      @D52VDAP 01830000
+         STCM  R1,7,AVRMSCCB+9    SAVE ADDRESS IN CCB          @D52VDAP 01831000
+         LA    R1,AVRMSCCB                                     @D52VDAP 01832000
+         SYSIO (1)                PRINT HEADER LINE            @D52VDAP 01833000
+         LA    R1,AVRMSCW1        GET DETAIL LINE ADDRESS      @D52VDAP 01834000
+         STCM  R1,7,AVRMSCCB+9    SAVE ADDRESS IN CCB          @D52VDAP 01835000
+         LA    R1,AVRMSCCB        GET CCB ADDRESS              @D52VDAP 01836000
+AVRMSP10 SYSIO (1)                WRITE MESSAGE TO CONSOLE     @D52VDAP 01837000
+         NI    AVRMSCCB+2,XFF-X'08' RESET ACTION TYPE INDICATOR@DA44616 01838000
+         CLI   AVRMSINF+1,ZERO    IS IT DEVICE STATUS INFO     @D52VDAP 01839000
+         BE    AVRMSP30           NO, CACHE INFO               @D52VDAP 01840000
+AVRMSP20 MVI   AVRMSINF+1,ZERO    CLEAR WORK TO DO FLAG        @D52VDAP 01841000
+AVRMSP30 CLI   AVRMSINF,ZERO      MORE MESSAGES TO PRINT       @D52VDAP 01842000
+         BNE   AVRMS020           YES,                         @D61PDAP 01843000
+         LM    R0,R5,AVRMSGSV     RESTORE CALLERS REGISTER     @D52VDAP 01844000
+         BR    R7                      =====================>> @D52VDAP 01845000
+         DROP  RC                 RELEASE SGSERI BASE          @DA44172 01846000
+         DROP  RE                 RELEASE AVRMSGPR BASE        @D61PDAP 01847000
+AVRMSCCB CCB   SYSLOG,AVRMSCCW,X'1500'                         @D62NDAP 01848000
+AVRMSCCW CCW   X'09',AVRMSTX1,SLI,L'AVRMSTX1                   @D62NDAP 01849000
+AVRMSCW1 CCW   X'09',AVRMSTX2,SLI,L'AVRMSTX2+L'AVRMSTX3        @D62NDAP 01850000
+         SPACE 3                                               @D31..AP 01851000
+AVRTRTAB DC    C'0123456789ABCDEF' TRANSLATION TABLE           @D31..AP 01852000
+AVRMSGSV DC    6F'0'              SAVE AREA FOR CALLERS REGS   @D31..AP 01853000
+         DROP  R4                 RELEASE VCTE BASE POINTER    @D31..AP 01854000
+AVRMSTX1 DC    CL68' '            MESSAGE PRINT AREA LINE 1    @D..DCAP 01855000
+AVRMSTX2 DC    CL8' '             PREFIX SLOT FOR MSG-NO       @D61ADAP 01856000
+AVRMSTX3 DC    CL60' '            MESSAGE PRINT AREA LINE 2    @D..DCAP 01857000
+AVRMSGV2 EQU   AVRMSTX3+25                                     @D..DCAP 01858000
+AVRMSGV3 EQU   AVRMSTX3+31                                     @D..DCAP 01859000
+AVRMSGV4 EQU   AVRMSTX3+42                                     @D..DCAP 01860000
+AVRMSG01 DC    C'1H09I   OPER INFO  SYSXXX=CUU '               @D..DCAP 01861000
+AVRMSGCU EQU   AVRMSG01+26                                     @D..DCAP 01862000
+AVRMSGS1 DC    C'SUBSYSTEM STATUS CHANGE: CACHE-FAST-WRITE=OFF   '      01863000
+*                                         CACHE=OFF                     01864000
+*                                         NVS=OFF                       01865000
+*        DC    C'DEVICE    STATUS CHANGE: DASD--FAST-WRITE=OFF   '      01866000
+*                                         CACHE=OFF                     01867000
+*                                         ENTERED DUPLEX MODE           01868000
+*                                         SUSPENDED PRIMARY             01869000
+*                                         SUSPENDED SECONDARY           01870000
+*                                         DUPLEX PENDING                01871000
+*                                         MIRRORING OPERATIONAL         01872000
+*                                         MIRRORING SUSPENDED           01873000
+*                                         MIRRORING PENDING             01874000
+*                                         MIRRORING FAILED              01875000
+*                                                                       01876000
+AVRMSGDV DC    C'DEVICE   '                                    @D31..AP 01877000
+AVRCNCAC DC    C'CACHE=OFF              '                      @D31ODAP 01878000
+AVRCNNVS DC    C'  NVS=OFF              '                      @D52DVAP 01879000
+AVRCNDFW DC    C'DASD--FAST-WRITE=OFF   '                      @D31ODAP 01880000
+AVRCNON  DC    C'ON '                                                   01881000
+AVRFDPX  EQU   X'01'                                                    01882000
+AVRFDX   EQU   X'02'                                                    01883000
+AVRFSIM  EQU   X'03'                                                    01884000
+AVRFMIRP EQU   X'04'                                                    01885000
+AVRFMIRA EQU   X'05'                                                    01886000
+AVRFFDX1 EQU   X'06'                                                    01887000
+AVRFFDX2 EQU   X'07'                                                    01888000
+AVRFDCPS EQU   X'08'                                                    01889000
+AVRFMIRS EQU   X'09'                                                    01890000
+AVRFMIRF EQU   X'0A'                                                    01891000
+AVRFCPYP EQU   X'0B'                                                    01892000
+AVRFCPYT EQU   X'0C'                                                    01893000
+AVRFCPYN EQU   X'0D'                                           @DGA270  01894000
+AVRFCNOT EQU   X'0E'                                           @DGA270  01895000
+SW2NPREF EQU   X'0F'                                           @DGA270  01896000
+SW2YPREF EQU   X'10'                                           @DGA270  01897000
+AVRFMAX  DC    AL1((AVRDCMSE-AVRDCMSG)/32) MAX MSG NUMBER      @DGA270  01898000
+AVRDCMSG DS    XL32                                            @D28ADAP 01899000
+         ORG   AVRDCMSG           OVERLAY                      @D28ADAP 01900000
+         DC    AL1(0),CL31'DUPLEX PENDING                ' 1   @D28ADAP 01901000
+         DC    AL1(0),CL31'ENTERED DUPLEX MODE           ' 2   @D28ADAP 01902000
+         DC    AL1(0),CL31'ENTERED SIMPLEX MODE          ' 3   @D28ADAP 01903000
+         DC    AL1(0),CL31'MIRRORING PENDING             ' 4   @D28ADAP 01904000
+         DC    AL1(0),CL31'MIRRORING OPERATIONAL         ' 5   @D28ADAP 01905000
+         DC    AL1(8),CL31'SUSPENDED PRIMARY             ' 6   @D28ADAP 01906000
+         DC    AL1(8),CL31'SUSPENDED SECONDARY           ' 7   @D28ADAP 01907000
+         DC    AL1(8),CL31'PPRC PAIR SUSPENDED           ' 8   @D28ADAP 01908000
+         DC    AL1(8),CL31'MIRRORING SUSPENDED           ' 9   @D28ADAP 01909000
+         DC    AL1(8),CL31'MIRRORING FAILED              ' A   @D28ADAP 01910000
+*        DC    AL1(0),CL31'BACKGROUND-COPY ONGOING       ' B   @D28ADAP 01911390
+         DC    AL1(0),CL31'FL-COPY RELATION ESTABLISHED  ' B   @D28ADAP 01911780
+*        DC    AL1(0),CL31'BACKGROUND COPY COMPLETED     ' C   @D28ADAP 01912170
+         DC    AL1(0),CL31'FL-COPY RELATION TERMINATED   ' C   @D28ADAP 01912560
+         DC    AL1(0),CL31'FL-NOCOPY RELATION EXISTS     ' D   @D28ADAP 01913000
+         DC    AL1(0),CL31'FL-NOCOPY RELATION WITHDRAWN  ' E   @D28ADAP 01914000
+         DC    AL1(8),CL31'NO MORE PREFERRED PATH ACCESS ' F   @D28ADAP 01915000
+         DC    AL1(8),CL31'PREFERRED PATH ACCESS RESUMED ' 10  @D28ADAP 01916000
+AVRDCMSE DS    0H'0'                      END OF MESSAGE TEXT  @D52VDAP 01917000
+         DC    CL8'SVTSCHIB'                                   @D52VDAP 01918000
+SCHIBSVT DC    XL(SCHLEN)'00'                                  @D52VDAP 01919000
+         DS    0D'0'                                                    01920000
+         DC    CL8'RQTE-TAB'                                            01921000
+RQTTAB   DC    A(RQTTB1),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01922000
+RQTTB1   DC    A(RQTTB2),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01923000
+RQTTB2   DC    A(RQTTB3),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01924000
+RQTTB3   DC    A(RQTTB4),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01925000
+RQTTB4   DC    A(RQTTB5),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01926000
+RQTTB5   DC    A(RQTTB6),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01927000
+RQTTB6   DC    A(RQTTB7),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01928000
+RQTTB7   DC    A(RQTTB8),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT @DBOC    01929000
+RQTTB8   DC    A(RQTTBLST),((RQTEND+3-4)/4)F'00' REQ.  ELEMENT @DBOC    01930000
+RQTTBLST DC    A(0),((RQTEND+3-4)/4)F'00' REQUEST ELEMENT      @DBOC    01931000
+RQTNDPTR DC    A(*)               END OF TABLE POINTER         @D61ADAP 01932000
+*                                                              @D61DDGL 01933000
+*   GENERATE VSE DEVICE LIST AND DSECT DESCRIBING ITS ENTRIES  @D61DDGL 01934000
+*                                                              @D61DDGL 01935000
+         VSEDVLST  DSECT=YES      GENERATE DSECT FOR LIST ENTR.@D61DDGL 01936000
+&SYSECT  CSECT                                                 @D61DDGL 01937000
+         VSEDVLST                                                       01938000
+         SPACE 3                                                        01939000
+SERSAV18 DC    18F'0'                                                   01940000
+         AIF   (NOT &SGSERI).NPRT020                           @D37DDAP 01941000
+         PRINT NOGEN                                           @D37DDAP 01942000
+.NPRT020 ANOP                                                  @D37DDAP 01943000
+         TITLE 'VSE SUPERVISOR     SGSER      SERVICE TASK PROCESSING ' 01944000
+         SGSER                                                 @D52VDAP 01945000
+         TITLE 'VSE SUPERVISOR     SGCUIR     QUIESCE RESUME PROCESS. ' 01946000
+         SGCUIR ,                                              @D66ADAP 01947000
+         MEND                                                           01948000

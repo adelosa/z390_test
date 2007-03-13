@@ -1,0 +1,173 @@
+*ASM XOPTS(NOEPILOG)                                                            
+         TITLE 'BIMTMEXT - BIMTMAN  USER EXIT SKELETON PROGRAM'                 
+*                                                                               
+         PRINT GEN,DATA                                                         
+*                                                                               
+***********************************************************************         
+* THIS IS A SAMPLE USER EXIT ROUTINE.  THERE IS SOME CODE FOR A FEW OF*         
+* THE EXITS.  NOTE THAT UNUSED EXITS MUST SET AN APPROPRIATE RETURN   *         
+* CODE BEFORE EXIT.  BRANCH TO LABEL RETURN FOR ZERO RETURN CODE.     *         
+*                                                                     *         
+*                                                                     *         
+* NONE OF THIS CODE IS GUARANTEED TO WORK.  IF YOU NEED ASSISTANCE,   *         
+* CALL BIM AT 612-933-2885.                                           *         
+***********************************************************************         
+         SPACE                                                                  
+BIMTMEXT DFHEIENT ,                                                    X        
+               CODEREG=12,                                             X        
+               DATAREG=13,                                             X        
+               EIBREG=10                                                        
+         B     BIMTEXI2           BRANCH AROUND EYECATCHER                      
+         DC    C'BIMTMEXT'        EYECATCHER                                    
+         DC    CL8'04/04/97'      SKELETON DATE                                 
+BIMTEXI2 DS    0H                                                               
+         CLC   EIBCALEN,=H'0'      IS THERE INPUT                               
+         BE    RETURN4             NO  - SO QUIT                                
+         L     R11,DFHEICAP        POINT TO COMMAREA                            
+         USING EXTDSEC,R11                                                      
+         CLC   EXTFUNC,=C'LG'     USER LOGON                                    
+         BE    LOGON              YES, DO LOGON PROCESS                         
+         CLC   EXTFUNC,=C'VT'     VERIFY TRANSACTIONS                           
+         BE    VERIFY             YES, GO VERIFY TRANSACTION                    
+         CLC   EXTFUNC,=C'PW'     TEST IF WE ALLOW NEW PASSWORDS                
+         BE    PASSW              YES, GO INFORM CALLER                         
+         CLC   EXTFUNC,=C'EX'     TEST IF USER IS LOGING OFF                    
+         BE    LOGOFF             YES, GO DO LOGOFF FUNCTION                    
+         B     RETURN4            INVALID OPTION RETURN WITH ERROR              
+         SPACE                                                                  
+PASSW    DS    0H                 ALLOW NEW PASSWORDS OR NOT                    
+***********************************************************************         
+*        RETURN CODE 0 - NEW PASSWORDS WILL BE USED                             
+*                    4 - NEW PASSWORDS ARE NOT ALLOWED                          
+***********************************************************************         
+* DO EXTERNAL SECURITY STUFF HERE                                               
+         B     RETURN             RETURN CODE OF 00 MEANS YES                   
+         B     RETURN4            RETURN CODE OF 04 MEANS NO                    
+         SPACE                                                                  
+VERIFY   DS    0H                 VERIFY THAT THE PASSED TRAN                   
+*                                  IS VALID FOR THIS USER                       
+***********************************************************************         
+*        RETURN CODE 0 - PASSED TRANSACTION IS ALLOWED                          
+*                    4 - PASSED TRANSACTION IS NOT ALLOWED                      
+***********************************************************************         
+* DO EXTERNAL SECURITY STUFF HERE                                               
+         B     RETURN             RETURN CODE OF 00 MEANS YES                   
+         B     RETURN4            RETURN CODE OF 04 MEANS NO                    
+         SPACE                                                                  
+LOGOFF   DS    0H                 PERFORM LOGOFF PROCESS                        
+***********************************************************************         
+*        RETURN CODE 0 - LOGOFF OK                                              
+*                    4 - LOGOFF NOT OK, THIS RETURN CODE IGNORED                
+***********************************************************************         
+* DO EXTERNAL SECURITY STUFF HERE                                               
+         B     RETURN             RETURN CODE OF 00 MEANS OK                    
+         B     RETURN4            RETURN CODE OF 04 MEANS ERROR                 
+         SPACE                                                                  
+LOGON    DS    0H                  USER LOGON PROCESSING                        
+***********************************************************************         
+*        RETURN CODE 0 - USER IS OK,                                            
+*                    4 - NO RACF DECISION, USER REJECTED                        
+*                    8 - REJECT USER LOGON                                      
+*                   12 - PASSWORD EXPIRED                                       
+*                   16 - NEW PASSWORD INVALID                                   
+***********************************************************************         
+* THIS IS A SMALL SAMPLE OF THE RETURN CODES FROM THE RACROUTE MACRO  *         
+*   SEE THE RACROUTE MACRO REFERANCE (GC28-1366) FOR A COMPLETE LIST  *         
+* THESE CODES MUST BE TRANSLATED TO MATCH THE RETURN CODES USED BY    *         
+* BIMTMAN  TO INDICATE THE DESIRED RETURN                             *         
+***********************************************************************         
+*   R15                                                                         
+*   RETURN                                                                      
+*   CODE      MEANING                                                           
+*   00     RACROUTE REQUEST=VERIFY HAS COMPLETED SUCCESSFULLY.                  
+*   04     REQUESTED FUNCTION NOT COMPLETED.  NO RACF DECISION.                 
+*   08     REQUESTED FUNCTION HAS FAILED.                                       
+*             RACF                                                              
+*             RETURN                                                            
+*             CODE      MEANING                                                 
+*             08        THE PASSWORD IS NOT AUTHORIZED.                         
+*             0C        THE PASSWORD HAS EXPIRED.                               
+*             10        THE NEW PASSWORD IS INVALID.                            
+***********************************************************************         
+         MVC   CHNBCK,8(R13)       SAVE CHAINBACK                               
+         LA    USERR,EXTUSID       POINT TO USER ID                             
+         LA    PSWDR,EXTPSWD       POINT AT PSWD                                
+         LA    PSWNR,EXTPSWN       POINT AT NEW PSWD                            
+         LA    ACEER,EXTACEE       POINT AT ACEE POINTER                        
+         LA    TERMR,EXTRMID       POINT AT TERMINAL                            
+         LA    WORKR,WORK          POINT AT WORK AREA                           
+* DO EXTERNAL SECURITY STUFF HERE                                               
+         LA    R15,0               FORCE BIMTMAN TO VALID RETURN                
+         MVC   8(4,R13),CHNBCK     RESTORE CHAINBACK, RACF DESTROYS             
+         B     EXIT                USE EXIT IF R15 CONTAINS RC                  
+RETURN4  DS    0H                  ERROR RETURN                                 
+         LA    R15,4               SET RETURN CODE                              
+         B     EXIT                GO TO EXIT CODE                              
+RETURN   DS    0H                                                               
+         XR    R15,R15             RETURN CODE 0                                
+EXIT     DS    0H                  USER EXIT EXIT                               
+         CVD   R15,DBL                                                          
+         UNPK  EXTRETN,DBL+6(2)    MAKE PRINTABLE                               
+         OI    EXTRETN+1,C'0'      RETURN CODE TO CALLER                        
+         EXEC CICS   RETURN                                                     
+         SPACE 2                                                                
+         LTORG                                                                  
+*                                                                               
+*        EQUATES                                                                
+*                                                                               
+R0       EQU   0                   WORK REGISTER                                
+R1       EQU   1                   WORK REGISTER                                
+R2       EQU   2                   WORK REGISTER                                
+R3       EQU   3                   WORK REGISTER                                
+R4       EQU   4                   WORK REGISTER                                
+R5       EQU   5                   WORK REGISTER                                
+R6       EQU   6                   WORK REGISTER                                
+R7       EQU   7                   WORK REGISTER                                
+R8       EQU   8                   WORK REGISTER                                
+R9       EQU   9                   WORK REGISTER                                
+R10      EQU   10                  EIB POINTER                                  
+R11      EQU   11                  PARAMETER AREA REGISTER                      
+R12      EQU   12                  PROGRAM BASE REGISTER                        
+R13      EQU   13                  WORKING STORAGE POINTER                      
+R14      EQU   14                  RETURN REG, WORK REG                         
+R15      EQU   15                  ENTRY POINT REGISTER                         
+PSWDR    EQU   3                   PASSWORD POINTER                             
+USERR    EQU   4                   USER ID POINTER                              
+ACEER    EQU   5                   RACF ACEE POINTER                            
+TERMR    EQU   6                   TERMINAL ID POINTER                          
+WORKR    EQU   7                   WORKAREA POINTER                             
+PSWNR    EQU   8                   NEW PASSWORD POINTER                         
+*                                                                               
+EXTDSEC  DSECT ,                                                                
+EXTFUNC  DS    CL2                 I FUNCTION CODE                      45820002
+*            C'LG'                   LOGON INFORMATION BEING PASSED             
+*            C'PW'                   DOES EXIT ALLOW NEW PASSWORDS              
+*            C'VT'                   CALL TO VERIFY TRANSACTIONS                
+*            C'EX'                   USER IS LOGING OFF                         
+EXTRETN  DS    CL2                 R RETURN CODE                        45820002
+EXTACEE  DS    F                 I/R ACEE ADDRESS FOR RACF                      
+EXTTERM  DS    XL1                   BINARY LENGTH OF TERMINAL ID       45820002
+         DS    CL8                 I TMAN TERMINAL ID                   45820002
+EXTAPID  DS    XL1                   BINARY LENGTH OF VTAM ID           45820002
+         DS    CL8                 I VTAM TERMINAL ID                   45820002
+EXTRMID  DS    XL1                   BINARY LENGTH OF TMAN VTAM ID      45820002
+         DS    CL8                 I TMAN VTAM APPLID                   45820002
+EXTTRAN  DS    CL4                 I TRAN ID BEING ACCESSED                     
+EXTUSID  DS    XL1                   BINARY LENGTH OF USER ID                   
+         DS    CL8                 I ID OF USER LOGING ON                       
+EXTPSWD  DS    XL1                   BINARY LENGTH OF PASSWORD                  
+         DS    CL8                 I PASSWORD OF USER LOGING ON                 
+EXTPSWN  DS    XL1                   BINARY LENGTH OF NEW PASSWORD              
+         DS    CL8                 I NEW PASSWORD OF USER LOGING ON             
+EXTOPR   DS    CL3                 R OPERATOR ID                                
+EXTOPRNM DS    CL20                R USER NAME                                  
+EXTRNSB  DS    CL8                 I SECURITY CODE FROM TRAN                    
+EXITEND  DS    C                                                                
+*                                                                               
+         DFHEISTG                                                               
+DBL      DS    D                                                                
+CHNBCK   DS    F                                                                
+RETCD    DS    F                                                                
+WORK     DS    256C                                                             
+         DFHEIEND                                                               
+         END                                                                    

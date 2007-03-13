@@ -1,0 +1,2190 @@
+         MACRO                                                          00001000
+         SGAM                                                           00002000
+         GBLB  &BGDEBUG           DEBUG OPTION                 @D36ZDJB 00003000
+         GBLB  &SGAM              PRINT OPTION                 @D37ZDJB 00004000
+         AIF   (NOT &BGDEBUG OR NOT &SGAM).NOPRINT             @D37ZDJB 00005000
+         PRINT GEN                PRINT MODULE                 @D37ZDJB 00006000
+.NOPRINT ANOP                                                  @D37ZDJB 00007000
+         TITLE 'VSE/AF SUPERVISOR  SGAM        GETVIS/FREEVIS ROUTINES' 00008000
+************************************************************** @D358DUL 00009000
+*                                                            * @D358DUL 00010000
+.*       IBM DISK OPERATING SYSTEM                            *@D358DUL 00011000
+*        SUPERVISOR - SGAM - 5686-CF7-06                      *@D61NDMZ 00012000
+.*                                                            *@D358DUL 00013000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *@D358DUL 00014000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *@D31UDMZ 00015000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 1979, 2004          *         00016000
+*        SEE COPYRIGHT INSTRUCTIONS                           *@D31UDMZ 00017000
+*                                                            * @D358DUL 00018000
+*    MACRO NAME =  SGAM                                      * @D358DUL 00019000
+*                                                            * @D358DUL 00020000
+*    DESCRIPTIVE NAME =  DYNAMIC LOAD ROUTINE AND            * @D358DUL 00021000
+*                        DYNAMIC STORAGE ALLOCATION AND      * @D149DJB 00022000
+*                        DYNAMIC STORAGE DE-ALLOCATION       * @D149DJB 00023000
+*                                                            * @D358DUL 00024000
+.*   NOTES = CHANGE ACTIVITY                                            00025000
+.*   INCORRECT SYSTEM GETVIS SPACE MANAGEMENT                * @DA35307 00026000
+.*   REUSAGE OF STORAGE GAPS                                 * @DA36211 00027000
+.*   FAILURE TO PFIX PAGES IN THE SYSTEM GETVIS AREA         * @DA36550 00028000
+.*   REDUCE FRAGMENTATION                                    * @D218DKH 00029000
+.*   CLEAR PTR IN COMREG TO LABEL SPACE AREA ON A FREEVIS ALL* @DA37315 00030000
+.*   SPE DY37265                                             * @D218DKH 00031000
+.*   SOFTWARE REIPL                                          * @D31QDHB 00032000
+.*   AF 5.1.0 RSE (ADAPTION TO NEW SYSTEM LAYOUT)            * @D51GDMZ 00033000
+.*   AF 5.1.0 MORE PARTITION SUPPORT (SPACE GETVIS AREA)       @D51IDKH 00034000
+.*   AF 5.1.2 GETVIS FIRST FIT ALGORITHM                     * @D51XDMZ 00035000
+.*   AF 5.2.0 31 BIT SUPPORT                                 * @D52VDMZ 00036000
+.*   AF 6.1.0 CDLOAD MOVED TO SGCFCH                         * @D61NDVB 00037000
+.*   AF 6.4.0 GETMAIN/FREEMAIN/STORAGE SUPPORT               * @D64ADMZ 00038000
+.*   HARDWAIT FF1 DTSCANCL IS SET                            * @DY43823 00039000
+.*   SUPPORT FOR STATUS=SIZE|ALL COMMAND                     * @DY44311 00040000
+.*   DO NOT CONSIDER PREVIOUS PAGE FOR LOC=ANY AND PART. REQ.* @DY45348 00041000
+.*   MORE THAN 255 TASKS                                     * @D66ODOW 00042000
+.*   AF 6.7.0 DO SETLOCK IF PART.GETVIS IN OS390 PARTITION   * @D67FDMZ 00043000
+.*   SAVE SPIDSAV (SUBPOOL-NAME) BEFOR PASSING CONTROL TO    * @DA46055 00044000
+.*     SDAID EVEN IF IT IS NOT A EXPLIZITE SUBPOOL REQUEST   * @DA46055 00045000
+.*   SUBPOOL CHARACTERISTICS NOT SET IN CASE LOC=ANY FAILS   * @DY46568 00045500
+.*                                                                      00046000
+*    FUNCTION =                                              * @D358DUL 00047000
+*       THIS MODULE CONTAINS TWO SVC ROUTINES.               * @D61NDVB 00048000
+.*      CDLOAD TRANSFERRED TO SGCFCH                         * @D61NDVB 00049000
+*                                                            * @D149DJB 00050000
+*       THE  G E T V I S  SVC ROUTINE                        * @D358DUL 00051000
+*       PROCESSING SVC 61 ALLOCATES DYNAMICLY STORAGE        * @D358DUL 00052000
+*       EITHER FROM THE PARTITION GETVIS AREA, THE SPACE     * @D358DUL 00053000
+*       GETVIS AREA, THE SYSTEM GETVIS AREA (SVA) OR THE     * @D51IDMZ 00054000
+*       PMR GETVIS AREA DEPENDING ON THE REQUEST.            * @D52VDMZ 00055000
+*                                                            * @D149DJB 00056000
+*       THE  F R E E V I S  SVC ROUTINE                      * @D358DUL 00057000
+*       PROCESSING SVC 62 FREES AGAIN THE DYNAMIC STORAGE    * @D358DUL 00058000
+*       EITHER IN THE PARTITION GETVIS AREA, THE SPACE       * @D51IDMZ 00059000
+*       GETVIS AREA, THE SYSTEM GETVIS AREA (SVA) OR THE     * @D51IDMZ 00060000
+*       PMR GETVIS AREA DEPENDING ON THE REQUEST.            * @D52VDMZ 00061000
+*                                                            * @D358DUL 00062000
+*       THE INTERFACE BETWEEN THE SUPERVISOR AND THE         * @D358DUL 00063000
+*       COMPONENTS USING THESE SERVICES IS SET UP BY THE     * @D358DUL 00064000
+*       MACROS:                                              * @D358DUL 00065000
+*       GETVIS,FREEVIS,SGETVIS AND SFREEVIS                  * @D61NDVB 00066000
+*       WHEN THE GETVIS CODE IS CALLED VIA BALR INTERFACE    * @D52VDMZ 00067000
+*       THE AMODESW CALL I/F HAS TO BE USED                    @D52VDMZ 00068000
+*                                                            * @D358DUL 00069000
+*      RESTRICTIONS =  NONE                                  * @D358DUL 00070000
+*                                                            * @D358DUL 00071000
+*    MODULE TYPE =  MACRO                                    * @D358DUL 00072000
+*                                                            * @D358DUL 00073000
+*      PURPOSE =                                             * @D358DUL 00074000
+*         TO PROVIDE A DYNAMIC LOAD FACILITY OF SYSTEM       * @D358DUL 00075000
+*         COMPONENTS, AND TO PROVIDE WORK SPACES FOR         * @D358DUL 00076000
+*         REENTRANT PROGAMS.                                 * @D358DUL 00077000
+*                                                            * @D358DUL 00078000
+*      LINKAGE =                                             * @D358DUL 00079000
+*         VIA SVC INTERRUPT HANDLER IF A PROGRAM ISSUED      * @D358DUL 00080000
+*         SVC 61, OR SVC 62.                                 * @D61NDVB 00081000
+*                                                            * @D358DUL 00082000
+*      MESSAGES = NONE                                       * @D358DUL 00083000
+*                                                            * @D358DUL 00084000
+************************************************************** @D358DUL 00085000
+        EJECT                                                  @D64ADKH 00086000
+*********************************************************************RZ 00087000
+*                                                                    RZ 00088000
+*   GETVIS :                                                   @D149DJB 00089000
+*                                                                    RZ 00090000
+*        GETVIS IS USED TO GET STORAGE IN THE GETVIS AREA      @D149DJB 00091000
+*        OF THE USER PARTITION, OF THE SVA OR OF THE SPACE     @D149DJB 00092000
+*        GETVIS AREA                                           @D51IDMZ 00093000
+*        THE GETVIS AREA IS MAPPED ON A BITSTRING (VISTAB).             00094000
+*        EACH BIT REPRESENTS 128 BYTES OF STORAGE              @D369DJB 00095000
+*        IN THE USER GETVIS AREA OR 16 BYTES IN THE SVA/SPACE  @D379DFG 00096000
+*        THE VISTAB IS LOCATED ON THE FIRST PAGE(S) OF THE     @D369DJB 00097000
+*        SVA/SPACE GETVIS AREA OR ON THE LAST PAGE(S) OF THE   @D149DJB 00098000
+*        CORRESPONDING PARTITION GETVIS AREA (STORAGE KEY 0).  @D149DJB 00099000
+*        THE SIZE OF THE VISTAB DEPENDS ON THE SIZE OF THE     @D369DJB 00100000
+*        GETVIS AREA AND IS INITIALIZED ACCORDINGLY.           @D369DJB 00101000
+*                                                                    RZ 00102000
+*        IF SVA=YES OR SPACE=YES IS SPECIFIED IN A GETVIS      @D149DJB 00103000
+*        REQUEST, RB IS LOADED WITH -3, OTHERWISE IT IS CLEARED@D379DFG 00104000
+*        TO 0.                                                 @D379DFG 00105000
+*        RB IS USED TO MODIFY SHIFT INSTRUCTIONS AND           @D369DJB 00106000
+*        TO TEST FOR SPECIAL CALCULATIONS FOR THE SVA/SPACE    @D369DJB 00107000
+*                                                                    RZ 00108000
+*    DEPENDENCIES : NONE                                       @D149DJB 00109000
+*                                                              @D149DJB 00110000
+*    GETVIS INTER MODULE LINKAGE (NO LOGIC ORDERING) :         @D149DJB 00111000
+*                                                              @D149DJB 00112000
+*                                                              @D149DJB 00113000
+*          GETVIS   <--------------------> GVFVPTR             @D149DJB 00114000
+*                   <--------------------> GVCHOPT             @D51IDMZ 00115000
+*          GETVISMR <----> GTVSINIT <----> GFSETKEY            @D149DJB 00116000
+*                   <--------------------> GFSCINDT            @D149DJB 00117000
+*                   <--------------------> GVGETPAG            @D149DJB 00118000
+*                   <--------------------> GFENQDEQ            @D149DJB 00119000
+*                   <----> GVGPMIN1 <----> GVGETPAG            @D149DJB 00120000
+*                                   <----> GFENQDEQ            @D149DJB 00121000
+*                   <--------------------> GVUPPI              @D149DJB 00122000
+*                   <--------------------> SETVSTAB            @D149DJB 00123000
+*                   <--------------------> GFSETKEY            @D149DJB 00124000
+*                   <----> GVSBPOOL <----> GVSCPBDY            @D149DJB 00125000
+*                                   <----> GVSCVSTB            @D149DJB 00126000
+*                                   <----> GVUPPI              @D149DJB 00127000
+*                                   <----> SETVSTAB            @D149DJB 00128000
+*                                   <----> GVGETPAG            @D149DJB 00129000
+*                                   <----> GFENQDEQ            @D149DJB 00130000
+*                                   <----> GFSETKEY            @D149DJB 00131000
+*                   <----> GVPFIXSV <----> MFSFIXSB            @D149DJB 00132000
+*                                   <----> SETVSTAB            @D149DJB 00133000
+*                                                              @D149DJB 00134000
+*                                                              @D149DJB 00135000
+*  EXTERNAL REFERENCES :                                       @D149DJB 00136000
+*                                                              @D149DJB 00137000
+*      DATA AREAS : TASK CONTROL BLOCK  (TCBADR)               @D149DJB 00138000
+*                   REQUESTOR SAVE AREA (SVEARA)               @D149DJB 00139000
+*                   ANCHOR TABLE        (MAPGVCTL)             @D149DJB 00140000
+*                   SUBPOOL INDEX TABLE (SUBPINT)              @D149DJB 00141000
+*                   SUBPOOL CHAIN TABLE (SUBPCHN)              @D149DJB 00142000
+*      ROUTINES   : RWAIT                                      @D149DJB 00143000
+*                   RPOST                                      @D149DJB 00144000
+*                   VALIDPAR                                   @D149DJB 00145000
+*                   ASFIXSUB (ADDRESS)                         @D149DJB 00146000
+*                   AINVPSUB (ADDRESS)                         @D149DJB 00147000
+*                                                              @D358DUL 00148000
+***************************************************************@D369DJB 00149000
+         EJECT                                                 @D14CDJB 00150000
+***************************************************************@D149DJB 00151000
+*                                                              @D149DJB 00152000
+*   GETVIS GENERAL ENTRY AND EXIT ROUTINE .                    @D149DJB 00153000
+*                                                              @D149DJB 00154000
+*   MODULE GETVIS                                              @D149DJB 00155000
+*     EXECUTE GVFVPTR (DO GATING)                              @D52VDMZ 00156000
+*     IF GETVIS OPTION INPUT IS INCORRECT                      @D149DJB 00157000
+*       THEN SET RC = 14                                       @D149DJB 00158000
+*            EXIT GETVIS                                       @D149DJB 00159000
+*     GETVISMR (ENTRY POINT IF NOT GETVIS SVC)                 @D52VDMZ 00160000
+*     SWITCH TO AMODE 31                                       @D52VDMZ 00161000
+*     EXECUTE GTVSINIT (INITIALIZE PTRS AND,IF NECESSARY,TABLES@D52VDMZ 00162000
+*     IF SPECIFIED LENGTH IS INCORRECT                         @D149DJB 00163000
+*       THEN SET RC = 08                                       @D149DJB 00164000
+*            EXIT GETVIS                                       @D149DJB 00165000
+*     IF SPID SPECIFIED OR ROUTED SPACE REQUEST THEN           @D51IDMZ 00166000
+*      IF SUBPOOL ID FIELD NOT INITIALIZED (OFFSET = 0) THEN   @D149DJB 00167000
+*        IF USER SPECIFIED SUBPOOL ID FIELD INVALID            @D149DJB 00168000
+*              THEN SET RC = 18                                @D149DJB 00169000
+*                   EXIT GETVIS                                @D149DJB 00170000
+*        EXECUTE GVSCINDT (SCAN FOR GIVEN NAME )               @D149DJB 00171000
+*          IF RC ¬= 0 (NOT FOUND) THEN                         @D149DJB 00172000
+*             EXECUTE GVSCINDT (SCAN FOR FREE ENTRY)           @D149DJB 00173000
+*             IF RC = 0 (FOUND) THEN                           @D149DJB 00174000
+*                EXECUTE GVGETPAG                              @D149DJB 00175000
+*                IF RC ¬= 0 (NO FREE PAGES FOUND) THEN         @D149DJB 00176000
+*                   THEN EXIT GETVIS                           @D149DJB 00177000
+*                INSERT OFFSET IN USER SPID                    @D149DJB 00178000
+*                IF EXCLUSIVE SUBPOOL WANTED THEN              @D149DJB 00179000
+*                   INSERT TASK ID AND GOTO GETVISED           @D149DJB 00180000
+*                SET PIK OR X'FFFF'                            @D51IDMZ 00181000
+*                IF VITAL REQUESTOR THEN                       @D51IDMZ 00182000
+*                   IND. INDICATE PERMANENT SUBPOOL ID         @D51IDMZ 00183000
+*                IF SUBPOOL IS TO BE CONTROLLED THEN           @D51IDMZ 00184000
+*                   IND. CONTROLLED SUBPOOL AND GOTO GETVISED  @D51IDMZ 00185000
+*                IF SUBPOOL TO BE FETCHPROT. THEN              @D149DJB 00186000
+*                   IND. FETCHPROTECTION AND GOTO GETVISED     @D149DJB 00187000
+*                IF SUBPOOL TO BE PART.KEY PROTECTED THEN      @D51IDMZ 00188000
+*                   IND. PART.KEY PROT.  AND GOTO GETVISED     @D51IDMZ 00189000
+*             ELSE (NO FREE ENTRY FOUND)                       @D149DJB 00190000
+*               SET RETURN CODE AND EXIT GETVIS                @D149DJB 00191000
+*          ELSE (NAME FOUND)                                   @D51IDMZ 00192000
+*           IF SUBPOOL IS CONTROLLED OR CONTROLLED REQUEST     @D51IDMZ 00193000
+*             THEN SET RC=24 AND EXIT GETVIS                   @D51IDMZ 00194000
+*           ELSE                                               @D51IDMZ 00195000
+*            STORE CORRECT INDEX                               @D51IDMZ 00196000
+*      ELSE  (SUBPOOL OFFSET INITIALIZED)                      @D149DJB 00197000
+*       IF INVALID INDEX OR NAME DOES NOT MATCH THEN           @D51IDMZ 00198000
+*        IF REQUEST IS CONTROLLED THEN                         @D51IDMZ 00199000
+*         SET RC = 24 AND EXIT GETVIS                          @D51IDMZ 00200000
+*       ELSE                                                   @D51IDMZ 00201000
+*        DO SAME HANDLING AS FOR OFFSET = 0                    @D51IDMZ 00202000
+*      IF REQUEST IS NOT CONSISTENT CONCERNING FETCH- OR KEY-  @D51IDMZ 00203000
+*                                                   PROTECTION @D149DJB 00204000
+*         THEN SET RC = 14                                     @D149DJB 00205000
+*         EXIT GETVIS                                          @D149DJB 00206000
+*      LABEL : GVSPGVNB                                        @D149DJB 00207000
+*      IF REQUESTED LENGTH >= 2K                               @D149DJB 00208000
+*         THEN EXECUTE GVGETPAG                                @D149DJB 00209000
+*         IF RC ¬= 0                                           @D149DJB 00210000
+*            THEN EXECUTE GVGPMIN1                             @D149DJB 00211000
+*            IF RC ¬= 0                                        @D149DJB 00212000
+*               THEN EXIT GETVIS                               @D149DJB 00213000
+*            ELSE EXECUTE GVSBPOOL                             @D149DJB 00214000
+*                 GOTO GETVISEX                                @D149DJB 00215000
+*      LABEL : GETVISED                                        @D149DJB 00216000
+*      EXECUTE GFENQDEQ                                        @D149DJB 00217000
+*      EXECUTE GVUPPI                                          @D149DJB 00218000
+*      EXECUTE SETVSTAB                                        @D149DJB 00219000
+*      IF SUBPOOL IS FETCHPROTECTED OR PART.KEY PROTECTED      @D51IDMZ 00220000
+*              THEN EXECUTE GFSETKEY                           @D149DJB 00221000
+*            GOTO GETVISEX                                     @D149DJB 00222000
+*     IF POOL SPECIFIED                                        @D149DJB 00223000
+*       THEN UPDATE CURRENT POINTER IN SUBPOOL 0               @D149DJB 00224000
+*            GOTO GVSPGVNB                                     @D149DJB 00225000
+*     LABEL : GETVISEX                                         @D149DJB 00226000
+*     IF SVA REQUEST                                           @D149DJB 00227000
+*       THEN EXECUTE GVPFIXSV                                  @D149DJB 00228000
+*     AMODESW RETURN (RETURN TO CALLER IN CALLER'S AMODE)      @D52VDMZ 00229000
+*   ENDMODULE GETVIS                                           @D149DJB 00230000
+*                                                              @D149DJB 00231000
+*     INPUT :                                                  @D149DJB 00232000
+*      REGISTERS IN REQUESTOR SAVE AREA :                      @D149DJB 00233000
+*          R0  :  LENGTH OF REQUESTED STORAGE                  @D149DJB 00234000
+*          R1 --> POOL (IF SPECIFIED)                          @D149DJB 00235000
+*          RF  :  REQUEST OPTIONS : PAGE BOUNDARY    : X'01'   @D149DJB 00236000
+*                                   POOL             : X'02'   @D149DJB 00237000
+*                                   SVA              : X'04'   @D149DJB 00238000
+*                                   SUBPOOL          : X'08'   @D149DJB 00239000
+*                                   PFIX             : X'10'   @D149DJB 00240000
+*                                   TASK SUBPOOL     : X'20'   @D149DJB 00241000
+*                                   FETCHPROTECTION  : X'40'   @D149DJB 00242000
+*                                   NO PAGE CROSSING : X'80'   @D149DJB 00243000
+*                              EXCESSIVE REQUESTOR : X'0100'   @D149DJB 00244000
+*                              SPACE REQUEST       : X'0200'   @D51IDMZ 00245000
+*                              SPACE WITH PARTKEY  : X'0400'   @D51IDMZ 00246000
+*                              CONTROLLED SUBPOOL  : X'0800'   @D51IDMZ 00247000
+*                              LOC=BELOW REQUEST   : X'1000'   @D52VDMZ 00248000
+*                              LOC=ANY   REQUEST   : X'2000'   @D52VDMZ 00249000
+*                              PMR SPACE (SGETVIS) : X'4000'   @D52VDMZ 00249500
+*                              IPL=YES   REQUEST   : X'8000'   @D61NDMZ 00250000
+*                              STATUS=SIZE REQ    :X'010000'   @D64ADMZ 00251000
+*                              STATUS=ALL  REQ    :X'020000'   @D64ADMZ 00252000
+*                                                              @D149DJB 00253000
+*              POSSIBLE VALUES (HEX) : 0,1,2,3,4,5,6,7,8,9,C,D @D149DJB 00254000
+*                                      1C,1D,20,21,            @D51IDMZ 00255000
+*                                      200,201,208,209,248,249,@D51IDMZ 00256000
+*                                      808,809,80C,80D,81C,81D @D51IDMZ 00257000
+*                                      A08,A48,A49,            @D51IDMZ 00258000
+*                                      608,609,E08,E09         @D51IDMZ 00259000
+*                                      XXXXXX                  @D52VDMZ 00260000
+*                                                              @D149DJB 00261000
+*      REGISTERS :                                             @D149DJB 00262000
+*          ICCF PASSES A PARAMETER LIST ALONG WITH THE         @D149DJB 00263000
+*          PSEUDO PARTITION USER PARAMETERS:                   @D149DJB 00264000
+*          R2 --> PARMLIST                                     @D149DJB 00265000
+*          PARMLIST+0: COMREG ADDRESS                          @D149DJB 00266000
+*          PARMLIST+4: PSEUDO PARTITION END                    @D149DJB 00267000
+*                                                              @D149DJB 00268000
+*   OUTPUT (REGISTERS IN REQUESTOR SAVE AREA) :                @D149DJB 00269000
+*          R1 --> ALLOCATED STORAGE                            @D149DJB 00270000
+*          RF  :  RETURN CODE                                  @D149DJB 00271000
+*                                                              @D149DJB 00272000
+*   WORK REGISTER : ALL , EXCEPT R6                            @D149DJB 00273000
+*                                                              @D149DJB 00274000
+*   REGISTERS, WHICH MAY BE USED BUT MUST BE RESTORED :        @D149DJB 00275000
+*                    RA   : ADDRESS OF REQUESTORS TCB          @D149DJB 00276000
+*                    RC   : ADDRESS OF ANCHOR TABLE            @D149DJB 00277000
+*                    RE   : MODULE BASE REGISTER               @D149DJB 00278000
+*                                                              @D149DJB 00279000
+*   REGISTERS, WHICH MUST NEVER BE MODIFIED :                  @D149DJB 00280000
+*                    R6   : RETURN ADDRESS                     @D149DJB 00281000
+*                    RB   : SHIFT MODIFIER REGISTER            @D149DJB 00282000
+*                    RD   : REQUESTOR SAVE AREA POINTER        @D149DJB 00283000
+*                                                              @D149DJB 00284000
+*  EXIT-NORMAL :                                               @D149DJB 00285000
+*       THE RETURN CODE FIELD IN THE REQUESTOR SAVE AREA       @D149DJB 00286000
+*       (RF FIELD) WILL CONTAIN A ZERO OR A NON-ZERO VALUE     @D149DJB 00287000
+*       IF DURING PROCESSING ANY PROBLEMS ARE ENCOUNTERED.     @D149DJB 00288000
+*       THEN CONTROL IS RETURNED TO THE CALLER (DISPATCHER,    @D149DJB 00289000
+*       SGETVIS, CDLOAD) IN THE CALLER'S MODE BY USING         @D52VDMZ 00290000
+*       AMODESW RETURN. THE RETURN ADDRESS IS CONTAINED IN R6. @D52VDMZ 00291000
+*       THE FOLLOWING ARE THE EXPECTED ERROR CODES           * @D358DUL 00292000
+*       FROM THIS MODULE -                                   * @D358DUL 00293000
+*                                                              @D149DJB 00294000
+*              RC = 00  : GETVIS COMPLETED SUCCESSFULLY        @D149DJB 00295000
+*              RC = 04  : THE REAL GETVIS AREA IS 0K           @D149DJB 00296000
+*              RC = 08  : THE REQUESTED LENGTH IS NEGATIVE     @D149DJB 00297000
+*                         OR EXCEEDS THE GETVIS AREA           @D149DJB 00298000
+*              RC = 0C  : NO MORE GETVIS STORAGE AVAILABLE     @D149DJB 00299000
+*                         CREATE SUBPOOL REQUESTED WITH LNGTH 0@D51IDMZ 00300000
+*              RC = 10  : THE NUMBER OF SUBPOOLS IS EXHAUSTED  @D149DJB 00301000
+*              RC = 14  : INVALID GETVIS OPTION                @D149DJB 00302000
+*              RC = 18  : INVALID SUBPOOL ID FIELD             @D149DJB 00303000
+*     ???      RC = 1C  : CREATE SUBPOOL FOR EXISTING SUBPOOL  @D51IDMZ 00304000
+*                         REQUESTED                            @D51IDMZ 00305000
+*              RC = 20  : SVA - PFIX FAILED                    @D149DJB 00306000
+*              RC = 24  : INVALID SUBPOOL INDEX SUPPLIED       @D51IDMZ 00307000
+*              RC = 28  : CURRENTLY NO SUBPOOL ACCESS ALLOWED  @D52VDMZ 00308000
+*              THE FOLLOWING 2 RETURN CODES ARE A SPECIAL I/F  @D52VDMZ 00309000
+*              TO IPL: FIRST SVA REQUEST IS DONE BY IPL TO     @D52VDMZ 00310000
+*              INTIT. SVA (LENGTH 0 REQ.)                      @D52VDMZ 00311000
+*              RC = 2C  : CNTRL. INFO. MOVED TO GETVIS BELOW   @D52VDMZ 00312000
+*              RC = 30  : INTERNAL, NOT PASSED TO THE CALLER   @D52VDMZ 00313000
+*                         SPECIAL HANDLING DURING IPL:         @D52VDMZ 00314000
+*                         CNTRL.INFO NOT MOVED, PASS RC = 0 TO @D52VDMZ 00315000
+*                         IPL, EVEN FOR LENGTH 0 REQ. AND      @D52VDMZ 00316000
+*                         SUBPOOL EMPTY(SET BY GTVSINIT)       @D52VDMZ 00317000
+*                                                              @D149DJB 00318000
+*  EXIT-ABNORMAL :                                             @D149DJB 00319000
+*       THE USER IS CANCELLED WITH ERR25 (INVALID ADDRESS)     @D149DJB 00320000
+*       WHEN THE SPECIFIED SUBPOOL NAME FIELD IS NOT WITHIN    @D149DJB 00321000
+*       THE PARTITION.                                         @D149DJB 00322000
+*       THE USER IS CANCELLED WITH ERR21 (ILLEGAL SVC) WHEN    @D149DJB 00323000
+*       THE KEY IS NOT ZERO FOR SVA/SPACE REQUESTS             @D149DJB 00324000
+*                                                              @D149DJB 00325000
+***************************************************************@D149DJB 00326000
+         SPACE 2                                               @D36ZDJB 00327000
+         DC    C'SGAM    '                                     @DA35307 00328000
+         DC    C'VERS 6.7'                                     @D64ADMZ 00329000
+         DC    C'@DY46568'        LAST APAR FIX                @DY46568 00330490
+         SPACE 2                                               @D36ZDJB 00331000
+         DC    CL18'GETVIS  02/08/2002'  MODULE NAME AND DATE           00332000
+         SPACE 1                                               @D37ZDJB 00333000
+         USING TCBADR,RA                                       @D14CDJB 00334000
+GETVIS   DS    0H                                              @D14CDJB 00335000
+*SGLINK  GETVIS,S,INPUT=(R6,RA),OUTPUT=(RF),                           *00336000
+               WORK=(R0-R2,R3,R4,R5,R7,R8,R9,RB,RC-RF),                *00337000
+               SUBROUT=(GVFVPTR,GETVISMR)                               00338000
+         L     RE,AMBASE          LOAD BASE REGISTER           @D14CDJB 00339000
+         USING GETVIS,RE                                       @D14CDJB 00340000
+         SPACE 2                                               @D64ADKH 00341000
+*   THE GETVIS MAIN PATH IS EXECUTING IN AMODE 31             *@D52VDMZ 00342000
+*   THE AMODE/RMODE OF THE CALLER IS                          *@D52VDMZ 00343000
+*   KNOWN (TCBIEXFL).                                         *@D52VDMZ 00344000
+*   TCBIEXFL IS NOT SET/NEEDED FOR GETMAIN REQUESTS           *@D64ADMZ 00345000
+         SPACE 2                                               @D64ADKH 00346000
+*        AMODESW SET,AMODE=31,WR=(RF)  SWITCH TO AMODE 31      @D52VDMZ 00347000
+         AMODESW SET,AMODE=31,WR=(RF)                          @D52VDMZ 00348000
+         L     RD,TCBSAVE         GET PTR TO SAVE AREA         @D64ADMZ 00349000
+*                                                                       00350000
+*   CHECK OPTIONS                                                       00351000
+*                                                                       00352000
+         SPACE                                                          00353000
+         SGAMSUBR SUBROUT=GVCHOPT,                             @D64ADMZ*00354000
+               INPUT=(RD,RE),                                  @D64ADMZ*00355000
+               OUTPUT=(RF),                                    @D64ADMZ*00356000
+               NOMOD=(R6,RA,RD),                               @D64ADMZ*00357000
+               LINK=(R8),                                      @D64ADMZ*00358000
+               CBASE=AMBASE       CHECK SPECIFIED OPTIONS      @D64ADMZ 00359000
+         LA    RC,0               NO CI SET UP TO NOW          @D64ADMZ 00360000
+         LTR   RF,RF              ALL OPTIONS VALID            @D64ADMZ 00361000
+         BNZ   GVRETERR           NO, RETCODE ALREADY SET      @D64ADMZ 00362000
+*SGLINK  GVFVPTR,INPUT=(R6,R8:LINK,RA,RD),OUTPUT=(RC,RF),              *00363000
+               NOMODR=(R6,RA,RD),AMODE=31                               00364000
+         SGAMSUBR SUBROUT=GVFVPTR,                             @D14CDJB*00365000
+               INPUT=(R6,RA,RD,RE),                            @D64ADMZ*00366000
+               OUTPUT=(RC,RF),                                 @D64ADMZ*00367000
+               NOMOD=(R6,RA,RD),                               @D64ADMZ*00368000
+               LINK=(R8),                                      @D14CDJB*00369000
+               CBASE=AMBASE       GATE GETVIS CONTROL INFO.    @D51IDMZ 00370000
+         USING SVEARA,RD          SET BASE FOR SAVE AREA       @D367DJB 00371000
+         LTR   RF,RF              ERROR OCCURED                @D51IDMZ 00372000
+         BNZ   GVDONE             YES (RC ALREADY SET)         @D64ADMZ 00373000
+***************************************************************@D52VDMZ 00374000
+*  GETVIS MAIN PATH (ENTRY POINT FOR SGETVIS)                 *@D52VDMZ 00375000
+*   INPUT :                                                   *@D52VDMZ 00376000
+*     R6 : RETURN ADDRESS (DISP OR INTERNAL CALLER)           *@D52VDMZ 00377000
+*     RA : TCBPTR                                             *@D52VDMZ 00378000
+*     RC : ADDR OF CONTROL INFO (GATE(S) CLOSED)               @D64ADKH 00379000
+*          RC = 0 IF AREA NOT AVAILABLE (GATE(S) OPEN)         @D64ADKH 00380000
+*     RD : SAVE AREA POINTER                                  *@D52VDMZ 00381000
+*     RE : BASE ADDR (AMBASE)                                  @D64ADKH 00382000
+*     RF : 0                                                  *@D52VDMZ 00383000
+*     DFWKCOMG (COMREG ADDRESS). PARTITION ONLY               *@D52VDMZ 00384000
+***************************************************************@D52VDMZ 00385000
+GETVISMR DS    0H                 ENTRY POINT FOR INTERN. CALL @D14CDJB 00386000
+*SGLINK  GETVISMR,S,INPUT=(R6:LINK,RA,RC-RE,RF),OUTPUT=(RF),           *00387000
+               WORK=(R0-R2,R3,R4,R5,R7,R8,R9,RB,RC,RE,RF),             *00388000
+               SUBROUT=(GTVSINI0,GTVSINI2,GTVSINI3,                    *00389000
+               GVTRACE,GVPROT,GMFM_ACTIV,                              *00390000
+               GFSCINDT,GVGETPAG,GVSBPOOL,GVGPMIN1,GFENQDEQ,           *00391000
+               GVUPPIE0,GVUPPIE1,SETVSTAB,GVSCPBDY,GVPFIXSV,           *00392000
+               GVXING,GVFVMIR1,GVINTFV,GVSCVSTB)                        00393000
+         L     RE,AMBASE          NOT LOADED WHEN CALLED OUTSIDE       *00394000
+                                  GETVIS                       @D64ADMZ 00395000
+         SR    RB,RB              IDENTIFY CALLER AS GETVIS    @D52VDKH 00396000
+***************************************************************@D149DJB 00397000
+*  INITIALIZE AREA AS NECESSARY                               *         00398000
+***************************************************************@D149DJB 00399000
+*SGLINK  GTVSINI0,INPUT=(R7:LINK,RA-RC,RD,RF),OUTPUT=(RB,RC,RF),       *00400000
+               NOMODR=(R6,RA,RD),AMODE=31                               00401000
+         SGAMSUBR SUBROUT=GTVSINI0,                            @D14CDJB*00402000
+               INPUT=(RA,RB,RD,RE,RF),                         @D52VDMZ*00403000
+               OUTPUT=(RB,RC,RF),                              @D52VDMZ*00404000
+               NOMOD=(R6,RA,RD),                               @D52VDMZ*00405000
+               LINK=(R7),                                      @D14CDJB*00406000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 00407000
+         LTR   RF,RF              ERROR OCCURRED               @D14CDJB 00408000
+         BZ    GETVISMS           NO, CHECK FOR STATUS=ALL     @D64ADMZ 00409000
+* RF=4 : AREA NOT AVAILABLE OR NOT ENOUGH SPACE PROVIDED FOR   @D52VDMZ 00410000
+*        STATUS=SIZE REQUEST                                   @DY44311 00411000
+* RF=X'0C' ONLY SPACE FOR CI                                   @D52VDMZ 00412000
+* RF=X'30' IPL REQUEST OR STATUS=SIZE REQUEST                  @DY44311 00413000
+* GETMAIN REQUEST: RF/=0 CAN NOT OCCUR, SINCE FIRST REQUEST    @D64ADMZ 00414000
+* FOR AN AREA IS DONE BY GETVIS                                @D64ADMZ 00415000
+         LA    R0,SMERR30         IF IT IS IPL=YES OR AR STATUS=SIZE    00416000
+*                                 REQUEST  IPL=YES THEN ...             00417000
+         CR    R0,RF              .. STOP PROCESSING           @D64ADMZ 00418000
+         BNE   GVRETERR           OTHERWISE ERROR OCCURED      @D64ADMZ 00419000
+         LA    RF,0               IPL=YES OR AR STATUS=SIZE,   @D61NDMZ 00420000
+         B     GETVISMS_0         RETURN TO IPL/AR WITH RF=0   @DY45752 00421000
+*                                 CHECK SYS.GETVIS GATE BEFORE @DY45752 00422000
+GETVISMS DS    0H                                              @D64ADMZ 00423000
+         USING ANCHTAB,RC                                      @DY45752 00424000
+         TM    SVER0F+D1,GVSTATAL IS IT STATUS=ALL REQUEST     @DY44311 00425000
+         BZ    GETVISM0           NO                           @DY44311 00426000
+         SGAMSUBR SUBROUT=GVSTAT,                              @DY44311*00427000
+               INPUT=(RA,RC,RD,RE),                            @DY44311*00428000
+               OUTPUT=(RF),                                    @DY44311*00429000
+               NOMOD=(R6,RA,RC,RD),                            @DY44311*00430000
+               LINK=(R8),                                      @DY44311*00431000
+               CBASE=AMBASE       PROCESS STATUS=ALL           @DY44311 00432000
+GETVISMS_0 DS  0H                                              @DY45752 00433000
+         TM    GVFVFLG2,GVSTOSVA  OPEN SYS. GETVIS GATE ?      @DY45752 00434000
+         BZ    GVRETPST_1         NO, DONE                     @DY45752 00435000
+* OPEN SYSTEM GETVIS GATE                                               00436000
+* SAVE REGISTERS IN PART. GETVIS CI                                     00437000
+         ST    R6,SAVREG6         DESTROYED BY ...             @DY45752 00438000
+         ST    RF,SAVREGF         ... RPOST                    @DY45752 00439000
+         L     RC,SAVR2ND7        GET PTR TO SYS. CI           @DY45752 00440000
+         L     R5,GVFVGATE                                     @DY45752 00441000
+         LA    R5,0(R5)                                        @DY45752 00442000
+         ST    R5,GVFVGATE                                     @DY45752 00443000
+         L     R6,DISPAD                                       @DY45752 00444000
+         USING DISP,R6                                         @DY45752 00445000
+         BAL   RF,RPOST           POST ALL WAITERS             @DY45752 00446000
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @DY45752 00447000
+         DROP  R6                 RELEASE DISP BASE            @DY45752 00448000
+         L     RE,AMBASE          RESTORE BASE                 @DY45752 00449000
+         L     RC,TCBGVR12        GET PTR TO PART. CI          @DY45752 00450000
+         NI    GVFVFLG2,X'FF'-GVSTOSVA SYS. GETVIS GATE OPEN   @DY45752 00451000
+         L     R6,SAVREG6         RESTORE REGISTERS DESTROYED..@DY45752 00452000
+         L     RF,SAVREGF         ... BY RPOST                 @DY45752 00453000
+         B     GVRETPST_1         SKIP MIRRRORING,SDAID ...    @D66GGMZ 00454000
+         DROP  RC                                              @DY45752 00455000
+GETVISM0 DS    0H                 ENTRY POINT FOR INTERN. CALL @D14CDJB 00456000
+         USING ANCHTAB,RC                                      @D367DJB 00457000
+         ST    RF,MAXGAP                                       @D64ADMZ 00458000
+         ST    RF,MAXGAP_ABV                                   @D64ADMZ 00459000
+         ST    RF,MAXGAP_BDY                                   @D64ADMZ 00460000
+***************************************************************@D149DJB 00461000
+*        TEST LENGTH CORRECT                                         RZ 00462000
+*        A LENGTH OF 0 MAY BE GIVEN TO GET THE NEXT FREE       @D369DJB 00463000
+*        LOCATION                                              @D369DJB 00464000
+***************************************************************@D149DJB 00465000
+         LM    R0,R1,SVER00       GET USER PARAMETER REGISTERS @D35DDUL 00466000
+         LTR   R0,R0                                           @D367DJB 00467000
+         BM    GVRET08            NEGATIVE,ERROR               @D14CDJB 00468000
+         BZ    SIZEZERO           LENGTH 0 SPECIFIED           @DY45166 00469000
+***************************************************************@DY45166 00470000
+*FIXED SVA REQUESTS LESS THAN ONE PAGE ARE NOT ALLOWED TO CROSS@DY45166 00471000
+*A PAGE. REASON: THE REAL PAGES MIGHT NOT BE CONTIGUOUS        @DY45166 00472000
+***************************************************************@DY45166 00473000
+         TM    SVER0F+D3,SVAIND+GVPFIX SVA+PFIX REQUEST        @DY45166 00474000
+         BNO   SIZE_GT0           NO                           @DY45166 00475000
+         C     R0,PAGESIZE        REQUEST > PAGESIZE           @DY45166 00476000
+         BH    SIZE_GT0           YES                          @DY45166 00477000
+         OI    SVER0F+D3,SGVNPGX  NO PAGE CROSSING ALLOWED     @DY45166 00478000
+         B     SIZE_GT0                                        @DY45166 00479000
+SIZEZERO DS    0H                                              @DY45166 00480000
+         NI    SVER0F+D3,XFF-PAGEIND DO NOT CONSIDER PAGE FOR LENGTH 0  00481000
+*                                 REQUEST                      @D61NDMZ 00482000
+         B     SIZE_OK                                         @D66GGMZ 00483000
+SIZE_GT0 DS    0H                 SIZE GREATER 0               @D64ADKH 00484000
+* IF ROUNDED LENGTH NEGATIVE THEN SET LENGTH TO                         00485000
+* X'7FFFFFF0' (X'7FFFFF80') DEPENDING ON ALLOCATION UNIT                00486000
+         LR    R4,R0                                           @D64ADKH 00487000
+         BCTR  R4,0                                            @D64ADKH 00488000
+         SRA   R4,LDVBYTBI(RB)                                 @D64ADKH 00489000
+         LA    R4,1(R4)                                        @D64ADKH 00490000
+         SLA   R4,LDVBYTBI(RB)                                 @D64ADKH 00491000
+         LR    R0,R4                                           @D64ADKH 00492000
+         BNO   SIZE_OK                                         @D64ADKH 00493000
+* ROUNDED LENGTH IS NEGATIVE                                            00494000
+         L     R0,SVER00                                       @D64ADKH 00495000
+         SRA   R0,LDVBYTBI(RB)                                 @D64ADKH 00496000
+         SLA   R0,LDVBYTBI(RB)                                 @D64ADKH 00497000
+         ST    R0,SVER00                                       @D64ADKH 00498000
+SIZE_OK  DS    0H                                              @D64ADKH 00499000
+         CLI   GMFMRQST,X'00'     IS IT GETMAIN REQUEST        @D64ADKH 00500000
+         BNE   GM_ACTIVATE        YES                          @D64ADKH 00501000
+         TM    SVER0F+D2,GVFVPMSP IF PMR SPACE REQ. SKIP NOT ..@D52VDMZ 00502000
+         BO    GVNOSPID           .. NECESSARY/POSSIBLE PART   @D52VDMZ 00503000
+***************************************************************@D52VDMZ 00504000
+*  CLEAR FIRST BYTE/BIT OF SUBPOOL NAME ADDRESS (POOL POINTER)*@D52VDMZ 00505000
+*  DEPENDING ON CALLER'S AMODE.                               *@D52VDMZ 00506000
+*  NOTE THAT THE POOL PTR MUST POINT IN THE LOC=BELOW AREA    *@D52VDMZ 00507000
+*  OTHERWISE IT IS IGNORED.                                   *@D52VDMZ 00508000
+*  R1 IS UPDATED EVEN IF NEITHER SPID NOR POOL IS SPECIFIED.  *@D52VDMZ 00509000
+***************************************************************@D52VDMZ 00510000
+         TM    TCBIEXFL,TCBIEXAM  CALLER IN AMODE 31 ?         @D52VDMZ 00511000
+         BO    GVISCBIT           YES, CLEAR FIRST BIT         @D52VDMZ 00512000
+         N     R1,ADDRMSK         NO, CLEAR FIRST BYTE         @D52VDMZ 00513000
+         B     GVISCDON           CONTINUE                     @D52VDMZ 00514000
+GVISCBIT DS    0H                                              @D52VDMZ 00515000
+         LA    R1,0(,R1)          CLEAR FIRST BIT              @D52VDMZ 00516000
+GVISCDON DS    0H                                              @D52VDMZ 00517000
+         SPACE 1                                               @D14CDJB 00518000
+***************************************************************@D149DJB 00519000
+*  HANDLE GETVIS REQUEST FOR EXCLUSIVE SUBPOOL                *@D149DJB 00520000
+***************************************************************@D149DJB 00521000
+         TM    SVER0F+D3,GVTSKSP  EXCLUSIVE SUBPOOL WANTED ?   @D14CDJB 00522000
+         BNO   GETVISNX           NO  ===>                     @D14CDJB 00523000
+         LA    R1,TCBSPOFF-D6     GET DUMMY SPID ADDRESS       @D52VDKH 00524000
+         LH    R2,TCBSPOFF        GET OFFSET TO INDEX TABLE    @D14CDJB 00525000
+         LTR   R2,R2              ALREADY INITIALIZED ?        @D14CDJB 00526000
+         BZ    GVSPNIND           ===> CREATE SUBPOOL          @D52VDKH 00527000
+         A     R2,BSUBPIND        GET INDEX TABLE ENTRY ADDRESS@D14CDJB 00528000
+         ST    R2,SPIDSAV         SAVE SUBPOOL INDEX           @D52VDKH 00529000
+         ST    R1,SSPNPTR         SAVE PTR TO SP IN USERS AREA @D52VDKH 00530000
+         LR    R4,RB              SAVE REGISTER                @D52VDKH 00531000
+         LA    RB,3               SWITCH SUBPOOL               @D52VDKH 00532000
+         LR    R5,R2              SUBPOOL POINTER              @D52VDKH 00533000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *00534000
+               NOMODR=(R0,R2,R4,R6,RA,RC,RD,RF),AMODE=31                00535000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D52VDMZ*00536000
+               INPUT=(R5,RB,RC,RE),                            @D52VDMZ*00537000
+               NOMOD=(R2,R4,R6,RA,RC,RD),                      @D52VDMZ*00538000
+               LINK=(R7),                                      @D14CDJB*00539000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 00540000
+         LR    RB,R4              RESTORE REGISTER             @D52VDKH 00541000
+         B     GVSPGVNB           ===> LOOK FOR SPACE          @D14CDJB 00542000
+         SPACE 1                                                        00543000
+***************************************************************         00544000
+*  ACTIVATE MVS SUBPOOL                                       *@D64ADKH 00545000
+***************************************************************         00546000
+GM_ACTIVATE  DS  0H                                            @D64ADKH 00547000
+         LTR   R0,R0              LENGTH 0 REQUEST             @D64ADKH 00548000
+         BZ    GVDONE             YES, DONE                    @D64ADKH 00549000
+* COPY SPLE INTO SUBPINT                                                00550000
+*SGLINK  GMFM_ACTIV,INPUT=(R8:LINK,RC),OUTPUT=(R5,RF),                 *00551000
+               AMODE=31,NOMODR=(R0,R1,R6,RA-RD)                         00552000
+         SGAMSUBR SUBROUT=GMFMACTV,                            @D64ADKH*00553000
+               INPUT=(RC),                                     @D64ADKH*00554000
+               OUTPUT=(R5,RF),                                 @D64ADKH*00555000
+               NOMOD=(R0,R1,R6,RA,RB,RC,RD),                   @D64ADKH*00556000
+               LINK=(R8),                                      @D64ADKH*00557000
+               CBASE=AMBASE                                    @D64ADKH 00558000
+         LTR   RF,RF                                           @D64ADKH 00559000
+         BNZ   GVDONE                                          @D64ADKH 00560000
+         ST    R1,SSPNPTR                                      @D64ADKH 00561000
+         LR    R2,R5                                           @D64ADKH 00562000
+         LR    R4,RB              SAVE REGISTER                @D64ADKH 00563000
+         LA    RB,3               SWITCH SUBPOOL               @D64ADKH 00564000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *00565000
+               NOMODR=(R0,R2,R4,R6,RA,RC,RD,RF),AMODE=31                00566000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D64ADKH*00567000
+               INPUT=(R5,RB,RC,RE),                            @D64ADKH*00568000
+               NOMOD=(R2,R4,R6,RA,RC,RD),                      @D64ADKH*00569000
+               LINK=(R7),                                      @D64ADKH*00570000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D64ADKH 00571000
+         LR    RB,R4              RESTORE REGISTER             @D64ADKH 00572000
+         B     GVSPGVNB                                        @D64ADKH 00573000
+         SPACE 1                                                        00574000
+***************************************************************@D149DJB 00575000
+*  HANDLE GETVIS REQUEST FOR SPID                             *@D149DJB 00576000
+***************************************************************@D149DJB 00577000
+GETVISNX EQU   *                                               @D14CDJB 00578000
+         TM    SVER0F+D3,GVSPID   SPID SPECIFIED ?             @D14CDJB 00579000
+         BNZ   GVINSPID           YES ==>                      @D51IDKH 00580000
+         TM    SVER0F+D2,GVFVSPIN REQUEST FOR SPACE GETVIS?    @D51IDKH 00581000
+         BZ    GVNOSPID           NO, USE SUBPOOL 0            @D51IDKH 00582000
+         TM    SVER0F+D3,SVAIND   ROUTED TO SVA FOR STATIC PART@D51IDKH 00583000
+         BZ    GVNOSPID           NO, USE SUBPOOL 0            @D51IDKH 00584000
+***************************************************************         00585000
+*  USE UNIQUE GENERAL SUBPOOL FOR STATIC PARTITION, WHEN REQUEST        00586000
+*  FOR SPACE GETVIS IS ROUTED TO SVA                                    00587000
+***************************************************************         00588000
+         L     R1,PIBPTR2         GET CURRENT PCB OUT OF...    @D51IDMZ 00589000
+         USING PIB2ADR,R1         .. PIB2                      @D51IDMZ 00590000
+         L     R1,PIBPCB          UNIQUE SUBPOOL-ID IS IN PCB  @D51IDKH 00591000
+         USING PCBADR,R1                                       @D51IDKH 00592000
+         LA    R1,PCBPSPID        EACH PARTITION HAS ITS OWN   @D51IDKH 00593000
+         DROP  R1                                              @D51IDKH 00594000
+         B     GETVNOCK         NO VALIDATION FOR SVA OR SPACE @D51IDKH 00595000
+GVINSPID DS    0H                                              @D52VDMZ 00596000
+         LTR   RB,RB              SVA OR SPACE GETVIS REQUEST? @D51IDKH 00597000
+         BNZ     GETVNOCK           YES ==> (NO VALIDATION)    @D14CDJB 00598000
+         LA    R2,D7(,R1)         HIGH ADDRESS TO BE VALIDATED @D52VDMZ 00599000
+         USING DISP,R6                                         @D14CDJB 00600000
+         BAL   R8,VALIDPAR        VALIDATE SUBPOOL ID ENTRY    @D14CDJB 00601000
+         DROP  R6                                              @D14CDJB 00602000
+GETVNOCK EQU   *                                               @D14CDJB 00603000
+         LH    R2,D6(,R1)         GET SUBPOOL ID               @D14CDJB 00604000
+         LTR   R2,R2              SUBPOOL ID INITIALIZED ?     @D14CDJB 00605000
+         BZ    GVSPZERO           NO  ==>                      @D14CDJB 00606000
+         LR    R3,R2              SAVE OFFSET                  @D51IDMZ 00607000
+         A     R2,BSUBPIND        GET ADDRESS OF ENTRY         @D14CDJB 00608000
+         C     R2,ESUBPIND        OFFSET TOO HIGH ?            @D14CDJB 00609000
+         BH    GVSPTST            YES,                         @D51IDKH 00610000
+         USING SUBPINT,R2                                      @D14CDJB 00611000
+         CLC   SPITNAME(L'SPITNAME),D0(R1)   NAME CORRECT ?    @D51IDKH 00612000
+         BNE   GVSPTST            NO,                          @D51IDKH 00613000
+***************************************************************         00614000
+*  TO MAKE SUBPOOL IDS UNIQUE IF A REQUEST FOR SPACE GETVIS             00615000
+*  IS ROUTED TO SVA, THE SUBPOOL ID IS EXTENDED                         00616000
+*  FOR SPACE REQUESTS ALWAYS THE PARTITION'S PIK IS APPENDED            00617000
+*  FOR OTHER REQUESTS X'FFFF' IS APPENDED                               00618000
+*  TEST IF THE PIKS MATCH                                               00619000
+***************************************************************         00620000
+         TM    SVER0F+D2,GVFVSPIN IS THE REQUEST FOR SPACE?    @D51IDKH 00621000
+         BZ    GVSPNROU           NO,                          @D51IDKH 00622000
+***************************************************************         00623000
+*  THE REQUEST IS FOR SPACE GET PARTITION'S PIK                         00624000
+***************************************************************         00625000
+         LH    R4,PIK                                          @D51IDKH 00626000
+         B     GVSPPIK                                         @D51IDKH 00627000
+***************************************************************         00628000
+*  THE REQUEST IS NOT SPACE, USE X'FFFF' INSTEAD OF PIK                 00629000
+***************************************************************         00630000
+GVSPNROU LA    R4,1               LOAD X'FFFFFFFF' INTO R4     @D51IDKH 00631000
+         LNR   R4,R4                                           @D51IDKH 00632000
+GVSPPIK  CH    R4,SPITPIK         CORRECT PIK ?                @D51IDKH 00633000
+         BE    GVSPGVN            NAMES MATCH, CONTINUE        @D51IDKH 00634000
+         DROP  R2                                              @D51IDKH 00635000
+GVSPTST  EQU   *                                               @D14CDJB 00636000
+         TM    SVER0F+2,GVFVCNTL  REQUEST CONTROLLED?          @D51IDKH 00637000
+         BO    GVRET24            YES, INVALID INDEX           @D51IDKH 00638000
+GVSPZERO EQU   *                                               @D14CDJB 00639000
+         CLI   D0(R1),X00         VALID NAME ?                 @D14CDJB 00640000
+         BE    GVRET18            NO  ==>                      @D14CDJB 00641000
+         LR    R3,R1              GET PARAMETER FOR SCAN ROUT. @D14CDJB 00642000
+*SGLINK  GFSCINDT,INPUT=(R3,R8:LINK,RC,RD),OUTPUT=(R2,R3,RF),          *00643000
+               NOMODR=(R0,R1,R6,RA-RC,RD),AMODE=31                      00644000
+         SGAMSUBR SUBROUT=GFSCINDT,                            @D14CDJB*00645000
+               INPUT=(R3,RC,RD),                               @D52VDMZ*00646000
+               OUTPUT=(R2,R3,RF),                              @D14CDJB*00647000
+               NOMOD=(R0,R1,R6,RB,RC,RD),                      @D14CDJB*00648000
+               LINK=(R8),                                      @D14CDJB*00649000
+               CBASE=AMBASE       SCAN INDEX TABLE FOR NAME    @D51IDMZ 00650000
+         LTR   RF,RF              NAME FOUND ?                 @D14CDJB 00651000
+         BZ    GVSPFND            YES                          @D51IDKH 00652000
+***************************************************************@D149DJB 00653000
+*  SPID SPECIFIED BUT NOT IN INDEX TABLE, CREATE SUBPOOL                00654000
+***************************************************************@D149DJB 00655000
+         SR    RF,RF              RESET RETURN CODE            @D14CDJB 00656000
+***************************************************************@D149DJB 00657000
+*  LENGTH OF 0 IS NOT ALLOWED WITH SUBPOOL CREATION                     00658000
+*  FOR SUBSEQUENT REQUESTS, THE ADDRESS OF THE NEXT FREE STORAGE        00659000
+*  LOCATION IS RETURNED                                                 00660000
+***************************************************************@D149DJB 00661000
+GVSPNIND DS    0H                                              @D52VDKH 00662000
+         LTR   R0,R0              LENGTH OF 0 SPECIFIED ?      @D14CDJB 00663000
+         BZ    GVRET0C            YES ===> SET AS NOT FOUND    @D14CDJB 00664000
+         LA    R3,ZERONAME        SCAN FOR EMPTY INDEX ENTRY   @D14CDJB 00665000
+*SGLINK  GFSCINDT,INPUT=(R3,R8:LINK,RC,RD),OUTPUT=(R2,R3,RF),          *00666000
+               NOMODR=(R0,R1,R6,RA-RC,RD),AMODE=31                      00667000
+         SGAMSUBR SUBROUT=GFSCINDT,                            @D14CDJB*00668000
+               INPUT=(R3,RC,RD),                               @D52VDMZ*00669000
+               OUTPUT=(R2,R3,RF),                              @D14CDJB*00670000
+               NOMOD=(R0,R1,R6,RB,RC,RD),                      @D14CDJB*00671000
+               LINK=(R8),                                      @D14CDJB*00672000
+               CBASE=AMBASE       SCAN INDEX TABLE FOR NAME    @D51IDMZ 00673000
+         LTR   RF,RF              EMPTY ENTRY FOUND ?          @D14CDJB 00674000
+         BNZ   GVRETERR           NO  ==> (RF ALREADY SET)     @D14CDJB 00675000
+*********************************************************************** 00676000
+*  THE PTR TO THE SUBPOOL NAME IN THE                                   00677000
+*  USERS AREA AS WELL AS THE SUBPOOL INDEX ARE SAVED. BOTH ARE          00678000
+*  NEEDED FOR FREEVIS PROCESSING IN CASE THAT THE REQUEST               00679000
+*  MUST BE UNDONE LATERON                                               00680000
+*********************************************************************** 00681000
+         ST    R2,SPIDSAV         SAVE SUBPOOL INDEX           @D52VDKH 00682000
+         ST    R1,SSPNPTR         SAVE PTR TO SP IN USERS AREA @D52VDKH 00683000
+         USING SUBPINT,R2                                      @D52VDKH 00684000
+         OI    SPITFLAG,SPCREATE  INDICATE CREATION REQUEST    @D51IDMZ 00685000
+         STH   R3,D6(,R1)         UPDATE USER AREA             @D52VDKH 00686000
+         TM    SVER0F+D3,GVTSKSP  EXCLUSIVE SUBPOOL WANTED ?   @D14CDJB 00687000
+         BNO   GETVSNXA           NO  ===>                     @D14CDJB 00688000
+         MVC   SPITNAME(3),GVIJB       IBM SUBPOOL NAME (IJ...)@D51IDKH 00689000
+         MVC   SPITNAME+2(2),TID       INSERT TASK IDENTIFIER  @D66ODOW 00690000
+         B     GETVSNXD           ===> CONTINUE                @D52VDKH 00691000
+GETVSNXA EQU   *                                               @D14CDJB 00692000
+         MVC   SPITNAME(L'SPITNAME),D0(R1)  INSERT ENTRY       @D14CDJB 00693000
+.* THE SUBPOOL CHARACTERISTICS HAVE TO BE SET BEFORE GVGETPAG IS DONE.  00693020
+.* REASON: IN CASE OF A LOC=ANY REQUEST, WHEN THE ANY AREA IS FULL,     00693040
+.* WE CONTINUE PROCESSING AND SWITCH TO BELOW. IF THE SUBPOOL BITS      00693060
+.* LIKE PARTKEY, FETCHPROTECTION ... ARE NOT SET, AND THE LOC=BELOW     00693080
+.* REQUEST IS SUCCESSFUL, WE RETURN TO THE CALLER WITHOUT DOING THE     00693100
+.* PROTECTION IN GVPROT. THIS HAPPENED FOR SPACE=PARTKEY REQUEST        00693120
+.* IN IJBMCBE. IN CASE THE LOC=BELOW REQUEST FAILS, WE DO AN INTERNAL   00693140
+.* FREEVIS SUBPOOL WHICH RESETS THE SUBPOOL ENTRY.                      00693160
+***************************************************************         00693180
+*  TO MAKE SUBPOOL IDS UNIQUE (FOR REQUEST TO SPACE GETVIS              00693200
+*  ROUTED TO SVA), THE SUBPOOL ID IS EXTENDED WITH THE                  00693220
+*  PIK OF THE REQUESTING PARTITION                                      00693240
+***************************************************************         00693260
+         TM    SVER0F+D2,GVFVSPIN IS THE REQUEST ROUTED?       @D51IDKH 00693280
+         BZ    GVSPSTR            NO,                          @D51IDKH 00693300
+***************************************************************         00693320
+*  THE REQUEST IS FOR SPACE, GET PARTITION'S PIK                        00693340
+***************************************************************         00693360
+         LH    R8,PIK                                          @DY46568 00693380
+         STH   R8,SPITPIK         STORE PIK IN SUBPOOL TABLE   @DY46568 00693400
+GVSPSTR  EQU   *                                               @DY46568 00693420
+         TM    SVER0F+D3,GVSPID   SUBPOOL ID SPECIFIED ?       @DY46568 00693440
+         BZ    GETVSNXD           NO FURTHER SUBPOOL HANDLING  @DY46568 00693460
+         TM    SVER0F+2,GVFVCNTL  NEW SUBPOOL TO BE CONTROLLED @DY46568 00693480
+         BNO   GVSPSTRN                                        @DY46568 00693500
+         OI    SPITFLAG,SPCNTRLD  MARK SUBPOOL                 @DY46568 00693520
+GVSPSTRN EQU   *                                               @DY46568 00693540
+         LTR   RB,RB              REQUEST FOR SVA OR SPACE ?   @DY46568 00693560
+         BZ    GETVSNXD           NO, NO FURTHER CHECKING NEED @DY46568 00693580
+         TM    SVER0F+D3,GVFTCHPR SUBPOOL TO BE FETCHPROTECTED @DY46568 00693600
+         BNO   GETVSNXC           NO  ===>                     @DY46568 00693620
+         OI    SPITFLAG,SPFTCHPR  INDICATE SUBPOOL AS FETCH    @DY46568 00693640
+         LA    R8,0                                            @DY46568 00693660
+         STC   R8,SPITKEY                                      @DY46568 00693680
+*                                                   PROTECTED  @DY46568 00693700
+         B     GETVSNXD           ===> GOTO EXIT CODE          @DY46568 00693720
+GETVSNXC DS    0H                                              @DY46568 00693740
+         TM    SVER0F+D2,GVPKEYPR SUBPOOL TO BE PROTECTED WITH @DY46568 00693760
+         BNO   GETVSNXD           THE PARTITION'S KEY? (NO)    @DY46568 00693780
+         OI    SPITFLAG,SPPKEYPR  INDICATE SUBPOOL AS PROTECTD @DY46568 00693800
+         L     R8,PIBPTR2              GET CURRENT PCB..       @DY46568 00693820
+         USING PIB2ADR,R8                                      @DY46568 00693840
+         L     R8,PIBPCB               .. OUT OF PIB2          @DY46568 00693860
+         USING PCBADR,R8                                       @DY46568 00693880
+         IC    R8,PCEKEY               GET PARTITION KEY       @DY46568 00693900
+         DROP  R8                                              @DY46568 00693920
+         STC   R8,SPITKEY                                      @DY46568 00693940
+*                                     WITH PARTITION KEY                00693960
+         DROP  R2                                              @D52VDKH 00694000
+GETVSNXD EQU   *                                               @D52VDKH 00695000
+         LR    R8,RB              SAVE REGISTER                @D52VDKH 00696000
+         LA    RB,3               SWITCH SUBPOOL               @D52VDKH 00697000
+         LR    R5,R2              SUBPOOL POINTER              @D52VDKH 00698000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *00699000
+               NOMODR=(R0,R1,R2,R6,R8,RA,RC,RD,RF),AMODE=31             00700000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D52VDMZ*00701000
+               INPUT=(R5,RB,RC,RE),                            @D52VDMZ*00702000
+               NOMOD=(R0,R1,R2,R6,R8,RA,RC,RD,RF),             @D52VDMZ*00703000
+               LINK=(R7),                                      @D14CDJB*00704000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 00705000
+         LR    RB,R8              RESTORE REGISTER             @D52VDKH 00706000
+         L     R4,EVIRTMEM        TEST                         @D52VDKH 00707000
+         S     R4,BVIRTMEM        LENGTH                       @D52VDKH 00708000
+         LA    R4,1(R4)                                        @D52VDKH 00709000
+         CR    R0,R4              EXCEEDS                      @D52VDKH 00710000
+         BH    GVRET08            GETVIS AREA                  @D52VDKH 00711000
+         LR    R4,R0              GET LENGTH                   @D14CDJB 00712000
+         A     R4,PAGESIZE        CONVERT LENGTH               @D14NDJB 00713000
+         BCTR  R4,0                           INTO             @D14NDJB 00714000
+         SRL   R4,PNSHIFT                      NUMBER OF PAGES @D14NDJB 00715000
+         L     R3,FIRSTPNT        GET START PTR FOR SEARCH     @D14CDJB 00716000
+*SGLINK  GVGETPAG,INPUT=(R3,R4,R8:LINK,RC,RD,RF),OUTPUT=(R3,R5,R9,RF), *00717000
+               NOMODR=(R1,R2,R4,R6,R7,RA-RC,RD),AMODE=31                00718000
+         SGAMSUBR SUBROUT=GVGETPAG,                            @D14CDJB*00719000
+               INPUT=(R3,R4,RC,RD,RF),                         @D14CDJB*00720000
+               OUTPUT=(R3,R5,R9,RF),                           @D14CDJB*00721000
+               NOMOD=(R1,R2,R4,R6,R7,RB,RC,RD),                @D14CDJB*00722000
+               LINK=(R8),                                      @D14CDJB*00723000
+               CBASE=AMBASE       LOOK FOR EMPTY PAGE(S)       @D51IDMZ 00724000
+         LTR   RF,RF              PAGE(S) FOUND ?              @D14CDJB 00725000
+         BNZ   GVRETERR           NO  ==> (RF ALREADY SET)     @D14CDJB 00726000
+         C     R9,GTVSHIGH        HIGH WATER MARK EXCEEDED ?   @D218DKH 00727000
+         BNH   GETVSNCH           NO  ==>                      @D218DKH 00728000
+         ST    R9,GTVSHIGH        STORE NEW HIGH WATER MARK    @D218DKH 00729000
+GETVSNCH DS    0H                                              @D218DKH 00730000
+         B     GETVISED                                        @DY46568 00750990
+***************************************************************@D149DJB 00776000
+*  NAME IN INDEX TABLE BUT INVALID INDEX                                00777000
+***************************************************************@D149DJB 00778000
+         USING SUBPINT,R2                                      @DY46568 00778500
+GVSPFND  DS    0H                                              @D51IDKH 00779000
+         TM    SPITFLAG,SPCNTRLD  IS SUBPOOL CONTROLLED        @D51IDKH 00780000
+         BO    GVRET24            RETURN, SUBPOOL IS CONTROLLD @D51IDKH 00781000
+         TM    SVER0F+2,GVFVCNTL  IS REQUEST CONTROLLED        @D51IDKH 00782000
+         BO    GVRET24            RETURN, SUBPOOL ALREADY THERE@D51IDKH 00783000
+         STH   R3,6(,R1)          STORE CORRECT INDEX          @D51IDKH 00784000
+***************************************************************@D149DJB 00785000
+*  PROCESSING IF SPID IN REQUESTOR AREA ALREADY INITIALIZED   *@D149DJB 00786000
+***************************************************************@D149DJB 00787000
+GVSPGVN  DS    0H                                              @D14CDJB 00788000
+         ST    R2,SPIDSAV         SAVE SUBPOOL INDEX           @D52VDKH 00789000
+         ST    R1,SSPNPTR         SAVE PTR TO SP IN USERS AREA @D52VDKH 00790000
+         LR    R4,RB              SAVE REGISTER                @D52VDKH 00791000
+         LA    RB,3               SWITCH SUBPOOL               @D52VDKH 00792000
+         LR    R5,R2              SUBPOOL POINTER              @D52VDKH 00793000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *00794000
+               NOMODR=(R0,R2,R4,R6,RA,RC,RD,RF),AMODE=31                00795000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D52VDMZ*00796000
+               INPUT=(R5,RB,RC,RE),                            @D52VDMZ*00797000
+               NOMOD=(R0,R2,R4,R6,RA,RC,RD),                   @D52VDMZ*00798000
+               LINK=(R7),                                      @D14CDJB*00799000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 00800000
+         LR    RB,R4              RESTORE REGISTER             @D52VDKH 00801000
+***************************************************************         00802000
+*  FOR A REQUEST THAT WAS ROUTED TO SVA, NO SUBPOOL MAY                 00803000
+*  HAVE BEEN SPECIFIED                                                  00804000
+***************************************************************         00805000
+         TM    SVER0F+D3,GVSPID   SUBPOOL ID SPECIFIED ?       @D51IDKH 00806000
+         BZ    GVSPGVNB           NO FURTHER SUBPOOL HANDLING  @D51IDKH 00807000
+         SPACE 2                                                        00808000
+         LTR   RB,RB              REQUEST FOR SVA OR SPACE ?   @D51IDKH 00809000
+         BZ    GVSPGVNB           NO, NO FURTHER CHECKING NEED @D51IDKH 00810000
+         TM    SPITFLAG,SPFTCHPR  IS SUBPOOL FETCH PROTECTED ? @D14CDJB 00811000
+         BO    GVSPGVNA           YES ===>                     @D14CDJB 00812000
+         TM    SVER0F+D3,GVFTCHPR SUBPOOL TO BE FETCHPROTECTED @D14CDJB 00813000
+         BO    GVRET14            ===> YES, ERROR              @D51IDKH 00814000
+         TM    SPITFLAG,SPPKEYPR  IS SUBPOOL KEY- PROTECTED ?  @D51IDKH 00815000
+         BO    GVSPGVNC           YES ===>                     @D51IDKH 00816000
+         TM    SVER0F+D2,GVPKEYPR SUBPOOL TO BE KEY-PROTECTED  @D51IDKH 00817000
+         BNO   GVSPGVNB           NO  ===>                     @D51IDKH 00818000
+         B     GVRET14            ===> ERROR                   @D51IDKH 00819000
+GVSPGVNC DS    0H                                              @D51IDKH 00820000
+         TM    SVER0F+D2,GVPKEYPR SUBPOOL TO BE KEY-PROTECTED  @D51IDKH 00821000
+         BNO   GVRET14            NO  ===> ERROR               @D51IDKH 00822000
+         B     GVSPGVNB           ALL OK, CONTINUE             @D51IDKH 00823000
+GVSPGVNA DS    0H                                              @D14CDJB 00824000
+         TM    SVER0F+D3,GVFTCHPR SUBPOOL TO BE FETCHPROTECTED @D14CDJB 00825000
+         BNO   GVRET14            NO  ===> ERROR               @D14CDJB 00826000
+         DROP  R2                                              @D14CDJB 00827000
+*                                                                       00828000
+*   EXPECTED INPUT                                                      00829000
+*      R0 = LENGTH                                                      00830000
+*      R2 = SPIDSAV                                                     00831000
+*      RF = 0                                                           00832000
+*                                                                       00833000
+GVSPGVNB EQU   *                                               @D14CDJB 00834000
+         L     R4,EVIRTMEM        TEST IF ..                   @D52VDKH 00835000
+         S     R4,BVIRTMEM        .. LENGTH ..                 @D52VDKH 00836000
+         LA    R4,1(R4)           .. EXCEEDS SIZE ..           @D52VDKH 00837000
+         CR    R0,R4              .. OF GETVIS AREA            @D52VDKH 00838000
+         BNH   GVSPGVND           LENGTH<= GETVIS AREA SIZE    @D64ADMZ 00839000
+* IN CASE OF A VARIABLE GETMAIN REQUEST, MAXGAP MUST BE SET. OTHERWISE  00840000
+* THE MIN PROCESSING IN THE GETMAIN EXIT DOES NOT WORK. THEREFORE       00841000
+* GVGETPAG IS CALLED TO FIND THE MAX. NUMBER OF FREE CONTIGOUS PAGES.   00842000
+* INPUT IS NO OF PAGES+1 TO TAKE REQUEST EXEEDS AREA PATH ALSO IF       00843000
+* NO PAGES ARE USED IN ABOVE AREA.                                      00844000
+         CLI   GMFMRQST,X'00'    GETVIS REQUEST                @D64ADMZ 00845000
+         BE    GVRET08           YES, DONE                     @D64ADMZ 00846000
+         TM    GMFMFLGS,VAR      VARIABLE GETMAIN REQUEST      @D64ADMZ 00847000
+         BZ    GVRET08           NO, DONE                      @D64ADMZ 00848000
+         L     R4,NBRGVPG        NO OF PAGES IN GETVIS AREA+1  @D64ADMZ 00849000
+         A     R4,F1             TO TAKE GVGETPAG EXCEED AREA  @DY45525 00850000
+         L     R3,FIRSTPNT       START WITH FIRST FREE PAGE    @D64ADMZ 00851000
+         SR    RF,RF             INPUT FOR GVGETPAG            @D64ADMZ 00852000
+*SGLINK  GVGETPAG,INPUT=(R3,R4,R8:LINK,RC,RD,RF),OUTPUT=(R3,R5,R9,RF), *00853000
+               NOMODR=(R2,R4,R6,RA-RC,RD),AMODE=31                      00854000
+         SGAMSUBR SUBROUT=GVGETPAG,                            @D64ADMZ*00855000
+               INPUT=(R3,R4,RC,RD,RF),                         @D64ADMZ*00856000
+               OUTPUT=(R3,R5,R9,RF),                           @D64ADMZ*00857000
+               NOMOD=(R2,R4,R6,RB,RC,RD),                      @D64ADMZ*00858000
+               LINK=(R8),                                      @D64ADMZ*00859000
+               CBASE=AMBASE       GET MAX NO OF FREE PAGES     @D64ADMZ 00860000
+         SR    RF,RF              CONTINUE PROCESSING FOR ..   @D64ADMZ 00861000
+         B     GVRET08            .. REQUEST EXCEEDS AREA      @D64ADMZ 00862000
+GVSPGVND DS    0H                                              @D52VDKH 00863000
+         LA    R7,VBYTBI                                       @D52VDKH 00864000
+         LTR   RB,RB              SPACE OR SVA REQUEST ?       @D52VDKH 00865000
+         BZ    GVSPGAU            NO, ==>                      @D52VDKH 00866000
+         LA    R7,VBYTSV                                       @D52VDKH 00867000
+GVSPGAU  DS    0H                                              @D52VDKH 00868000
+         L     R4,PAGESIZE        IF SIZE <= PAGESIZE          @D218DKH 00869000
+         CR    R0,R4              THEN                         @D218DKH 00870000
+         BH    GVSPGMT1           SIZE > PAGESIZE, ==>         @D218DKH 00871000
+         SR    R4,R7                                           @D52VDKH 00872000
+         CR    R0,R4              THEN                         @D52VDKH 00873000
+         BNH   GVSPGLT1           SIZE IS LESS ...             @D52VDKH 00874000
+         TM    SVER0F+D3,PAGEIND  PAGE ALIGNMENT SPECIFIED     @D52VDKH 00875000
+         BO    GVCOMGPG           YES ===> GET A NEW PAGE      @D52VDKH 00876000
+GVSPGLT1 DS    0H                                              @D52VDKH 00877000
+*SGLINK  GVSBPOOL,INPUT=(R0,R2,R7:LINK,RA,RB,RC,RD),OUTPUT=(RF),       *00878000
+               NOMODR=(R6,RA,RB,RC,RD),AMODE=31                         00879000
+         SGAMSUBR SUBROUT=GVSBPOOL,                            @D14CDJB*00880000
+               INPUT=(R0,R2,RA,RB,RC,RD),                      @D14CDJB*00881000
+               OUTPUT=(RF),                                    @D14CDJB*00882000
+               NOMOD=(R6,RA,RB,RC,RD),                         @D14CDJB*00883000
+               IGN=(R2),                                       @D52VDMZ*00884000
+               LINK=(R7),                                      @D14CDJB*00885000
+               CBASE=AMBASE       SCAN SPECIFIED SUBPOOL       @D51IDMZ 00886000
+         B     GETVISEX           RETURN                       @D218DKH 00887000
+GVSPGMT1 DS    0H                                              @D14CDJB 00888000
+***************************************************************         00889000
+*  PROCESSING FOR REQUESTS WITH MORE THAN ONE PAGE                      00890000
+***************************************************************         00891000
+         SLL   R7,1                      2 * ALLOCUNIT         @D218DKH 00892000
+         LR    R4,R0                     SIZE +                @D218DKH 00893000
+         A     R4,PAGESIZE               (PAGESIZE-1)          @D218DKH 00894000
+         BCTR  R4,0                      / PAGESIZE            @D218DKH 00895000
+         SRL   R4,PNSHIFT                * PAGESIZE            @D218DKH 00896000
+         SLL   R4,PNSHIFT                = NEXT PAGE BOUNDARY  @D218DKH 00897000
+         SR    R4,R7                     - 2 * ALLOCUNIT       @D218DKH 00898000
+         CR    R0,R4                     IF SIZE <= ...        @D218DKH 00899000
+         BH    GVCHKEQU                  SIZE > ..., ==>       @D52VDKH 00900000
+*                                        THEN                  @D218DKH 00901000
+         TM    SVER0F+D3,PAGEIND  PAGE ALIGNMENT SPECIFIED     @D52VDKH 00902000
+         BO    GVCOMMON           YES ===>                     @D52VDKH 00903000
+*                                                                       00904000
+         L     R4,PAGESIZE                  IF SIZE <          @D218DKH 00905000
+         SLL   R4,1                            2 * PAGESIZE    @D218DKH 00906000
+         CR    R0,R4                        THEN               @D218DKH 00907000
+         BNL   GVMTWOPG                     SIZE >= ..., ==>   @D218DKH 00908000
+*                                              GVSBPOOL        @D218DKH 00909000
+*                                              IF RC /= 0      @D218DKH 00910000
+*                                              THEN            @D218DKH 00911000
+*                                                 GVGPMIN1     @D218DKH 00912000
+*                                                 IF RC /= 0   @D218DKH 00913000
+*                                                 THEN         @D218DKH 00914000
+*                                                    GVGETPAG  @D218DKH 00915000
+*SGLINK  GVSBPOOL,INPUT=(R0,R2,R7:LINK,RA,RB,RC,RD),OUTPUT=(RF),       *00916000
+               NOMODR=(R2,R6,RA,RB,RC,RD),AMODE=31                      00917000
+         SGAMSUBR SUBROUT=GVSBPOOL,                            @D14CDJB*00918000
+               INPUT=(R0,R2,RA,RB,RC,RD),                      @D14CDJB*00919000
+               OUTPUT=(RF),                                    @D14CDJB*00920000
+               NOMOD=(R6,RA,RB,RC,RD),                         @D14CDJB*00921000
+               IGN=(R2),                                       @D52VDMZ*00922000
+               LINK=(R7),                                      @D14CDJB*00923000
+               CBASE=AMBASE       SCAN SPECIFIED SUBPOOL       @D51IDMZ 00924000
+         LTR   RF,RF              STORAGE FOUND ?              @D218DKH 00925000
+         BZ    GETVISXA           YES, EXIT                    @D52VDMZ 00926000
+         SR    RF,RF              CLEAR RETCODE                @D218DKH 00927000
+         L     R0,SVER00                                       @D218DKH 00928000
+         B     GVCOMMON                                        @D218DKH 00929000
+GVCHKEQU DS    0H                                              @D52VDKH 00930000
+         SRL   R7,1                      ONE ALLOCATION UNIT   @D52VDKH 00931000
+         AR    R4,R7                     REQUEST SIZE =        @D52VDKH 00932000
+         CR    R0,R4                     MULTIPLE PAGES        @D52VDKH 00933000
+         BNH   GVCOMMON                  NO, TRY N-1           @D52VDKH 00934000
+         TM    SVER0F+D3,PAGEIND  PAGE ALIGNMENT SPECIFIED     @D52VDKH 00935000
+         BZ    GVCOMMON                  NO, TRY N-1           @D52VDKH 00936000
+         B     GVCOMGPG                  YES, NEED NEW ONES    @D52VDKH 00937000
+GVMTWOPG DS    0H                                              @D14CDJB 00938000
+***************************************************************@D149DJB 00939000
+*  PROCESSING FOR REQUESTS WITH MORE THAN TWO PAGES                     00940000
+***************************************************************@D149DJB 00941000
+         OI    GVFVFLGS,GVMIN2    DO MIN2 PROCESSING           @D52VDKH 00942000
+GVCOMMON DS    0H                                              @D14CDJB 00943000
+         LR    R4,R0              GET                          @D14CDJB 00944000
+         A     R4,PAGESIZE          NUMBER                     @D14NDJB 00945000
+         BCTR  R4,0                       OF PAGES             @D14NDJB 00946000
+         SRL   R4,PNSHIFT                       REQUESTED      @D14NDJB 00947000
+*SGLINK  GVGPMIN1,INPUT=(R2,R4,R7:LINK,RB,RC,RD,RF),OUTPUT=(R0,R1,R3,  *00948000
+               R9,RF),NOMODR=(R2,R6,RA,RB,RC,RD),AMODE=31               00949000
+         SGAMSUBR SUBROUT=GVGPMIN1,                            @D14CDJB*00950000
+               INPUT=(R2,R4,RB,RC,RD,RE,RF),                   @D14CDJB*00951000
+               OUTPUT=(R0,R1,R3,R9,RF),                        @D14CDJB*00952000
+               NOMOD=(R2,R6,RA,RB,RC,RD),                      @D14CDJB*00953000
+               LINK=(R7),                                      @D14CDJB*00954000
+               CBASE=AMBASE                                    @D51IDMZ 00955000
+         LTR   RF,RF              SPACE FOUND ?                @D218DKH 00956000
+         BZ    GETVISXA           YES, EXIT                    @D52VDMZ 00957000
+         SR    RF,RF              CLEAR RETURNCODE             @D218DKH 00958000
+GVCOMGPG DS    0H                                              @D14CDJB 00959000
+         L     R4,SVER00          GET                          @D14CDJB 00960000
+         A     R4,PAGESIZE          NUMBER                     @D14NDJB 00961000
+         BCTR  R4,0                       OF PAGES             @D14NDJB 00962000
+         SRL   R4,PNSHIFT                       REQUESTED      @D14NDJB 00963000
+         L     R3,FIRSTPNT        GET START PTR FOR SEARCH     @D14CDJB 00964000
+*SGLINK  GVGETPAG,INPUT=(R3,R4,R8:LINK,RC,RD,RF),OUTPUT=(R3,R5,R9,RF), *00965000
+               NOMODR=(R2,R4,R6,RA-RC,RD),AMODE=31                      00966000
+         SGAMSUBR SUBROUT=GVGETPAG,                            @D14CDJB*00967000
+               INPUT=(R3,R4,RC,RD,RF),                         @D14CDJB*00968000
+               OUTPUT=(R3,R5,R9,RF),                           @D14CDJB*00969000
+               NOMOD=(R2,R4,R6,RB,RC,RD),                      @D14CDJB*00970000
+               LINK=(R8),                                      @D14CDJB*00971000
+               CBASE=AMBASE       SCAN SUBPOOL 0 FOR PAGE(S)   @D51IDMZ 00972000
+         LTR   RF,RF              PAGES FOUND ?                @D218DKH 00973000
+         BNZ   GVRETERR           NO, ERROR EXIT               @D52VDMZ 00974000
+         C     R9,GTVSHIGH        HIGH WATER MARK EXCEEDED ?   @D218DKH 00975000
+         BNH   GETVISED           NO  ==>                      @D218DKH 00976000
+         ST    R9,GTVSHIGH        STORE NEW HIGH WATER MARK    @D218DKH 00977000
+***************************************************************@D149DJB 00978000
+*  COMMON PROCESSING FOR FOUND PAGE(S)                        *@D149DJB 00979000
+***************************************************************@D149DJB 00980000
+GETVISED DS    0H                                              @D14CDJB 00981000
+*SGLINK  GFENQDEQ,INPUT=(R2,R3,R4,R5,R8:LINK,R9,RC),OUTPUT=(RF),       *00982000
+               NOMODR=(R2,R3,R6,R9,RA-RC,RD),AMODE=31                   00983000
+         SGAMSUBR SUBROUT=GFENQDEQ,                            @D14CDJB*00984000
+               INPUT=(R2,R3,R4,R5,R9,RC),                      @D14CDJB*00985000
+               OUTPUT=(RF),                                    @D51XDMZ*00986000
+               NOMOD=(R2,R3,R6,R9,RB,RC,RD),                   @D14CDJB*00987000
+               LINK=(R8),                                      @D14CDJB*00988000
+               CBASE=AMBASE       ENQUEUE AND DEQUEUE PAGE(S)  @D51IDMZ 00989000
+         TM    GVFVFLGS,GVFVABVE      REQUEST FOR ABOVE ?      @D52VDKH 00990000
+         BO    GVISEDAB               YES, ==>                 @D52VDKH 00991000
+*                                                                       00992000
+*  IF EITHER NO PAGE CROSSING ALLOWED OR PAGE ALIGNMENT IS NEEDED       00993000
+*  THEN IT MAKES NO SENSE TO START SEARCH ON THE PREVIOUS PAGE          00994000
+*  REASON :                                                             00995000
+*    PAGE CROSSING NOT ALLOWED ==>                                      00996000
+*         THE WHOLE REQUEST CANNOT TOTALLY FIT ON THE PREVIOUS PAGE     00997000
+*         OR IT WOULD NOT BE NECESSARY TO GET NEW PAGES FROM THE FREEQ  00998000
+*    PAGE BOUNDARY REQUESTED ==>                                        00999000
+*         BELOW => AREA CANNOT START WITHIN PREVIOUS PAGE               01000000
+*         ABOVE => IF AREA COULD START IN PREVIOUS PAGE THEN THE        01001000
+*         ALGORITHM FOR MIN1 PROCESSING WOULD HAVE DONE IT              01002000
+*                                                                       01003000
+         TM    SVER0F+D3,SGVNPGX+PAGEIND  ANY OF THE TWO OPTNS @D52VDKH 01004000
+         BNZ   GETVISUP           YES ===>                     @D52VDKH 01005000
+GTVSPRV  EQU   *                                               @D52VDKH 01006000
+         USING SUBPCHN,R3                                      @D218DKH 01007000
+         L     R5,SPCHBACK        GET PAGE BEFORE NEW ONES     @D218DKH 01008000
+         DROP  R3                                              @D218DKH 01009000
+         USING SUBPCHN,R5                                      @D218DKH 01010000
+         TM    SPCHFLAG,SPPGCONC  NEW PAGE CONTIGUOUS WITH OLD @D218DKH 01011000
+         BNO   GETVISUP           NO  ===>                     @D218DKH 01012000
+         DROP  R5                                              @D218DKH 01013000
+***************************************************************@D218DKH 01014000
+*    SEARCH NEW CONTIGUOUS PAGES TO AVOID FRAGMENTATION        @D218DKH 01015000
+***************************************************************@D218DKH 01016000
+         L     R1,SVER00          GET LENGTH                   @D218DKH 01017000
+GTVSPGA  DS    0H                                              @D52VDKH 01018000
+         BCTR  R1,0               MINUS ONE                    @D218DKH 01019000
+         SRA   R1,LDVBYTBI(RB)    CONVERT IN BIT LENGTH        @D218DKH 01020000
+         LA    R1,D1(R1)          GET REQUESTED BIT LENGTH     @D218DKH 01021000
+         LR    R0,R1              R0 FOR FURTHER USE           @D218DKH 01022000
+         TM    SVER0F+D3,PAGEIND  PAGE BOUNDARY REQUESTED ?    @D218DKH 01023000
+         BO    GTVSSCPG           YES, ALIGN                   @D52VDKH 01024000
+GETVISNP DS    0H                                              @D218DKH 01025000
+         SR    R3,R3              RESET CURRENT BIT MASK       @D218DKH 01026000
+*SGLINK  GVSCVSTB,INPUT=(R0,R3,R5,R8:LINK,R9,RB,RC,RF),OUTPUT=(R1,R3,  *01027000
+               R4,RF),NOMODR=(R0,R2,R6,R7,RA-RC,RD),AMODE=31,           01028000
+         SGAMSUBR SUBROUT=GVSCVSTB,                            @D218DKH*01029000
+               INPUT=(R0,R3,R5,R9,RB,RC,RF),                   @D218DKH*01030000
+               OUTPUT=(R1,R3,R4,RF),                           @D218DKH*01031000
+               NOMOD=(R0,R2,R6,R7,RB,RC,RD),                   @D218DKH*01032000
+               LINK=(R8),                                      @D218DKH*01033000
+               CBASE=AMBASE       SCAN VISTAB                  @D51IDMZ 01034000
+GETVISRT DS    0H                                              @D218DKH 01035000
+         LTR   RF,RF              SPACE FOUND ?                @D218DKH 01036000
+         BZ    GETVISRT_1         YES                          @D64ADMZ 01037000
+         MVI   IJBHWORG,HWORG160  UNIQUE HARD WAIT ORIGINATOR  @D31QDHB 01038000
+         ST    R5,GETVISRT_0      SAVE R5 BEFORE HARDWAIT      @D64ADMZ 01039000
+         BAL   R5,SYSERROR        ADDRESS FOR HW FED           @D218DKH 01040000
+GETVISRT_0 DC  F'0'               SAVE AREA FOR R5             @D64ADMZ 01041000
+GETVISRT_1 DS  0H                                              @D64ADMZ 01042000
+         SR    R9,R9              SET INDICATOR FOR GVUPPI     @D218DKH 01043000
+*SGLINK  GVUPPIE0,INPUT=(R1,R2,R3,R4,R8:LINK,R9,RB,RC,RD,RF),          *01044000
+               OUTPUT=(R0,R1,R3,RF),NOMODR=(R2,R6,RA,RB-RD),AMODE=31    01045000
+         SGAMSUBR SUBROUT=GVUPPIE0,                            @D14CDJB*01046000
+               INPUT=(R1,R2,R3,R4,R9,RB,RC,RD,RF),             @D51XDMZ*01047000
+               OUTPUT=(R0,R1,R3,RF),                           @D51XDMZ*01048000
+               NOMOD=(R2,R6,RA,RB,RC,RD),                      @D14CDJB*01049000
+               LINK=(R8),                                      @D14CDJB*01050000
+               CBASE=AMBASE       UPDATE AND SETUP POINTERS    @D51IDMZ 01051000
+         B     GETVISST                                        @D52VDMZ 01052000
+GETVISUP DS    0H                                              @D14CDJB 01053000
+.* WHEN CALLED AFTER GFENQDEQ, R1 IS NOT SET. IT MUST BE CODED          01054000
+.* BECAUSE OF SYNTAX CHECKING                                           01055000
+*SGLINK  GVUPPIE1,INPUT=(R2,R3,R8:LINK,R9,RB,RC,RD,RF),                *01056000
+               OUTPUT=(R0,R1,R3,RF),NOMODR=(R2,R6,RA,RB,RC,RD),AMODE=31 01057000
+         SGAMSUBR SUBROUT=GVUPPIE1,                            @D14CDJB*01058000
+               INPUT=(R2,R3,R9,RB,RC,RD,RF),                   @D52VDMZ*01059000
+               OUTPUT=(R0,R1,R3,RF),                           @D51XDMZ*01060000
+               NOMOD=(R2,R6,RA,RB,RC,RD),                      @D14CDJB*01061000
+               LINK=(R8),                                      @D14CDJB*01062000
+               CBASE=AMBASE       UPDATE AND SETUP POINTERS    @D51IDMZ 01063000
+GETVISST DS    0H                                              @D14CDJB 01064000
+*SGLINK  SETVSTAB,INPUT=(R0,R1,R3,R8:LINK,RC),                         *01065000
+               NOMODR=(R6,R7,RA-RC,RD),AMODE=31                         01066000
+         SGAMSUBR SUBROUT=SETVSTAB,                            @D14CDJB*01067000
+               INPUT=(R0,R1,R3,RC),                            @D14CDJB*01068000
+               NOMOD=(R6,R7,RB,RC,RD),                         @D14CDJB*01069000
+               LINK=(R8),                                      @D14CDJB*01070000
+               CBASE=AMBASE       SET VISTAB BITS              @D51IDMZ 01071000
+         B     GETVISXA           ===> GOTO EXIT CODE          @D14CDJB 01072000
+GTVSSCPG DS    0H                                              @D52VDKH 01073000
+*SGLINK  GVSCPBDY,INPUT=(R0,R5,R8:LINK,R9,RB,RC),OUTPUT=(R1,R3,R4,RF), *01074000
+               NOMODR=(R0,R2,R6,R7,RB,RC,RD),AMODE=31                   01075000
+         SGAMSUBR SUBROUT=GVSCPBDY,                            @D218DKH*01076000
+               INPUT=(R0,R5,R9,RB,RC),                         @D218DKH*01077000
+               OUTPUT=(R1,R3,R4,RF),                           @D218DKH*01078000
+               NOMOD=(R0,R2,R6,R7,RB,RC,RD),                   @D218DKH*01079000
+               LINK=(R8),                                      @D218DKH*01080000
+               CBASE=AMBASE       LOOK FOR SPACE ON BOUNDARY   @D51IDMZ 01081000
+         B     GETVISRT           ===> RETURN                  @D218DKH 01082000
+GVISEDAB EQU   *                                               @D52VDKH 01083000
+         TM    SVER0F+D3,PAGEIND  PAGE BDY REQUESTED ?         @D52VDKH 01084000
+         BNO   GTVSMP                                          @D52VDKH 01085000
+         L     R1,SVER00          IF REQUEST IS A              @D52VDKH 01086000
+         L     R8,PAGESIZE        MULTIPLE OF PAGESIZE         @D52VDKH 01087000
+         BCTR  R8,0               THEN NO SPECIAL ACTION       @D52VDKH 01088000
+         AR    R8,R1              FOR ALIGNMENT IS             @D52VDKH 01089000
+         SRL   R8,PNSHIFT         REQUIRED                     @D52VDKH 01090000
+         SLL   R8,PNSHIFT                                      @D52VDKH 01091000
+         LA    R5,VBYTBI                                       @D52VDKH 01092000
+         LTR   RB,RB              SPACE OR SVA REQUEST ?       @D52VDKH 01093000
+         BZ    GTVSPTN            NO, ==>                      @D52VDKH 01094000
+         LA    R5,VBYTSV                                       @D52VDKH 01095000
+GTVSPTN  DS    0H                                              @D52VDKH 01096000
+         SR    R8,R5                                           @D52VDKH 01097000
+         CR    R1,R8                                           @D52VDKH 01098000
+         BH    GETVISUP           MULTIPLE OF PAGESIZE ==>     @D52VDKH 01099000
+         USING SUBPINT,R2                                      @KD40116 01100000
+         L     R5,SPITCURP        GET CURRENT POINTER          @KD40116 01101000
+         LTR   R5,R5              IS SUBPOOL EMPTY             @KD40116 01102000
+         BM    GTVSPTN0           YES                          @KD40116 01103000
+         CR    R3,R5              1ST NEW PAGE BEFORE CURRENT  @KD40116 01104000
+         BNL   GTVSPTN1           NO, GVUPPI WORKS CORRECTLY   @KD40116 01105000
+GTVSPTN0 DS    0H                                              @KD40116 01106000
+         SR    RF,RF                                           @KD40116 01107000
+         ST    R3,SPITCURP                                     @KD40116 01108000
+         STC   RF,SPITRLVB                                     @KD40116 01109000
+         STC   RF,SPITBITO                                     @KD40116 01110000
+GTVSPTN1 DS    0H                                              @KD40116 01111000
+         LR    R5,R3              1ST PAGE CHAIN ENTRY FOR SRCH@D52VDKH 01112000
+         B     GTVSPGA            NO, CARE FOR ALIGNMENT       @D52VDKH 01113000
+GTVSMP   DS    0H                                              @D52VDKH 01114000
+         TM    SVER0F+D3,SGVNPGX  PAGE CROSSING ALLOWED ?      @D52VDKH 01115000
+         BO    GETVISUP           NO  ===>                     @D52VDKH 01116000
+         TM    SVER0F+D3,SVAIND    SVA REQUEST ?               @DY45348 01117000
+         BO    GTVSPRV            YES, CONSIDER PREVIOUS PAGE  @DY45348 01118000
+         TM    SVER0F+D2,GVFVPMSP+GVFVSPIN PMR OR SPACE GETVIS @DY45348 01119000
+         BNZ   GTVSPRV            YES CONSIDER PREVIOUS PAGE   @DY45348 01120000
+* FOR LOC=ANY PART. REQUESTS MIN1/MIN2 WAS SKIPPED. THEREFORE PREVIOUS  01121000
+* PAGE MUST NOT BE CONSIDER. OTHERWISE THE LAST PAGE TAKEN FROM THE     01122000
+* FREE QUEUE MIGHT BE COMPLETELY EMPTY AND NEVER BE FREED.              01123000
+         B     GETVISUP           DO NOT CONSIDER PREV. PAGE   @DY45348 01124000
+************************************************************** @D369DJB 01125000
+*   PROCESS POOL PARAMETER :                                 * @D369DJB 01126000
+*     IF POOL PTR POINTS OUTSIDE OF THE GETVIS AREA          * @D369DJB 01127000
+*       THEN START SEARCHING AT THE CURRENT POINTER          * @D369DJB 01128000
+*       ELSE SAVE CURRENT POINTER AND USE GIVEN POOL PARAM.  * @D51XDMZ 01129000
+************************************************************** @D369DJB 01130000
+GVNOSPID DS    0H                                              @D14CDJB 01131000
+         L     R2,BSUBPIND        GET ADDRESS OF SUBPOOL 0     @D14CDJB 01132000
+         ST    R2,SPIDSAV         AND SAVE                     @D52VDKH 01133000
+         LR    R4,RB              SAVE REGISTER                @D52VDKH 01134000
+         LR    R5,R2              R5 MUST POINT TO SUBPOOL     @D52VDKH 01135000
+         LA    RB,3               SWITCH SUBPOOL               @D52VDKH 01136000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *01137000
+               NOMODR=(R0,R1,R2,R4,R6,RA,RC,RD,RF),AMODE=31             01138000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D52VDMZ*01139000
+               INPUT=(R5,RB,RC,RE),                            @D52VDMZ*01140000
+               NOMOD=(R0,R1,R2,R4,R6,RA,RC,RD),                @D52VDMZ*01141000
+               LINK=(R7),                                      @D14CDJB*01142000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01143000
+         LR    RB,R4              RESTORE REGISTER             @D52VDKH 01144000
+         TM    SVER0F+3,GVPOOL    POOL SPECIFIED ?             @D14CDJB 01145000
+         BNO   GVSPGVNB           NO, ENTER MAIN ROUTINE       @D52VDKH 01146000
+         C     R1,EVIRTMEM        R1 INSIDE BELOW AREA?        @D52VDMZ 01147000
+         BNL   GVSPRPOL           OUT OF AREA,IGNORE           @D51XDMZ 01148000
+         S     R1,BVIRTMEM        IS PTR WITHIN GETVIS AREA ?  @D367DJB 01149000
+         BM    GVSPRPOL           NO  ==>                      @D51XDMZ 01150000
+************************************************************** @D369DJB 01151000
+*        CALCULATE NEW CURRENT POINTER                               RZ 01152000
+************************************************************** @D369DJB 01153000
+         LR    R4,R1              GET START ADDRESS            @D367DJB 01154000
+         SRL   R1,PNSHIFT         GET RELATIVE PAGE NUMBER     @D14NDJB 01155000
+         SLL   R1,SUBPCHN2        GET CHAIN TABLE OFFSET       @D14CDJB 01156000
+         USING SUBPINT,R2                                      @D14CDJB 01157000
+         L     R5,SPITCURP        GET CURRENT ENTRY            @D14CDJB 01158000
+         LTR   R5,R5              SUBPOOL 0 AVAILABLE ?        @D14CDJB 01159000
+         BM    GVSPRPOL           NO  ===>                     @D14CDJB 01160000
+         A     R1,BSUBPCHN        GET NEW CHAIN ENTRY          @D14CDJB 01161000
+         USING SUBPCHN,R1                                      @D14CDJB 01162000
+         CLC   SPCHNMBR,H0        IS IT SUBPOOL 0 ?            @D51IDMZ 01163000
+         BE    GVSPPOL            YES, PROCESS POOL PARAMETER  @D51XDMZ 01164000
+GVSPRPOL DS    0H                 RESET POOL INDICATION        @D51XDMZ 01165000
+         NI    SVER0F+D3,XFF-GVPOOL RESET POOL INDICATION      @D51XDMZ 01166000
+         B     GVSPGVNB           CONTINUE WITH CURRENT POINTER@D52VDKH 01167000
+GVSPPOL  DS    0H                 PROCESS POOL PARAMETER       @D51XDMZ 01168000
+         MVC   SCURPSAV,SPITCURP  SAVE CURRENT POINTER..       @D51XDMZ 01169000
+         MVC   SRLVBSAV,SPITRLVB  .. FOR LATER                 @D51XDMZ 01170000
+         MVC   SBITOSAV,SPITBITO  .. RECALCULATION             @D51XDMZ 01171000
+         MVI   SPITRLVB,X00       RESET RELATIVE BYTE PTR      @D14CDJB 01172000
+         MVI   SPITBITO,X00       RESET RELATIVE BIT PTR       @D14CDJB 01173000
+         ST    R1,SPITCURP        GET NEW CURRENT ENTRY        @D14CDJB 01174000
+         SRDA  R4,LDVBYTB(RB)     DIVIDE BY VIRT. SIZE         @D367DJB 01175000
+*                                 REPRESENTEDBY  ONE BYTE IN VISTAB     01176000
+************************************************************** @D369DJB 01177000
+*   IF PAGE PARAMETER GIVEN WITH POOL PARAMETER              * @D369DJB 01178000
+*     THEN DON'T COMPUTE BIT DISPLACEMENT                    * @D369DJB 01179000
+*          DON'T COMPUTE BYTE DISPLACEMENT                   * @D149DJB 01180000
+*     ELSE GET BIT DISPLACEMENT WITHIN CURRENT POINTER       * @D149DJB 01181000
+************************************************************** @D369DJB 01182000
+         TM    SVER0F+D3,PAGEIND  PAGE BOUNDARY REQUESTED?     @D35DDUL 01183000
+         BO    GVSPGVNB           YES, DON'T LOAD BIT AND      @D52VDKH 01184000
+*                                                BYTE OFFSET   @D149DJB 01185000
+         S     R4,SPCHVSTB        GET RELATIVE PTR WITHIN PAGE @D51IDMZ 01186000
+         STC   R4,SPITRLVB        AND STORE IT                 @D14CDJB 01187000
+         SRL   R5,BITREG-(LDVBYTB-LDVBYTBI)  BIT DISPLACEMENT  @D51IDKH 01188000
+         LA    R4,XFF                                          @D14CDJB 01189000
+         LA    R3,8               GET BIT MASK FOR 1ST BYTE    @D367DJB 01190000
+         SR    R3,R5              (CURPOINT) IN LOW ORDER BYTE @D367DJB 01191000
+         SLL   R4,D0(R3)          OF R4 WITH OCCUPIED BITS ON  @D51XDMZ 01192000
+         STC   R4,SPITBITO        AND STORE IT                 @D14CDJB 01193000
+         B     GVSPGVNB           ===> SCAN SUBPOOL 0          @D52VDKH 01194000
+         DROP  R1,R2                                           @D14CDJB 01195000
+***************************************************************@D149DJB 01196000
+*   COMMON EXIT CODE                                           @D149DJB 01197000
+***************************************************************@D149DJB 01198000
+GETVISEX DS    0H                                              @D52VDMZ 01199000
+         LTR   RF,RF              AREA FOUND ?                 @D14CDJB 01200000
+         BNZ   GVRETERR           NO  ==> (RF ALREADY SET)     @D14CDJB 01201000
+*                                                                       01202000
+* THIS CODE IS ENTERED WITH RF = 0 ONLY                                 01203000
+*                                                                       01204000
+GETVISXA DS    0H                                              @D52VDMZ 01205000
+         TM    GVFVFLGS,GVCHKPRO  NEW PAGES ENQUEUED ?         @D52VDMZ 01206000
+         BZ    GETVISPF           NO, SKIP PROTECTION CHECK    @D52VDMZ 01207000
+*SGLINK  GVPROT,INPUT=(R7:LINK,RA-RD),OUTPUT=(RF),                     *01208000
+               NOMODR=(R6,RA,RB,RC,RD)                                  01209000
+         SGAMSUBR SUBROUT=GVPROT,                              @D52VDMZ*01210000
+               INPUT=(RC,RD,RE),                               @D52VDMZ*01211000
+               OUTPUT=(RF),                                    @D52VDMZ*01212000
+               NOMOD=(R6,RA,RB,RC,RD),                         @D52VDMZ*01213000
+               LINK=(R7),                                      @D52VDMZ*01214000
+               CBASE=AMBASE       DO PROTECTION IF REQUIRED    @D52VDMZ 01215000
+GETVISPF DS    0H                                              @D52VDMZ 01216000
+         TM    SVER0F+D3,GVPFIX   PFIX REQUEST                 @D51IDMZ 01217000
+         BZ    GVRET0             NO  ===>                     @D14NDJB 01218000
+         L     R5,SVER00          R0 CONTAINS LENGTH IN BYTES  @D14CDJB 01219000
+         L     R4,SVER01          START AREA TO BE FIXED       @D14CDJB 01220000
+*SGLINK  GVPFIXSV,INPUT=(R4,R5,R6,R7:LINK,RB,RC,RD,RF),OUTPUT=(RF),    *01221000
+               NOMODR=(R6,RA,RB,RC,RD),AMODE=31                         01222000
+         SGAMSUBR SUBROUT=GVPFIXSV,                            @D14CDJB*01223000
+               INPUT=(R4,R5,R6,RB,RC,RD,RF),                   @D14CDJB*01224000
+               OUTPUT=(RF),                                    @D14CDJB*01225000
+               NOMOD=(R6,RA,RB,RC,RD),                         @D52VDMZ*01226000
+               LINK=(R7),                                      @D14CDJB*01227000
+               CBASE=AMBASE       PFIX SVA SPACE               @D51IDMZ 01228000
+         LTR   RF,RF              PFIX OK ?                    @D51IDMZ 01229000
+         BZ    GVRET0             YES                          @D51IDMZ 01230000
+*SGLINK  GVINTFV,INPUT=(R7:LINK,RA,RB,RC,RD),OUTPUT=(RF),              *01231000
+               NOMODR=(R6,RA,RC,RD),AMODE=31                            01232000
+         SGAMSUBR SUBROUT=GVINTFV,                             @D51IDMZ*01233000
+               INPUT=(RA,RB,RC,RD),                            @D51IDMZ*01234000
+               OUTPUT=(RF),                                    @D51IDMZ*01235000
+               NOMOD=(R6,RA,RC,RD),                            @D51IDMZ*01236000
+               LINK=(R7),                                      @D51IDMZ*01237000
+               CBASE=AMBASE       DO INTERNAL FREEVIS          @D51IDMZ 01238000
+         B     GVRETPF2           => RF ALREADY SET            @D64ADKH 01239000
+GVRET28  LA    RF,4(RF)           NO SUBPOOL ACCESS ALLOWED    @D51IDMZ 01240000
+GVRET24  LA    RF,4(RF)           INVALID INDEX                @D51IDKH 01241000
+GVRET20  LA    RF,4(RF)           ***  PASSED  ***             @D51IDKH 01242000
+GVRET1C  LA    RF,4(RF)           NOT USED                     @D51IDKH 01243000
+GVRET18  LA    RF,4(RF)           INVALID SUBPOOL ID FIELD     @D14CDJB 01244000
+GVRET14  LA    RF,4(RF)           WRONG OPTIONS                @D14CDJB 01245000
+GVRET10  LA    RF,4(RF)           ***  PASSED  ***             @D14CDJB 01246000
+GVRET0C  LA    RF,4(RF)           NO MORE STORAGE AVAILABLE    @D14CDJB 01247000
+GVRET08  LA    RF,4(RF)           NEGATIVE LENGTH              @D14CDJB 01248000
+GVRET04  LA    RF,4(RF)           ***  PASSED  ***             @D14CDJB 01249000
+*                                                                       01250000
+* THIS CODE IS ENTERED WITH RF ¬= 0 ONLY                                01251000
+*                                                                       01252000
+GVRETERR DS    0H                                              @D14CDJB 01253000
+         LTR   RC,RC              AREA INITIALIZED             @D52VDKH 01254000
+         BZ    GVRETPRB           NO, OVER                     @D64ADKH 01255000
+         L     R8,SPIDSAV                                      @D52VDKH 01256000
+         LR    R2,R8              INPUT FOR SDAID              @D66GGMZ 01257000
+         LTR   R8,R8              SUBPOOL IDENTIFIED ?         @D52VDKH 01258000
+         BZ    GVRETPRB           NO,  OVER                    @D64ADKH 01259000
+         TM    SVER0F+3,GVPOOL    POOL SPECIFIED ?             @D52VDMZ 01260000
+         BZ    GVRETER0           NO                           @D52VDMZ 01261000
+         USING SUBPINT,R8         ADDRESS SUBPOOL INDEX TABLE  @D52VDMZ 01262000
+         MVC   SPITCURP,SCURPSAV  RESTORE ...                  @D52VDMZ 01263000
+         MVC   SPITRLVB,SRLVBSAV  ... CURRENT                  @D52VDMZ 01264000
+         MVC   SPITBITO,SBITOSAV     ... POINTER               @D52VDMZ 01265000
+         DROP  R8                 RELEASE SUBPOOL INDEX TABLE  @D52VDMZ 01266000
+GVRETER0 DS    0H                                              @D52VDMZ 01267000
+         TM    SVER0F+2,GVLOCBEL  IF REQUEST WAS FOR BELOW PART@D52VDKH 01268000
+         BO    GVRETPF1           THEN THATS IT ALMOST         @D52VDKH 01269000
+         MVC   MAXGAP_ABV,MAXGAP  MAX NO OF FREE PAGES ABOVE   @D64ADMZ 01270000
+         SR    R8,R8                                           @D64ADMZ 01271000
+         ST    R8,MAXGAP          CLEAR FOR NEXT SEARCH        @D64ADMZ 01272000
+* IF A LOC=ANY REQUEST FAILED TRY BDY CROSSING (FOR PARTITION) OR       01273000
+* SWITCH TO LOC=BELOW FOR SVA AND SPACE REQUESTS. THIS CAN'T BE DONE    01274000
+* AS LONG AS THE SYSTEM GETVIS BELOW AREA IS NOT VALIDATED.             01275000
+         TM    SVER0F+3,SVAIND    CHECK FOR BELOW AREA ONLY..  @D61NDMZ 01276000
+         BZ    GVRETER1           ..MEANINGFUL FOR SVA REQUESTS@D61NDMZ 01277000
+         L     R8,IJBSMCOM                                     @D61NDMZ 01278000
+         USING SMCOM,R8                                        @D61NDMZ 01279000
+         TM    SMCFLG1,SMCGVBEL   BELOW AREA AVAILABLE         @D61NDMZ 01280000
+         BZ    GVRETPF1           NO, THEN THATS IT ALMOST     @D61NDMZ 01281000
+         DROP  R8                 RELEASE SMCOM                @D61NDMZ 01282000
+GVRETER1 DS    0H                                              @D61NDMZ 01283000
+         LA    R8,SMERR0C         IF RETURN CODE NOT 12 ..     @D52VDKH 01284000
+         CR    RF,R8              .. CHECK FOR RETURN CODE 8   @D52VDKH 01285000
+         BNE   GVRETRC8                                        @D52VDKH 01286000
+         NI    SVER0F+2,X'FF'-GVLOCANY                         @D52VDKH 01287000
+         OI    SVER0F+2,GVLOCBEL                               @D52VDKH 01288000
+         LR    RF,RB              SAVE REGISTER                @D52VDKH 01289000
+         LA    RB,2               SWITCH CONTROL INFO FIELDS   @D52VDKH 01290000
+*SGLINK  GTVSINI2,INPUT=(R7:LINK,RB,RC,RD),                            *01291000
+               NOMODR=(R6,RA,RC,RD,RF),AMODE=31,                        01292000
+         SGAMSUBR SUBROUT=GTVSINI2,                            @D14CDJB*01293000
+               INPUT=(RB,RC,RD,RE),                            @D52VDMZ*01294000
+               NOMOD=(R6,RA,RC,RD,RF),                         @D52VDMZ*01295000
+               LINK=(R7),                                      @D14CDJB*01296000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01297000
+         LR    RB,RF              RESTORE REGISTER             @D52VDKH 01298000
+         LA    RF,SMERR0C         RESET RC AGAIN               @D52VDKH 01299000
+         LTR   RB,RB              BOUNDARY CROSSING            @D52VDKH 01300000
+         BNZ   GVSWTCH            ONLY FOR PARTITION           @D52VDKH 01301000
+GVTRYX1  DS    0H                                              @D52VDKH 01302000
+         ICM   R2,B'1111',SVER00  NO BDY CROSSING FOR LENGTH.. @D52VDMZ 01303000
+         BZ    GVSWTCH            .. 0 REQUEST, SEARCH IN BELOW@D52VDMZ 01304000
+         TM    SVER0F+3,PAGEIND   PAGE BDY ALIGNMENT ?         @D52VDKH 01305000
+         BNO   GVTRYX             NO, ==>                      @D52VDKH 01306000
+         L     R8,PAGESIZE        REQUEST <= 4K ?              @D52VDKH 01307000
+         CR    R2,R8              YES,                         @D52VDKH 01308000
+         BNH   GVSWTCH            CROSSING NOT POSSIBLE        @D52VDKH 01309000
+GVTRYX   EQU   *                                               @D52VDKH 01310000
+         L     R2,SPIDSAV        GET SUBPOOL INDEX             @D52VDKH 01311000
+*SGLINK  GVXING,INPUT=(R2,R8:LINK,RB,RC,RD),OUTPUT=(RF),               *01312000
+               NOMODR=(R6,RA,RC,RD),AMODE=31                            01313000
+         SGAMSUBR SUBROUT=GVXING,                              @D52VDKH*01314000
+               INPUT=(R2,RA,RB,RC,RD,RE),                      @D52VDKH*01315000
+               OUTPUT=(RF),                                    @D52VDKH*01316000
+               NOMOD=(R6,RA,RD),                               @D52VDKH*01317000
+               LINK=(R8),                                      @D14CDJB*01318000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01319000
+         LTR   RF,RF              ALLRIGHT ?                   @D52VDKH 01320000
+         BZ    GVRET0             YES, DONE                    @D52VDKH 01321000
+         B     GVSWTCH            NO, SEARCH BELOW             @D52VDKH 01322000
+GVRETRC8 EQU   *                                               @D52VDKH 01323000
+         LA    R8,SMERR08         NOT 8                        @D52VDKH 01324000
+         CR    RF,R8              THEN                         @D52VDKH 01325000
+         BNE   GVRETPF1           THIS IS IT (ALMOST)          @D52VDKH 01326000
+         NI    SVER0F+2,X'FF'-GVLOCANY                         @D52VDKH 01327000
+         OI    SVER0F+2,GVLOCBEL                               @D52VDKH 01328000
+         LR    RF,RB              SAVE REGISTER                @D52VDKH 01329000
+         LA    RB,2               SWITCH CONTROL INFO FIELDS   @D52VDKH 01330000
+*SGLINK  GTVSINI2,INPUT=(R7:LINK,RB,RC,RD),                            *01331000
+               NOMODR=(R6,RA,RC,RD,RF),AMODE=31                         01332000
+         SGAMSUBR SUBROUT=GTVSINI2,                            @D52VDMZ*01333000
+               INPUT=(RB,RC,RD,RE),                            @D52VDMZ*01334000
+               NOMOD=(R6,RA,RC,RD,RF),                         @D52VDMZ*01335000
+               LINK=(R7),                                      @D14CDJB*01336000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01337000
+         LR    RB,RF              RESTORE REGISTER             @D52VDKH 01338000
+         LA    RF,SMERR08         RESET RC                     @D52VDKH 01339000
+         LTR   RB,RB              BOUNDARY CROSSING            @D52VDKH 01340000
+         BNZ   GVSWTCH            ONLY FOR PARTITION           @D52VDKH 01341000
+         L     R8,AEVRTMEM        IS WHOLE AREA TOO SMALL..    @D52VDKH 01342000
+         S     R8,BVIRTMEM        ..    TO SATISFY REQUEST     @D52VDKH 01343000
+         LA    R8,1(,R8)                                       @D52VDKH 01344000
+         C     R8,SVER00                                       @D52VDKH 01345000
+         BNL   GVTRYX1            NO,  TRY BDY CROSSING        @D64ADMZ 01346000
+         CLI   GMFMRQST,X'00'    GETVIS REQUEST                @D64ADMZ 01347000
+         BE    GVRETPF1          YES, DONE                     @D64ADMZ 01348000
+         TM    GMFMFLGS,VAR      VARIABLE GETMAIN REQUEST      @D64ADMZ 01349000
+         BZ    GVRETPF1          NO, DONE                      @D64ADMZ 01350000
+* CALL BDY CROSSING TO SET MAXGAP_BDY. REQUEST WILL END WITH RC=X'0C',  01351000
+* SO ORIGINAL RETURN CODE (8) IS LOST. THIS IS NO PROBLEM, SINCE FOR    01352000
+* GETMAIN REQUESTS, RC = 8 IS MAPPED TO RC =, X'0C'.                    01353000
+         B     GVTRYX1           SET MAXGAP_BDY                @D64ADMZ 01354000
+GVSWTCH  DS    0H                                              @D52VDKH 01355000
+* LOC=ANY DID NOT WORK. BOUNDARY CROSSING IS NOT POSSIBLE OR DID NOT    01356000
+* WORK EITHER. RETCODE = 8 OR X'0C'                                     01357000
+* AT THIS POINT CI IS SWITCHED TO BELOW.                                01358000
+         SR    R8,R8              MAXGAP MIGHT HAVE BEEN SET.. @D64ADMZ 01359000
+         ST    R8,MAXGAP          .. DURING BDY CROSSING       @D64ADMZ 01360000
+         LR    R8,RB              SAVE REGISTER                @D64ADMZ 01361000
+         LA    RB,3               SWITCH SUBPOOL               @D52VDKH 01362000
+         L     R5,SPIDSAV                                      @D52VDKH 01363000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *01364000
+               NOMODR=(R5,R6,RA,RC,RD,RF),AMODE=31                      01365000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D52VDMZ*01366000
+               INPUT=(R5,RB,RC,RE),                            @D52VDMZ*01367000
+               NOMOD=(R5,R6,R8,RA,RC,RD,RF),                   @D64ADMZ*01368000
+               LINK=(R7),                                      @D14CDJB*01369000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01370000
+         LR    RB,R8              RESTORE REGISTER             @D52VDKH 01371000
+         L     R8,EVIRTMEM        PART BELOW LARGE             @D52VDKH 01372000
+         S     R8,BVIRTMEM        ENOUGH FOR REQUEST ?         @D52VDKH 01373000
+         LA    R8,1(,R8)                                       @D52VDKH 01374000
+         C     R8,SVER00                                       @D52VDKH 01375000
+         BNL   GVSWTCH_1          YES, TRY BELOW               @D64ADMZ 01376000
+* IN CASE OF A VARIABLE GETMAIN REQUEST, MAXGAP MUST BE SET. OTHERWISE  01377000
+* THE MIN PROCESSING IN THE GETMAIN EXIT DOES NOT WORK CORRECTLY.       01378000
+* GVGETPAG IS CALLED TO FIND THE MAX. NUMBER OF FREE CONTIGOUS PAGES    01379000
+*                                                                       01380000
+         CLI   GMFMRQST,X'00'    GETVIS REQUEST                @D64ADMZ 01381000
+         BE    GVRETPF1          YES, DONE                     @D64ADMZ 01382000
+         TM    GMFMFLGS,VAR      VARIABLE GETMAIN REQUEST      @D64ADMZ 01383000
+         BZ    GVRETPF1          NO, DONE                      @D64ADMZ 01384000
+         L     R4,NBRGVPG        NO OF PAGES IN GETVIS AREA+1  @D64ADMZ 01385000
+         A     R4,F1             TO TAKE GVGETPAG EXCEED PATH  @DY45525 01386000
+         L     R3,FIRSTPNT       START WITH FIRST FREE PAGE    @D64ADMZ 01387000
+         LR    R1,RF             SAVE RETURN CODE              @D64ADMZ 01388000
+         SR    RF,RF             INPUT FOR GVGETPAG            @D64ADMZ 01389000
+*SGLINK  GVGETPAG,INPUT=(R3,R4,R8:LINK,RC,RD,RF),OUTPUT=(R3,R5,R9,RF), *01390000
+               NOMODR=(R2,R4,R6,RA-RC,RD),AMODE=31                      01391000
+         SGAMSUBR SUBROUT=GVGETPAG,                            @D64ADMZ*01392000
+               INPUT=(R3,R4,RC,RD,RF),                         @D64ADMZ*01393000
+               OUTPUT=(R3,R5,R9,RF),                           @D64ADMZ*01394000
+               NOMOD=(R2,R4,R6,RB,RC,RD),                      @D64ADMZ*01395000
+               LINK=(R8),                                      @D64ADMZ*01396000
+               CBASE=AMBASE       GET MAX NO OF FREE PAGES     @D64ADMZ 01397000
+         LR    RF,R1              RESTORE RETURN CODE          @D64ADMZ 01398000
+         B     GVRETPF1           EXIT                         @D64ADMZ 01399000
+GVSWTCH_1 DS   0H                                              @D64ADMZ 01400000
+         SLR   RF,RF                                           @D52VDKH 01401000
+         L     R0,SVER00                                       @D52VDKH 01402000
+         LR    R2,R5                                           @D52VDKH 01403000
+         B     GVSPGVND           TRY BELOW                    @D52VDKH 01404000
+*                                                                       01405000
+* THIS CODE IS ENTERED WITH RF = 0 ONLY                                 01406000
+*                                                                       01407000
+GVRET0   EQU   *                                               @D14CDJB 01408000
+         TM    GVFVFLGS,GVFVABVE  LAST REQUEST FOR ABOVE       @D52VDKH 01409000
+         BZ    GVRETNMR           THEN NO MIRRORING            @D64ADKH 01410000
+         L     R1,SVER00          GET LENGTH FOR REQUEST       @D52VDKH 01411000
+         LTR   R1,R1                                           @D52VDKH 01412000
+         BNZ   GVRETLNZ                                        @D52VDKH 01413000
+         LA    R1,1                                            @D52VDKH 01414000
+GVRETLNZ DS    0H                                              @D52VDKH 01415000
+*SGLINK  GVFVMIR1,INPUT=(R1,RB,RC,RD),OUTPUT=(R1),                     *01416000
+               NOMODR=(R2-R4,R5,R6,R7,R8,R9,RA,RB,RC,RD,RE,RF),AMODE=31 01417000
+         SGAMSUBR SUBROUT=GVFVMIR1,  MIRROR RETURNED ADDRESS   @D52VDKH*01418000
+               INPUT=(R1,RB,RC,RD),                            @D52VDKH*01419000
+               OUTPUT=(R1),                                    @D52VDKH*01420000
+               NOMOD=(R2,R3,R4,R5,R6,R7,R8,R9,RA,RB,RC,RD,RE), @D52VDKH*01421000
+               LINK=(INLINE)                                   @D52VDKH 01422000
+         ST    R1,SVER01           USER'S ADDRESS              @D52VDKH 01423000
+GVRETNMR DS    0H                                              @D64ADKH 01424000
+         CLI   GMFMRQST,X'00'     IF GETMAIN REQUEST, DO GATE..@D64ADKH 01425000
+         BNE   GVDONE             .. HANDLING IN GETMAIN EXIT  @D64ADKH 01426000
+         L     R1,SPIDSAV                                      @D52VDKH 01427000
+         LR    R2,R1              INPUT FOR SDAID              @D66GGMZ 01428000
+         USING SUBPINT,R1                                      @D52VDKH 01429000
+         NI    SPITFLAG,X'FF'-SPCREATE                         @D52VDKH 01430000
+         LA    R1,0                                            @D52VDKH 01431000
+         ST    R1,SPIDSAV         CLEAR SUBPOOL POINTER        @D52VDKH 01432000
+         B     GVRETPRB           ===>                         @D52VDKH 01433000
+GVRETPF1 DS    0H                                              @D52VDKH 01434000
+         L     R1,SPIDSAV         SUBPOOL TABLE ENTRY          @D52VDKH 01435000
+         LR    R2,R1              INPUT FOR SDAID              @D66GGMZ 01436000
+         TM    SPITFLAG,SPPFXPND  PFIX IS PENDING              @D52VDKH 01437000
+         BO    GVRETPF2           DO NOT RESET CREATE BIT      @D52VDKH 01438000
+         TM    SPITFLAG,SPCREATE  SUBPOOL JUST CREATED ?       @D52VDKH 01439000
+         BZ    GVRETPF2           NO, DONE                     @D52VDKH 01440000
+         DROP  R1                                              @D52VDKH 01441000
+         ST    RF,SAVR3RDF        SAVE RETURN CODE             @D52VDKH 01442000
+*SGLINK  GVINTFV,INPUT=(R7:LINK,RA,RB,RC,RD),OUTPUT=(RF),              *01443000
+               NOMODR=(R6,RA,RB,RC,RD),AMODE=31                         01444000
+         SGAMSUBR SUBROUT=GVINTFV,                             @D52VDKH*01445000
+               INPUT=(RA,RB,RC,RD),                            @D52VDKH*01446000
+               OUTPUT=(RF),                                    @D52VDKH*01447000
+               NOMOD=(R6,RA,RB,RC,RD),                         @D52VDKH*01448000
+               LINK=(R7),                                      @D52VDKH*01449000
+               CBASE=AMBASE       FREE TOTAL SUBPOOL           @D52VDKH 01450000
+         L     RF,SAVR3RDF        RESTORE RETURN CODE          @D52VDKH 01451000
+GVRETPF2 DS    0H                                              @D52VDKH 01452000
+         CLI   GMFMRQST,X'00'     GETVIS  REQUEST              @D64ADKH 01453000
+         BE    GVRETPF3           YES                          @D64ADMZ 01454000
+         LA    R8,SMERR08         AT THIS POINT RF=8 MEANS..   @D64ADMZ 01455000
+         CR    RF,R8              .. REQUEST EXCEEDS AREA      @D64ADMZ 01456000
+         BNE   GVDONE             RF/=8. I.E. SET CORRECTLY    @D64ADMZ 01457000
+         LA    RF,SMERR0C         SAME AS 'NOT ENOUGH STORAGE'.@D64ADMZ 01458000
+         B     GVDONE             .. IN MVS                    @D64ADMZ 01459000
+GVRETPF3 DS    0H                                              @D64ADMZ 01460000
+         LA    R8,0                                            @D52VDKH 01461000
+         ST    R8,SPIDSAV         CLEAR SUBPOOL POINTER        @D52VDKH 01462000
+GVRETPRB EQU   *                                               @D52VDKH 01463000
+GVRETNT  DS    0H                                              @D64ADKH 01474000
+         TM    SVER0F+D3,GVPFIX   PFIX REQUEST                 @D51IDMZ 01475000
+         BZ    GVRETPST           NO                           @D64ADKH 01476000
+         LR    R0,R6              REGISTERS ARE DESTROYED..    @D51IDMZ 01477000
+         LR    R1,RF              REGISTERS ARE DESTROYED..    @D51IDMZ 01478000
+         L     R6,DISPAD                                       @D51IDMZ 01479000
+         L     R5,ASRQTAB                                      @D64ADKH 01480000
+         LA    R5,SRQSPFIX-SRQTAB(,R5) OPEN PFIX GATE          @D64ADKH 01481000
+         USING DISP,R6                                         @D51IDMZ 01482000
+         BAL   RF,RPOST           POST ALL WAITERS             @D51IDMZ 01483000
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D14ZDJB 01484000
+         DROP  R6                 RELEASE DISP BASE            @D51IDMZ 01485000
+         L     RE,AMBASE          RESTORE BASE                 @D51IDMZ 01486000
+         LR    R6,R0              RESTORE ..                   @D51IDMZ 01487000
+         LR    RF,R1              RESTORE ..                   @D51IDMZ 01488000
+GVRETPST DS    0H                                              @D64ADKH 01489000
+         LTR   RC,RC                                           @D64ADKH 01490000
+         BZ    GVDONE                                          @D64ADKH 01491000
+         LTR   R2,R2              SUBPOOL SPECIFIED            @D66GGMZ 01492000
+         BZ    GVRETNS            NO                           @D66GGMZ 01493000
+         CLC   0(1,R2),7(R2)      PREVENT PAGE FAULT IN SDAID  @D66GGMZ 01494000
+GVRETNS  DS    0H                                              @D66GGMZ 01495000
+         MC    $MCGETV,$MCSDAID   PASS CONTROL TO SDAID        @D66GGMZ 01496000
+GVRETPST_1 DS  0H                                              @D66GGMZ 01497000
+         TM    GMFMFLGS,GMFM_SYSTEM  GETVIS CALLED INTERNALLY? @D64ADKH 01498000
+         BO    GVDONE             YES, DO NOT OPEN GATE        @D64ADKH 01499000
+         L     R5,GVFVGATE                                     @D64ADKH 01500000
+         LTR   R5,R5                                           @D64ADKH 01501000
+         BNM   GVDONE             NO                           @D64ADKH 01502000
+         LA    R5,0(R5)                                        @D64ADKH 01503000
+         ST    R5,GVFVGATE                                     @D64ADKH 01504000
+         LR    R0,R6              REGISTERS ARE DESTROYED..    @D51IDMZ 01505000
+         LR    R1,RF              REGISTERS ARE DESTROYED..    @D51IDMZ 01506000
+         L     R6,DISPAD                                       @D51IDMZ 01507000
+         USING DISP,R6                                         @D51IDMZ 01508000
+         BAL   RF,RPOST           POST ALL WAITERS             @D51IDMZ 01509000
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D14ZDJB 01510000
+         DROP  R6                 RELEASE DISP BASE            @D51IDMZ 01511000
+         L     RE,AMBASE          RESTORE BASE                 @D51IDMZ 01512000
+         LR    R6,R0              RESTORE ..                   @D51IDMZ 01513000
+         LR    RF,R1              RESTORE ..                   @D51IDMZ 01514000
+         TM    TCBGRFLG,TCBSETLR  SETLOCK RELEASE TO BE DONE   @D67FDMZ 01515000
+         BZ    GVDONE             NO                           @D67FDMZ 01516000
+         NI    TCBGRFLG,X'FF'-TCBSETLR RESET SETLOCK IN USE    @D67FDMZ 01517000
+         LR    R5,RD              SAVE SAVE AREA ADDRESS       @D67FDMZ 01518000
+         L     RD,TCBATCBE        GET TCB EXTENSION            @D67FDMZ 01519000
+         TM    TCBXSAUS-TCBXADR(RD),TCBXXSAU SAVE AREA FREE    @D67FDMZ 01520000
+         BZ    GVDONE1            YES, USE IT                  @D67FDMZ 01521000
+         LR    RD,R5              RESTORE SAVE AREA ADDRESS    @D67FDMZ 01522000
+         BAL   R5,SYSERROR        NO, MUST NOT OCCUR           @D67FDMZ 01523000
+GVDONE1  DS    0H                                              @D67FDMZ 01524000
+         OI    TCBXSAUS-TCBXADR(RD),TCBXXSAU IN USE            @D67FDMZ 01525000
+         LR    R8,RF              SAVE RETURN CODE             @D67FDMZ 01526000
+         LA    RD,TCBXXSA-TCBXADR(,RD) SAVEAREA USED BY SETLOCK@D67FDMZ 01527000
+*        SETLOCK RELEASE,TYPE=LOCAL,REGS=SAVE                  @D67FDMZ 01528000
+         SETLOCK RELEASE,TYPE=LOCAL,REGS=SAVE                  @D67FDMZ 01529000
+         L     RD,TCBATCBE        GET TCB EXTENSION            @D67FDMZ 01530000
+         NI    TCBXSAUS-TCBXADR(RD),X'FF'-TCBXXSAU FREE        @D67FDMZ 01531000
+         LR    RD,R5              RESTORE SAVE AREA ADDRESS    @D67FDMZ 01532000
+         LR    R5,RF              GET SETLOCK RETURN CODE      @D67FDMZ 01533000
+         LR    RF,R8              RESTORE GETVIS RETURN CODE   @D67FDMZ 01534000
+         LTR   R5,R5                                           @D67FDMZ 01535000
+         BZ    GVDONE             RELEASE SUCCESSFUL           @D67FDMZ 01536000
+         LR    R8,R5              SAVE SETLOCK RETURN CODE     @D67FDMZ 01537000
+         BAL   R5,SYSERROR        MUST NOT OCCUR               @D67FDMZ 01538000
+GVDONE   DS    0H                                              @D64ADKH 01539000
+         ST    RF,SVER0F          STORE RETURN CODE            @D367DJB 01540000
+         MVI   TCBIEXFL,X'00'     RESET INTERNAL EXECUTION FLG @D52VDMZ 01541000
+* RETURN TO CALLER IN CALLER'S AMODE                           @D52VDMZ 01542000
+         AMODESW RETURN,REG=(R6)  RETURN TO CALLER, SWITCH ... @D52VDMZ*01543000
+                                  ... AMODE IF NECESSARY                01544000
+         DROP  RC,RD                                           @D14CDJB 01545000
+         EJECT                                                 @D36ZDJB 01546000
+***************************************************************@D149DJB 01547000
+*                                                             *@D149DJB 01548000
+*   FREEVIS :                                                  @D149DJB 01549000
+*                                                              @D149DJB 01550000
+*        FREEVIS IS USED TO RELEASE STORAGE IN THE GETVIS      @D149DJB 01551000
+*        AREA OF THE USER PARTITION, OF THE SPACE GETVIS AREA  @D149DJB 01552000
+*        OR OF THE SVA.                                        @D149DJB 01553000
+*        THE GETVIS AREA IS MAPPED ON A BITSTRING (VISTAB).             01554000
+*        EACH BIT REPRESENTS 128 BYTES OF STORAGE              @D369DJB 01555000
+*        IN THE USER GETVIS AREA OR 16 BYTES IN THE SVA/SPACE  @D379DFG 01556000
+*        THE VISTAB IS LOCATED ON THE FIRST PAGE(S) OF THE     @D369DJB 01557000
+*        GETVIS AREA (SVA/SPACE) AND ON THE LAST PAGE(S) OF    @D369DJB 01558000
+*        THE PARTITION GETVIS AREA.                            @D369DJB 01559000
+*                                                                    RZ 01560000
+*        IF SVA=YES OR SPACE=YES IS SPECIFIED IN A FREEVIS     @D52IDMZ 01561000
+*        REQUEST, RB IS LOADED WITH -3, OTHERWISE IT IS        @D52IDMZ 01562000
+*        CLEARED TO 0.                                         @D379DFG 01563000
+*        RB IS USED TO MODIFY SHIFT INSTRUCTIONS AND           @D369DJB 01564000
+*        TO TEST FOR SPECIAL CALCULATIONS FOR THE SVA.         @D369DJB 01565000
+*                                                              @D149DJB 01566000
+*      DEPENDENCIES : NONE                                     @D149DJB 01567000
+*                                                              @D149DJB 01568000
+*      FIXED REGISTERS : R6     RETURN ADDRESS                 @D149DJB 01569000
+*                        RA     ADDRESS OF REQUESTOR'S TCB     @D149DJB 01570000
+*                        RD     REQUESTOR SAVE AREA POINTER    @D149DJB 01571000
+*                        RE     MODULE BASE REGISTER           @D149DJB 01572000
+*                                                              @D149DJB 01573000
+*      FREEVIS INTER MODULE LINKAGE :                          @D149DJB 01574000
+*                                                              @D149DJB 01575000
+*                            R7            R4            R8    @D149DJB 01576000
+*          FREEVIS  <-------------------------------> GVFVPTR  @D149DJB 01577000
+*          FREEVSMR <-------------------------------> GFSCINDT @D149DJB 01578000
+*                   <---> FVSBPOOL <----------------> STVSTBPG @D149DJB 01579000
+*                                  <----------------> GFENQDEQ @D149DJB 01580000
+*                                  <---> FVPGMR <---> GFSETKEY @D149DJB 01581000
+*                                               <---> FVFREPDS @D149DJB 01582000
+*                   <---> FVCHKEPG <----------------> GFENQDEQ @D149DJB 01583000
+*                                  <---> FVPGMR <---> FVFREPDS @D149DJB 01584000
+*                                               <---> GFSETKEY @D149DJB 01585000
+*                   <-------------------------------> SETVSTAB @D149DJB 01586000
+*                   <-------------------------------> GFSETKEY @D149DJB 01587000
+*                                                              @D149DJB 01588000
+*                                                              @D149DJB 01589000
+*  EXTERNAL REFERENCES :                                       @D149DJB 01590000
+*                                                              @D149DJB 01591000
+*      DATA AREAS : PARTITION SAVE AREA                        @D149DJB 01592000
+*                   ANCHOR TABLE                               @D149DJB 01593000
+*      MACROS     : MAPGVCTL (ANCHTAB)                         @D149DJB 01594000
+*      ROUTINES   : AINVPSUB (ADDRESS)                         @D149DJB 01595000
+*                   RWAIT                                      @D149DJB 01596000
+*                   RPOST                                      @D149DJB 01597000
+*                                                              @D149DJB 01598000
+***************************************************************@D149DJB 01599000
+         EJECT                                                 @D14CDJB 01600000
+***************************************************************@D149DJB 01601000
+*                                                              @D149DJB 01602000
+*   FREEVIS GENERAL ENTRY AND EXIT ROUTINE .                   @D149DJB 01603000
+*                                                              @D149DJB 01604000
+*   MODULE FREEVIS                                             @D149DJB 01605000
+*     EXECUTE GVFVPTR (DO GATING)                              @D52VDMZ 01606000
+*     IF FREEVIS OPTION INPUT IS INCORRECT                     @D149DJB 01607000
+*       THEN SET RC = 14                                       @D149DJB 01608000
+*            EXIT FREEVIS                                      @D149DJB 01609000
+*     IF FREEVIS ALL REQUEST                                   @D149DJB 01610000
+*       THEN EXECUTE FVALL                                     @D149DJB 01611000
+*            EXIT FREEVIS                                      @D149DJB 01612000
+*     IF ANCHOR TABLE IS NOT INITIALIZED                       @D149DJB 01613000
+*       THEN EXIT FREEVIS                                      @D149DJB 01614000
+*     IF SUBPOOL SPECIFIED                                     @D149DJB 01615000
+*       THEN EXECUTE GFSCINDT                                  @D149DJB 01616000
+*            EXECUTE FVSBPOOL                                  @D149DJB 01617000
+*            EXIT FREEVIS                                      @D149DJB 01618000
+*     EXECUTE SETVSTAB                                         @D149DJB 01619000
+*     EXECUTE FVCHKEPG                                         @D149DJB 01620000
+*     EXIT FREEVIS                                             @D149DJB 01621000
+*   ENDMODULE FREEVIS                                          @D149DJB 01622000
+*                                                              @D149DJB 01623000
+*     INPUT (REQUESTOR REGISTER) :                             @D149DJB 01624000
+*             R0  :  LENGTH OF GETVIS AREA TO BE FREED         @D149DJB 01625000
+*             R1 --> GETVIS AREA TO BE FREED                   @D149DJB 01626000
+*                     OR SUBPOOL ID FIELD                      @D149DJB 01627000
+*             RF  :  REQUEST OPTIONS : SUBPOOL      : X'0002'  @D149DJB 01628000
+*                                      SVA          : X'0004'  @D149DJB 01629000
+*                                      FREEVIS ALL  : X'0008'  @D149DJB 01630000
+*                                      ROUTED       : X'0010'  @D51IDMZ 01631000
+*                                      (ONLY FOR SFREEVIS )    @D51IDMZ 01632000
+*                                      SPACE        : X'0200'  @D51IDMZ 01633000
+*                                                              @D149DJB 01634000
+*              POSSIBLE VALUES (HEX) : 2,4,6,8,200,202         @D149DJB 01635000
+*                                                              @D149DJB 01636000
+*      REGISTERS :                                             @D149DJB 01637000
+*        ICCF PASSES A PARAMETER LIST ALONG WITH THE           @D149DJB 01638000
+*        PSEUDO PARTITION USER PARAMETERS:                     @D149DJB 01639000
+*        R2 --> PARMLIST ADDRESS                               @D149DJB 01640000
+*        PARMLIST+0: COMREG ADDRESS                            @D149DJB 01641000
+*        PARMLIST+4: PSEUDO PARTITION END                      @D149DJB 01642000
+*                                                              @D149DJB 01643000
+*     OUTPUT (REGISTERS IN REQUESTOR SAVE AREA) :              @D149DJB 01644000
+*           RF  :  RETURN CODE (SEE BELOW)                     @D149DJB 01645000
+*                                                              @D149DJB 01646000
+*   WORK REGISTER : ALL , EXCEPT R6                            @D149DJB 01647000
+*                                                              @D149DJB 01648000
+*   REGISTERS, WHICH MAY BE USED BUT MUST BE RESTORED :        @D149DJB 01649000
+*                    RA   : ADDRESS OF REQUESTORS TCB          @D149DJB 01650000
+*                    RC   : ADDRESS OF ANCHOR TABLE            @D149DJB 01651000
+*                    RE   : MODULE BASE REGISTER               @D149DJB 01652000
+*                                                              @D149DJB 01653000
+*   REGISTERS, WHICH MUST NEVER BE MODIFIED :                  @D149DJB 01654000
+*                    R6   : RETURN ADDRESS                     @D149DJB 01655000
+*                    RB   : SHIFT MODIFIER REGISTER            @D149DJB 01656000
+*                    RD   : REQUESTOR SAVE AREA POINTER        @D149DJB 01657000
+*                                                             *@D149DJB 01658000
+*  EXIT-NORMAL :                                             * @D149DJB 01659000
+*       THE RETURN CODE FIELD IN THE USER SAVE AREA          * @D358DUL 01660000
+*       (RF FIELD) WILL CONTAIN A ZERO OR A NON-ZERO VALUE   * @D149DJB 01661000
+*       IF DURING PROCESSING ANY PROBLEMS ARE ENCOUNTERED.   * @D149DJB 01662000
+*       THEN CONTROL IS RETURNED TO THE CALLER VIA           * @D149DJB 01663000
+*       REGISTER 6.                                          * @D149DJB 01664000
+*       THE FOLLOWING ARE THE EXPECTED ERROR CODES           * @D358DUL 01665000
+*       FROM THIS MODULE -                                   * @D358DUL 01666000
+*                                                            * @D358DUL 01667000
+*              RC = 00  : FREEVIS COMPLETED SUCCESSFULLY       @D149DJB 01668000
+*              RC = 04  : THE REAL GETVIS AREA IS 0K           @D149DJB 01669000
+*                         OR A SPACE REQUEST WAS GIVEN FOR A   @D51IDMZ 01670000
+*                         NOT INITIALIZED AREA                 @D51IDMZ 01671000
+*              RC = 08  : THE SPECIFIED LENGTH IS NEGATIVE     @D149DJB 01672000
+*              RC = 0C  : THE SPECIFIED ADDRESS IS NOT WITHIN  @D149DJB 01673000
+*                         THE SVA OR PARTITION GETVIS AREA,    @D149DJB 01674000
+*                         OR SPACE GETVIS AREA                 @D51IDMZ 01675000
+*                         OR IS NOT A MULTIPLE OF 128 BYTES    @D149DJB 01676000
+*                         (PARTITION), RESPECTIVELY 16 BYTES   @D149DJB 01677000
+*                         (SVA/SPACE)                          @D149DJB 01678000
+*              RC = 10  : THE SPECIFIED STORAGE BLOCK TO BE    @D149DJB 01679000
+*                         FREED EXCEEDS THE GETVIS AREA OR THE @D149DJB 01680000
+*                         EXPLICIT OR IMPLICIT SUBPOOL.        @D149DJB 01681000
+*              RC = 14  : INVALID FREEVIS OPTION               @D149DJB 01682000
+*              RC = 18  : INVALID SUBPOOL ID FIELD             @D149DJB 01683000
+*              RC = 1C  : THE SPECIFIED SUBPOOL DOES NOT EXIST @D149DJB 01684000
+*                                                              @D149DJB 01685000
+*  EXIT-ABNORMAL :                                             @D149DJB 01686000
+*       THE USER IS CANCELLED WITH ERR25 (INVALID ADDRESS)     @D149DJB 01687000
+*       WHEN THE SPECIFIED SUBPOOL NAME FIELD IS NOT WITHIN    @D149DJB 01688000
+*       THE PARTITION.                                         @D149DJB 01689000
+*                                                              @D358DUL 01690000
+***************************************************************@D369DJB 01691000
+         SPACE 1                                                        01692000
+         DC    CL16'FREEVIS 07/23/96'  MODULE NAME AND DATE    @D64ADMZ 01693000
+         SPACE 1                                               @D37ZDJB 01694000
+FREEVIS  DS    0H                                              @D14CDJB 01695000
+*SGLINK  FREEVIS,S,INPUT=(R6,RA),OUTPUT=(RF),                          *01696000
+               WORK=(R0,R1,R2,R3,R4,R5,R7,R8,R9,RB,RC-RF),             *01697000
+               SUBROUT=(GVFVPTR,FREEVSMR)                               01698000
+         L     RE,AMBASE          LOAD BASE REGISTER           @D14CDJB 01699000
+*        AMODESW SET,AMODE=31,WR=(RF)                          @D52VDMZ 01700000
+         AMODESW SET,AMODE=31,WR=(RF)                          @D52VDMZ 01701000
+         SPACE                                                          01702000
+         L     RD,TCBSAVE         GET POINTER TO SAVE AREA     @D64ADMZ 01703000
+         SGAMSUBR SUBROUT=FVCHOPT,                             @D64ADMZ*01704000
+               INPUT=(RD,RE),                                  @D64ADMZ*01705000
+               OUTPUT=(RF),                                    @D64ADMZ*01706000
+               NOMOD=(R6,RA,RD),                               @D64ADMZ*01707000
+               LINK=(R8),                                      @D64ADMZ*01708000
+               CBASE=AMBASE       CHECK SPECIFIED OPTIONS      @D64ADMZ 01709000
+         LA    RC,0               NO CI SET UP TO NOW          @D64ADMZ 01710000
+         LTR   RF,RF              ALL OPTIONS VALID            @D64ADMZ 01711000
+         BNZ   FVRETERR           NO, RETCODE ALREADY SET      @D64ADMZ 01712000
+*  DURING FREEVIS ALL PROCESSING DELETE PHASE STORAGE                   01713000
+*  AND LLE OCCUPIED BY TASK                                             01714000
+         SPACE                                                          01715000
+         USING SVEARA,RD                                       @D64ADMZ 01716000
+         TM    SVER0F+3,SMFVALL  IS FREEVIS ALL REQUESTED?     @D64ADMZ 01717000
+         BZ    FREEVIS_2         NO                            @D64ADMZ 01718000
+         CLC   TID(2),IJBHMTID   REQUEST FROM A SUBTASK        @D64ADMZ 01719000
+         BH    FREEVIS_1         YES                           @D64ADMZ 01720000
+         L     R1,TIBPTR                                       @D64ADMZ 01721000
+         USING TIBADR,R1                                       @D64ADMZ 01722000
+         TM    TIBFLAG1,EOTACT   REQUEST FROM EOT              @D64ADMZ 01723000
+         BZ    FREEVIS_2         NO, DO NOT DELETE PHASE STOR. @D64ADMZ 01724000
+         DROP  R1                RELEASE TIB                   @D64ADMZ 01725000
+* FREEVIS ALL WAS CALLED DURING EOT PROCESSING                          01726000
+FREEVIS_1 DS   0H                                                       01727000
+         SPACE                                                          01728000
+         LR    R0,RE             SAVE BASE REGISTER            @D64ADMZ 01729000
+         L     RE,A_CDDELETE                                   @D64ADKH 01730000
+         SPACE                                                          01731000
+*SGLINK  PHADLALL,INPUT=(R6,RA,RE:LINK),                               *01732000
+               NOMODR=(R0,R6,RA),AMODE=31                               01733000
+         SPACE                                                          01734000
+         AMODESW CALL,AMODE=31,REGS=(RE,RE)                    @D64ADMZ 01735000
+         LR    RE,R0         RESTORE BASE REGISTER             @D64ADMZ 01736000
+         L     RD,TCBSAVE    GET SAVE AREA PTR AGAIN           @D64ADMZ 01737000
+         SPACE                                                          01738000
+FREEVIS_2 DS   0H                                                       01739000
+*SGLINK  GVFVPTR,INPUT=(R6,R8:LINK,RA,RD),OUTPUT=(RC,RF),              *01740000
+               NOMODR=(R6,RA,RD),AMODE=31                               01741000
+         SGAMSUBR SUBROUT=GVFVPTR,                             @D14CDJB*01742000
+               INPUT=(R6,RA,RD,RE),                            @D52VDMZ*01743000
+               OUTPUT=(RC,RF),                                 @D52VDMZ*01744000
+               NOMOD=(R6,RA,RD),                               @D14CDJB*01745000
+               LINK=(R8),                                      @D14CDJB*01746000
+               CBASE=AMBASE       GATE ROUTINE                 @D51IDMZ 01747000
+         USING ANCHTAB,RC                                      @D14CDJB 01748000
+         LTR   RF,RF              ERROR OCCURED                @D51IDMZ 01749000
+         BNZ   FVRETERR           YES , RETCODE ALREADY SET    @D64ADMZ 01750000
+************************************************************** @D52VDMZ 01751000
+*  FREEVIS MAIN PATH (ENTRY POINT FOR SFREEVIS)              * @D52VDMZ 01752000
+*   WHEN ENTERING FREEVSMR, THE AMODE/RMODE OF THE CALLER IS  *@D52VDMZ 01753000
+*   KNOWN (TCBIEXFL).                                         *@D52VDMZ 01754000
+*   TCBIEXFL IS NOT SET/NEEDED FOR FREEMAIN REQUESTS          *@D64ADMZ 01755000
+*                                                              @D52VDMZ 01756000
+************************************************************** @D52VDMZ 01757000
+FREEVSMR DS    0H                 FREEVIS MAIN PATH            @D52VDMZ 01758000
+*SGLINK  FREEVSMR,S,INPUT=(R6:LINK,RA,RC-RF),OUTPUT=(RF),              *01759000
+               WORK=(R0-R4,R5,R7-R9,RB,RC,RE,RF),AMODE=31,             *01760000
+               SUBROUT=(FREEVSM0,FREEALL,FVROUTED)                      01761000
+         L     RE,AMBASE          NOT LOADED WHEN CALLED OUTSIDE       *01762000
+                                  GETVIS                       @D64ADMZ 01763000
+************************************************************** @D149DJB 01764000
+*  FOR FREEVIS ALL PERFORM SPECIAL ROUTINE                   * @D149DJB 01765000
+************************************************************** @D149DJB 01766000
+         TM    SVER0F+3,SMFVALL   IS FREEVIS ALL REQUESTED?    @D52VDKH 01767000
+         BO    FVALL              YES                          @D52VDKH 01768000
+************************************************************** @D52VDMZ 01769000
+*  FOR FREEVIS ROUTED PERFORM SPECIAL ROUTINE                * @D52VDMZ 01770000
+************************************************************** @D52VDMZ 01771000
+         TM    SVER0F+D1,FVROUTED    FREE ALL ROUTED ?         @D64ADMZ 01772000
+         BO    FVALLROU              YES, ==>                  @D52VDKH 01773000
+***************************************************************@D149DJB 01774000
+*  DO INITIALISATION                                                    01775000
+***************************************************************@D149DJB 01776000
+FREEVSM0 DS    0H                                              @D52VDKH 01777000
+*SGLINK  FREEVSM0,S,INPUT=(R6:LINK,RA,RC-RF),OUTPUT=(RF),              *01778000
+               WORK=(R0-R5,R7-R9,RB,RC,RE,RF),AMODE=31,                *01779000
+               SUBROUT=(GTVSINI1,GFSCINDT,FREEVNOS,GMFM_ACTIV,         *01780000
+               SETVSTAB,FVSBPOOL,FVTRACE)                               01781000
+         LA    RB,1               IDENTIFY CALLER AS FREEVIS   @D52VDKH 01782000
+*SGLINK  GTVSINI1,INPUT=(R7:LINK,RB-RD,RF),OUTPUT=(RB,RC,RF),          *01783000
+               NOMODR=(R6,RA,RD),AMODE=31                               01784000
+         SGAMSUBR SUBROUT=GTVSINI1,                            @D52VDMZ*01785000
+               INPUT=(RB,RD,RE,RF),                            @D52VDMZ*01786000
+               OUTPUT=(RB,RC,RF),                              @D52VDMZ*01787000
+               NOMOD=(R6,RA,RD),                               @D52VDMZ*01788000
+               LINK=(R7),                                      @D14CDJB*01789000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01790000
+         LTR   RF,RF              ERROR OCCURED ?              @D52VDKH 01791000
+         BNZ   FVRETERR           YES ===> (RF ALREADY SET)    @D52VDKH 01792000
+************************************************************** @D52VDMZ 01793000
+*  NORMAL FREEVIS PROCESSING                                 * @D52VDMZ 01794000
+************************************************************** @D52VDMZ 01795000
+         LM    R0,R1,SVER00       GET USER PARAMETER REGISTERS @D35DDUL 01796000
+************************************************************** @D379DFG 01797000
+*        FREEVIS MAIN ROUTINE                                  @D379DFG 01798000
+*                                                              @D379DFG 01799000
+*        R0 : SPECIFIED LENGTH                                 @D379DFG 01800000
+*        R1 : SPECIFIED ADDRESS                                @D379DFG 01801000
+*        R6 : DISPATCHER ADDRESS/LINK REGISTER                 @D379DFG 01802000
+*        RB : SHIFT MODIFIER FOR SVA REQUESTS                  @D379DFG 01803000
+*        RC : ADDRESS OF ANCHOR TABLE                          @D379DFG 01804000
+*        RD : ADDRESS OF CALLER'S SAVE AREA                    @D379DFG 01805000
+*        RE : BASE REGISTER                                    @D379DFG 01806000
+*        RF : 0 (RETURN CODE)                                  @D379DFG 01807000
+*        R2,R3,R4,R5,R7,R8 : WORK REGISTERS                    @D379DFG 01808000
+************************************************************** @D52VDMZ 01809000
+         TM    SVER0F+3,FVSPID    FREEVIS SUBPOOL REQUESTED?   @D14CDJB 01810000
+         BNO   FREEVNOS           NO  ===>                     @D14CDJB 01811000
+***************************************************************@D52VDMZ 01812000
+*  CLEAR FIRST BYTE/BIT OF SUBPOOL NAME ADDRESS DEPENDING     *@D52VDMZ 01813000
+*  ON CALLER'S AMODE                                          *@D52VDMZ 01814000
+*  SUBPOOL IS NOT ALLOWED WITH PMRAS REQUEST                  *@D52VDMZ 01815000
+***************************************************************@D52VDMZ 01816000
+         CLI   GMFMRQST,X'00'                                  @D64ADKH 01817000
+         BNE   FM_RELEASE                                      @D64ADKH 01818000
+         TM    TCBIEXFL,TCBIEXAM  CALLER IN AMODE 31 ?         @D52VDMZ 01819000
+         BO    FVCLRBIT           YES, CLEAR FIRST BIT         @D52VDMZ 01820000
+         N     R1,ADDRMSK         AMODE 24, CLEAR FIRST BYTE   @D52VDMZ 01821000
+         B     FVCLRCON           CONTINUE                     @D52VDMZ 01822000
+FVCLRBIT DS    0H                                              @D52VDMZ 01823000
+         LA    R1,0(,R1)          CLEAR FIRST BIT              @D52VDMZ 01824000
+FVCLRCON DS    0H                 CONTINUE AFTER CLEAR         @D52VDMZ 01825000
+         LTR   RB,RB              SVA OR SPACE  REQUEST ?      @D51IDKH 01826000
+         BNZ   FREEVNOC           YES ==> (NO VALIDATION)      @D14CDJB 01827000
+         LA    R2,D7(,R1)         HIGH ADDRESS TO BE VALIDATED @D14CDJB 01828000
+         USING DISP,R6                                         @D14CDJB 01829000
+         BAL   R8,VALIDPAR        VALIDATE SUBPOOL ID ENTRY    @D14CDJB 01830000
+         DROP  R6                                              @D14CDJB 01831000
+FREEVNOC DS    0H                                              @D14CDJB 01832000
+         LH    R2,D6(,R1)         GET SUBPOOL ID               @D14CDJB 01833000
+         LTR   R2,R2              SUBPOOL ID INITIALIZED ?     @D14CDJB 01834000
+         BZ    FVSPZERO           NO  ==>                      @D14CDJB 01835000
+         A     R2,BSUBPIND        ADDRESS OF INDEX TABLE ENTRY @D14CDJB 01836000
+         C     R2,ESUBPIND        OFFSET TOO HIGH ?            @D14CDJB 01837000
+         BH    FVSPZERO           YES ===> IGNORE              @D14CDJB 01838000
+         USING SUBPINT,R2                                      @D14CDJB 01839000
+         CLC   SPITNAME(L'SPITNAME),D0(R1)  NAME CORRECT ?     @D14CDJB 01840000
+         BNE   FVSPZERO           NO, INVALID INDEX SPECIFIED  @D51IDKH 01841000
+****************************************************************        01842000
+*  THE SUBPOOL ID IS INTERNALLY EXTENDED BY A TWO BYTE FIELD.           01843000
+*  THIS FIELD CONTAINS THE PIK OF THE REQUESTING PARTITION IN           01844000
+*  CASE OF A SPACE REQUEST, OTHERWISE (SVA OR PARTITION) X'FFFF'.       01845000
+*  THEREFORE NOT ONLY THE NAME IS CHECKED BUT THE PIK, TOO.             01846000
+***************************************************************         01847000
+         TM    SVER0F+D2,GVFVSPIN IS THE REQUEST FOR SPACE     @D51IDKH 01848000
+         BZ    FVSPNROU           NO,                          @D51IDKH 01849000
+***************************************************************         01850000
+*  SPACE REQUEST, GET PARTITION PIK                                     01851000
+***************************************************************         01852000
+         LH    R5,PIK                                          @D51IDKH 01853000
+         B     FVSPPIK                                         @D51IDKH 01854000
+***************************************************************         01855000
+*  SVA OR PARTITION REQUEST, USE X'FFFF' INSTEAD OF PIK                 01856000
+***************************************************************         01857000
+FVSPNROU LA    R5,1                                            @D51IDKH 01858000
+         LNR   R5,R5              LOAD X'FFFFFFFF'             @D51IDKH 01859000
+FVSPPIK  CH    R5,SPITPIK         CORRECT PIK ?                @D51IDKH 01860000
+         BE    FVSPFND            NAMES MATCH, CONTINUE        @D51IDKH 01861000
+FVSPZERO EQU   *                                               @D51IDKH 01862000
+***************************************************************         01863000
+*  LIBRARIAN COMES WITH INDEX = 0                                       01864000
+***************************************************************         01865000
+         CLI   D0(R1),X00         VALID NAME ?                 @D51IDKH 01866000
+         BE    FVRET18            NO  ==>                      @D51IDKH 01867000
+         LR    R3,R1              GET PARAMETER FOR SCAN ROUT. @D51IDKH 01868000
+*SGLINK  GFSCINDT,INPUT=(R3,R8:LINK,RC,RD),OUTPUT=(R2,R3,RF),          *01869000
+               NOMODR=(R1,R6,RA-RC,RD),AMODE=31                         01870000
+         SGAMSUBR SUBROUT=GFSCINDT,                            @D51IDKH*01871000
+               INPUT=(R3,RC,RD),                               @D52VDMZ*01872000
+               OUTPUT=(R2,R3,RF),                              @D51IDKH*01873000
+               NOMOD=(R1,RA,RB,RC,RD),                         @D51IDKH*01874000
+               LINK=(R8),                                      @D51IDKH*01875000
+               CBASE=AMBASE       SCAN INDEX TABLE FOR NAME    @D51IDMZ 01876000
+         LTR   RF,RF              NAME FOUND ?                 @D51IDKH 01877000
+         BZ    FVSPFNDX           YES ==>                      @D51IDKH 01878000
+         SR    RF,RF              RESET RETURN CODE            @D51IDKH 01879000
+         B     FVRET1C            ===> RETURN TO CALLER        @D51IDKH 01880000
+FVSPFNDX EQU   *                                               @D51IDKH 01881000
+         TM    SPITFLAG,SPCNTRLD  SUBPOOL CONTROLLED           @D51IDKH 01882000
+         BO    FVRET24            YES ==>                      @D51IDKH 01883000
+FVSPFND  EQU   *                                               @D14CDJB 01884000
+         TM    SPITFLAG,SPPFXPND  PENDING PFIX REQUEST         @D51IDMZ 01885000
+         BO    FVRET28            YES ==>                      @D51IDMZ 01886000
+         DROP  R2                 RELEASE SUBPOOL INDEX TABLE  @D51IDKH 01887000
+         LR    R5,R2              ADDRESS OF INDEX TABLE ENTRY @D14CDJB 01888000
+*SGLINK  FVSBPOOL,INPUT=(R1,R5,R7:LINK,RA,RB,RC,RD,RE,RF),             *01889000
+               NOMODR=(R6,RC,RD),AMODE=31,OUTPUT=(RF)                   01890000
+         SGAMSUBR SUBROUT=FVSBPOOL,                            @D14CDJB*01891000
+               INPUT=(R1,R5,RA,RB,RC,RD,RE,RF),                @D52VDKH*01892000
+               NOMOD=(R6,RC,RD),                               @D14CDJB*01893000
+               LINK=(R7),                                      @D14CDJB*01894000
+               CBASE=AMBASE       FREE TOTAL SUBPOOL           @D51IDMZ 01895000
+         B     FVRETNOM           ===>                         @D52VDKH 01896000
+FM_RELEASE  DS  0H                                             @D64ADKH 01897000
+*SGLINK  GMFM_ACTIV,INPUT=(R8:LINK,RC),OUTPUT=(R5,RF),                 *01898000
+               AMODE=31,NOMODR=(R1,R6,RD)                               01899000
+         SGAMSUBR SUBROUT=GMFMACTV,                            @D64ADKH*01900000
+               INPUT=(RC),                                     @D64ADKH*01901000
+               OUTPUT=(R5,RF),                                 @D64ADKH*01902000
+               NOMOD=(R0,R1,R6,RA,RB,RC,RD),                   @D64ADKH*01903000
+               LINK=(R8),                                      @D64ADKH*01904000
+               CBASE=AMBASE                                    @D64ADKH 01905000
+         LTR   RF,RF                                           @D64ADKH 01906000
+         BNZ   FVRET0A                                         @D64ADKH 01907000
+         L     R1,SVER01                                       @D64ADKH 01908000
+         L     R5,SPIDSAV                                      @D64ADKH 01909000
+*SGLINK  FVSBPOOL,INPUT=(R1,R5,R7:LINK,RA,RB,RC,RD,RE,RF),             *01910000
+               NOMODR=(R6,RC,RD),AMODE=31,OUTPUT=(RF)                   01911000
+         SGAMSUBR SUBROUT=FVSBPOOL,                            @D64ADKH*01912000
+               INPUT=(R1,R5,RA,RB,RC,RD,RE,RF),                @61ADKHH*01913000
+               NOMOD=(R6,RD),                                  @D64ADKH*01914000
+               LINK=(R7),                                      @D64ADKH*01915000
+               CBASE=AMBASE       FREE TOTAL SUBPOOL           @D64ADKH 01916000
+         B     FVRETNOM           ===>                         @D64ADKH 01917000
+************************************************************** @D149DJB 01918000
+*  FREEVNOS : CALLED BY GVINTFV                              * @D52VDMZ 01919000
+*   INPUT : R0, R1, RA, RB, RC, RD, RE, RF=0                 * @D52VDMZ 01920000
+*   WORK  : R0,R1,R2,R3,R4,R5,R7,R8,R9                       * @D52VDMZ 01921000
+*   NOMOD : R6,RA,RB,RC,RD,RE                                * @D52VDMZ 01922000
+*   OUTPUT: RF                                               * @D52VDMZ 01923000
+************************************************************** @D149DJB 01924000
+FREEVNOS DS    0H                                              @D14CDJB 01925000
+*SGLINK  FREEVNOS,S,INPUT=(R0,R1,R6,RA-RC,RD,RF),OUTPUT=(RF),          *01926000
+               WORK=(R0,R1,R2,R3,R4,R5,R7,R8,R9,RE),                   *01927000
+               AMODE=31,NOMODR=(R6,RA,RB,RC,RD),                       *01928000
+               SUBROUT=(GTVSINI3,SETVSTAB,FVCHKEPG)                     01929000
+*  CHECK LENGTH (REG 0) AND ADDRESS (REG 1)                  * @D149DJB 01930000
+         LTR   R0,R0 .            IS LENGTH ZERO?                       01931000
+         BZ    FVRET0             ZERO ===> RETURN             @D14CDJB 01932000
+         LA    R5,0               INPUT FOR FOLLOWING CODE     @D52VDKH 01933000
+************************************************************** @D149DJB 01934000
+*  FREEVIS WITHOUT SUBPOOL SPECIFIED                         * @D149DJB 01935000
+*    R5 MUST BE ZERO ON INPUT                                * @D149DJB 01936000
+************************************************************** @D149DJB 01937000
+FRVNOSPD DS    0H                                              @D14CDJB 01938000
+         LR    R4,R1              RESTORE ADDRESS              @D367DJB 01939000
+         S     R4,BVIRTMEM      CALC. START ADDR. OF BITSTRING @D367DJB 01940000
+         SRDA  R4,LDVBYTB(RB)     DIV. BY SIZE OF VIRT.MEM/BYTE@D367DJB 01941000
+         A     R4,BVISTAB         ADD START ADDRESS OF VISTAB  @D367DJB 01942000
+         ST    R4,SSEARCH         SAVE START ADDR. OF BITSTRING@D367DJB 01943000
+         SRL   R5,BITREG-(LDVBYTB-LDVBYTBI)  GET BIT #         @D367DJB 01944000
+         ST    R5,SVWORK1         AND SAVE IT                  @D367DJB 01945000
+         LR    R4,R1              GET END ADDRESS              @D367DJB 01946000
+         BCTR  R4,0               OF AREA TO BE RELEASED       @D367DJB 01947000
+         AR    R4,R0              IS USED LATER ON             @D367DJB 01948000
+**************************************************************          01949000
+* CHECK IF FREEVIS AREA OVERLAPS AREA TO BE PFIXED                      01950000
+.*  THE FOLLOWING PROCESSING DEPENDS ON THE FACT THE PFIX IS            01951000
+.*  ONLY POSSIBLE IN AREAS WHERE NO BDY CROSSING TAKES PLACE            01952000
+**************************************************************          01953000
+FVCHKAR1 DS    0H                                              @D51IDMZ 01954000
+         L     R3,SPIDSAV         GET SUBPOOL INDEX ENTRY      @D52VDKH 01955000
+         USING SUBPINT,R3                                      @D51IDMZ 01956000
+         TM    SPITFLAG,SPPFXPND  PFIX REQUEST PENDING         @D51IDMZ 01957000
+         BZ    FVSETVST           NO => TERMINATE CHECKING     @D51IDMZ 01958000
+         L     R1,ADDRSAV         GET START ADDRESS, MIRRORED  @D52VDKH 01959000
+         LA    R1,0(,R1)          BIT 0 NOT CONSIDERED         @D52VDMZ 01960000
+         C     R1,SVPFLIST        START BELOW START PFIX       @D51IDMZ 01961000
+         BH    FVCHKAR2           NO                           @D51IDMZ 01962000
+         LR    R2,R0              GET LENGTH OF AREA TO BE..   @D51IDMZ 01963000
+         BCTR  R2,0               FREED MINUS ONE              @D51IDMZ 01964000
+         AR    R2,R1              END ADDR OF AREA TO BE FREED @D51IDMZ 01965000
+         C     R2,SVPFLIST        END BELOW START PFIX         @D51IDMZ 01966000
+         BNL   FVRET28            NO,OVERLAY OF PFIX AREA      @D51IDMZ 01967000
+         B     FVSETVST           TERMINATE CHECKING           @D51IDMZ 01968000
+FVCHKAR2 DS    0H                                              @D51IDMZ 01969000
+         L     R2,SVPFLIST        GET START OF PFIX AREA       @D51IDMZ 01970000
+         A     R2,SVPFLIST+4      GET END OF PFIX AREA         @D51IDMZ 01971000
+         CR    R1,R2              BEGIN ADDR WITHIN PFIX AREA  @D51IDMZ 01972000
+         BNH   FVRET28            YES                          @D51IDMZ 01973000
+************************************************************** @D149DJB 01974000
+*  PREPARE INPUT REGISTER FOR SETVISTAB                      * @D149DJB 01975000
+************************************************************** @D149DJB 01976000
+FVSETVST DS    0H                                              @D14CDJB 01977000
+         LR    R1,RB              SAVE REGISTER                @D52VDKH 01978000
+         LA    RB,3               SWITCH SUBPOOL               @D52VDKH 01979000
+         LR    R5,R3              SUBPOOL POINTER              @D52VDKH 01980000
+         DROP  R3                                              @D52VDKH 01981000
+*SGLINK  GTVSINI3,INPUT=(R5,R7:LINK,RB,RC),                            *01982000
+               NOMODR=(R1,R6,RA,RC,RD,RF),AMODE=31                      01983000
+         SGAMSUBR SUBROUT=GTVSINI3,                            @D52VDMZ*01984000
+               INPUT=(R5,RB,RC,RE),                            @D52VDMZ*01985000
+               NOMOD=(R1,R4,R6,RA,RC,RD),                      @D52VDMZ*01986000
+               LINK=(R7),                                      @D14CDJB*01987000
+               CBASE=AMBASE       INITIALIZE GETVIS AREA       @D51IDMZ 01988000
+         LR    RB,R1              RESTORE REGISTER             @D52VDKH 01989000
+         LA    R4,VBYTSV(R4)      ROUND TO NEXT AS FOR SVA     @D37CDFG 01990000
+         LTR   RB,RB              REQUEST FOR SVA OR SPACE?    @D51IDKH 01991000
+         BNZ   FREEVS1            YES, SKIP                    @D37CDFG 01992000
+         LA    R4,VBYTBI-VBYTSV(R4) YES, ADD DIFF.FOR PART.    @D37CDFG 01993000
+FREEVS1  EQU   *                                               @D35EDJB 01994000
+         SRA   R4,LDVBYTBI(RB)    CLEAR LOW                    @D367DJB 01995000
+         SLA   R4,LDVBYTBI(RB)      ORDER BYTES                @D367DJB 01996000
+         S     R4,BVIRTMEM    SUBTR. START ADDR. OF GETVIS AREA@D367DJB 01997000
+         SR    R5,R5              CLEAR WORK REGISTER          @D367DJB 01998000
+         SRDA  R4,LDVBYTB(RB)     DIVIDE BY SIZE/BYTE          @D367DJB 01999000
+         A     R4,BVISTAB         ADD START ADDRESS OF VISTAB  @D367DJB 02000000
+         LR    R1,R4              GET INTO R1 FOR FOLLOWING    @D14CDJB 02001000
+*                                 RESET SUBROUTINE                   RZ 02002000
+         SRL   R5,BITREG-(LDVBYTB-LDVBYTBI)  GET BIT #         @D367DJB 02003000
+         LR    R3,R5              FOR FOLLOWING RESET          @D367DJB 02004000
+         LA    R0,X'100' .        SET INDICATOR                      WF 02005000
+         LNR   R0,R0 .            FOR FOLLOWING PROCESSING           WF 02006000
+*SGLINK  SETVSTAB,INPUT=(R0,R1,R3,R8:LINK,RC),                         *02007000
+               NOMODR=(R6,RA-RD,RF),AMODE=31                            02008000
+         SGAMSUBR SUBROUT=SETVSTAB,                            @D14CDJB*02009000
+               INPUT=(R0,R1,R3,RC),                            @D14CDJB*02010000
+               NOMOD=(R6,RB,RC,RD),                            @D14CDJB*02011000
+               LINK=(R8),                                      @D14CDJB*02012000
+               CBASE=AMBASE       SET VISTAB BITS              @D51IDMZ 02013000
+*SGLINK  FVCHKEPG,INPUT=(R7:LINK,RA,RB,RC,RD,RF),OUTPUT=(RF),          *02014000
+               NOMODR=(R6,RA,RC,RD),AMODE=31                            02015000
+         SGAMSUBR SUBROUT=FVCHKEPG,                            @D14CDJB*02016000
+               INPUT=(RA,RB,RC,RD,RE,RF),                      @D14CDJB*02017000
+               OUTPUT=(RF),                                    @D51XDMZ*02018000
+               NOMOD=(R6,RD),                                  @D14CDJB*02019000
+               LINK=(R7),                                      @D14CDJB*02020000
+               CBASE=AMBASE       CHECK FOR EMPTY PAGES        @D51IDMZ 02021000
+         B     FVRET0             ===> RETURN TO CALLER        @D14CDJB 02022000
+         EJECT ,                                               @D35EDUL 02023000
+************************************************************** @D358DUL 02024000
+*                                                            * @D358DUL 02025000
+*        FREEVIS ALL IS AN AUTHORIZED REQUEST. IT MAY BE     * @D358DUL 02026000
+*        ISSUED BY END-OF-JOB ROUTINES FOR END-OF-JOB OF A   * @D358DUL 02027000
+*        MAIN TASK, AND BY JOB CONTROL.                      * @D358DUL 02028000
+*        IF THE REQUESTING PROGRAM IS NOT A MAIN TASK, THE   * @D149DJB 02029000
+*        EXCLUSIVE SUBPOOL OF THE CORRESPONDING TASK IS      * @D149DJB 02030000
+*        FREED. IF THE REQUESTING PROGRAM IS A MAIN TASK AND * @D149DJB 02031000
+*        DOES NOT EXECUTE IN KEY ZERO, THE PROGRAM IS        * @D358DUL 02032000
+*        CANCELLED.                                          * @D358DUL 02033000
+*                                                            * @D358DUL 02034000
+*        THE FOLLOWING FUNCTIONS ARE DONE:                   * @D149DJB 02035000
+*        IF GETVIS WAS INITIALIZED, THEN                     * @D358DUL 02036000
+*            -  THE INITIALIZATION INDICATOR IS RESET,       * @D358DUL 02037000
+*            -  THE GETVIS AREA PAGES ARE INVALIDATED,       * @D358DUL 02038000
+*            -  THE GETVIS AREA POINTER IS RESET TO THE      * @D358DUL 02039000
+*               PERMANENT GETVIS AREA ADDRESS.               * @D358DUL 02040000
+*                                                            * @D358DUL 02041000
+************************************************************** @D358DUL 02042000
+         SPACE 2                                               @D35EDUL 02043000
+FVALL    DS    0H                                              @D35EDUL 02044000
+*SGLINK  FREEALL,INPUT=(R6,R8:LINK,RA,RC,RD,RF),OUTPUT=(RC,RF),        *02045000
+               NOMODR=(R6,RA,RD),AMODE=31                               02046000
+         SGAMSUBR SUBROUT=FREEALL,                             @D52VDKH*02047000
+               INPUT=(R6,RA,RD,RE,RF),                         @D52VDKH*02048000
+               OUTPUT=(RF),                                    @D52VDKH*02049000
+               NOMOD=(R6,RA,RD),                               @D52VDKH*02050000
+               LINK=(R8),                                      @D52VDKH*02051000
+               CBASE=AMBASE                                    @D52VDKH 02052000
+         B     FVRET1A            RETURN (RC IS SET)           @D66GGMZ 02053000
+         SPACE 2                                                        02054000
+FVALLROU DS    0H                                              @D52VDKH 02055000
+*SGLINK  FVROUTED,INPUT=(R1:LINK,RA,RC,RD),OUTPUT=(RF),                *02056000
+               NOMODR=(R6,RA,RC,RD),AMODE=31                            02057000
+         SGAMSUBR SUBROUT=FVROUTED,                            @D52VDKH*02058000
+               INPUT=(RA,RD,RE),                               @D52VDKH*02059000
+               OUTPUT=(RB,RC,RF),                              @D52VDKH*02060000
+               NOMOD=(R6,RA,RD),                               @D52VDKH*02061000
+               IGN=(RE),                                       @D52VDMZ*02062000
+               LINK=(R1),                                      @D52VDKH*02063000
+               CBASE=AMBASE                                    @D52VDKH 02064000
+         B     FVRET0A            RETURN (RC IS SET)           @D52VDKH 02065000
+         EJECT                                                 @D51IDMZ 02066000
+***************************************************************@D149DJB 02067000
+*                                                              @D149DJB 02068000
+*   FREEVIS GENERAL EXIT CODE                                  @D149DJB 02069000
+*                                                                    RZ 02070000
+*        SET RETURN CODE INTO REG 15 IN USER'S SAVE AREA             RZ 02071000
+*        REG 15 WAS ALREADY SET TO ZERO                              RZ 02072000
+*                                                                    RZ 02073000
+***************************************************************@D149DJB 02074000
+         SPACE 1                                                        02075000
+FVRET28  LA    RF,4               SUBPOOL IN USE (PFIX PENDING)@D51IDMZ 02076000
+FVRET24  LA    RF,4(RF)           INVALID INDEX                @D14CDJB 02077000
+FVRET20  LA    RF,4(RF)           NOT USED                     @D14CDJB 02078000
+FVRET1C  LA    RF,4(RF)           SUBPOOL DOES NOT EXIST       @D14CDJB 02079000
+FVRET18  LA    RF,4(RF)           INVALID SUBPOOL ID FIELD     @D14CDJB 02080000
+FVRET14  LA    RF,4(RF)           INVALID OPTION FIELD         @D14CDJB 02081000
+FVRET10  LA    RF,4(RF)           LENGTH EXCEEDS GETVIS AREA   @D14CDJB 02082000
+FVRET0C  LA    RF,4(RF)           ADDRESS NOT MOD(128 OR 16)   @D52VDKH 02083000
+FVRET08  LA    RF,4(RF)           LENGTH IS NEGATIVE           @D14CDJB 02084000
+FVRET04  LA    RF,4(RF)           REAL GETVIS AREA IS 0K       @D14CDJB 02085000
+FVRETERR DS    0H                                              @D52VDKH 02086000
+         LTR   RC,RC              DOES CONTROL AREA EXIST ?    @D52VDKH 02087000
+         BZ    FVDONE             NO, STOP IT,NO GATE CLOSED   @D64ADMZ 02088000
+         TM    SVER0F+3,FVSPID    NO EXTRA HANDLING            @D52VDKH 02089000
+         BO    FVRETNOM           FOR SUBPOOL REQUEST          @D52VDKH 02090000
+FVRET0   DS    0H                                              @D52VDKH 02091000
+         TM    GVFVFLGS,GVFVINT   INTERNAL FREEVIS GOING ON?   @D52VDKH 02092000
+         BOR   R6                 YES, EXIT                    @D52VDKH 02093000
+         L     R8,LGTHSAV         REQUEST CROSSING THE         @D52VDKH 02094000
+         LTR   R8,R8              BOUNDARY ?                   @D52VDKH 02095000
+         BZ    FVRETEXT           NO, DONE                     @D52VDKH 02096000
+         TM    GVFVFLGS,GVFVABVE  DID WE PRECESS 1ST SUBREQST? @D52VDKH 02097000
+         BZ    FVRETX1            NO,                          @D52VDKH 02098000
+         L     R8,SVER00          SET UP FOR 2ND SUBREQST      @D52VDKH 02099000
+         LNR   R8,R8                                           @D52VDKH 02100000
+         A     R8,LGTHSAV                                      @D52VDKH 02101000
+         ST    R8,SVER00          LENGTH                       @D52VDKH 02102000
+         MVC   SVER01,ADDRSAV     START ADDRESS FROM USER      @D52VDKH 02103000
+         NI    SVER01,X'7F'       BIT 0 IS NOT CONSIDERED      @D52VDMZ 02104000
+         NI    SVER0F+2,X'FF'-GVLOCANY  NOW FREE FOR BELOW     @D52VDKH 02105000
+         LA    RF,0                                            @D52VDKH 02106000
+         B     FREEVSM0           DO FREEVIS (+INITIALIZATION) @D52VDKH 02107000
+FVRETX1  DS    0H                                              @D52VDKH 02108000
+         MVC   SVER00,LGTHSAV                                  @D52VDKH 02109000
+         LA    R8,0                                            @D52VDKH 02110000
+         ST    R8,LGTHSAV                                      @D52VDKH 02111000
+FVRETEXT EQU   * .                                             @D52VDKH 02112000
+         MVC   SVER01,ADDRSAV     RESTORE MIRRORED ADDRESS     @D52VDKH 02113000
+         CLI   GMFMRQST,X'00'     FREEMAIN REQUEST             @D64ADKH 02114000
+         BNE   FVRET0A            YES                          @D64ADKH 02115000
+         L     R2,SPIDSAV         SAVE SUBPOOL INDEX (SDAID)   @DA46055 02116000
+         ST    R8,SPIDSAV         CLEAR SAVED SUBPOOL INDEX    @D52VDKH 02117000
+FVRETNOM DS    0H                                              @D52VDKH 02118000
+         CLI   GMFMRQST,X'00'     FREEMAIN REQUEST             @D64ADKH 02119000
+         BNE   FVRET0A            YES                          @D64ADKH 02120000
+         TM    SVER0F+3,FVSPID    FREEVIS SUBPOOL REQUESTED?   @D66GGMZ 02121000
+         BZ    FVRET2A            NO                           @DA46055 02122000
+         L     R8,SVER01          GET SUBPOOL ADDRESS          @D66GGMZ 02123000
+         CLC   0(1,R8),7(R8)      FORCE AREA IN STORAGE        @D66GGMZ 02124000
+         B     FVRET1A            NO                           @DA46055 02125000
+FVRET2A  DS    0H                                              @DA46055 02126000
+         CLC   0(1,R2),7(R2)      FORCE AREA IN STORAGE        @DA46055 02127000
+*---PASS CONTROL TO SDAID AND CLEAR EXCLUSIVE SUBPOOL INDICATION        02128000
+FVRET1A  DS    0H                                              @D14ZDJB 02129000
+         MC    $MCFREEV,$MCSDAID  PASS CONTROL TO SDAID        @D66GGMZ 02130000
+FVSDARET DS    0H                 RETURN POPINT FROM SDAID     @DA46055 02131000
+         L     R5,TCBATCBE        GET ADDRESS OF TCB EXTENSION @DA46055 02132000
+         USING TCBXADR,R5         AND MAKE IT ADDRESSABLE      @DA46055 02133000
+         NI    TCBXFLG2,XFF-TCBXSDEX CLEAR   EXCL SUBP INDICAT @DA46055 02134000
+         DROP  R5                 DROP ADDRESSABILITY          @DA46055 02135000
+FVRET0A  DS    0H                                              @D14ZDJB 02136000
+         CLI   GMFMRQST,X'00'     FREEVIS REQUEST ?            @D64ADKH 02137000
+         BNE   FVDONE             NO, FREEMAIN, NO GATE HANDL. @D64ADKH 02138000
+         TM    GMFMFLGS,GMFM_SYSTEM                            @D64ADKH 02139000
+         BO    FVDONE                                          @D64ADKH 02140000
+         L     R5,GVFVGATE        GETVIS GATE TO BE OPENED ?   @D64ADKH 02141000
+         LTR   R5,R5                                           @D64ADKH 02142000
+         BNM   FVDONE             NO                           @D64ADKH 02143000
+         LA    R5,0(R5)           RESET 'OPEN' INDICATION      @D64ADKH 02144000
+         ST    R5,GVFVGATE        WIESO NICHT CLEAR??          @D64ADKH 02145000
+         LR    R8,RF              REGISTERS ARE DESTROYED..    @D64ADMZ 02146000
+         LR    R0,R6              ..SAVE RETC. AND RETURN ADDR @D51IDMZ 02147000
+         L     R6,DISPAD                                       @D51IDMZ 02148000
+         USING DISP,R6                                         @D51IDMZ 02149000
+         BAL   RF,RPOST           POST ALL WAITERS             @D51IDMZ 02150000
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D14ZDJB 02151000
+         DROP  R6                 RELEASE DISP BASE            @D51IDMZ 02152000
+         L     RE,AMBASE          RESTORE BASE                 @D51IDMZ 02153000
+         LR    R6,R0              RESTORE RETURN ADDR..        @D51IDMZ 02154000
+         LR    RF,R8              .. AND RETURN CODE           @D64ADKH 02155000
+         TM    TCBGRFLG,TCBSETLR  SETLOCK RELEASE TO BE DONE   @D67FDMZ 02156000
+         BZ    FVDONE             NO                           @D67FDMZ 02157000
+         NI    TCBGRFLG,X'FF'-TCBSETLR RESET SETLOCK IN USE    @D67FDMZ 02158000
+         LR    R5,RD              SAVE SAVE AREA ADDRESS       @D67FDMZ 02159000
+         L     RD,TCBATCBE        GET TCB EXTENSION            @D67FDMZ 02160000
+         TM    TCBXSAUS-TCBXADR(RD),TCBXXSAU SAVE AREA FREE    @D67FDMZ 02161000
+         BZ    FVDONE1            YES, USE IT                  @D67FDMZ 02162000
+         BAL   R5,SYSERROR        NO, MUST NOT OCCUR           @D67FDMZ 02163000
+FVDONE1  DS    0H                                              @D67FDMZ 02164000
+         OI    TCBXSAUS-TCBXADR(RD),TCBXXSAU IN USE            @D67FDMZ 02165000
+         LA    RD,TCBXXSA-TCBXADR(,RD) SAVEAREA USED BY SETLOCK@D67FDMZ 02166000
+         LR    R8,RF              SAVE FREEVIS RETURN CODE     @D67FDMZ 02167000
+*        SETLOCK RELEASE,TYPE=LOCAL,REGS=SAVE                  @D67FDMZ 02168000
+         SETLOCK RELEASE,TYPE=LOCAL,REGS=SAVE                  @D67FDMZ 02169000
+         L     RD,TCBATCBE        GET TCB EXTENSION            @D67FDMZ 02170000
+         NI    TCBXSAUS-TCBXADR(RD),X'FF'-TCBXXSAU FREE        @D67FDMZ 02171000
+         LR    RD,R5              RESTORE SAVE AREA ADDRESS    @D67FDMZ 02172000
+         LR    R5,RF              SAVE SETLOCK RETURN CODE     @D67FDMZ 02173000
+         LR    RF,R8              GET FREEVIS RETURN CODE      @D67FDMZ 02174000
+         LTR   R5,R5              SETLOCK RELEASE SUCCESSFUL   @D67FDMZ 02175000
+         BZ    FVDONE             YES                          @D67FDMZ 02176000
+         LR    R8,R5              SAVE SETLOCK RETURN CODE     @D67FDMZ 02177000
+         BAL   R5,SYSERROR        MUST NOT OCCUR               @D67FDMZ 02178000
+FVDONE   DS    0H                                              @D64ADKH 02179000
+         ST    RF,SVER0F          STORE RETURN CODE            @D367DJB 02180000
+         MVI   TCBIEXFL,X'00'     RESET INTERNAL EXECUTION FLG @D52VDMZ 02181000
+* RETURN TO CALLER IN CALLER'S AMODE                           @D52VDMZ 02182000
+         AMODESW RETURN,REG=(R6)  RETURN TO CALLER, SWITCH ... @D52VDMZ*02183000
+                                  ... AMODE IF NECESSARY                02184000
+         DS    0H                                              @D64ADKH 02185000
+AFREEVIS DC    A(FREEVSM0)                                     @D64ADKH 02186000
+         DROP  RC,RD                                           @D14CDJB 02187000
+         EJECT                                                          02188000
+         SGAMSUBR  CREATE=YES        GENERATE SUBROUTINES      @D14CDJB 02189000
+         AIF   (NOT &BGDEBUG OR NOT &SGAM).PRINT               @D37ZDJB 02190000
+         PRINT NOGEN              RESET PRINT OPTION           @D37ZDJB 02191000
+.PRINT   ANOP                                                  @D37ZDJB 02192000
+         MEND                                                        RZ 02193000

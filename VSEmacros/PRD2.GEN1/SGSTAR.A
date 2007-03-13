@@ -1,0 +1,1916 @@
+         MACRO                                                          00040000
+&NAME    SGSTAR                                                         00080005
+         GBLB   &BG31                                                   00120005
+         GBLB   &BGFBA                                                  00130005
+         GBLB   &SGSTAR                                                 00140005
+         GBLB   &BGDEBUG                                                00150005
+         TITLE 'VSE SUPERVISOR     SGSTAR    README PART              ' 00160015
+***************************************************************@D51MDGL 00520000
+*                                                             *@D51MDGL 00560000
+.*       IBM VSE / ADVANCED FUNCTIONS                         *@D51MDGL 00600000
+*        SUPERVISOR - SGSTAR - 5686-032-06                    *@D51MDGL 00640017
+*                                                             *@D51MDGL 00680000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *@D51MDGL 00720000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *@D51MDGL 00760000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1979, 2000          *@D51MDGL 00800025
+*        SEE COPYRIGHT INSTRUCTIONS                           *@D51MDGL 00840000
+*                                                             *@D51MDGL 00880000
+***************************************************************@D51MDGL 00920000
+ AIF   (NOT &SGSTAR OR NOT &BGDEBUG).NPRT00                    @D51MDGL 00960000
+         PRINT  GEN                                            @D51MDGL 01000000
+* STAR (SYSTEM TRACK ALGORITHM ROUTINE). IT PROVIDES:          @D51MDGL 01160011
+* ROUTINES FOR SECTOR CALCULATION,                             @D51MDGL 01240011
+* ROUTINES TO CALCULATE THE NO. OF RECORDS THAT FIT ON A TRACK @D51MDGL 01280011
+* ROUTINES TO BALCULATE THE REMAINING TRACK BALANCE            @D51MDGL 01320011
+*                                                              @D51MDGL 01400000
+*                                                              @D51MDGL 01401031
+* INTERFACES TO SGSTAR MACRO                                   @D51MDGL 01402031
+*  THE USER PROVIDES INPUT DATA WHICH WILL BE COPIED INTO      @D51MDGL 01403031
+*  STARDATA, OR SHORT STAD AND ALL ROUTINES WILL ACCESS THIS   @D51MDGL 01404031
+*  DATA ONLY                                                   @D51MDGL 01405031
+*                                                              @D51MDGL 01406031
+*  THE ENTRY POINTS FOR SGSTAR ARE AS FOLLOWS:                 @D51MDGL 01407031
+*  LABEL SVC75                                                 @D51MDGL 01408031
+*    ENTRY FOR EXTERNAL PROBLEM PROGRAMS, REQUESTING A         @D51MDGL 01409031
+*    SECTOR CALCULATION.                                       @D51MDGL 01409131
+*    THE PROGRAM ACCEPTS AN OLD OR A NEW INTERFACE:            @D51MDGL 01409231
+*    THE NEW INTERFACE IS:                                     @D51MDGL 01409331
+*      SVER00: 16BIT DATALNG/ 8BIT KEYLNG/ 8BIT RECORDNO       @D51MDGL 01409431
+*      SVER01: 8BIT  X'00'/ 8BIT FLAGS  /16BIT DEVICE INDICAT. @D51MDGL 01409531
+*        THE DEVICE INDICATION CAN BE                          @D51MDGL 01409631
+*          LOGICAL UNIT IN CCB FORMAT (TWO BYTE)               @D51MDGL 01409731
+*          PUB INDEX (TWO BYTE)                                @D51MDGL 01409831
+*          X'00' AND DTF DEVICE TYPE CODE (ONE BYTE)           @D51MDGL 01409931
+*                                                              @D51MDGL 01410031
+*    THE OLD INTERFACE IS:                                     @D51MDGL 01411031
+*      IF RECORD NUMBER IS NOT ZERO:                           @D51MDGL 01412031
+*      SVER00: 1BIT FLAG/15BIT DATALNG/8BIT KEYLNG/8BIT RECORDNO        01413031
+*      IF RECORD NUMBER IS ZERO:                               @D51MDGL 01414031
+*      SVER00: 16BIT ALL USED DATA ON THE TRACK INCL.OVERHEADS /        01415031
+*              16BIT ALL 0                                     @D51MDGL 01416031
+*      SVER01: 8BIT  DTF DEV.TYPE CODE/24BIT GARBAGE           @D51MDGL 01417031
+*                                                              @DEV14GL 01418031
+.NPRT00  AIF   (NOT &BGDEBUG).NDBG020                          @D66CDAP 01420031
+.* MODIFICATIONS IN THIS VERSION ARE:                          @D51MDGL 01440000
+.*  - ECKD DEVICES ARE SUPPORTED NOW,                          @D51MDGL 01480000
+.*  - NEW INTERFACE FOR SECTOR CALCULATION                     @D51MDGL 01520000
+.*  - ALL CALCULATIONS BASED ON RDC DATA                       @D51MDGL 01600000
+.*                                                             @D51MDGL 01640000
+.* THE RECORD LENGTH CALCULATION FORMULA IS TAKEN FROM THE     @D51MDGL 01960000
+.* RDC DATA. IT CAN EITHER BE                                  @D51MDGL 02000011
+.*  X'01' FOR A CKD DEVICE (MODULO OR NON MODULO)              @D51MDGL 02080000
+.*  X'02' FOR AN ECKD DEVICE.                                  @D51MDGL 02120000
+.* VALUES 01 AND 02 ARE INDICATORS FOR ARCHITECTURED FORMULAS. @D51MDGL 02160000
+.*                                                             @D51MDGL 02200000
+.*                                                             @D51MDGL 02320000
+.* LAYOUT OF THE TRACK:                                        @D51MDGL 02360000
+.* (RECORD 0 OVERHEAD),(RECORD),(RECORD),(LAST RECORD),(FREE SPACE)     02400000
+.*                                                             @D51MDGL 02440000
+.* A KEYED RECORD CONSISTS OF                                  @D51MDGL 02480000
+.* ((VCTCCF45)*(VCTCCF1-VCTCCF3+KEYLNG+DATALNG))/512+VCTCCF2   @D51MDGL 02520000
+.* A NON KEYED RECORD:                                         @D51MDGL 02560000
+.* ((VCTCCF45)*(VCTCCF1-VCTCCF3+DATALNG))/512+VCTCCF2-VCTCCF3  @D51MDGL 02600000
+.* A KEYED LAST RECORD CONSISTS OF:                            @D51MDGL 02640000
+.* (VCTCCF2+KEYLNG+DATALNG)                                    @D51MDGL 02680000
+.* A NON KEYED LAST RECORD:                                    @D51MDGL 02720000
+.* (VCTCCF2-VCTCCF3+DATALNG)                                   @D51MDGL 02760000
+.* VALUES IN VCT:                                              @D51MDGL 02800000
+.* VCTCCF1  (8  BIT) = LAST RECORDS RECORD AND KEY OVERHEAD    @D51MDGL 02840000
+.* VCTCCF2  (8  BIT) = NONLAST RECORDS RECORD AND KEY OVERHEAD @D51MDGL 02880000
+.* VCTCCF3  (8  BIT) = KEY OVERHEAD                            @D51MDGL 02920000
+.* VCTCCF45 (16 BIT) = TOLERANCE FACTOR                        @D51MDGL 02960000
+.*                                                             @D51MDGL 03000000
+.*                                                             @D51MDGL 03040000
+.* 2. CASE: DEVICE IS CKD MODULO DEVICE                        @D51MDGL 03080000
+.*                                                             @D51MDGL 03120000
+.* TRACK LAYOUT IS:                                            @D51MDGL 03160000
+.* (RECORD 0 OVERHEAD),(RECORD),(RECORD),(RECORD),(FREE SPACE) @D51MDGL 03200000
+.*                                                             @D51MDGL 03240000
+.* RECORD SPACE (INCLUDING ALL GAPS) IS:                       @D51MDGL 03280000
+.*                                                             @D51MDGL 03320000
+.* A KEYED RECORD CONSISTS OF:                                 @D51MDGL 03360000
+.*   (((F2+DATALNG+F1-1)/F1)*F1)+(((F3+KEYLNG+F1-1)/F1)/*F1)   @D51MDGL 03400000
+.*   WITHIN THIS RECORD THE 'ADMINISTRATIVE PART' IS           @D51MDGL 03440000
+.*     F2+(((F3+KEYLNG+F1-1)/F1)/*F1)                          @D51MDGL 03480000
+.*                                                             @D51MDGL 03520000
+.* AN UNKEYED RECORD CONSISTS OF:                              @D51MDGL 03560000
+.*   (((F2+DATALNG+F1-1)/F1)*F1)                               @D51MDGL 03600000
+.*   HERE THE  'ADMINISTRATIVE PART' IS F2                     @D51MDGL 03640011
+.*                                                             @D51MDGL 03720000
+.* THE F1,F2 AND F3 VALUES STEM FROM THE VCT:                  @D51MDGL 03760011
+.* F1 = BYTES PER SEGMENT                                      @D51MDGL 03800011
+.* F2 = RECORD OVERHEAD                                        @D51MDGL 03840011
+.* F3 = KEY OVERHEAD                                           @D51MDGL 03880011
+.*                                                             @D51MDGL 03920000
+.*                                                             @D51MDGL 04080000
+.* 3. CASE: DEVICE IS ECKD DEVICE                              @D51MDGL 04120000
+.*                                                             @D51MDGL 04160000
+.*  GROSS_TRACK_CAPACITY=(FRONT_PART)+(SPACE_FOR_RECORDS)+(REAR_PART)   04200000
+.*                                                             @D51MDGL 04240000
+.*  FRONT_PART = (POST INDEX GAP)+(HOME ADDRESS)+(POST H.A. GAP)+       04280000
+.*               (R0 COUNT AREA)+(COUNT GAP)+(R0 DATA AREA);   @D51MDGL 04320000
+.*                                                             @D51MDGL 04360000
+.*  REAR_PART  = (PRE EOT MARK GAP)+(EOT MARK)+SPACE FOR 6 DEFECT SKIPS 04400000
+.*                                                             @D51MDGL 04440000
+.*  SPACE_FOR_RECORDS = N * (PART_OF_KEY_AND_DATA);            @D51MDGL 04480000
+.*                                                             @D51MDGL 04520000
+.*  PART_OF_KEY_AND_DATA = (FL1 + FL2)                         @D51MDGL 04560000
+.*                                                             @D51MDGL 04600000
+.*  FL1 AND FL2 ARE ROUNDED UP TO AN INTEGRAL MULTIPLE OF F1, WHICH IS  04640000
+.*  34 AT THE MOMENT.                                          @D51MDGL 04680000
+.*                                                             @D51MDGL 04720000
+.*  FL1 = (F1*F2)+(DATALNG+F6+(F4*INT1))                       @D51MDGL 04760000
+.*                                                             @D51MDGL 04800000
+.*  INT1 = SMALLEST INTEGER GREATER THAN OR EQUAL TO           @D51MDGL 04840000
+.*         ((DATALNG+F6)/(2*F5))                               @D51MDGL 04880000
+.*                                                             @D51MDGL 04920000
+.*  FL2 = (F1*F3)+(KEYLNG+F6+(F4*INT2))                        @D51MDGL 04960000
+.*                                                             @D51MDGL 05000000
+.*  INT2 = SMALLEST INTEGER GREATER THAN OR EQUAL TO           @D51MDGL 05040000
+.*         ((KEYLNG+F6)/(2*F5))                                @D51MDGL 05080000
+.*                                                             @D51MDGL 05120000
+.* THE VALUES OF F1,F2,F3,F4,F5,F6 ARE ALL BYTES IN THE VCT    @D51MDGL 05160011
+*    WITH VSE ESA 1.4.0 THERE IS A FAST SECTOR CALCULATION     @DEV14GL 06404401
+*    INTRODUCED, WHICH IS BASED ON THE USE OF A BUFFER.        @DEV14GL 06406601
+*    THE BUFFER SHALL CONTAIN ALL DATA THAT ARE REQUIRED       @DEV14GL 06408801
+*    TO DO A FAST CALCULATION OF THE SECTOR VALUE, WITH THE    @DEV14GL 06411001
+*    RECORD NUMBER BEING THE ONLY VARIABLE VALUE. THIS OF      @DEV14GL 06413201
+*    COURSE ASSUMES, THAT ALL OTHER FACTORS LIKE DATA LENGTH,  @DEV14GL 06415401
+*    KEY LENGTH AND TRACK GEOMETRY (DEVICE TYPE) DID NOT CHANGE@DEV14GL 06417601
+*    SINCE THE BUFFER WAS FILLED.                              @DEV14GL 06419801
+*    SECTVAL EXPANDS INTO CODE THAT IS FIRST LOOKING IF THE    @DEV14GL 06422001
+*    BUFFER CONTENTS CAN BE USED OR NOT. IF THE BUFFER IS      @DEV14GL 06424201
+*    EMPTY THE SVC 75 IS TAKEN TO FILL IN THE BUFFER CONTENTS  @DEV14GL 06426401
+*    AND IN ADDITION PROVIDE THE SECTOR VALUE. NEXT TIME THE   @DEV14GL 06428601
+*    USER COMES WITH THAT SAME BUFFER, THE CALCULATION IS      @DEV14GL 06430801
+*    DONE IN INLINE CODE OF THE CALLER. THERE IS NO SVC75.     @DEV14GL 06433001
+*    THE FOLLOWING SECTOR CALCULATION FORMULAS ARE INTRODUCED  @DEV14GL 06435201
+*    RIGHT NOW:                                                @DEV14GL 06437401
+*    FORMULA 1:                                                @DEV14GL 06439601
+*       SLR    R1,R1                                           @DEV14GL 06441801
+*       CLI    RECORDNUMBER,0                                  @DEV14GL 06444001
+*       BE     EXIT                                            @DEV14GL 06446201
+*       IC     R1,RECORDNUMBER                                 @DEV14GL 06448401
+*       BCTR   R1,0                                            @DEV14GL 06450601
+*       M      R0,FACTOR0                                      @DEV14GL 06452801
+*       A      R1,FACTOR1                                      @DEV14GL 06455001
+*       M      R0,FACTOR2                                      @DEV14GL 06457201
+*       D      R0,FACTOR3                                      @DEV14GL 06459401
+*       C      R1,FACTOR4                                      @DEV14GL 06461601
+*       BNH    EXIT                                            @DEV14GL 06463801
+*       LA     R1,X'FF'                                        @DEV14GL 06466001
+* EXIT  EQU    *                                               @DEV14GL 06468201
+*                                                              @DEV14GL 06470401
+*                                                              @DEV14GL 06472601
+*                                                              @DEV14GL 06474801
+*  LABEL SCVRTBAL                                              @D51MDGL 06480000
+*    IS THE OLD BAL INTERFACE FOR SECTOR CALCULATION.          @D51MDGL 06520000
+*    IT SUPPORTS THE OLD INTERFACE MENTIONED ABOVE.            @D51MDGL 06560000
+*                                                              @D51MDGL 06600000
+.* LABEL STARSECT                                              @D51MDGL 06640000
+.*   IS THE BAL INTERFACE FOR NEW SECTOR CALCULATION.          @D51MDGL 06680000
+.*   REGISTERS ARE THE SAME AS IN THE OLD INTERFACE, ONLY      @D51MDGL 06720014
+.*   A PUB INDEX IS ALWAYS SUPPLIED AS DEVICE INDENTIFICATION. @D51MDGL 06760000
+.*                                                             @D51MDGL 06800000
+*  LABEL STARSV99                                              @D51MDGL 06840000
+*    BAL INTERFACE FOR BALANCE OR CAPACITY CALCULATION.        @D51MDGL 06880000
+*    ENTERED BY SVC 99 FROM GETVCE MACRO:                      @D51MDGL 06920000
+*      SVER00: 16BIT DATALNG/ 8BIT KEYLNG/ 8BIT RECORDNO       @D51MDGL 06960000
+*      SVER01: 8BIT  X'00'/ 8BIT FLAGS/16BIT OPT. USER BALANCE @D51MDGL 07000000
+*      R2:     POINTER TO A VALID VCT ENTRY.                   @D51MDGL 07040000
+*                                                              @D51MDGL 07080000
+*  LABEL CALCBAL                                               @D51MDGL 07120000
+*    ENTRY OF THE SERVICE GETFLD FIELD=BALANCE.                @D51MDGL 07160000
+*      R0: 16BIT DATALNG/ 8BIT KEYLNG/ 8BIT RECORDNO           @D51MDGL 07200000
+*      R1: 16BIT LOGICAL UNIT NR./16BIT OPT. USER BALANCE      @D51MDGL 07240000
+*    THE CALCULATION FIRST ASSUMES MAXSIZE IS NO, BUT CHANGES  @D51MDGL 07280000
+*    TO MAXSIZE IS YES, IF THAT WAS NOT SUCCESSFUL.            @D51MDGL 07320000
+*                                                              @D51MDGL 07360000
+.*  IN THE BALANCE OR CAPACITY CALCULATIONS ALL CALCULATIONS   @D51MDGL 07400000
+.*  ARE DONE FOR FIXED LENGTH RECORDS. THE USER PROVIDED       @D51MDGL 07440000
+.*  BALANCE IS ALWAYS OPTIONAL. THE DEVICE, THE REQUEST IS MADE@D51MDGL 07480000
+.*  FOR IS IDENTIFIED BY A POINTER TO A VOLUME CHARACTERISTICS @D51MDGL 07520000
+.*  TABLE IN REGISTER R2.                                      @D51MDGL 07560000
+.*                                                             @D51MDGL 07600000
+.*  SINCE ALL THREE KINDS OF CALCULATIONS, SECTOR, BALANCE AND @D51MDGL 07640000
+.*  CAPACITY REQUIRED THE SAME INFORMATION ABOUT RECORD LENGTHS,        07680000
+.*  AND THOSE LENGTHS SHOULD BE CALCULATED AT ONE SINGLE SPOT  @D51MDGL 07720000
+.*  IN THE SUPERVISOR, IT WAS NECESSARY TO MERGE THE INTERFACES@D51MDGL 07760000
+.*  INTO ONE NEW INTERFACE.                                    @D51MDGL 07800000
+.*                                                             @D51MDGL 07840000
+.*  THE NEW INTERFACE IS DESCRIBED BY DSECT STARDATA.          @D51MDGL 07880000
+.*                                                             @D51MDGL 07920000
+.*   SECTOR CALCULATION:                                       @D51MDGL 07960000
+.*                                                             @D51MDGL 08000000
+.* THE SECTOR NUMBER FOR A USER DETERMINED SPOT ON THE TRACK   @D51MDGL 08040000
+.* IS TO BE CALCULATED.                                        @D51MDGL 08080000
+.*                                                             @D51MDGL 08120000
+.*   BALANCE CALCULATION:                                      @D51MDGL 08160000
+.*                                                             @D51MDGL 08200000
+.* BALANCE CALCULATION DETERMINES THE AMOUNT OF PHYSICAL DATA  @D51MDGL 08240000
+.* FITTING ONTO A TRACK, AFTER A WRITE OR DELETE RECORD OPERA- @D51MDGL 08280000
+.* TION HAS BEEN CARRIED OUT.                                  @D51MDGL 08320000
+.* THE OPERATION IS INDICATED IN THE OPTION REMOVE. REMOVE = 0 @D51MDGL 08360000
+.* MEANS, THE RECORD IS TO BE WRITTEN, OTHERWISE IT IS TO BE   @D51MDGL 08400000
+.* DELETED.                                                    @D51MDGL 08440000
+.* THE USER MAY PROVIDE THAT BALANCE, WHICH IS TRUE BEFORE THE @D51MDGL 08480000
+.* OPERATION INDICATED BY OPTION REMOVE TAKES PLACE. HIS RETURN@D51MDGL 08520000
+.* VALUE WILL BE THE BALANCE AFTER THE OPERATION TOOK PLACE.   @D51MDGL 08560000
+.*                                                             @D51MDGL 08600000
+.* THE FOLLOWING FIGURE SHALL CLARIFY THE CALCULATION IN ROUTINE        08640000
+.* STARB000:                                                   @D51MDGL 08680000
+.* EXAMPLE 1, USER WANTS REMOVE=YES, PROVIDES BALANCE HIMSELF AND       08720000
+.*            ASKS FOR RECORD NR. 3                            @D51MDGL 08760000
+.*                                                             @D51MDGL 08800000
+.* |<------------TOTAL USER SPACE ON TRACK (VCTCBTRK) --------->|       08840000
+.* <######> =RECORD SIZE                                       @D51MDGL 08880000
+.* <%%%%%%> =USER PROVIDED BALANCE                             @D51MDGL 08920000
+.* <!!!!!!> =NEW BALANCE, CALCULATED BY SGSTAR AND RETURNED.   @D51MDGL 08960000
+.*                                                             @D51MDGL 09000000
+.* SITUATION ON ENTRY TO SGSTAR:                               @D51MDGL 09040000
+.* |<######><######><######><%%%%%%%(GIVEN BY USER)%%%%%%%%%%%>|        09080000
+.* SITUATION ON EXIT:                                          @D51MDGL 09120000
+.* |<######><######><!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!>|        09160000
+.*                                                             @D51MDGL 09200000
+.* EXAMPLE 2, USER WANTS REMOVE=NO, PROVIDES NO BALANCE AND    @D51MDGL 09240000
+.*            ASKS FOR RECORD NR. 3                            @D51MDGL 09280000
+.*                                                             @D51MDGL 09320000
+.* SITUATION ON ENTRY TO SGSTAR:                               @D51MDGL 09360000
+.* |<######><######><.........................................>|        09400000
+.* SITUATION ON EXIT:                                          @D51MDGL 09440000
+.* |<######><######><######><!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!>|        09480000
+.*                                                             @D51MDGL 09520000
+.*                                                             @D51MDGL 09760000
+.* OPTION MAXSIZE:                                             @D51MDGL 09800000
+.* SETTING OPTION MAXSIZE MEANS, THAT THE USER DOES NOT WANT TO@D51MDGL 09840000
+.* KNOW THE PHYSICAL AMOUNT OF DATA FITTING ONTO THE TRACK, BUT@D51MDGL 09880000
+.* THE LOGICAL AMOUNT, I.E. THE NUMBER OF USER DATA IN HIS     @D51MDGL 09920000
+.* RECORD. THIS ALSO APPLIES, IF THE RECORD TO BE WRITTEN      @D51MDGL 09960000
+.* (IN CASE REMOVE = 0) DOES NOT FIT ONTO THE TRACK. IN THIS   @D51MDGL 10000000
+.* CASE A THE RETURN CODE IS SET TO X'24' AND THE RETURN VALUE @D51MDGL 10040000
+.* IS THE AMOUNT OF USER DATA STILL FITTING ONTO THE TRACK,    @D51MDGL 10080000
+.* IF THE MENTIONED RECORD IS NOT WRITTEN TO IT.               @D51MDGL 10120000
+.* MAXSIZE CALCULATION IS A BIT COMPLICATED FOR ECKD DEVICES.  @D51MDGL 10160000
+.* IT IS THE REALIZATION OF THE FORMULA:                       @D51MDGL 10200000
+.*                                                             @D51MDGL 10240000
+.*        USERDATA = FUNCTION (SPACE)   (...+FUNCTION (KEYLNG))@D51MDGL 10280000
+.*                                                             @D51MDGL 10320000
+.* THE ORIGINAL FORMULAS ARE:                                  @D51MDGL 10360000
+.* WITH                                                        @D51MDGL 10400000
+.* MUL  =  MULTIPLICATION FACTOR,                              @D51MDGL 10440000
+.* DIV  =  CONSTANT DIVIDER,                                   @D51MDGL 10480000
+.* SEGM =  SEGMENT LENGTH,                                     @D51MDGL 10520000
+.* FIX1 =  CONSTANT VALUE,                                     @D51MDGL 10560000
+.* FIX2 =  CONSTANT VALUE.                                     @D51MDGL 10600000
+.*                                                             @D51MDGL 10640000
+.* SPACE     = (((DATIRES+SEGM-1)/SEGM)*SEGM);                 @D51MDGL 10680000
+.* DATIRES   = FIX1D+(DATALNG+FIX2)+INT1(DATALNG+FIX2)         @D51MDGL 10720000
+.* INT1(XYZ) = ((XYZ+DIV-1)/DIV)*MUL;                          @D51MDGL 10760000
+.*                                                             @D51MDGL 10800000
+.* THE FIRST FORMULA IS NOT RELEVANT, BECAUSE 'SPACE' MUST     @D51MDGL 10840000
+.* ALWAYS BE DIVISIBLE BY SEGM. IT ALREADY IS A NUMBER OF BYTES@D51MDGL 10880000
+.* ON AN ECKD TRACK, AND THIS SPACE MUST BE A MULTIPLE OF SEGM.@D51MDGL 10920000
+.*                                                             @D51MDGL 10960000
+.* THEREFORE CALCULATIONS CAN BE DONE BY THE FOLLOWING FORMULA:@D51MDGL 11000000
+.*                                                             @D51MDGL 11040000
+.* SPACE = FIX1+DATALNG+FIX2+MUL*((DATALNG+FIX2+DIV-1)/DIV)    @D51MDGL 11080000
+.* I.E.                                                        @D51MDGL 11120000
+.* SPACE-FIX1 = FUNCTION (DATALNG+FIX2)                        @D51MDGL 11160000
+.*                                                             @D51MDGL 11200000
+.* THE FUNCTION AMOUNT CONTAINS 'MUL' BYTES ERROR CORR. CODE   @D51MDGL 11240000
+.* (ECC) FOR EVERY USED 'DIV' PACKAGE OF USER DATA, WITH FIX2 BEING     11280000
+.*  PART OF THE USER DATA...                                   @D51MDGL 11320000
+.*                                                             @D51MDGL 11360000
+.* HENCE, THE SECOND PART MUST CONSIST OF COMBINED PACKAGES OF @D51MDGL 11400000
+.* <'DIV'+'MUL'> BYTES, AND A REST OF BYTES.                   @D51MDGL 11440000
+.* IF THIS REST IS SUFFICIENT FOR ONE FURTHER 'MUL' PACKAGE, THESE      11480000
+.* ECC'S MAY SERVE TO ERROR-CHECK THE LAST UNCOMPLETED 'DIV'   @D51MDGL 11520000
+.* PACKAGE OF USER DATA+FIX2 BYTES.                            @D51MDGL 11560000
+.*                                                             @D51MDGL 11600000
+.* EXAMPLE: (RANDOM VALUES)                                    @D51MDGL 11640000
+.*   FIX1=270,FIX2=40,DIV=238,SPACE=1125*34=38250,MUL=6        @D51MDGL 11680000
+.*                                                             @D51MDGL 11720000
+.*   DIV+MUL    = 238+6                                        @D51MDGL 11760000
+.*              = 244                                          @D51MDGL 11800000
+.*   SPACE-FIX1 = 38250-270                                    @D51MDGL 11840000
+.*              = 37980                                        @D51MDGL 11880000
+.*   COMPLETE PACKAGES = 37980/244 = 155 REST 160              @D51MDGL 11920000
+.*                                                             @D51MDGL 11960000
+.*   SINCE 160 > MUL :  160-MUL = 154 BYTES CAN STILL BE USED  @D51MDGL 12000000
+.*                                                             @D51MDGL 12040000
+.*   DATALNG+FIX2 = 155*DIV+154 = 37044                        @D51MDGL 12080000
+.*                                                             @D51MDGL 12120000
+.*   FIX2 HAS TO BE SUBTRACTED: 37044-40 = 37004 BYTES DATALNG @D51MDGL 12160000
+.*                                                             @D51MDGL 12200000
+.* TEST BY FORMULA FOR SPACE:                                  @D51MDGL 12240000
+.*  38250 = 37004+270+40+((37004+40+238-1)/238)*6  IS CORRECT! @D51MDGL 12280000
+.* THE CODE WITHIN BALANCE CALCULATION IS BASED ON THIS IDEA.  @D51MDGL 12320000
+.*                                                             @D51MDGL 12360000
+.* ........... END OF DESCRIPTION OF OPTION MAXSIZE ............        12400000
+.*                                                             @D51MDGL 12440000
+.* OPTION LAST:  (OBSOLETE WITH 23XX SUPPORT BEING REMOVED)    @D51MDGL 12480000
+.* OPTION LAST NOW INDICATES, THAT THE CALCULATIONS CONCERNING THE      12520000
+.* RECORD MENTIONED, SHALL BE CARRIED OUT, AS IF THIS RECORD WERE       12560000
+.* THE LAST RECORD ON A TRACK.                                 @D51MDGL 12600000
+.* THIS DID MEAN A DIFFERENCE FOR 23XX DEVICES.                @D51MDGL 12640000
+.*                                                             @D51MDGL 12680000
+.* ========= END OF DESCRIPTION OF BALANCE CALCULATION =========        12720000
+.*                                                             @D51MDGL 12760000
+.*   CAPACITY CALCULATION:                                     @D51MDGL 12800000
+.*                                                             @D51MDGL 12840000
+.*   CAPACITY IS THE NUMBER OF RECORDS FITTING INTO A USER SUPPLIED     12880000
+.*   OR CALCULATED BALANCE.                                    @D51MDGL 12920000
+.*   THE VALUE CALCULATED DEPENDS ON THE OPTION REMOVE AGAIN,  @D51MDGL 12960000
+.*   THAT MAY OR MAY NOT BE SET. IF REMOVE IS NO, SGSTAR TAKES @D51MDGL 13000000
+.*   THE USER PROVIDED BALANCE, WITHOUT SUBTRACTING THE        @D51MDGL 13040000
+.*   MENTIONED RECORDS SIZE FROM THIS VALUE. THIS IS DIFFERENT @D51MDGL 13080000
+.*   FROM THE BALANCE CALCULATION, WHERE REMOVE EQUAL NO AND   @D51MDGL 13120000
+.*   USER_PROVIDED_BALANCE EQUAL YES MEANT, THAT THE RECORDS   @D51MDGL 13160000
+.*   SIZE SHOULD BE SUBTRACTED.                                @D51MDGL 13200000
+.*   ON THE OTHER HAND, THIS MAKES SENSE IN THE                @D51MDGL 13240000
+.*   FOLLOWING SEQUENCE OF REQUESTS:                           @D51MDGL 13280000
+.*               1. GIVE ME A NEW BALANCE.                     @D51MDGL 13320000
+.*               2. TELL ME HOW MANY RECORDS WILL STILL FIT INTO        13360000
+.*                  THAT GIVEN BALANCE.                        @D51MDGL 13400000
+.*                                                             @D51MDGL 13440000
+.*                                                             @D51MDGL 13480000
+.*   THE DIFFERENT VALUES RETURNED BY OLD SGSTAR:              @D51MDGL 13520000
+.*   ABBREVIATIONS:                                            @D51MDGL 13560000
+.*      DCTBTRK = NUMBER OF BYTES PER TRACK                    @D51MDGL 13600000
+.*      NORMLNG = LENGTH OF A NORMAL OR NONLAST DATA RECORD    @D51MDGL 13640000
+.*      LASTLNG = LENGTH OF LAST RECORD OF A 23.. DEVICE       @D51MDGL 13680000
+.*                                                             @D51MDGL 13720000
+.*      A USER BALANCE MAY BE PROVIDED. IN ANY CASE THE BALANCE@D51MDGL 13760000
+.*      IS UPDATED TOO, IN THE SENSE OF THE DESCRIBED CALCULATIONS      13800000
+.*      FOR THE OPTION REMOVE.                                 @D51MDGL 13840000
+.*                                                             @D51MDGL 13880000
+.*      RETURNED VALUES:                                       @D51MDGL 13920000
+.*      NEW BALANCE= DCTBTRK-((RECNR-1)*NORMLNG)               @D51MDGL 14240000
+.*      RETURNVALUE= ((NEW BALANCE-NORMLNG)/NORMLNG+1          @D51MDGL 14280000
+.*                                                             @D51MDGL 14320000
+.*                                                             @D51MDGL 14720000
+.*  USE OF REGISTERS WITHIN SGSTAR CODE:                       @D51MDGL 14760000
+.*                                                             @D51MDGL 14800000
+.*  THE PROGRAMS HIERARCHY CONSISTS OF 3 DIFFERENT LAYERS      @D51MDGL 14840000
+.*  LAYER 1: ALL INTERFACE CODEBLOCKS                          @D51MDGL 14880000
+.*           (SVC75, CALCBAL, SCVRTBAL, STARSECT, STARSV99)    @D51MDGL 14920000
+.*  LAYER 2: A) ROUTINES FOR ADAPTATION OF USER INPUT TO       @D51MDGL 14960000
+.*           INTERNAL REQUIREMENTS (STARA...)                  @D51MDGL 15000000
+.*           B) ROUTINES TO CARRY OUT THE SPECIFIED SERVICE.   @D51MDGL 15040000
+.*  LAYER 3: RECORD LENGTH CALCULATION ROUTINES.               @D51MDGL 15080000
+.*           (STARR000,STARR100,STARR400,STARR500)             @D51MDGL 15120000
+.*                                                             @D51MDGL 15160000
+.*  REGISTER R0/R1  ARE GENERAL PURPOSE CALCULATION REGS.      @D51MDGL 15200000
+.*            R0    FOR SECTOR CALCULATION ALSO RETURN VALUE.  @D51MDGL 15240000
+.*           R2/R3  VALUE REGISTERS FOR LAYER 2                @D51MDGL 15280000
+.*           R4/R5  SAME            FOR LAYER 3                @D51MDGL 15320000
+.*           R6     RETURN REGISTER SVC75                      @D51MDGL 15360000
+.*                  CONTAINS MOSTLY DISPATCHER BASE            @D51MDGL 15400000
+.*           R7     RETURN REGISTER LAYER 2                    @D51MDGL 15440000
+.*           R8     RETURN REGISTER LAYER 3                    @D51MDGL 15480000
+.*           R9     UNUSED                                     @D51MDGL 15520000
+.*           RA     PTR TO VOLUME CHARACTERISTICS TABLE VCTEADR@D51MDGL 15560000
+.*           RB     PTR TO PARTITION SAVE AREA AND SVC75INP    @D51MDGL 15600000
+.*           RC     UNUSED                                     @D51MDGL 15640000
+.*           RD     BASE OF LAYER 1 (WHERE POSSIBLE)           @D51MDGL 15680000
+.*           RE     PTR TO INTERNAL PARAMETER LIST             @D51MDGL 15720000
+.*           RF     RETURN CODE REGISTER.                      @D51MDGL 15760000
+.*                                                             @D51MDGL 15800000
+.*    SOME COMMENT ON THE COMMENTING STYLE OF THE CODE:        @D51MDGL 15840000
+.*                                                             @D51MDGL 15880000
+.* SOME COMMENT ON THE COMMENTING ITSELF:                      @D51MDGL 15920000
+.* THE COMMENT SHALL CLARIFY THE CONTROL FLOW OF THE PROGRAM.  @D51MDGL 15960000
+.* IT THEREFORE SUMMARIZES SEVERAL LINES OF ASSEMBLER CODE IN           16000000
+.* BLOCKS OF DESCRIPTIVE PROSA.                                @D51MDGL 16040000
+.*                                                             @D51MDGL 16080000
+.* EXAMPLE FOR A CALCULATION:                                  @D51MDGL 16120000
+.*     LA  R3,12        R3: R3 IS THE REGISTER I MAINLY        @D51MDGL 16160000
+.*     SLR R0,R0        *   CARE ABOUT IN THIS CALCULATION.    @D51MDGL 16200000
+.*     DR  R0,R3        *   R0 AND R1 ARE JUST USED AS         @D51MDGL 16240000
+.*     LR  R3,R1        *   WORK REGISTER                      @D51MDGL 16280000
+.*                                                             @D51MDGL 16320000
+.* ALL CONDITIONS ARE INCLUDED IN BRACKETS IN THE REMARKS.     @D51MDGL 16360000
+.* ALL BLOCKS OF STATEMENTS INDENTED BELOW THESE CONDITIONS    @D51MDGL 16400000
+.* ARE ONLY ENTERED, IF THE CONDITION IS TRUE.                 @D51MDGL 16440000
+.*                                                             @D51MDGL 16480000
+.*        DO     SOMETHING      IF (PROSA_DESCRIPTION)         @D51MDGL 16520000
+.*        BRANCH COND.LABEL1    ***                            @D51MDGL 16560000
+.*        DO     SOMETHING        COMMENT 1                    @D51MDGL 16600000
+.*        BRANCH LABEL2         ELSE (JUST TO SKIP ELSE PATH)  @D51MDGL 16640000
+.* LABEL1 DS     0H             ***                            @D51MDGL 16680000
+.*        DO     SOMETHING        COMMENT 2                    @D51MDGL 16720000
+.* LABEL2 DS     0H             ENDIF                          @D51MDGL 16760000
+.*        DO     SOMETHING      COMMENT 3                      @D51MDGL 16800000
+.*        DO     SOMETHING      COMMENT 4                      @D51MDGL 16840000
+.*                                                             @D51MDGL 16880000
+.* EXAMPLE:  IF (((CONDITION1)|(CONDITION2))&(CONDITION3))     @D51MDGL 16920000
+.*  THIS WILL BE TRUE, IF CONDITION1 OR CONDITION2 IS TRUE     @D51MDGL 16960000
+.*  AND ADDITIONALLY CONDITION3 IS FULFILLED.                  @D51MDGL 17000000
+.*                                                             @D51MDGL 17040000
+.*                                                             @D51MDGL 17080000
+.NDBG020 ANOP                                                  @D51MDGL 17081031
+*   CHANGE ACTIVITY:                                           @DA42602 17086619
+*   - AMODESW MACRO CALLED WITH R0 AS WORK REGISTER.           @DA42602 17093219
+*     THIS DOES NOT GENERATE A REAL AMODE SWITCH BUT IS A      @DA42602 17099819
+*     KIND OF NOOP                                             @DA42602 17106419
+*     PREVENT DIVIDE EXCEPTION IN CASE DEVICE BECAME NOTOP     @DY45299 17106519
+*     PROPERLY RECOGNIZE ASSIGNED DEVICES IN MORE DEVICE SYSTEM@DY45629 17106628
+*     MORE TASK SUPPORT                                        @D66CDAP 17106731
+*                                                              @DA42602 17113019
+***************************************************************@D51MDGL 17280000
+         TITLE 'VSE SUPERVISOR     SGSTAR    DSECTS                   ' 17290015
+SVC75INP DSECT           OLD INTERFACE TO SGSTAR               @D51MDGL 17320000
+SVC75IDD DS    XL2       DATA LENGTH                           @D51MDGL 17360000
+SVC75IK  DS    XL1       KEY LENGTH                            @D51MDGL 17400000
+SVC75IR  DS    XL1       RECORD NUMBER                         @D51MDGL 17440000
+*                                                              @D51MDGL 17480000
+SVC75ITY DS    XL1       DEVICE TYPE CODE                      @D51MDGL 17520000
+SVC75IAD DS    XL3       USER SUPPLIED ADDRESS                 @D51MDGL 17560000
+         ORG   SVC75ITY                                        @D51MDGL 17600000
+STARI000 DS    X       STAR FUNCTION IND.                      @D51MDGL 17640000
+STARIFLG DS    X       STAR PROCESSING FLAGS                   @D51MDGL 17680000
+STARIRG2 EQU   X'80'   WAS RESERVED IN OLD SGSTAR              @D51MDGL 17720000
+STARICAP EQU   X'40'   USER REQUESTS TRACK-CAPACITY            @D51MDGL 17760000
+STARIFB  EQU   X'20'   USER REQUESTS TRACK-BALANCE             @D51MDGL 17800000
+STARIDCT EQU   X'10'   USER RPROVIDED DCT-ADDRESS              @D51MDGL 17840000
+STARIUPB EQU   X'08'   USER PROVIDED BALANCE FACTOR            @D51MDGL 17880000
+STARIREM EQU   X'04'   USER REQUESTS REMOVE                    @D51MDGL 17920000
+STARIMAX EQU   X'02'   USER OPTION MAXSIZE                     @D51MDGL 17960000
+STARILST EQU   X'01'   USER OPTION LAST                        @D51MDGL 18000000
+STARIBAL DS    XL2     BALANCE                                 @D51MDGL 18040000
+*                                                              @D51MDGL 18080000
+*  THE NEW INTERFACE TO SGSTAR IS INTERNALLY TRANSFORMED INTO  @D51MDGL 18120000
+*  A DATA AREA, THAT IS DESCRIBED BY THE DSECT STARDATA:       @D51MDGL 18160000
+*                                                              @D51MDGL 18200000
+.* PREFIX STAD IS: SYSTEM TRACK ALGORITHM DATA                 @D51MDGL 18240000
+.*                                                             @D51MDGL 18280000
+STARDATA DSECT                                                 @D51MDGL 18320000
+STADTOP  EQU   *                                               @D51MDGL 18360000
+STAODLBL DS    0XL8    OVERLAY DATA LENGTH UP TO BALANCE       @D51MDGL 18400000
+STAODDKR DS    0XL4    OVERLAY FOR DDKR ONLY                   @D51MDGL 18440000
+STADDL   DS    XL2     LENGTH OF DATA IN RECORD                @D51MDGL 18480000
+STADKL   DS    XL1     LENGTH OF KEY IN RECORDS                @D51MDGL 18520000
+STADRN   DS    XL1     RECORDNUMBER                            @D51MDGL 18560000
+*                                                              @D51MDGL 18600000
+STAOSNPF DS    0H      OVERLAY SERV. NR. AND PROC. FLAGS       @D51MDGL 18640000
+STADSN   DS    XL1     SERVICE NUMBER                          @D51MDGL 18680000
+*        EQU   X'08'   RESERVED                                @D51MDGL 18720000
+*        EQU   X'04'   RESERVED                                @D51MDGL 18760000
+STADSNCP EQU   X'02'   CAPACITY CALCULATION DEMAND             @D51MDGL 18800000
+STADSNBL EQU   X'01'   BALANCE CALCULATION DEMAND              @D51MDGL 18840000
+*                                                              @D51MDGL 18880000
+STADPF   DS    XL1     PROCESSING FLAG BYTE                    @D51MDGL 19160000
+*                      FLAG BIT MEANINGS FOR SECTOR CALC.      @D51MDGL 19200000
+STADPFVR EQU   X'80'     RECFORM = VAR WAS SET                 @D51MDGL 19240000
+*        EQU   X'40'     RESERVED                              @D51MDGL 19280000
+*        EQU   X'20'     RESERVED                              @D51MDGL 19320000
+*        EQU   X'10'     RESERVED                              @D51MDGL 19360000
+*        EQU   X'08'     RESERVED                              @D51MDGL 19400000
+STADPFBU EQU   X'04'     BUFFER WAS SUPPLIED BY CALLER         @D51MDGL 19440001
+STADPFU1 EQU   X'02'     TWO BITS TO INDICATE, WHAT THE USER   @D51MDGL 19480000
+STADPFU0 EQU   X'01'     SUPPLIED AS UNIT IDENTIFICATION       @D51MDGL 19520000
+STADPFUN EQU   X'03'     MASK FOR THESE BITS                   @D51MDGL 19560000
+*        VALUES: 0 = DTF DEVICE TYPE                           @D51MDGL 19600000
+*                1 = LOGICAL UNIT IN THE FORM OF THE CCB       @D51MDGL 19640000
+*                2 = PUB INDEX PROVIDED (LIBRARIAN)            @D51MDGL 19680000
+*                      FLAGS FOR BALANCE OR CAPACITY SERVICE   @D51MDGL 19720000
+*        EQU   X'80'     RESERVED                              @D51MDGL 19760000
+STADPFUB EQU   X'40'     OPTION USERBALANCE                    @D51MDGL 19800000
+STADPFRM EQU   X'20'     OPTION REMOVE                         @D51MDGL 19840000
+STADPFMS EQU   X'10'     OPTION MAXSIZE                        @D51MDGL 19880000
+STADPFLS EQU   X'08'     OPTION LAST                           @D51MDGL 19920000
+*        EQU   X'04'     RESERVED                              @D51MDGL 19960000
+*        EQU   X'02'     RESERVED                              @D51MDGL 20000000
+*        EQU   X'01'     RESERVED                              @D51MDGL 20040000
+*                                                              @D51MDGL 20080000
+STADUI   DS    0XL2    LOG. UNIT FOR SECT.CALC.BY NEW INTERF.  @D51MDGL 20120000
+STADBL   DS    XL2     USER PROV. BALANCE                      @D51MDGL 20160000
+*                                                              @D51MDGL 20200000
+STADECKL DS    F       KEYLENGTH+F6 (FREQUENTLY USED)          @D51MDGL 20240000
+STADECDL DS    F       DATALENGT+F6 (LIKEWISE)                 @D51MDGL 20280000
+STADECDI DS    F       DIVISION CONSTANT 'DIV'                 @D51MDGL 20320000
+STADECAD DS    F       BYTES CONSUMED BY KEY AND               @D51MDGL 20360000
+*                      INTER RECORD GAP OF ECKD RECORD         @D51MDGL 20400000
+*                                                              @D51IDGL 20440000
+*   VALUES REQUIRED FOR THE CALCBAL AND LOGBAL SERVICES:       @D51IDGL 20480000
+*                                                              @D51IDGL 20520000
+STADSDDK DS    F       SAVE AREA FOR DDKR VALUE                @D51IDGL 20560000
+STADSRL  DS    H       SAVE AREA FOR NORMAL RECORD LENGTH      @D51MDGL 20600000
+STADSBL  DS    H       SAVE AREA FOR INPUT BALANCE VALUE       @D51MDGL 20640000
+*                                                              @D51MDGL 20680000
+*                                                              @DEV14GL 20683001
+*   VALUES REQUIRED FOR FAST SECTOR CALCULATION                @DEV14GL 20686001
+*   FOR FAST SECTOR CALCULATION FORMULAS SEE HEADING           @DEV14GL 20689001
+*                                                              @DEV14GL 20692001
+STADBUPT DS    F       POINTER TO BUFFER                       @DEV14GL 20695001
+STADBULN DS    F       LENGTH OF BUFFER                        @DEV14GL 20698001
+*                                                              @DEV14GL 20701001
+STADFF00 DS    F       OVERHEAD BYTES USED / TOTAL BYTES USED  @DEV14GL 20704027
+STADFF01 DS    F       TOTAL OVERHEAD BYTES + THIS DATA BYTES  @DEV14GL 20707027
+STADFF02 DS    F       SECTORS PER TRACK                       @DEV14GL 20710024
+STADFF03 DS    F       BYTES PER SECTOR / BYTES PER TRACK      @DEV14GL 20713027
+STADFF04 DS    F       SECTORS PER TRACK                       @DEV14GL 20716024
+STADBOT  EQU   *       END OF STARDATA                         @D51MDGL 20720000
+*                                                              @D51MDGL 20760000
+*   DSECT DESCRIBING NEW BUFFER LAYOUT FOR FAST SECTOR CALC.   @D51MDGL 20762801
+*                                                              @D51MDGL 20765601
+STABUFER DSECT                                                 @DEV14GL 20768401
+STABFMNO DS    X       FORMULA NUMBER FOR CALCULATION          @DEV14GL 20771201
+         DS    X       RESERVED FIELD IN THIRD WORD            @DEV14GL 20774001
+STABLENG DS    H       FIELD CONTAINING LENGTH OF FACTORS FIELD@DEV14GL 20776801
+STABDDKR DS    F       DDKR VALUE                              @DEV14GL 20779601
+STABSNPF DS    H       SERVICE NUMBER AND PROCESSING FLAGS     @DEV14GL 20782401
+STABUI   DS    H       UNIT IDENTIFICATION                     @DEV14GL 20785201
+STABHEND EQU   *       END OF HEADER OF BUFFER.                @DEV14GL 20788001
+STABSECT DS    256X    SECTOR VALUES IN TABLE                  @DEV14GL 20790801
+STABUFLN EQU   *-STABUFER                                      @DEV14GL 20793601
+*                                                              @DEV14GL 20796401
+         TITLE 'VSE SUPERVISOR     SGSTAR    SVC-75 (CALCULATE SECTOR)' 20796515
+&SYSECT   CSECT                                                @D51MDGL 20800000
+***************************************************************         20840000
+*                                                             *         20880000
+*         CODEBLOCK SVC75                                     *         20920000
+*                                                             *         20960000
+* FUNCTION: ENTRY POINT FOR SECTOR CALCULATION BY SVC75       *         21000000
+* ON ENTRY:                                                   *         21040000
+*   RD = BASE ADDRESS SVC75                                   *         21080000
+*   R6 = RETURN ADDRESS                                       *         21120000
+*   RB = PTR TO PARTITION SAVE AREA                           *         21160000
+* ON EXIT TO R6:                                              *         21200000
+*   R0 = SECTOR VALUE OR XFF                                  *         21240000
+*   R1-RF = UNDEFINED                                         *         21280000
+***************************************************************#SECURGL 21320001
+         DC    C'SGSTAR  '                                     @D51MDGL 21670001
+         DC    CL8'D66CDAP '                                   @D66CDAP 21730031
+         USING SVC75,RD          BASE REGISTER                 @D51MDGL 21740011
+         USING SVEARA,RB         PTR TO PARTITION SAVE AREA    @D51MDGL 21750011
+         USING DISP,R6           PTR TO DISPATCHER             @D51MDGL 21751011
+SVC75    DS    0H                SVC-75 PROCESSING             @D51MDGL 21760015
+SECTCAL  DS    0H                JUST ANOTHER LABEL            @D51MDGL 21800015
+         LA    RE,STARDATS       STARDATS BASE ADDRESS         @D51MDGL 21920003
+         USING STARDATA,RE       STARDATS BASE POINTER         @D51MDGL 21960003
+         MVC   STADDL(8),SVER00  SAVE PARAMETER INFORMATION    @D51MDGL 22000003
+         L     R1,SVEPSW2        GET PSW OLD ADDRESS           @D51MDGL 22293203
+         LA    R0,3              LOAD CONSTANT                 @D51MDGL 22320003
+         NR    R0,R1             LEAVE RELEVANT BITS ONLY      @D51MDGL 22360003
+         CLM   R0,1,H2+1         WAS SVC AT HALFWORD BOUNDARY  @D51MDGL 22393318
+         BNE   SVC75L06          NO, ASSUME OLD INTERFACE      @D51MDGL 22426603
+         AMODESW SET,AMODE=31,WR=(R7) GET INTO 31-BIT MODE     @DA42602 22460019
+         CLC   0(2,R1),H1        IS IT OLD INTERFACE           @D51MDGL 22471418
+         BNE   SVC75L06          YES,                          @D51MDGL 22482803
+         TM    STADPF,STADPFBU   DID USER PROVIDE A BUFFER     @DEV14GL 22494203
+         BO    SVC75L20          YES,                          @DEV14GL 22505603
+         B     SVC75L30          NO,                           @DEV14GL 22517003
+SVC75L06 DS    0H                OLD INTERFACE PROCESSING      @D51MDGL 22528403
+         AMODESW SET,AMODE=24,WR=(R7) BACK TO 24-BIT MODE      @DA42602 22540019
+         USING STARDATA,RE       STARDATA BASE POINTER         @D51MDGL 22600003
+         SGCOV SGSTAR            *                             #COVERGL 22640003
+         MVI   STADPF,0          RESET PROCESSING FLAGS        @DEV14GL 22660003
+         TM    STADDL,X'80'      VARIABLE LENGTH RECORDS       @D51MDGL 22680003
+         BNO   SVC75L10          NO,                           @D51MDGL 22720003
+         CLI   STADRN,X'00'      RECORD NUMBER GIVEN           @D51MDGL 22760003
+         BE    SVC75L10          NO,                           @D51MDGL 22800003
+         OI    STADPF,STADPFVR   INDICATE VARIABLE LENGTH REC. @D51MDGL 22840003
+         NI    STADDL,X'7F'      VALIDATE USER DATA LENTH      @D51MDGL 22880003
+SVC75L10 DS    0H                                              @D51MDGL 22920003
+         USING SVC75INP,RE       SVC75INP BASE POINTER         @D51MDGL 22960003
+         LA    R2,SVC75ITY       POINT TO DTF-TYPE CODE        @D51MDGL 23000003
+         USING STARDATA,RE       RESTORE STARDATA BASE ADDRESS @D51MDGL 23040003
+         BAL   R7,STARA000       VALIDATE DTF TYPE CODE        @D51MDGL 23080003
+*SGLINK  STARA000,INPUT=(R2,R7,RD),OUTPUT=RA,WORK=(R0,R1)               23090003
+         B     SVC75ERR        0 DTF CODE INVALID              @D51MDGL 23280009
+         B     SVC75L50        4 JOIN MAIN LINE                @D51MDGL 23282109
+         SPACE 1                                                        23282210
+SVC75L20 DS    0H                BUFFER INTERFACE PROCESSING   @DEV14GL 23284210
+         LR    R4,R1             SAVE R1                       @DEV14GL 23286303
+         L     R1,SVER00         STABUFER BASE ADDRESS         @DEV14GL 23288403
+         USING STABUFER,R1       STABUFER BASE POINTER         @DEV14GL 23290503
+         ST    R1,STADBUPT       SAVE BUFFER POINTER           @DEV14GL 23292603
+         XC    STADBULN,STADBULN PURGE LENGTH OF BUFFER        @DEV14GL 23294703
+         XC    STADFF00(STADBOT-STADFF00),STADFF00 PURGE FACT. @DEV14GL 23296801
+         TM    SVEPSW2,X'80'     CALLED IN 31-BIT MODE         @DEV14GL 23298903
+         BO    SVC75L2A          YES,                          @DEV14GL 23301003
+         AMODESW SET,AMODE=24,WR=(R7) RETURN TO 24-BIT MODE    @DEV14GL 23303103
+         MVI   STADBUPT,0        ENSURE A 24-BIT ADDRESS       @DEV14GL 23305203
+SVC75L2A DS    0H                                              @DEV14GL 23307303
+         LA    R2,ARTID          HIGHEST SYSTEM TASK-ID        @D66CDAP 23307431
+         CH    R2,TID            IS IT A SYSTEM TASK REQUEST   @D66CDAP 23309431
+         BNH   SVC75L29          YES,                          @DEV14GL 23311503
+         LA    R2,STABHEND       HEADER END ADDRESS + 1        @DEV14GL 23313603
+         BCTR  R2,0              LAST BYTE OF HEADER           @DEV14GL 23315703
+         TM    SVEPSWKY,KEY0     KEY ZERO REQUEST              @DEV14GL 23317803
+         BNZ   SVC75L22          NO,                           @DEV14GL 23319903
+         SLR   R5,R5             SET VALWRITE INDICATOR        @DEV14GL 23322003
+         BAL   R8,VALWRITE       VALIDATE HEADER BLOCK ====>>> @DEV14GL 23324103
+*SGLINK  VALWRITE,INPUT=(R1,R2,R6,R8),WORK=(R2,R5),OUTPUT=(R2) @DEV14GL 23326201
+         B     SVC75L21          ERROR (INVALID ADDRESS)       @DEV14GL 23328303
+         B     SVC75L21          MULTIPLE STORAGE KEYS         @DEV14GL 23330403
+         B     SVC75L23          O.K.                          @DEV14GL 23332503
+SVC75L21 AMODESW SET,AMODE=24,WR=(R8) BACK TO 24-BIT MODE      @DEV14GL 23334603
+         B     ERR25             ERR, =====================>>> @DEV14GL 23336703
+SVC75L22 DS    0H                NORMAL VALIDATION             @DEV14GL 23338803
+         BAL   R8,VALIDSVA       VALIDATE BUFFER HEADER====>>> @DEV14GL 23340903
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)             @DEV14GL 23343001
+SVC75L23 DS    0H                                              @DEV14GL 23345103
+         L     R1,SVER00         LOAD BUFFER ADDRESS           @DEV14GL 23347203
+         MVC   STADBULN+2(2),STABLENG MOVE LENGTH OF BUFFER    @DEV14GL 23349303
+         LR    R2,R1             COPY BUFFER ADDRESS           @DEV14GL 23351403
+         AH    R2,STABLENG       ADD BUFFER LENGTH             @DEV14GL 23353503
+         CR    R2,R1             WAS LENGTH VALID              @DEV14GL 23355603
+         BNH   ERR25             NO,  =====================>>> @DEV14GL 23357703
+         BCTR  R2,0              LAST BYTE IN BUFFER           @DEV14GL 23359803
+         TM    SVEPSWKY,KEY0     KEY ZERO REQUEST              @DEV14GL 23361903
+         BNZ   SVC75L25          NO,                           @DEV14GL 23364003
+         SLR   R5,R5             WANT CONTIGUOUS AREA          @DEV14GL 23366103
+         BAL   R8,VALWRITE       VALIDATE BUFFER               @DEV14GL 23368203
+*SGLINK  VALWRITE,INPUT=(R1,R2,R6,R8),WORK=(R2,R5),OUTPUT=(R2) @DEV14GL 23370301
+         B     ERR25             INVALID ADDRESS               @DEV14GL 23372403
+         B     ERR25             MULTIPLE STORAGE KEYS         @DEV14GL 23374503
+         B     SVC75L27          O.K.                          @DEV14GL 23376603
+SVC75L25 DS    0H                                              @DEV14GL 23378703
+         BAL   R8,VALID          VALIDATE THE BUFFER  =====>>> @DEV14GL 23380803
+*SGLINK  VALID,INPUT=(R1,R2,R6,R8),WORK=R2,OUTPUT=R5           @DEV14GL 23382901
+SVC75L27 DS    0H                                              @DEV14GL 23385003
+SVC75L29 DS    0H                                              @DEV14GL 23387103
+         MVC   STAODLBL,STABDDKR MOVE DATA TO WORKPLACE        @DEV14GL 23389203
+         LR    R1,R4             RESTORE PTR TO SVC CODE       @DEV14GL 23391303
+         DROP  R1                RELEASE STARBUFER BASE        @DEV14GL 23393403
+         SPACE 2                                                        23393511
+SVC75L30 DS    0H                NEW SVC-75 INTERFACE PROCESS  @D51MDGL 23395511
+         SGCOV SGSTAR              *                           #COVERGL 23400000
+         A     R1,F4             FORCE CONSTAT TO BE SKIPPED   @D51MDGL 23440011
+         ST    R1,SVEPSW2        UPDATE PSW IN SAVE AREA       @D51MDGL 23480011
+         AMODESW SET,AMODE=24,WR=(R7) GET INTO 24-BIT MODE     @DA42602 23500019
+         IC    R1,STADPF         GET DEVICE IDENTIFICATION CODE@D51MDGL 23520011
+         LA    R0,3              LOAD CONSTANT                 @D51MDGL 23560011
+         NR    R1,R0             RESET ALL EXCEPT LAST TWO BITS@D51MDGL 23600011
+         SLL   R1,2              MULTIPY WITH FOUR             @D51MDGL 23640011
+         B     SVC75L40(R1)      USE PROPER BRANCH VECTOR      @D51MDGL 23680011
+SVC75L40 B     SVC75DTF        0 USER PASSED DTF-CODE          @D51MDGL 23720011
+         B     SVC75LNO        1 USER PASSED THE LOGICAL UNIT  @D51MDGL 23760011
+         B     SVC75IDX        2 USER PASSED A PUB INDEX       @D51MDGL 23800012
+         B     SVC75ERR        3 INVALID DEVICE-CODE           @D51MDGL 23840011
+SVC75DTF DS    0H                DTF-CODE PROCESSING           @D51MDGL 23880011
+         LA    R2,STADUI+1       POIT TO DTF-CODE              @D51MDGL 23960011
+         BAL   R7,STARA000       CALCULATE THE SECTOR VALUE    @D51MDGL 24000011
+*SGLINK  STARA000,INPUT=(R2,R7,RD),OUTPUT=RA,WORK=(R0,R1)               24010003
+         B     SVC75ERR        0 ERROR (DTFCODE INVALID)       @D51MDGL 24200011
+         B     SVC75L50        4 JOIN MAIN LINE CODE           @D51MDGL 24240011
+SVC75LNO DS    0H                LNO-CODE PROCESSING           @D51MDGL 24280011
+         LA    R4,STADUI         POINT TO LNO FIELD            @D51MDGL 24360011
+         BAL   R7,STARA200       CALCULATE PUB-INDEX           @D51MDGL 24400011
+*SGLINK  STARA200,INPUT=(R4,R7,RD),OUTPUT=(R3,RF),WORK=(R0,R1)          24410007
+         B     SVC75ERR        0 ERROR (NO PUBINDEX FOUND)     @D51MDGL 24600011
+         B     SVC75VCT        4 GO, GET VCTE ADDRESS          @D51MDGL 24610012
+SVC75IDX DS    0H                PUB-INDEX PROCESSING          @D51MDGL 24960012
+         SLR   R3,R3             CLEAR REGISTER                         24970012
+         ICM   R3,3,STADUI       GET PUB INDEX                          24980012
+         CH    R3,IJBNDEV        IS THIS A VALID INDEX         @D51MDGL 25160012
+         BNL   SVC75ERR          NO,  =======================> @D51MDGL 25200012
+SVC75VCT BAL   R7,STARA100       GET VCTPTR FOR GIVEN PUB INDEX@D51MDGL 25210027
+*SGLINK  STARA100,INPUT=(R3,R7,RD),OUTPUT=(RA,RF)                       25220012
+         B     SVC75ERR        0 ERROR (NO VCTE FOUND)         @D51MDGL 25230012
+         B     SVC75ERR        4 ERROR (FBA DASD FOUND)        @D51MDGL 25231012
+SVC75L50 DS    0H              8 CALCULATE SECTOR VALUE        @D51MDGL 25560012
+         BAL   R7,STARSCSP       CALCULATE SECTOR VALUE        @D51MDGL 25600012
+*SGLINK  STARSCSP,INPUT=(R7,RA,RD,RE),OUTPUT=R0,                       *25610002
+               WORK=(R1,R2,R3,R4,R5,R8)                                 25620002
+         B     SVC75ERR        0 ERROR (SECTOR NR IMPOSSIBLE)  @D51MDGL 25800012
+         ST    R0,SVER00       4 STORE SECTOR VALUE            @D51MDGL 25840012
+         TM    STADPF,STADPFBU   DID USER PROVIDE A BUFFER     @DEV14GL 26041012
+         BNOR  R6                NO,  =====================>>> @DEV14GL 26042012
+         CLC   STADBULN,SVC75CBL DID USER PROVIDE PROPER LENGTH@DEV14GL 26043012
+         BLR   R6                NO,  =====================>>> @DEV14GL 26044012
+         AMODESW SET,AMODE=31,WR=(R2) SWITCH TO 31-BIT MDE     @DEV14GL 26045012
+         L     R2,STADBUPT       ADDRESS OF BUFFER             @DEV14GL 26046012
+         USING STABUFER,R2       STABUFER BASE                 @DEV14GL 26047012
+         LA    R3,255            LOOP COUNT                    @DEV14GL 26048012
+         LA    R4,1              INITIALIZE RECORD COUNT       @DEV14GL 26049012
+         L     R5,STADFF00       GET OVERHEAD BYTES            @DEV14GL 26050027
+         L     R6,STADFF01       TOTAL OVERHEAD BYTES          @DEV14GL 26051027
+         L     R7,STADFF02       SECTORS/TRACK                 @DEV14GL 26052027
+         L     R8,STADFF03       BYTES PER SECTOR              @DEV14GL 26053027
+         L     R9,STADFF04       SECTORS/TRACK                 @DEV14GL 26054027
+         SLR   RA,RA             CLEAR REGISTER                @DEV14GL 26055027
+         IC    RA,STABDDKR+3     GET RECORD NUMER              @DEV14GL 26056027
+         MVI   STABSECT,X'FF'    SET SECTOR TO FF              @DEV14GL 26057027
+         MVC   STABSECT+1(255),STABSECT INITIALIZE WHOLE ENTRY @DEV14GL 26058027
+         MVI   STABSECT,X'00'    SET FIRST RECORD TO SECTOR 0  @DEV14GL 26059027
+SVC75L60 DS    0H                REPEAT FOR ALL RECORDS        @DEV14GL 26060027
+         LR    R1,R4             GETRECORD NUMBER              @DEV14GL 26061027
+         BCTR  R1,0              SUBTRACT ONE                  @DEV14GL 26062027
+         MR    R0,R5               * CALCULATE SECTORS         @DEV14GL 26063001
+         AR    R1,R6               * WITH THE FACTORS          @DEV14GL 26064001
+         MR    R0,R7               * SUPPLIED IN THE RUN       @DEV14GL 26065001
+         DR    R0,R8               * PREVIOUSLY EXECUTED       @DEV14GL 26066001
+         CR    R1,R9               LEAVE IF ALL VALUES THRU    @DEV14GL 26067001
+         BH    SVC75L62            *                           @DEV14GL 26068001
+         STC   R1,12(R2,R4)        STORE SECTOR VALUE          @DEV14GL 26069001
+         LA    R4,1(,R4)           BUMP TO NEXT RECORD         @DEV14GL 26070001
+         BCT   R3,SVC75L60       UNTIL (NO RECORD LEFT)        @DEV14GL 26071001
+SVC75L62 DS    0H                LOOPEND                       @DEV14GL 26072001
+         SLR   R0,R0             INSERT SECTOR VALUE FOR       @DEV14GL 26073001
+         IC    R0,12(R2,RA)      * INPUT RECORD NUMBER         @DEV14GL 26074001
+         L     R6,DISPAD         TAKE DISPATCHER EXIT ADDRESS  @DEV14GL 26075001
+         MVI   STABFMNO,X'01'    MOVE IN KIND OF FORMULA       @DEV14GL 26076001
+         MVI   STABFMNO+1,X'00'  PURGE RESERVED FIELD          @DEV14GL 26077001
+         DROP  R2                *                             @DEV14GL 26078001
+         AMODESW SET,AMODE=24,WR=(R2)                          @DEV14GL 26079001
+         BR    R6                RETURN TO USR =============>>>@D51MDGL 26080000
+*                                END OF CODEBLOCK SVC75        @D51MDGL 26120000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *@D51MDGL 26160000
+*        CODEBLOCK SVC75ERR                                   *@D51MDGL 26200000
+*        FUNCTION: ERROR EXIT OF SVC75                        *@D51MDGL 26240000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *@D51MDGL 26280000
+SVC75ERR DS    0H                START OF CODEBLOCK            @D51MDGL 26320000
+         SGCOV SGSTAR            *                             #COVERGL 26360000
+         LA    R0,X'FF'          R0: 'NOOP' AS SECTOR VALUE    @D51MDGL 26520000
+         ST    R0,SVER00         SET ANSWER VALUE              @D51MDGL 26560000
+         BR    R6                RETURN =================>>>   @D51MDGL 26600000
+         DROP  RE                PTR TO STARDATA               @D51MDGL 26640000
+         DROP  RB                PTR TO SVEARA                 @D51MDGL 26680000
+         DROP  RD                PTR TO BASE                   @D51MDGL 26720000
+         DROP  R6                PTR TO DISPATCHER             @D51MDGL 26740001
+*                                END OF CODEBLOCK              @D51MDGL 26760000
+SVC75CBL DC    A(STABUFLN)       .  REQUIRED BUFFER LENGTH     @DEV14GL 26860001
+         TITLE 'VSE SUPERVISOR     SGSTAR    BAL-INTERFACE ROUTINE    ' 26870015
+***************************************************************         26880000
+* FUNCTION: BAL INTERFACE FOR SECTOR CALCULATION WITH OLD     *         27040000
+*           INTERFACE.                                        *         27080000
+* ON ENTRY:                                                   *         27120000
+*   R1 = DTF DEVTYPE CODE/ BASE (SECTCAL ADDR)                *         27160000
+*   R7 = RETURN ADDRESS                                       *         27200000
+*   R0 = DATALNG/KEYLNG/RECORDNR                              *         27240013
+* ON EXIT TO R7:                                              *         27280000
+*   R0 = SECTOR NUMBER OR XFF                                 *         27320000
+***************************************************************#SECURGL 27360001
+         USING SVC75,R1          SVC-75 TEMP BASE              @D51MDGL 27370013
+SCVRTBAL DS    0H                SECTOR CALCULATION ROUTINE    @D51MDGL 27880013
+         ENTRY SCVRTBAL          ENTRY FOR FCH+PGM+LCK         @D51MDGL 27920013
+         STM   R1,RF,SAV1+1*4    STORE REGISTERS 1 - 15        @D51MDGL 28040013
+         LR    RD,R1             COPY SVC-75 DASE ADDRESS      @D51MDGL 28240013
+         DROP  R1                RELEASE SVC-75 TEMP BASE      @D51MDGL 28280013
+         USING SVC75,RD          SVC-75 PERM BASE POINTER      @D51MDGL 28320013
+         LA    RE,STARDATS       ADDRESS OF PARAMETER BYTES    @D51MDGL 28360013
+         USING STARDATA,RE       STARDATA BASE POINTER         @D51MDGL 28400013
+         STM   R0,R1,STAODLBL    SET USERS DATA                @D51MDGL 28440013
+         TM    STADDL,X'80'      VARIABLE LENGTH RECORDS       @D51MDGL 28520013
+         BO    SCVRTERR          YES, CANT HANDLE IT           @DY45299 28560019
+         USING SVC75INP,RE       SVC75INP BASE                 @D51MDGL 28720013
+         LA    R2,SVC75ITY       POINT TO DTF-TYPE CODE ADDRESS@D51MDGL 28760013
+         USING STARDATA,RE       STARDATA BASE POINTER         @D51MDGL 28800013
+         BAL   R7,STARA000       GET VCT-ENTRY ADDRESS         @D51MDGL 28840013
+*SGLINK  STARA000,INPUT=(R2,R7,RD),OUTPUT=RA,WORK=(R0,R1)               28850001
+         B     SCVRTERR        0 ERROR (NO VCTE FOUND)         @D51MDGL 29040009
+         BAL   R7,STARSCSP     4 CALCULATE SECTOR VALUE        @D51MDGL 29080013
+*SGLINK  STARSCSP,INPUT=(R7,RA,RD,RE),OUTPUT=R0,                       *29090001
+               WORK=(R1,R2,R3,R4,R5,R8)                                 29100001
+SCVRTERR LA    R0,X'FF'        0 ERROR (SECTOR NR.IMPOSSIBLE)  @D51MDGL 29280013
+         LM    R1,RF,SAV1+1*4  4 R1-F: RESTORE USER VALUES     @D51MDGL 29440013
+         BSM   0,R7              RETURN ==================>>>  @D63ADAP 29480001
+         DROP  RE                RELEASE STARDATA BASE         @D51MDGL 29520013
+         DROP  RD                RELEASE SCVRTBAL BASE         @D51MDGL 30080013
+         SPACE 3                                                        30090015
+***************************************************************         30160000
+* FUNCTION: NEW BAL INTERFACE FOR SECTOR CALCULATION.         *         30320014
+* ON ENTRY:                                                   *         30440000
+*   RD = SVC75 BASE ADDRESS                                   *         30480014
+*   R6 = RETURN ADDRESS                                       *         30520000
+*   R0 = DATALNG/KEYLNG/RECORDNR                              *         30560000
+*   R1 = X00/PROCFLG/PUB INDEX                                *         30600000
+* ON EXIT TO R6:                                              *         30640000
+*   R0 = SECTOR VALUE OR XFF                                  *         30680000
+***************************************************************#SECURGL 30720001
+         USING SVC75,RD          SVC-75 BASE POINTER           @D51MDGL 30730014
+STARSECT DS    0H                NEW SECTVAL BAL INTERFACE     @D51MDGL 31240014
+         STM   R1,RF,SAV1+1*4    SAVE USERS REGISTERS          @D51MDGL 31360025
+         LA    RE,STARDATS       STARDATA BASE ADDRESS         @D51MDGL 31400014
+         USING STARDATA,RE       STARDATA BASE POINTER         @D51MDGL 31440014
+         STM   R0,R1,STAODLBL    STORE R0 AND R1 IN STARDATA   @D51MDGL 31480014
+         SLR   R3,R3             CLEAR REGISTER                @D51MDGL 31720014
+         ICM   R3,3,STAODLBL+6   GET PUB INDEX                 @D51MDGL 31760014
+         CH    R3,IJBNDEV        IS THIS A VALID INDEX         @DY45299 31770019
+         BNL   STARSERR          NO,                           @DY45299 31780019
+         BAL   R7,STARA100       GET VCT-ENTRY ADDRESS         @D51MDGL 31800014
+*SGLINK  STARA100,INPUT=(R3,R7,RD),OUTPUT=(RA,RF)                       31810007
+         B     STARSERR        0 ERROR (NO VCTE FOUND)         @D51MDGL 32000014
+         B     STARSERR        4 ERROR (FBA DASD FOUND)        @D51MDGL 32040014
+         USING VCTEADR,RA        VCTEADR BASE POINTER          @D51MDGL 32050014
+         BAL   R7,STARSCSP     8 CALCULATE R CALC. ==========>>@D51MDGL 32120014
+*SGLINK  STARSCSP,INPUT=(R7,RA,RD,RE),OUTPUT=R0,                       *32130002
+               WORK=(R1,R2,R3,R4,R5,R8)                                 32140002
+STARSERR LA    R0,X'FF'        0 ERROR (SECTOR NR IMPOSSIBLE)  @D51MDGL 32320014
+         LM    R1,RF,SAV1+1*4  4 R1-F: RESTORE USR REGS        @D51MDGL 32480014
+         BR    R6                RETURN ====================>>>@D51MDGL 32600000
+         DROP  RD                RELEASE SVC-75 BASE           @D51MDGL 33160014
+         DROP  RE                RELEASE STARDATA BASE         @D51MDGL 33170014
+         DROP  RA                RELEASE VCTEADR BASE          @D51MDGL 33180014
+         TITLE 'VSE SUPERVISOR     SGSTAR   CALCBAL/CALCCAP PROCESSING' 33190015
+***************************************************************         33240000
+* FUNCTION: ENTRY POINT FOR BALANCE OR  CAPACITY CALCUL.      *         33400000
+*           ENTERED FROM SVC99 (GETVCE)                       *         33440018
+* ON ENTRY:                                                   *         33480000
+*   RD = SVC75 ADDR                                           *         33520000
+*   R6 = RETURN ADDRESS                                       *         33560000
+*   R2 = PTR TO PUB OR TO VCTE                                *         33600018
+*   RB = PTR TO PARTITION SAVE AREA                           *         33640000
+* ON EXIT TO R6                                               *         33680000
+*   R0 = NEW BALANCE OR CAPACITY                              *         33720000
+*   RF = RETURN CODE                                          *         33760000
+*   R1-RE = UNDEFINED                                         *         33800000
+***************************************************************#SECURGL 33840001
+         USING SVC75,RD          SVC-75 BASE POINTER           @D51MDGL 33850017
+         USING SVEARA,RB         SAVE-AREA BASE POINTER        @D51MDGL 33860017
+STARSV99 DS    0H                                              @D51MDGL 34360017
+         SGCOV SGSTAR            *                             #COVERGL 34400000
+         LA    RE,STARDATS       ADDRESS OF PARAMETER INFO     @D51MDGL 34520017
+         USING STARDATA,RE       STARDATA BASE POINTER         @D51MDGL 34560017
+         MVC   STAODLBL,SVER00   SAVE USERS DATA IN STARDATA   @D51MDGL 34600017
+         LH    R0,STAOSNPF       GET PROCESSING FLAGS          @D51MDGL 34960017
+         SLL   R0,3              SHIFT TO PROPER POSITION      @D51MDGL 35000017
+         STH   R0,STAOSNPF       STORE FLAGS IN NEW POSITION   @D51MDGL 35040017
+         LTR   RA,R2             HAD VCTE ADDRESS BEEN PASSED  @D51MDGL 35600017
+         BZ    STAR99E1          NO,                           @D51MDGL 35680017
+         USING VCTEADR,RA        VCTEADR BASE                  @D51MDGL 35690017
+         CLI   VCTATYPE,VCTAFBA  IS DEVICE AN FBA DEVICE       @D51MDGL 35720017
+         BNE   STAR9910          NO,                           @D51MDGL 35760017
+         SLR   RF,RF             FORCE RC=0                    @D51MDGL 35800017
+         SLR   R0,R0             SET RETURN VALUE TO ZERO      @D51MDGL 35840018
+         B     STAR99EX          JOIN MAIN PATH                @D51MDGL 35880018
+STAR9910 OC    VCTCFORM(6),VCTCFORM IS CALCULATION DATA PRESENT@D51MDGL 35960017
+         BZ    STAR99E1          NO, ERROR                     @D51MDGL 36000017
+         BAL   R7,STARBLCP       CALCULATE BALANCE OR CAPACITY @D51MDGL 36040017
+*SGLINK  STARBLCP,INPUT=(R7,RA,RD,RE),OUTPUT=(R0,R4,R5,RF),            *36050017
+               WORK=(R1,R2,R3,R8)                                       36080015
+STAR99EX LH    R1,STADBL         GET NEW BALANCE               @D51MDGL 36280018
+         STH   R1,SVER01+2       SAVE IT IN USER R1 SAVE AREA  @D51MDGL 36320017
+         ST    RF,SVER0F         SET RC IN USERS RF SAVE AREA  @D51MDGL 36360017
+         ST    R0,SVER00         STORE R0 IN USERS SAVE AREA   @D51MDGL 36400017
+         BR    R6                EXIT,======================>>>@D51MDGL 36560017
+         SPACE 2                                               @D51MDGL 36640018
+STAR99E1 DS    0H                ERROR PROCESSING              @D51MDGL 36800018
+         SGCOV SGSTAR            *                             #COVERGL 36840000
+         LA    RF,X'14'          SET RC=14                     @D51MDGL 36880018
+         SLR   R0,R0             SET RETURN VALUE TO 0         @D51MDGL 37160018
+         B     STAR99EX          *                             @D51MDGL 37200018
+         DROP  RE                PTR TO STARDATA               @D51MDGL 37240000
+         DROP  RA                PTR TO VCTEADR                @D51MDGL 37280000
+         DROP  RB                PTR TO SVEARA                 @D51MDGL 37320000
+         DROP  RD                BASE REGISTER                 @D51MDGL 37360000
+***************************************************************         37480000
+*                                                             *         37520000
+*        CODEBLOCK CALCBAL                                    *         37560000
+*                                                             *         37600000
+* FUNCTION: INTERFACE FOR BALANCE CALCULATION, USED BY        *         37640000
+*           GETFLD SERVICE.                                   *         37680018
+*           IS REPEATED WITH OPTION MAXSIZE, IF THE RESULT    *         37720000
+*           OF THE FIRST CALCULATION WAS NEGATIVE             *         37760000
+* ON ENTRY:                                                   *         38160000
+*   RD = BASE, CALCBAL ADDRESS                                *         38200000
+*   RB = RETURN ADDRESS                                       *         38240000
+*   R0 = DATALNG/KEYLNG/RECORDNR                              *         38280000
+*   R1 = LOG.UNIT NR/OPT. USER BALANCE                        *         38320000
+*   RF = FUNCTION CODE OF SGTINF, INDICATING IF ENTRY IS BY   *         38360000
+*        GETFLD FIELD=BALANCE OR GETFLD FIELD=LOGBAL          *         38400000
+* ON EXIT TO RB:                                              *         38440000
+*   R0 = RETURN CODE                                          *         38480000
+*   R1 = NEW BALANCE                                          *         38520000
+***************************************************************#SECURGL 38560001
+         USING CALCBAL,RD        CALCBAL BASE POINTER          @D51MDGL 38570018
+CALCBAL  DS    0H                                              @D51MDGL 39080018
+         SGCOV SGSTAR            *                             #COVERGL 39120000
+         STM   R2,RF,SAV1+2*4    SAVE USERS REGISTER CONTENTS  @D51MDGL 39200018
+         L     RD,STARVA75       SVC-75 BASE ADDRESS           @D51MDGL 39240018
+         USING SVC75,RD          SVC-75 BASE POINTER           @D51MDGL 39280018
+         LA    RE,STARDATS       PARAMETER DATA FIELD ADDRESS  @D51MDGL 39320018
+         USING STARDATA,RE       STARDATA BASE POINTER         @D51MDGL 39360018
+         L     R6,DISPAD         DISP BASE ADDRESS             @D51MDGL 39560018
+         USING DISP,R6           DISP BASE POINTER             @D51MDGL 39600018
+         STM   R0,R1,STAODLBL    SAVE USERS DATA IN STARDATA   @D51MDGL 39640018
+         ST    R0,STADSDDK       SAVE USER DATA FOR SECOND TIME@D51IDGL 39720018
+         STH   R1,STADSBL        SAVE USER DATA FOR SECOND TIME@D51IDGL 39760018
+         LA    R4,STAODLBL+4     ADDRESS OF LNO INFO           @D51MDGL 39800018
+         BAL   R7,STARA200       GET ASSOCIATED PUB INDEX      @D51MDGL 39840018
+*SGLINK  STARA200,INPUT=(R4,R7,RD),OUTPUT=(R3,RF),WORK=(R0,R1)          39850007
+         B     STARCBER        0 ERROR (NO VALID LUB FOUND)    @D51MDGL 40040011
+         BAL   R7,STARA100     4 GET VCTE ADDRESS              @D51MDGL 40080018
+*SGLINK  STARA100,INPUT=(R3,R7,RD),OUTPUT=(RA,RF)                       40090007
+         B     STARCBER        0 NO VCTE FOUND                 @D51MDGL 40320018
+         B     STARCB10        4 DEVICE IS AN FBA              @D51MDGL 40360018
+         B     STARCB20        8 O.K                           @D51MDGL 40400018
+STARCB10 DS    0H                DEVICE WAS AN FBA DEVICE      @D51MDGL 40440018
+         SLR   R0,R0             SET RETURN VALUE TO ZERO      @D51MDGL 40480018
+         SLR   RF,RF             SET RC=00                     @D51MDGL 40520018
+         B     STARCB60          JOIN MAIN PATH                @D51MDGL 40560021
+         SPACE 2                                                        40561018
+         USING VCTEADR,RA        VCTEADR BASE POINTER          @D51MDGL 40570018
+STARCB20 DS    0H                BLOCK OK                      @D51MDGL 40600000
+         SLR   R0,R0             CLEAR REGISTER                @D51MDGL 41000018
+         STH   R0,STAOSNPF       CLEAR PROCESSING INFO         @D51MDGL 41040018
+         C     RF,STARLGBL       LOGBAL REQUESTED              @D51EDGL 41080018
+         BNE   STARCB40          NO,                           @D51EDGL 41120021
+         LA    R7,STARCBER       ADDRESS OF ERROR EXIT         @D51MDGL 41130018
+         CLC   STADBL(2),F0      WAS INPUT BALANCE PROVIDED    @D51MDGL 41140018
+         BE    STAR7C24          NO, WE NEED TO SET IT         @D51MDGL 41150018
+         MVI   STADPF,STADPFRM+STADPFUB ASSUME REMOVE+USERBAL  @D51EDGL 41160018
+         MVI   STADSN,STADSNBL   INDICATE WANT BALANCE         @D51EDGL 41200018
+         MVC   STADDL,STADBL     SAVE INPUT BALANCE            @D51EDGL 41240018
+         STH   R0,STADBL         CLEAR USER BALANCE            @D51EDGL 41280018
+         BAL   R7,STARBLCP       CALCULATE INITIAL BALANCE     @D51MDGL 41320018
+*SGLINK  STARBLCP,INPUT=(R7,RA,RD,RE),OUTPUT=(R0,R4,R5,RF),            X41330015
+               WORK=(R1,R2,R3,R8)                                       41340015
+         STCM  R0,3,STADBL       SAVE NEW BALANCE              @D51MDGL 41520018
+         MVI   STADPF,STADPFMS+STADPFUB SET MAX=ON, REMOVE=OFF @D51MDGL 41560018
+         MVC   STAODDKR,STADSDDK SAVE DDKR INFORMATION         @D51EDGL 41600018
+         BAL   R7,STARBLCP       CALCULATE NEW BALANCE         @D51MDGL 41640018
+*SGLINK  STARBLCP,INPUT=(R7,RA,RD,RE),OUTPUT=(R0,R4,R5,RF),            X41650015
+               WORK=(R1,R2,R3,R8)                                       41660015
+         B     STARCB60           JOIN MAIN LINE               @D51EDGL 41840021
+STARCB40 DS    0H                                              @D51EDGL 41880021
+         ICM   R0,3,STADBL        DID USER PROVIDE BALANCE     @D51MDGL 41920018
+         BZ    STARCB50           NO,                          @D51MDGL 41960021
+         SGCOV SGSTAR             *                            #COVERGL 42000018
+         OI    STADPF,STADPFUB    INDICATE USER BALANCE GIVEN  @D51MDGL 42040018
+STARCB50 OI    STADSN,STADSNBL    INDICATE BALANCE CALCULATION @D51MDGL 42120021
+         BAL   R7,STARBLCP        CALCULATE NEW BALANCE        @D51MDGL 42160018
+*SGLINK  STARBLCP,INPUT=(R7,RA,RD,RE),OUTPUT=(R0,R4,R5,RF),            X42170015
+               WORK=(R1,R2,R3,R8)                                       42180015
+         LTR   RF,RF              ANY ERROR                    @D51MDGL 42400018
+         BZ    STARCB60           NO,                          @D51MDGL 42440021
+         LA    R0,X'24'           SET RC=24 (RECORD TOO BIG)   @D51MDGL 42480018
+         CR    RF,R0              WAS RECORD SIMPLY TOO BIG    @D51MDGL 42520018
+         BNE   STARCBER           NO, SOME OTHER ERROR         @D51MDGL 42560018
+         OI    STADPF,STADPFMS    INDICATE MAXSIZE PRESENT     @D51MDGL 42600018
+         SLR   R2,R2              CLEAR REGISTER               @D51MDGL 42640018
+         ICM   R2,3,STADSRL       GET RECORD LENGTH            @D51MDGL 42680018
+         MVC   STADBL(2),STADSBL  RESTORE INPUT BALANCE        @D51MDGL 42720018
+         BAL   R7,STARB000        CALCULATE BALANCE            @D51MDGL 42760018
+*SGLINK  STARB000,INPUT=(R2,R4,R5,R7,RA,RD,RE),OUTPUT=(R0,RF),         X42770015
+               WORK=(R1,R2,R3)                                          42800015
+STARCB60 LR    R1,R0              COPY NEW BALANCE             @D51MDGL 43080021
+STARCBXT LR    R0,RF              SET RETURN CODE              @D51MDGL 43120018
+         LM    R2,RF,SAV1+2*4     RESTORE R2 THROUGH RF        @D51MDGL 43280018
+         BR    RB                 EXIT,====================>>> @D51MDGL 43400018
+         SPACE 1                                                        43401022
+         DROP  R6                 RELEASE DISP BASE            @D51MDGL 43402022
+         DROP  RA                 RELEASE VCTEADR BASE         @D51MDGL 43403022
+         DROP  RE                 RELEASE STARDATA BASE        @D51MDGL 43404022
+         SPACE 2                                                        43410018
+STARCBER DS    0H                 ERROR PROCESSING             @D51IDGL 43640018
+         SGCOV SGSTAR             *                            #COVERGL 43680018
+         SLR   R1,R1              SET NEW BALANCE TO ZERO      @D51MDGL 43690018
+         B     STARCBXT           TAKE COMMON EXIT             @DY45299 43840022
+         SPACE 1                                                        43850018
+         DROP  RD                 RELEASE SVC-75 BASE          @DY45299 44000022
+         SPACE 3                                                        44120018
+STAR7C14 LA    RF,X'14'           SET RC=14                    @D51MDGL 44360018
+         BR    R7                      ======================> @D51MDGL 44400018
+STAR7C24 LA    RF,X'24'           SET RC=24                    @D51MDGL 44440018
+         BR    R7                      ======================> @D51MDGL 44480018
+***************************************************************         44600000
+*                                                             *         44640000
+* DECLARATION OF A BASE FOR ALL FOLLOWING PARTS OF SGSTAR     *         44680000
+*                                                             *         44720000
+***************************************************************         44760000
+***************************************************************         44880000
+*                                                             *         45000000
+* FUNCTION: FIND A VCT ENTRY FOR A GIVEN DTF DEVICE TYPE CODE.*         45040000
+.*  THE ROUTINE MAINTAINS A LOOKASIDE BUFFER.                 *         45058611
+.*  AS LONG AS NO DVCUP COMMAND CAME     (WHICH REQUIRES THE  *         45077211
+.*  BUFFER TO BE PURGED AGAIN), THE GIVEN DTF CODES ARE       *         45095801
+.*  STORED IN THE LOOKASIDE BUFFER FOR FUTURE USE. IN CASE    *         45114401
+.*  A DTF CODE IS NOT UNIQUE (SAME DTF CODE, DIFFERENT VALUES *         45133001
+.*  FOR SECTOR CALCULATION), THE CODE IS ALSO ENTERED IN THE  *         45151601
+.*  BUFFER, BUT THE CORRESPONDING VCTE ADDRESS IS SET TO 0.   *         45170201
+.*                                                            *         45188801
+.*  A DTF CODE, THAT IS NOT FOUND IN THE VCTE IS NOT ENTERED  *         45207401
+.*  IN THE LOOKASIDE TABLE.                                   *         45226001
+.*                                                            *         45244601
+* ON ENTRY:                                                   *         45320000
+*   RD = BASE, ADDRESS OF SVC75                               *         45360000
+*   R7 = ADDRESS USED FOR RETURN                              *         45400000
+*   R2 = PTR TO USER PROVIDED DTF DEVICE TYPE CODE            *         45440000
+* ON EXIT TO 4(R7)                                            *         45480000
+*   RA = PTR TO VCT,                                          *         45520000
+*   R0,R1 = UNDEFINED                                         *         45560000
+* ON EXIT TO 0(R7): SOME ERROR HAS OCCURED                    *         45600000
+*   R0,R1 = UNDEFINED                                         *         45640000
+***************************************************************#SECURGL 45680001
+         USING SVC75,RD                                        @D51MDGL 45690006
+STARA000 DS    0H                FIND VCT-ENTRY FOR DTF-CODE   @D51CDGL 46040025
+         SGCOV SGSTAR            *                             #COVERGL 46080000
+         CLI   0(R2),X'00'       IS DTF CODE VALID             @D51CDGL 46103706
+         BER   R7                NO,  =======================> @D51CDGL 46127407
+         LA    R1,STATDC01       ADDRESS OF KNOWN DTF-TABLE    @D51CDGL 46151106
+         USING STATDCDS,R1       DCT-TABLE BASE                @D51CDGL 46174806
+         TM    STATDVFL,STATDVUP HAS DEVICE BEEN DVCUP'ED      @D51CDGL 46198506
+         BO    STARA040          YES,                          @D51CDGL 46222208
+         B     STARA020          CHECK TABLE ENTRIES           @D51CDGL 46245908
+STARA010 CLC   STATDCDC,0(R2)    IS THIS A MATCHING ENTRY      @D51CDGL 46293309
+         BE    STARA030          YES,                          @D51CDGL 46317008
+         LA    R1,STATDCLN(,R1)  POINT TO NEXT ENTRY           @D51CDGL 46340706
+STARA020 C     R1,STATDCPT       DID WE REACH TABLE END        @D51CDGL 46364408
+         BL    STARA010          NO, NOT YET                   @D51CDGL 46388108
+         B     STARA050          NO MATCHING ENTRY FOUND       @D51CDGL 46435508
+STARA030 DS    0H                ENTRY FOUND PROCESSING        @D51CDGL 46459208
+         ICM   RA,15,STATDCVP    DOES VCTE EXIST               @D51CDGL 46482907
+         BZR   R7                NO,  =======================> @D51CDGL 46577707
+         USING VCTEADR,RA        VCTE-ENTRY BASE               @D51CDGL 46577811
+         TM    VCTAFLG,VCTAFOP   IS DEVICE STILL OPERATIONAL   @DY45299 46577919
+         BZ    STARA040          NO, PURGE THE ENTRIES         @DY45299 46578019
+         B     4(,R7)            OK,  =======================> @D51CDGL 46601407
+         DROP  RA                RELEASE VCTEADR BASE          @D51CDGL 46601511
+STARA040 DS    0H                DVCUP PROCESSING              @D51CDGL 46672508
+         NI    STATDVFL,STATDVDN RESET DVCUP INDICATOR         @D51CDGL 46696206
+         XC    STATDC01(STATDC02-STATDC01),STATDC01 CLEAR BUFFER        46719906
+         LA    R1,STATDC01       NEXT FREE ENTRY ADDRESS       @D51CDGL 46743606
+         ST    R1,STATDCPT       STORE NEXT ENTRY ADDRESS      @D51CDGL 46767306
+STARA050 DS    0H                                              @D51CDGL 46791008
+         DROP  R1                RELEASE STATDCDS BASE         @D51CDGL 46814706
+         SGCOV SGSTAR            *                             #COVERGL 46840000
+         L     RA,BASESERI       SGSERI BASE ADDRESS           @D51CDGL 46849006
+         USING SGSERI,RA         SGSERI BASE POINTER           @D51CDGL 46858006
+         LH    R0,AVRCOUNT       NUMBER OF VCT-ENTRIES         @D51CDGL 46867006
+         L     RA,AAVRTAB        ADDRESS OF VCTE TABLE         @D51CDGL 46876006
+         USING VCTEADR,RA        VCTE-ENTRY BASE               @D51CDGL 46885006
+STARA060 TM    VCTAFLG,VCTAFOP   IS DEVICE OPERATIONAL         @DA42272 46897008
+         BZ    STARA070          NO, TAKE NEXT ENTRY           @DA42272 46900008
+         CLC   0(1,R2),VCTADTFC  IS THIS A MATCHING DEVICE     @D51CDGL 46903007
+         BE    STARA080          YES,                          @D51CDGL 46912008
+STARA070 AH    RA,VCTELEN        ADVANCE TO NEXT ENTRY         @D51CDGL 46921008
+         BCT   R0,STARA060       CHECK ALL ENTRIES             @D51CDGL 46930008
+         BR    R7                     =======================> @D51CDGL 46948007
+         SPACE 1                                                        46949007
+STARA080 DS    0H                ADD AN ENTRY TO THE TABLE     @D51CDGL 46957008
+         CLI   VCTATYPE,VCTARPS  IS THIS AN CKD DEVICE         @D51CDGL 46966007
+         BE    STARA090          YES,                          @D51CDGL 46975008
+         CLI   VCTATYPE,VCTAECKD IS IT AN ECKD DEVICE          @D51CDGL 46984007
+         BNE   STARA070          NO, CHECK VCT ENTRY           @DY45299 46993019
+STARA090 LR    R1,RA             SAVE ENTRY ADDRESS            @D51CDGL 47011008
+STARA0A0 CLC   0(1,R2),VCTADTFC-VCTEADR(R1) MATCHING ENTRY     @D51CDGL 47029008
+         BNE   STARA0B0          NO, CHECK NEXT ENTRY          @D51CDGL 47038008
+         CLC   VCTCSECT(12),VCTCSECT-VCTEADR(R1) SURE ITS SAME @D51CDGL 47047007
+         BNE   STARA0C0          NO, NON-UNIQUE VCT ENRIES     @D51CDGL 47056008
+STARA0B0 AH    R1,VCTELEN        ADVANCE TO NEXT VCT-ENTRY     @D51CDGL 47074008
+         BCT   R0,STARA0A0       CHECK ALL THE ENTRIES         @D51CDGL 47083008
+         B     STARA0D0          DTF-CODE IS UNIQUE            @D51CDGL 47101008
+STARA0C0 DS    0H                NON-UNIQUE DTF CODE PROCESSING@D51CDGL 47110008
+         SGCOV SGSTAR              *                           #COVERGL 47120000
+         SLR   RA,RA             CLEAR REGISTER                @D51CDGL 47144007
+STARA0D0 L     R1,STATDCPT       NEXT TABLE ENTRY ADDRESS      @D51CDGL 47192008
+         USING STATDCDS,R1       STATDCDS BASE POINTER         @D51CDGL 47216007
+         C     R1,STATDCEN       DID WE REACH END OF TABLE     @D51CDGL 47240007
+         BNL   STARA0E0          YES,                          @D51CDGL 47264008
+         MVC   STATDCDC,0(R2)    SAVE DTF-CODE                 @D51CDGL 47312007
+         STCM  RA,15,STATDCVP    SAVE VCT ENTRY ADDRESS OR ZERO@D51CDGL 47336007
+         LA    R1,STATDCLN(,R1)  ADVANCE TO NEXT ENTRY         @D51CDGL 47408007
+         ST    R1,STATDCPT       STORE NEXT ENTRY ADDRESS      @D51CDGL 47432007
+STARA0E0 DS    0H                ENDIF                         @D51CDGL 47456008
+         DROP  R1                RELEASE STATDCDS BASE         @D51CDGL 47480007
+         LTR   RA,RA             WAS DTF-CODE UNIQUE           @D51CDGL 47504007
+         BZR   R7                NO,  =======================> @D51CDGL 47528007
+         B     4(,R7)            YES, =======================> @D51CDGL 47552007
+         DROP  RA                RELEASE VCTEADR BASE          @D51CDGL 47600007
+*                                                              @D51CDGL 47648001
+*   LAYOUT OF ENTRIES IN THE KNOWN DTF CODE TABLE              @D51CDGL 47672001
+*                                                              @D51CDGL 47696001
+STATDCDS DSECT                                                 @D51CDGL 47720001
+STATDCDC DS    XL1        DTF CODE OR 00 FOR FREE ENTRY        @D51CDGL 47744001
+STATDCRS DS    XL1        RESERVED BYTE                        @D51CDGL 47768001
+STATDCVP DS    XL4        PTR TO VCTE TABLE ENTRY FOR DTF CODE @D51CDGL 47792001
+*                         OR 0 IF CODE IS NOT UNIQE            @D51CDGL 47816001
+STATDCLN EQU   *-STATDCDS LENGTH OF ONE ENTRY                  @D51CDGL 47840001
+&SYSECT  CSECT                                                 @D51CDGL 47864001
+*                                                              @D51CDGL 47888001
+*  FLAG FOR DEVICE HAS COME UP (I.E. PURGE TABLE..)            @D51CDGL 47912001
+*                                                              @D51CDGL 47936001
+.*                                                             @D51CDGL 47960001
+.*   UNTIL NOW, THIS BIT IS NOT SET BY AR CODE...              @D51CDGL 47984001
+.*                                                             @D51CDGL 48008001
+STATDVFL DC    X'00'            FLAG BYTE FOR DEVICE CAME UP   @D51CDGL 48032001
+STATDVUP EQU   X'01'            FLAG BIT DEFINITION            @D51CDGL 48056001
+STATDVDN EQU   X'FF'-STATDVUP   SAME, JUST FOR SETTING TO 0    @D51CDGL 48080001
+         DS    0H               ALIGN FOR FOLLOWING CODE       @D51CDGL 48104001
+*                                                              @D51CDGL 48128001
+*  AND THE TABLE OF KNOWN DTF CODES ITSELF                     @D51CDGL 48152001
+*                                                              @D51CDGL 48176001
+STATDCPT DC    A(STATDC01)      PTR TO FREE ENTRY              @D51CDGL 48200001
+STATDCEN DC    A(STATDC02)      PTR TO FREE ENTRY              @D51CDGL 48224001
+STATDC01 DC    15XL6'00'        TABLE OF KNOWN DTF CODES       @D51CDGL 48248001
+STATDC02 EQU   *                ADDRESS OF 1ST ENTRY BEHIND IT @D51CDGL 48272001
+STATDCNR EQU   (*-STATDC01)/STATDCLN   NUMBER OF ENTRIES       @D51CDGL 48296001
+***************************************************************         48320000
+*                                                             *         48330018
+* FUNCTION: RETURN VCT-ENTRY ADDRESS FOR A GIVEN PUB INDEX.   *         48480011
+*                                                             *         48520018
+* ON ENTRY:                                                   *         48600000
+*   RD = BASE, ADDRESS OF SVC75                               *         48640000
+*   R7 = RETURN REGISTER                                      *         48680000
+*   R3 = PUB INDEX                                            *         48720000
+* ON EXIT:                                                    *         48730018
+*   RA = PTR TO VCT                                           *         48740018
+*        8(R7)   VCTE ADDRESS HAS BEEN RETURNED FOR CKD DEVICE*         48760018
+*        4(R7)   DEVICE IS AN FBA DEVICE                      *         48840018
+*        0(R7)   NO VCTE ENTRY FOUND                          *         48920018
+*                RF = X'14' (RETURN CODE)                     *         48930018
+***************************************************************#SECURGL 49000001
+STARA100 DS    0H                START OF CODEBLOCK            @D51MDGL 49360000
+         LR    RA,R3             COPY PUB IDEX                 @D51MDGL 49440011
+         SLL   RA,2              MULTIPLY WITH FOUR            @D51MDGL 49480011
+         A     RA,APBXAREA       ADDRESS OF PUBX ADDRESS       @D51MDGL 49520011
+         L     RA,0(RA)          PUBX ENTRY ADDRESS            @D51MDGL 49560011
+         USING PBXADR,RA         PUBX BASE POINTER             @D51MDGL 49600011
+         TM    PBXFLAG,PBXDASD   IS THIS A DASD DEVICE         @D51MDGL 49640011
+         BZ    STAR7C14          NO,  =======================> @D51MDGL 49650018
+         ICM   RA,15,PBXVCTE     DOES VCT-ENTRY EXIST          @D51MDGL 49720011
+         BZ    STAR7C14          NO,  =======================> @D51MDGL 49840011
+         USING VCTEADR,RA        VCTEADR BASE                  @D51MDGL 49850011
+         CLI   VCTATYPE,VCTAFBA  MAKE SURE ITS NOT AN FBA      @D51MDGL 49880011
+         BNE   8(,R7)            OK,  =======================> @D51MDGL 49920011
+         B     4(,R7)            ERROR (IT WAS FBA DASD)       @D51MDGL 50000000
+         DROP  RA                RELEASE VCTEADR BASE          @D51MDGL 50010011
+***************************************************************         50080000
+*                                                             *         50120000
+* FUNCTION: CALCULATE A PUB INDEX FROM A LOGICAL UNIT NUMBER  *         50240000
+*                                                             *         50250018
+* ON ENTRY:                                                   *         50280000
+*   RD = BASE, ADDRESS OF SVC75                               *         50320000
+*   R7 = RETURN REGISTER                                      *         50360000
+*   R4 = PTR TO HALFWORD CONTAINING THE LOGICAL UNIT NUMBER   *         50400000
+* ON EXIT TO 4(R7) NO ERROR OCCURED                           *         50440000
+*   R3 = PUB INDEX OF CORRESPONDING PUB                       *         50480000
+* ON EXIT TO 0(R7) UNIT WAS INVALID,IGNORED OR UNASSIGNED     *         50560000
+*   RF = RETURN CODE 'ERROR IN PARAMETERLIST'                 *         50640000
+***************************************************************#SECURGL 50680001
+STARA200 DS    0H                CALCULATE PUB INDEX           @D51MDGL 51040011
+         LH    R3,PIK            GET CALLERS PIK               @D51MDGL 51120011
+         SRL   R3,2              OFFSET IN PCBATAB             @D51MDGL 51160011
+         A     R3,APCBATAB       ADDRESS OF PCB-ADDRESS        @D51MDGL 51200011
+         L     R3,0(R3)          ADDRESS OF PCB                @D51MDGL 51240011
+         USING PCBADR,R3         PCB BASE POINTER              @D51MDGL 51280011
+         L     R1,PCEPIB         ADDRESS OF PIB                @D51MDGL 51320011
+         USING PIBADR,R1         PIB BASE POINTER              @D51MDGL 51360011
+         SLR   R0,R0             INDEX INTO LUB TABLE          @D51MDGL 51370011
+         TM    0(R4),CCBPROGU    IS THIS A PROGRAMMER LOG. UNIT@D51MDGL 51400011
+         BNZ   STARA210          YES,                          @D51MDGL 51440011
+         CLC   1(1,R4),PIBLUBID  IS IT A VALID SYSTEM-LNO      @D51MDGL 51520011
+         BH    STAR7C14          NO,  =======================> @D51MDGL 51560011
+         B     STARA220          JOIN MAIN LINE                @D51MDGL 51640011
+STARA210 CLC   1(1,R4),PIBLUBNO  IS THIS A VALID PROGR.LNO     @D51MDGL 51760011
+         BNL   STAR7C14          NO,  =======================> @D51MDGL 51800011
+         IC    R0,PIBLUBID       INDEX INTO LUB TABLE          @D51MDGL 51880011
+         DROP  R1                RELEASE PIB BASE              @D51MDGL 51960011
+STARA220 SLR   R1,R1             CLEAR REGISTER                @D51MDGL 52000011
+         IC    R1,1(R4)          GET LNO NUMBER                @D51MDGL 52040011
+         AR    R1,R0             ADD PROPER INDEX              @D51MDGL 52080011
+         AR    R1,R1             OFFSET IN LUB TABLE           @D51MDGL 52120011
+         A     R1,PCEALUB        ADDRESS OF LUB ENTRY          @D51MDGL 52160011
+         DROP  R3                RELEASE PCB BASE              @DY45629 52161028
+         SLR   R3,R3             CLEAR PUB POINTER             @DY45629 52162028
+         ICM   R3,2,1(R1)        GET PUB INDEX HIGH ORDER BYTE @DY45629 52170028
+         BNM   STARA230          THIS IS A 2 BYTE INDEX        @DY45629 52180028
+         SLR   R3,R3             CLEAR PUB POINTER             @DY45629 52190028
+         IC    R3,0(,R1)         GET THE PUB INDEX             @DY45629 52200028
+         CLI   0(R1),X'FE'       LUB IS ASSIGNED               @DY45629 52201029
+         BNL   STAR7C14          NO,  =======================> @DY45629 52220028
+         SLR   R3,R3             RESET PUB HIGH INDEX          @DY45629 52360028
+STARA230 IC    R3,0(,R1)         COMPLETE PUB INDEX            @D51MDGL 52520011
+         B     4(R7)             RETURN =====================>>@D51MDGL 52560000
+***************************************************************         52840000
+*                                                             *         52880000
+* FUNCTION: INTERNAL START OF SECTOR CALCULATION.             *         53000000
+* ON ENTRY:                                                   *         53040000
+*   RD = BASE, ADDRESS OF SVC75                               *         53080000
+*   R7 = RETURN REGISTER                                      *         53120000
+*   RA = PTR TO VOLUME CHARACTERISTICS TABLE                  *         53160000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         53200000
+* ON EXIT TO 4(R7) NO ERROR OCCURED                           *         53240000
+*   R0 = SECTOR VALUE                                         *         53280000
+*   R1-5,8,9 = UNDEFINED                                      *         53320000
+* ON EXIT TO 0(R7) CALCULATED SECTOR VALUE WAS IMPOSSIBLE     *         53360000
+*   R0-5,8,9 = UNDEFINED                                      *         53400000
+***************************************************************#SECURGL 53440001
+         USING VCTEADR,RA        PTR TO VOLUME CHARACTER. TABLE@D51MDGL 53450018
+         USING STARDATA,RE       PTR TO PARAMETER FIELD        @D51MDGL 53460018
+STARSCSP DS    0H                                              @D51MDGL 53800018
+         AIF   (&BG31).YRPS00    RPS=YES                       @D51MDGL 53840023
+         CLI   VCTAPUBC,TECKD    IS THIS AN ECKD DEVICE        @D51MDGL 53880018
+         BE    STARSC02          YES                           @D51MDGL 53920018
+         L     R6,DISPAD         DISP BASE ADDRESS             @D51MDGL 53960018
+         USING DISP,R6           DISP BASE POINTER             @D51MDGL 54000018
+         B     ERR21                  =====================>>> @D51MDGL 54040018
+         DROP  R6                RELEASE DISP BASE             @D51MDGL 54060018
+STARSC02 DS    0H                                              @D51MDGL 54080018
+.YRPS00  ANOP  ................................................@D51MDGL 54120000
+         CLI   STADRN,1          RECORD NUMBER ONE             @D51MDGL 54200018
+         BH    STARS000          NO,                           @D51MDGL 54240018
+*SGLINK  STARS000,INPUT=(R7,RA,RD,RE),OUTPUT=R3,                       X54280015
+               WORK=(R0,R1,R2,R3,R4,R5,R8)                              54320015
+         BL    STARSC10          RECORD NUMBER IS ZERO         @D51MDGL 54408823
+         TM    STADPF,STADPFBU   DID USER PROVIDE A BUFFER     @DEV14GL 54417618
+         BO    STARS000          YES,                          @DEV14GL 54426418
+*SGLINK  STARS000,INPUT=(R7,RA,RD,RE),OUTPUT=R3,                       X54426515
+               WORK=(R0,R1,R2,R3,R4,R5,R8)                              54426615
+         SLR   R3,R3             SET USED AMOUNT TO ZERO       @D51MDGL 54480018
+         B     STARS100          DO SIMPLIFIED PROCESS         @D51MDGL 54520018
+*SGLINK  STARS100,INPUT=(R3,R7,RA,RD,RE),OUTPUT=R0,WORK=(R1,R2,R3)      54560015
+STARSC10 DS    0H                RECORD NUMBER ZERO PROCESSING @D51MDGL 54687218
+         TM    STADPF,STADPFBU   DID USER PROVIDE A BUFFER     @DEV14GL 54694418
+         BNO   STARSC20          NO,                           @DEV14GL 54701618
+         MVI   STADRN,X'01'      ASSUME RECORD NUMBER ONE      @DEV14GL 54708818
+         B     STARS000          DO BUFFER PROCESSING          @DEV14GL 54716018
+*SGLINK  STARS000,INPUT=(R7,RA,RD,RE),OUTPUT=R3,                       X54717015
+               WORK=(R0,R1,R2,R3,R4,R5,R8)                              54718015
+STARSC20 DS    0H                OLD INTERFACE PROCESSING      @D51MDGL 54752018
+         SGCOV SGSTAR            *                             #COVERGL 54760018
+         CLI   STADKL,X'00'      KEYED RECORDS TO PROCESS      @D51MDGL 54800018
+         BNZR  R7                YES,                          @D51MDGL 54840018
+         SLR   R3,R3             CLEAR REGISTER                @D51MDGL 54880018
+         ICM   R3,3,STADDL       GET DATA LENGTH               @D51MDGL 54920018
+         B     STARS100          DO PART-2 PROCESSING          @D51MDGL 54960018
+*SGLINK  STARS100,INPUT=(R3,R7,RA,RD,RE),OUTPUT=R0,WORK=(R1,R2,R3)      54970015
+         EJECT ,                                                        54980018
+***************************************************************         55280000
+*                                                             *         55320000
+* FUNCTION: CALCULATE THE AMOUNT OF ALL BYTES USED ON THE     *         55440000
+*           TRACK, EXCEPT RECORD 0 OVERHEAD.                  *         55480023
+* ON ENTRY:                                                   *         55520000
+*   RD = BASE, ADDRESS OF SVC75                               *         55560000
+*   R7 = RETURN REGISTER                                      *         55600000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         55640000
+*   RA = PTR TO VOLUME CHARACTERISTICS TABLE                  *         55680000
+* ON EXIT TO STARS100                                         *         55720000
+*   R3 = IS NR OF ALL BYTES USED ON TRACK, EXCEPT R0 OVERHEAD *         55760000
+*   R0-R5,R8 = WORK                                           *         55800000
+* ON EXIT TO 0(R7) SOME ERROR OCCURED                         *         55840000
+*   R0-R5,R8 = WORK                                           *         55880000
+***************************************************************#SECURGL 55920001
+STARS000 DS    0H                                              @D51MDGL 56280023
+         SGCOV SGSTAR            *                             #COVERGL 56320000
+         TM    STADPF,STADPFVR   VARIABLE LENGTH RECORDS       @D51MDGL 56360023
+         BNO   STARS030          NO,                           @D51MDGL 56400023
+         CLI   VCTCFORM,X'02'    FORMAT-2 CONSTANTS            @D51MDGL 56480023
+         BE    STARS010          YES,                          @D51MDGL 56520023
+         CLI   VCTCFORM,X'01'    FORMAT-1 CONSTANTS            @D51MDGL 56560023
+         BE    STARS012          YES,                          @D51MDGL 56600023
+         BR    R7                STRANGE                       @D51MDGL 56640023
+STARS010 DS    0H                ECKD DEVICE PROCESSING        @D51MDGL 56680023
+         SGCOV SGSTAR            *                             #COVERGL 56720023
+         SLR   R3,R3             CLEAR REGISTER                @D51MDGL 56760023
+         ICM   R3,3,STADDL       GET USER SUPPLIED DATA LENGTH @D51MDGL 56800023
+         LA    R2,1              ASSUME A MINIMUM LENGTH       @D51MDGL 56840023
+         CLI   STADKL,X'00'      USER SUPPLIED KEY-LENGTH      @D51MDGL 56880023
+         BE    STARS011          NO, ITS NON-KEYED RECORDS     @D51MDGL 56920023
+         STC   R2,STADKL         SAVE MINIMUM KEY LENGTH       @D51MDGL 56960023
+STARS011 DS    0H                                              @D51MDGL 57000023
+         STH   R2,STADDL         SET DATA LENGTH TO MINIMUM    @D51MDGL 57040023
+         BAL   R8,STARR100       CALCULATE REAL BYTES REQUIRED @D51MDGL 57080023
+*SGLINK  STARR100,INPUT=(R8,RA,RD,RE),OUTPUT=(R4,R5),WORK=(R0,R1)       57081015
+         SLR   R1,R1             CLEAR REGISTER                @D51MDGL 57280023
+         IC    R1,STADRN         GET RECORD NUMBER             @D51MDGL 57320023
+         BCTR  R1,0              PREVIOUS RECORD NUMBER        @D51MDGL 57360023
+         MR    R0,R5             ALL RECORDS OVERHEAD          @D51MDGL 57400027
+         AR    R3,R1             ADD OVERHEAD TO DATA LENGTH   @D51MDGL 57440023
+         ST    R5,STADFF00       OVERHEAD BYTES PER RECORD     @DEV14GL 57453323
+         ST    R3,STADFF01       OVERHEAD BYTES + 1 DATA RECORD@DEV14GL 57466623
+         B     STARS100          JOIN MAIN PATH                @D51MDGL 57480023
+*SGLINK  STARS100,INPUT=(R3,R7,RA,RD,RE),OUTPUT=R0,WORK=(R1,R2,R3)      57490015
+STARS012 DS    0H                NON-ECKD DEVICE PROCESSING    @D51MDGL 57680023
+         SGCOV SGSTAR            *                             #COVERGL 57720023
+         SLR   R3,R3             CLEAR REGISTER                @D51MDGL 57760023
+         ICM   R3,3,VCTCCF23     RECORD OVEREAD IN BYTES       @D51MDGL 57800023
+         CLI   STADKL,0          IS THIS A KEYED RECORD        @D51MDGL 57840023
+         BE    STARS014          NO,                           @D51MDGL 57880023
+         AH    R3,VCTCCF45       ADD KEY OVERHEAD              @D51MDGL 57920023
+STARS014 DS    0H                                              @D51MDGL 57960023
+         ST    R3,STADFF00       OVERHEAD BYTES PER RECORD     @DEV14GL 57980023
+         SLR   R0,R0             CLEAR REGISTER                @D51MDGL 58000023
+         IC    R0,STADRN         GET RECORD NUMBER             @D51MDGL 58040023
+         BCTR  R0,0              NUMBER OF RECORDS PROCESSED   @D51MDGL 58080023
+         MR    R2,R0             RECORD OVERHEAD UP TO NOW     @D51MDGL 58120023
+         ICM   R0,3,STADDL       GET DATA LENGTH               @D51MDGL 58160023
+         AR    R3,R0             OVERHEAD BYTES + 1 DATA RECORD@D51MDGL 58200023
+         ST    R0,STADFF01       SAVE TOTAL DATA LENGTH        @DEV14GL 58220023
+.* THINK THIS IS AN ERROR AND IT SHOULD BE R3 INSTEAD OF R0    ERROR    58230027
+         B     STARS100          JOIN MAIN PATH                @D51MDGL 58240023
+*SGLINK  STARS100,INPUT=(R3,R7,RA,RD,RE),OUTPUT=R0,WORK=(R1,R2,R3)      58250015
+STARS030 DS    0H                PROCESS FIXED LENGTH RECORDS  @D51MDGL 58480023
+         CLI   VCTCFORM,X'02'    IS THIS AN ECKD DEVICE        @D51MDGL 58560023
+         BE    STARS032          YES,                          @D51MDGL 58600023
+         CLI   VCTCFORM,X'01'    IS IT A CKD DEVICE            @D51MDGL 58640023
+         BE    STARS034          YES,                          @D51MDGL 58680023
+         BR    R7                VERY STRANGE                  @D51MDGL 58720023
+STARS032 DS    0H                ECKD DEVICE PROCESSING        @D51MDGL 58760023
+         SGCOV SGSTAR            *                             #COVERGL 58800023
+         BAL   R8,STARR100       CALCULATE REAL BYTES REQUIRED @D51MDGL 58840023
+*SGLINK  STARR100,INPUT=(R8,RA,RD,RE),OUTPUT=(R4,R5),WORK=(R0,R1)       58850015
+         B     STARS040          JOIN MAIN PATH                @D51MDGL 59040023
+STARS034 DS    0H                CKD PROCESSING ROUTINE        @D51MDGL 59080023
+         SGCOV SGSTAR            *                             #COVERGL 59120023
+         BAL   R8,STARR000       CALCULATE TOTAL BYTES USED    @D51MDGL 59160023
+*SGLINK  STARR000,INPT=(R8,RA,RD,RE);OUTPUT=(R4,R5),WORK=(R0,R1)        59200015
+STARS040 DS    0H                                              @D51MDGL 59360023
+         SLR   R3,R3             CLEAR REGISTER                @D51MDGL 59400023
+         IC    R3,STADRN         GET RECORD NUMBER             @D51MDGL 59440023
+         BCTR  R3,0              MINUS 1                       @D51MDGL 59480023
+         MR    R2,R4             BYTES USED SO FAR             @D51MDGL 59520023
+         ST    R4,STADFF00       SAVE TOTAL BYTES USED         @DEV14GL 59540023
+***************************************************************         59800000
+*                                                             *         59840000
+*        CODEBLOCK STARS100                                   *         59880000
+*                                                             *         59920000
+* FUNCTION: CALC. SECTOR NR OUT OF NR. OF ALL BYTES USED ON   *         59960000
+*   ON A TRACK. THE FORMULA DEPENDS ON THE KIND OF DEVICE     *         60000000
+*   GIVEN.                                                    *         60040000
+* ON ENTRY:                                                   *         61080000
+*   RD = BASE, ADDRESS OF SVC75                               *         61120000
+*   R7 = RETURN REGISTER                                      *         61160000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         61200000
+*   RA = PTR TO VOLUME CHARACTERISTICS TABLE VCTEADR          *         61240000
+*   R3 = NR OF ALL BYTES USED ON TRACK, EXCEPT R0 OVERHEAD    *         61280000
+* ON EXIT TO 4(R7):                                           *         61320000
+*   R0 = SECTOR NUMBER                                        *         61360000
+*   R1,R2 = UNDEFINED                                         *         61400000
+* ON EXIT TO R7: CALCULATED SECTOR VALUE WAS ILLEGAL.         *         61440000
+***************************************************************#SECURGL 61480001
+STARS100 DS    0H                                              @D51MDGL 61840024
+         SLR   R2,R2             CLEAR REGISTER                @D51MDGL 61880024
+         IC    R2,VCTCCF1        GET BYTES PER CELL            @D51MDGL 61920024
+         LTR   R1,R2             IS THIS A MODULO DEVICE       @D51MDGL 61960024
+         BZ    STARS130          NO,                           @D51MDGL 62000024
+         IC    R1,VCTCCF8        NO. OF CELLS PER SECTOR       @D51MDGL 62040024
+         LTR   R1,R1             IS THAT VALUE KNOWN           @D51MDGL 62080024
+         BNZ   STARS120          YES,                          @D51MDGL 62120024
+         SGCOV SGSTAR            *                             #COVERGL 62160024
+         ICM   R1,7,VCTCBTRK     GET BYTES PER TRACK           @D51MDGL 62200024
+         AH    R1,VCTCHAR0       ADD HA AND R0 LENGTH          @D51MDGL 62240024
+         SLR   R0,R0             CLEAR REGISTER                @D51MDGL 62280024
+         AR    R1,R2             ACCOUNT FOR NEXT HIGH. INTEGER@D51MDGL 62320027
+         DR    R0,R2             NUMBER OF CELLS PER TRACK     @D51MDGL 62360024
+         IC    R2,VCTCSECT       GET SECTORS PER TRACK         @D51MDGL 62400024
+         SLR   R0,R0             CLEAR REGISTER                @D51MDGL 62440024
+         AR    R1,R2             PROVIDE FOR NEXT HIGH.INTEGER @D51MDGL 62480026
+         DR    R0,R2             CELLS PER SECTOR              @D51MDGL 62520024
+         IC    R2,VCTCCF1        RESTORE BYTES PER CELL        @D51MDGL 62560024
+STARS120 DS    0H                CELLS PER SECTOR IS KNOWN     @D51MDGL 62600024
+         SGCOV SGSTAR            *                             #COVERGL 62640024
+         MR    R0,R2             NUMBER OF BYTES PER SECTOR    @D51MDGL 62680024
+         ST    R1,STADFF03       SAVE BYTES PER SECTOR         @DEV14GL 62700024
+         IC    R0,VCTCCF7        1/2 OF OVERHEAD BYTES         @D51MDGL 62720024
+         AR    R0,R0             NUMBER OF OVERHEAD BYTES      @D51MDGL 62760024
+         AH    R0,VCTCHAR0       ADD HA + R0 LENGTH            @D51MDGL 62800024
+         AR    R3,R0             ADD OVERHEAD TO USED COUNT    @D51MDGL 62840024
+         A     R0,STADFF01       ADD RECORD OVERHEAD BYTES     @DEV14GL 62850024
+         ST    R0,STADFF01       SAVE FINAL BYTES USED COUNT   @DEV14GL 62860024
+         MVI   STADFF02+3,1      FORCE MULTIPLY WITH 1         @DEV14GL 62870024
+         SLR   R2,R2             CLEAR REGISTER                @D51MDGL 62880024
+         B     STARS140          JOIN MAIN LINE                @D51MDGL 62920024
+STARS130 DS    0H                PROCESS NON-MODULO DEVICE     @D51MDGL 62960024
+         SGCOV SGSTAR            *                             #COVERGL 63000024
+         ICM   R1,3,VCTCR0MX     NET TRACK GROSS CAPACITY      @D51MDGL 63040024
+         AH    R1,VCTCHAR0       ADD HA + R0 LENGTH            @D51MDGL 63080024
+         ST    R1,STADFF03       TOTAL NUMBER OF BYTES / TRACK @DEV14GL 63086624
+         L     R2,STADFF01       GET TOTAL DATA USED COUNT     @DEV14GL 63093224
+         AH    R2,VCTCHAR0       ADD HA + R0 LENGTH            @DEV14GL 63099824
+         ST    R2,STADFF01       FINAL DATA BYTES USED LENGTH  @DEV14GL 63106424
+         SLR   R2,R2             CLEAR REGISTER                @DEV14GL 63113024
+         AH    R3,VCTCHAR0       ADD HA + R0 LENGTH TO USED    @D51MDGL 63120024
+         IC    R2,VCTCSECT       SECTORS PER TRACK             @D51MDGL 63160024
+         ST    R2,STADFF02       SAVE SECTORS PER TRACK        @DEV14GL 63180024
+         MR    R2,R2             USED * SECTORS                @D51MDGL 63200024
+STARS140 DS    0H                                              @D51MDGL 63240024
+         DR    R2,R1             CALCULATE SECTOR VALUE        @D51MDGL 63280024
+         LR    R0,R3             SAVE SECTOR VALUE IN R0       @D51MDGL 63320024
+         SLR   R2,R2             CLEAR REGISTER                @D51MDGL 63360024
+         IC    R2,VCTCSECT       SECTORS PER TRACK             @D51MDGL 63400024
+         ST    R2,STADFF04       SAVE SECTORS PER TRACK        @DEV14GL 63430024
+         CR    R0,R2             IS CALCULATED VALUE VALID     @D51MDGL 63460024
+         BNH   4(,R7)            YES,                          @D51MDGL 63490024
+         BR    R7                ERROR (SECTOR NR TOO HIGH)    @D51MDGL 63520000
+***************************************************************         63600000
+*                                                             *         63640000
+*        CODEBLOCK STARBLCP                                   *         63680000
+*                                                             *         63720000
+* FUNCTION: INTERNAL ENTRY FOR BALANCE AND CAPACITY CALC.     *         63760000
+*           IF RECORD LENGTHS AND ADMINISTRATION PARTS OF     *         63800000
+*           RECORDS ARE NOT YET KNOWN.                        *         63840000
+* ON ENTRY:                                                   *         63880000
+*   RD = BASE, ADDRESS OF SVC75                               *         63920000
+*   R7 = RETURN REGISTER                                      *         63960000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         64000000
+*   RA = PTR TO DEVICE CHARACTERISTICS TABLE                  *         64040000
+* ON EXIT TO R7:                                              *         64080000
+*   R0 = ANSWER VALUE                                         *         64120000
+*   RF = RETURN CODE                                          *         64160000
+*        X'00' FOR NO ERROR,                                  *         64200000
+*        X'14' ERROR IN PARAMETER LIST OR SYSTEM TABLES       *         64240000
+*        X'24' RECORD DOES NOT FIT ON TRACK                   *         64280000
+*   R2,R3,R8 = WORK                                           *         64320000
+***************************************************************#SECURGL 64360001
+STARBLCP DS    0H                START OF CODEBLOCK            @D51MDGL 64720000
+*-------------------------------------------------------------*@D51MDGL 64760000
+*   SET DATALENGTH TO ALLOWED VALUE FOR BALANCE OR            *@D51MDGL 64800000
+*   CAPACITY CALCULATION.                                     *@D51MDGL 64840000
+*-------------------------------------------------------------*@D51MDGL 64880000
+         CLC   STADDL(2),H0      IF (DATA LENGTH IS ZERO)      @D51MDGL 64920000
+         BNZ   STARE102          ***                           @D51MDGL 64960000
+         SGCOV SGSTAR              *                           #COVERGL 65000000
+         LA    R1,1                SET DATALENGTH TO AT LEAST  @D51MDGL 65040000
+         STH   R1,STADDL           *  1 FOR CALCULATION        @D51MDGL 65080000
+STARE102 DS    0H                ENDIF                         @D51MDGL 65120000
+*-------------------------------------------------------------*@D51MDGL 65160000
+*    TAKE LENGTH OF NORMAL OR NONLAST REC. IN  R2             *@D51MDGL 65200000
+*    AND  LENGTH OF NORMAL OR LAST RECORD INTO R4             *@D51MDGL 65240000
+*-------------------------------------------------------------*@D51MDGL 65280000
+*                                SELECT DEVICE KIND            @D51MDGL 65320000
+         CLI   VCTCFORM,X'02'    WHEN (ECKD DEVICE)            @D51MDGL 65360000
+         BE    STARE132          *                             @D51MDGL 65400000
+         CLI   VCTCFORM,X'01'    WHEN (OTHER CKD)              @D51MDGL 65440000
+         BE    STARE134          *                             @D51MDGL 65480000
+         CLI   VCTCFORM,X'00'    WHEN (23XX DEVICE)            @D51MDGL 65520000
+         BE    STARE130          *                             @D51MDGL 65560000
+         TM    IJBFLG08,IJBDEBUG IS DEBUG ACTIVE               @D63XDAP 65570002
+         BZ    STAR7C14          NO,                           @D63XDAP 65580002
+         BAL   R5,SYSERROR       WHEN (ILLEGAL DEVICE)         #DEBUGGL 65720000
+STARE130 DS    0H                BLOCK 'CALC. FOR 23XX'        @D51MDGL 65800000
+         SGCOV SGSTAR              *                           #COVERGL 65840000
+         BAL   R8,STARR400         CALL 23XX LAST LNG  =====>> @D51MDGL 65880000
+*SGLINK  STARR400,INPUT=(R8,RA,RD,RE),OUTPUT=(R4,R5),WORK=(R0,R1)       65890015
+         LR    R3,R4               R3: LAST RECORD LNG         @D51MDGL 66080000
+         BAL   R8,STARR500         CALL 23XX NONLAST   =====>> @D51MDGL 66120000
+*SGLINK  STARR500,INPUT=(R3,R8,RA,RD,RE),OUTPUT=R4,WORK=(R0,R1)         66130015
+         LR    R2,R4               R2: PRESERV NORM. REC.LNG   @D51MDGL 66320000
+         TM    STADPF,STADPFLS     IF (OPTION LAST IS SET)     @D51MDGL 66360000
+         BNO   STARE150            ***                         @D51MDGL 66400000
+         LR    R4,R3                 R4: TAKE LAST RECLNG      @D51MDGL 66440000
+*                                  ENDIF                       @D51MDGL 66480000
+         B     STARE150            LEAVE SELECT                @D51MDGL 66520000
+STARE132 DS    0H                BLOCK 'CALC. FOR ECKD'        @D51MDGL 66560000
+         SGCOV SGSTAR              *                           #COVERGL 66600000
+         BAL   R8,STARR100         CALL ECKD RECORDLNG =====>> @D51MDGL 66640000
+*SGLINK  STARR100,INPUT=(R8,RA,RD,RE),OUTPUT=(R4,R5),WORK=(R0,R1)       66650015
+         LR    R2,R4               R2: TAKE RECORD LENGTH      @D51MDGL 66840000
+         B     STARE150            LEAVE SELECT                @D51MDGL 66880000
+STARE134 DS    0H                BLOCK 'CALC. FOR CKD'         @D51MDGL 66920000
+         SGCOV SGSTAR              *                           #COVERGL 66960000
+         BAL   R8,STARR000         CALL CKD RECORDLNG ======>> @D51MDGL 67000000
+*SGLINK  STARR000,INPT=(R8,RA,RD,RE);OUTPUT=(R4,R5),WORK=(R0,R1)        67010015
+         LR    R2,R4               PRESERVE RECORDLNG          @D51MDGL 67200000
+STARE150 DS    0H                ENDSELECT                     @D51MDGL 67240000
+         STH   R2,STADSRL        STORE LENGTH OF NORMAL RECORD @D51MDGL 67280000
+         TM    STADSN,STADSNBL   IF (BALANCE REQUESTED)        @D51MDGL 67320000
+         BO    STARB000          ***                           @D51MDGL 67360000
+*SGLINK  STARB000,INPUT=(R2,R4,R5,R7,RA,RD,RE),OUTPUT=(R0,RF),         X67370015
+               WORK=(R1,R2,R3)                                          67380015
+*                                ENDIF                         @D51MDGL 67560000
+         TM    STADSN,STADSNCP   IF (CAPACITY REQUESTED)       @D51MDGL 67600000
+         BO    STARC000          ***                           @D51MDGL 67640000
+*SGLINK  STARC000,INPUT=(R2,R4,R7,RA,RD,RE),OUTPUT=(R0,RF),            X67650015
+               WORK=(R0,R1)                                             67680015
+         B     STAR7C14          ERROR (ILLEGAL PARAMETERS)    @D51MDGL 67880000
+*                                END OF CODEBLOCK STARENTR              67920000
+***************************************************************         67960000
+*                                                             *         68000000
+*        CODEBLOCK STARB000                                   *         68040000
+*                                                             *         68080000
+* FUNCTION: CALCULATE A TRACK BALANCE FROM GIVEN VALUES FOR   *         68120000
+*   RECORD LENGTHS.                                           *         68160000
+* ON ENTRY:                                                   *         68200000
+*   RD = BASE, ADDRESS OF SVC75                               *         68240000
+*   R7 = RETURN REGISTER                                      *         68280000
+*   R2 = LENGTH OF A NORMAL (NONLAST) RECORD                  *         68320000
+*   R4 = LNG OF A NORMAL OR LAST RECORD, DEP. ON OPTION LAST  *         68360000
+*   R5 = ADMINISTRATION PART OF THE RECORD                    *         68400000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         68440000
+*   RA = PTR TO DEVICE CHARACTERISTICS TABLE                  *         68480000
+* ON EXIT TO R7:                                              *         68520000
+*   R0 = NEW BALANCE VALUE                                    *         68560000
+*   RF = RCODE 0 IF RECORD FITTED, X24 IF NOT.                *         68600000
+*   R1-R3 = WORK                                              *         68640000
+***************************************************************#SECURGL 68680001
+STARB000 DS    0H               START OF CODEBLOCK             @D51MDGL 69040000
+         SLR   R3,R3            R3: CLEAR FOR CALCULATION      @D51MDGL 69080000
+         TM    STADPF,STADPFUB  IF (USER PROVIDED A BALANCE)   @D51MDGL 69120000
+         BNO   STARB030         ***                            @D51MDGL 69160000
+         ICM   R3,3,STADBL        R3: TAKE USERS BALANCE       @D51MDGL 69200000
+         TM    STADPF,STADPFRM    IF (OPTION REMOVE IS SET)    @D51MDGL 69240000
+         BNO   STARB022           ***                          @D51MDGL 69280000
+         SGCOV SGSTAR               *                          #COVERGL 69320000
+         AR    R3,R4                R3: +NORM.OR LAST RECLNG   @D51MDGL 69360000
+         LR    R2,R3                R2: COPY OF R3 FOR BELOW   @D51MDGL 69400000
+         B     STARB040           ELSE                         @D51MDGL 69440000
+STARB022 DS    0H                 ***  REMOVE IS NOT SET       @D51MDGL 69480000
+         SGCOV SGSTAR               *                          #COVERGL 69520000
+         LR    R2,R3                R2: PRESERVE FOR BELOW     @D51MDGL 69560000
+         SR    R3,R4                R3: -NORM.OR LAST RECLNG   @D51MDGL 69600000
+STARB024 DS    0H                 ENDIF                        @D51MDGL 69640000
+         B     STARB040         ELSE                           @D51MDGL 69680000
+STARB030 DS    0H               ***  NO USERBALANCE            @D51MDGL 69720000
+         ICM   R3,7,VCTCBTRK      R3: BYTES PER TRACK          @D51MDGL 69760000
+         CLI   STADRN,1           IF (RECORD NR <= 1)          @D51MDGL 69800000
+         BH    STARB032           ***                          @D51MDGL 69840000
+         SGCOV SGSTAR               *                          #COVERGL 69880000
+         LR    R2,R3                R2: PRESERVE R3 FOR BELOW  @D51MDGL 69920000
+         TM    STADPF,STADPFRM      IF (OPTION REMOVE NOT SET) @D51MDGL 69960000
+         BO    STARB040             ***                        @D51MDGL 70000000
+         SR    R3,R4                  R3: DCTBTRK-NORM.OR LAST @D51MDGL 70040000
+*                                   ENDIF                      @D51MDGL 70080000
+         B     STARB040           ELSE                         @D51MDGL 70120000
+STARB032 DS    0H                 ***                          @D51MDGL 70160000
+         SGCOV SGSTAR               *                          #COVERGL 70200000
+         SLR   R1,R1                R3: NEW BALANCE IS         @D51MDGL 70240000
+         IC    R1,STADRN            * RECORD NR                @D51MDGL 70280000
+         BCTR  R1,0                 * - 1                      @D51MDGL 70320000
+         MR    R0,R2                * ()*NORMAL RECORDLNG      @D51MDGL 70360000
+         SR    R3,R1                * BYTES PER TRACK-()       @D51MDGL 70400000
+         TM    STADPF,STADPFRM      IF (OPTION REMOVE NOT SET) @D51MDGL 70440000
+         BO    STARB034             ***                        @D51MDGL 70480000
+         LR    R2,R3                  R2: PRESERVE FOR BELOW   @D51MDGL 70520000
+         SR    R3,R4                  R3: -NORM.OR LAST RECLNG @D51MDGL 70560000
+         B     STARB040             ELSE                       @D51MDGL 70600000
+STARB034 DS    0H                   ***  REMOVE IS SET         @D51MDGL 70640000
+         SR    R3,R2                  R3: -NORMAL RECLNG       @D51MDGL 70680000
+         AR    R3,R4                  *   +NORM.OR LAST RECLNG @D51MDGL 70720000
+         LR    R2,R3                  R2:  COPY OF THIS VALUE  @D51MDGL 70760000
+*                                   ENDIF                      @D51MDGL 70800000
+*                                 ENDIF                        @D51MDGL 70840000
+STARB040 DS    0H               ENDIF                          @D51MDGL 70880000
+*-------------------------------------------------------------*@D51MDGL 70920000
+*    HERE R2 CONTAINS THAT REST OF A TRACK, WHICH WAS LEFT,   *@D51MDGL 70960000
+*    BEFORE A WRITE OPERATION (OPTION REMOVE=NO) TOOK PLACE.  *@D51MDGL 71000000
+*    R3 IS THE FINAL BALANCE VALUE AFTER SUCH AN OPERATION.   *@D51MDGL 71040000
+*-------------------------------------------------------------*@D51MDGL 71080000
+         STH   R3,STADBL        STORE TO USER BALANCE VALUE    @D51MDGL 71120000
+.*------------------------------------------------------------*@D51MDGL 71160000
+.*   NOTE: ACCORDING TO DESCRIPTION OF MACRO GETVCE THE       *@D51MDGL 71200000
+.*   RETURN CODE OF SGSTAR SHALL ONLY REFLECT THE POSSIBILITY *@D51MDGL 71240000
+.*   OR IMPOSSIBILITY OF WRITING A LAST RECORD. OPTION MAX-   *@D51MDGL 71280000
+.*   SIZE TELLS ITS RESULT ONLY BY THE RETURN VALUE IN        *@D51MDGL 71320000
+.*   REGISTER 0.                                              *@D51MDGL 71360000
+.*------------------------------------------------------------*@D51MDGL 71400000
+         SLR   RF,RF            RF: TAKE A DEFAULT RCODE OF 0  @D51MDGL 71440000
+*-------------------------------------------------------------*@D51MDGL 71480000
+*    DO EVERYTHING CONCERNING OPTION MAXSIZE:                 *@D51MDGL 71520000
+*-------------------------------------------------------------*@D51MDGL 71560000
+         TM    STADPF,STADPFMS  IF (OPTION MAXSIZE IS SET)     @D51MDGL 71600000
+         BNO   STARB090         ***                            @D51MDGL 71640000
+         SLR   R0,R0              R0: PREP.MAXSIZE OUTPUT      @D51IDGL 71680000
+         LTR   R3,R3              IF (BALANCE IS < 0)          @D51MDGL 71720000
+         BNM   STARB060           ***                          @D51MDGL 71760000
+         STH   RF,STADBL            SET USER BALANCE TO 0      @D51MDGL 71800000
+         LA    RF,X'24'             RF: CHANGE RCODE TO ERROR  @D51MDGL 71840000
+         LTR   R3,R2                R3: FORMER REST OF TRACK   @D51MDGL 71880000
+         BNPR  R7                   ERROR (THIS IS <= 0 TOO)   @D51MDGL 71920000
+STARB060 DS    0H                 ENDIF                        @D51MDGL 71960000
+*                                 SELECT DEVICE TYPE           @D51MDGL 72000000
+         CLI   VCTCFORM,X'02'     WHEN (DEVICE IS ECKD)        @D51MDGL 72040000
+         BE    STARB062           *                            @D51MDGL 72080000
+*                                 WHEN (CKD OR 23XX)           @D51MDGL 72120000
+         SGCOV SGSTAR               *                          #COVERGL 72160000
+         SR    R3,R5                R3: RETURN VALUE = REST    @D51MDGL 72200000
+*                                   * -ADMINISTRATION PART     @D51MDGL 72240000
+         B     STARB070             LEAVE SELECT               @D51MDGL 72280000
+STARB062 DS    0H                 BLOCK 'ECKD'                 @D51EDGL 72320000
+         SGCOV SGSTAR               *                          #COVERGL 72360000
+*                                   * STADECDI AND STADECAD    @D51EDGL 72400000
+*                                   * ALREADY CALC. BY STARR100@D51EDGL 72440000
+*                                   * FOR DIV,MUL AND FIX      @D51EDGL 72480000
+*                                   * SEE PROLOG.              @D51EDGL 72520000
+         LR    R1,R3                R1: TAKE REST OF SPACE     @D51EDGL 72560000
+         S     R1,STADECAD          * - ADMIN.PART KEY&GAP     @D51EDGL 72600000
+         BNPR  R7                   ERROR (ALREADY <= 0)       @D51EDGL 72640000
+         SLR   R2,R2                R3,1: SET R1 TO            @D51EDGL 72680000
+         IC    R2,VCTCCF4           * SPACE/(DIV+MUL)          @D51EDGL 72720000
+         LR    R3,R2                * WITH F4  AS 'MUL' AND    @D51EDGL 72760000
+         A     R3,STADECDI          * STADECDI AS 'DIV'        @D51EDGL 72800000
+         SLR   R0,R0                * AND R3 TO THE REMAINDER  @D51EDGL 72840000
+         DR    R0,R3                * OF THIS DIVISION.        @D51EDGL 72880000
+         LR    R3,R0                *                          @D51EDGL 72920000
+         SR    R3,R2                IF (MUL > REST)            @D51EDGL 72960000
+         BNM   STARB064             ***                        @D51EDGL 73000000
+         SLR   R3,R3                  R3: NO FURTHER REST      @D51EDGL 73040000
+STARB064 DS    0H                   ENDIF                      @D51EDGL 73080000
+         M     R0,STADECDI          R3: DATALNG IS R1*DIV      @D51EDGL 73120000
+         AR    R3,R1                * +POSSIBLE REST           @D51EDGL 73160000
+         IC    R2,VCTCCF6           *                          @D51EDGL 73200000
+         SR    R3,R2                * -F6 BYTES                @D51EDGL 73240000
+STARB070 DS    0H                 ENDSELECT                    @D51MDGL 73280000
+         LTR   R0,R3              RETURN IF (RESULT > 0        @D51MDGL 73320000
+         BPR   R7                 *          NOW)              @D51MDGL 73360000
+         SLR   R0,R0              R0: SET MAXSIZE VALUE TO 0   @D51MDGL 73400000
+         BR    R7                 ERROR (NOTHING FITS ANY MORE)@D51MDGL 73440000
+STARB090 DS    0H               ELSE  NO OPTION MAXSIZE        @D51MDGL 73480000
+         SGCOV SGSTAR             *                            #COVERGL 73520000
+         LTR   R0,R3              RETURN IF (BALANCE >= 0)     @D51MDGL 73560000
+         BNMR  R7                 *                            @D51MDGL 73600000
+         SLR   R0,R0              SET USERS INPUT BALANCE      @D51MDGL 73640000
+         STH   R0,STADBL          *   TO 0                     @D51MDGL 73680000
+         B     STAR7C24           ERROR (RECORD DOES NOT FIT)  @D51MDGL 73720000
+STARB100 DS    0H               ENDIF                          @D51MDGL 73760000
+*                               END OF CODEBLOCK STARB000      @D51MDGL 73800000
+***************************************************************         73840000
+*                                                             *         73880000
+*        CODEBLOCK STARC000                                   *         73920000
+*                                                             *         73960000
+* FUNCTION: CALCULATE TRACK CAPACITY FROM KNOWN LENGTH OF     *         74000000
+*   NORMAL AND LAST RECORD ON A TRACK                         *         74040000
+* ON ENTRY:                                                   *         74080000
+*   RD = BASE, ADDRESS OF SVC75                               *         74120000
+*   R7 = RETURN REGISTER                                      *         74160000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         74200000
+*   RA = PTR TO VOLUME CHARACTERISTICS TABLE                  *         74240000
+*   R2 = LENGTH OF A NORMAL RECORD                            *         74280000
+*   R4 = IF OPTION LAST IS SET LENGTH OF A LAST RECORD,       *         74320000
+*        ELSE THE SAME AS IN REGISTER R2                      *         74360000
+* ON EXIT TO R7:                                              *         74400000
+*   R0 = NEW CAPACITY VALUE                                   *         74440000
+*   RF = RETURN CODE, SEE STARBLCP                            *         74480000
+*   R1-R3 = WORK                                              *         74520000
+***************************************************************#SECURGL 74560001
+*SGLINK  STARC000,INPUT=(R2,R4,R7,RA,RD,RE),OUTPUT=(R0,RF),             74570020
+STARC000 DS    0H                START OF CODEBLOCK            @D51MDGL 74920000
+         SLR   R3,R3             R3: CLEAR FOR CALCULATION     @D51MDGL 74960000
+         TM    STADPF,STADPFUB   IF (USR PROVIDED BALANCE)     @D51MDGL 75000000
+         BNO   STARC030          ***                           @D51MDGL 75040000
+         ICM   R3,3,STADBL         R3: TAKE USER BALANCE       @D51MDGL 75080000
+         TM    STADPF,STADPFRM     IF (OPTION REMOVE IS SET)   @D51MDGL 75120000
+         BNO   STARC070            ***                         @D51MDGL 75160000
+         AR    R3,R4                 R3: +NORM.OR LAST RECLNG  @D51MDGL 75200000
+*                                  ENDIF                       @D51MDGL 75240000
+         B     STARC070          ELSE                          @D51MDGL 75280000
+STARC030 DS    0H                ***   CALCULATE SUBSTITUTE    @D51MDGL 75320000
+         SGCOV SGSTAR              *                           #COVERGL 75360000
+         ICM   R3,7,VCTCBTRK       R3: USABLE BYTES PER TRACK  @D51MDGL 75400000
+         CLI   STADRN,1            IF (RECORD NR > 1)          @D51MDGL 75440000
+         BNH   STARC070            ***                         @D51MDGL 75480000
+         SGCOV SGSTAR                *                         #COVERGL 75520000
+         SLR   R1,R1                 R3: NEW BALANCE IS        @D51MDGL 75560000
+         IC    R1,STADRN             * RECORD NR               @D51MDGL 75600000
+         BCTR  R1,0                  * - 1                     @D51MDGL 75640000
+         MR    R0,R2                 * ()*NORMAL RECORDLNG     @D51MDGL 75680000
+         SR    R3,R1                 * BYTES PER TRACK-()      @D51MDGL 75720000
+         BM    STAR7C24              ERROR (RECORD DOESNT FIT) @D51MDGL 75760000
+         TM    STADPF,STADPFRM       IF (OPTION REMOVE SET)    @D51MDGL 75800000
+         BNO   STARC070              ***                       @D51MDGL 75840000
+         SR    R3,R2                   R3: MINUS NORMAL RECLNG @D51MDGL 75880000
+         AR    R3,R4                   *   PLUS NORM.OR LAST   @D51MDGL 75920000
+*                                    ENDIF                     @D51MDGL 75960000
+*                                  ENDIF                       @D51MDGL 76000000
+STARC070 DS    0H                ENDIF   OF ELSE NO USRBALANCE @D51MDGL 76040000
+         STH   R3,STADBL         SET NEW BALANCE FOR USER      @D51MDGL 76080000
+         SLR   R0,R0             PREPARE RETURN CODE           @D52MDGL 76100001
+         SR    R3,R4             ERROR (SPACE < NORMAL OR LAST @D51MDGL 76120000
+         BM    STAR7C24          *      RECORD LENGTH)         @D51MDGL 76160000
+         LR    R1,R3             R0:   CAPACITY =REST OF SPACE @D51MDGL 76200000
+         SLR   R0,R0             *   / NORMAL RECORD LENGTH    @D51MDGL 76240000
+         DR    R0,R2             *   + THE LAST RECORD SUBTR.  @D51MDGL 76280000
+         LA    R0,1(,R1)         *     ABOVE                   @D51MDGL 76320000
+         SLR   RF,RF             RF: RCODE ALL O.K.            @D51MDGL 76360000
+         SGCOV SGSTAR            *                             #COVERGL 76400000
+         BR    R7                RETURN =========>>            @D51MDGL 76440000
+*                                END OF CODEBLOCK STARC000     @D51MDGL 76480000
+***************************************************************         76520000
+*                                                             *         76560000
+*        CODEBLOCK STARR000                                   *         76600000
+*                                                             *         76640000
+* FUNCTION: CALCULATE LENGTH OF RECORD ON CKD DASD            *         76680000
+* ON ENTRY:                                                   *         76720000
+*   RD = BASE, ADDRESS OF SVC75                               *         76760000
+*   R8 = RETURN REGISTER                                      *         76800000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         76840000
+*   RA = PTR TO VOLUME CHARACTERISTICS TABLE                  *         76880000
+* ON EXIT TO R8:                                              *         76920000
+*   R4 = RECORD LENGTH                                        *         76960000
+*   R5 = LENGTH OF ADMINISTRATION PART IN THIS RECORD         *         77000000
+*   R0,R1 = WORK                                              *         77040000
+***************************************************************#SECURGL 77080001
+*SGLINK  STARR000,INPT=(R8,RA,RD,RE);OUTPUT=(R4,R5),WORK=(R0,R1)        77090015
+STARR000 DS    0H                START OF CODEBLOCK            @D51MDGL 77440000
+         SGCOV SGSTAR            *                             #COVERGL 77480000
+         SLR   R4,R4             R4: CLEAR FOR CALCULATION     @D51MDGL 77520000
+         SLR   R1,R1             R1: CLEAR FOR CALCULATION     @D51MDGL 77560000
+         SLR   R5,R5             IF (KEYLENGTH  IS NOT ZERO)   @D51MDGL 77600000
+         IC    R5,STADKL         *                             @D51MDGL 77640000
+         LTR   R5,R5             *                             @D51MDGL 77680000
+         BZ    STARR010          ***                           @D51MDGL 77720000
+         SGCOV SGSTAR              *                           #COVERGL 77760000
+         AH    R5,VCTCCF45         R5: ADD KEY OVERHEAD        @D51MDGL 77800000
+         SLR   R0,R0               IF (DEVICE IS CKD           @D51MDGL 77840000
+         IC    R0,VCTCCF1          *   MODULO DEVICE)          @D51MDGL 77880000
+         LTR   R0,R0               *                           @D51MDGL 77920000
+         BZ    STARR010            ***                         @D51MDGL 77960000
+         AR    R5,R0                 R5,4: ADD BYTES PER SEGM. @D51MDGL 78000000
+         BCTR  R5,0                  * -1                      @D51MDGL 78040000
+         DR    R4,R0                 * ()/BYTES PER SEGMENT    @D51MDGL 78080000
+         MR    R4,R0                 * ()*BYTES PER SEGMENT    @D51MDGL 78120000
+*                                  ENDIF                       @D51MDGL 78160000
+STARR010 DS    0H                ENDIF                         @D51MDGL 78200000
+         AH    R5,VCTCCF23       R5: MAKE TOTAL ADMINISTR.PART @D51MDGL 78240000
+         ICM   R1,3,STADDL       IF (DATALENGTH > 0)           @D51MDGL 78280000
+         BZ    STARR030          ***                           @D51MDGL 78320000
+         AR    R1,R5               R1: ADD DATA LEN.TO ADMIN.  @D51MDGL 78360000
+         IC    R4,VCTCCF1          IF (DEVICE IS MODULO)       @D51MDGL 78400000
+         LTR   R4,R4               *                           @D51MDGL 78440000
+         BZ    STARR020            ***                         @D51MDGL 78480000
+         SGCOV SGSTAR                *                         #COVERGL 78520000
+*                                    R1: ADAPT TO SEGM.SIZE BY @D51MDGL 78560000
+         BCTR  R1,0                  * - 1                     @D51MDGL 78600000
+         AR    R1,R4                 * + BYTES PER SEGMENT     @D51MDGL 78640000
+         SLR   R0,R0                 *                         @D51MDGL 78680000
+         DR    R0,R4                 * ()/BYTES PER SEGMENT    @D51MDGL 78720000
+         MR    R0,R4                 * ()*BYTES PER SEGMENT    @D51MDGL 78760000
+STARR020 DS    0H                  ENDIF                       @D51MDGL 78800000
+         LR    R4,R1               R4: IS RECORD LENGTH        @D51MDGL 78840000
+         BR    R8                  RETURN ============>>       @D51MDGL 78880000
+STARR030 DS    0H                ELSE                          @D51MDGL 78920000
+         SGCOV SGSTAR              *                           #COVERGL 78960000
+         ICM   R4,1,VCTCCF1        IF (DEVICE IS MODULO)       @D51MDGL 79000000
+         BZ    STARR040            ***                         @D51MDGL 79040000
+         LR    R1,R5                 R1: TAKE JUST ADMIN.PART, @D51MDGL 79080000
+         SLR   R0,R0                 *  ELIMINATE DATA CORRECT.@D51MDGL 79120000
+         DR    R0,R4                 *  BYTES FOR COMPAT.WITH  @D51MDGL 79160000
+         MR    R0,R4                 *  OLD SGSTAR CODE..      @D51MDGL 79200000
+STARR040 DS    0H                  ENDIF                       @D51MDGL 79240000
+         LR    R4,R1               R4: IS RECORD LENGTH        @D51MDGL 79280000
+         BR    R8                  RETURN ============>>       @D51MDGL 79320000
+*                                ENDIF                         @D51MDGL 79360000
+*                                END OF CODEBLOCK STARR000     @D51MDGL 79400000
+***************************************************************         79440000
+*                                                             *         79480000
+* FUNCTION: CALCULATE LENGTH OF ECKD RECORD                   *         79600000
+*           THIS ROUTINE CALCULATES THE REAL NUMBER OF BYTES  *         79610023
+*           USED FOR A USER SUPPLIED (KEY +) DATA RECORD.     *         79620023
+* ON ENTRY:                                                   *         80360000
+*   RD = BASE, ADDRESS OF SVC75                               *         80400000
+*   R8 = RETURN REGISTER                                      *         80440000
+*   RA = PTR TO VOLUME CHARACTERISTICS TABLE                  *         80480000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         80520000
+* ON EXIT TO R8:                                              *         80560000
+*   R4 = TOTAL NUMBER OF BYTES USED FOR (KEY +) DATA          *         80600023
+*   R5 = TOTAL NUMBER OF OVERHEAD BYTES                       *         80640023
+***************************************************************#SECURGL 80720001
+*SGLINK  STARR100,INPUT=(R8,RA,RD,RE),OUTPUT=(R4,R5),WORK=(R0,R1)       81050015
+STARR100 DS    0H                                              @D51EDGL 81080023
+         SGCOV SGSTAR            *                             #COVERGL 81120000
+         SLR   R5,R5             CLEAR REGISTER                @D51EDGL 81160023
+         IC    R5,VCTCCF5        1/2 DATA BYTES / SUBBLOCK     @D51EDGL 81200023
+         AR    R5,R5             DATA BYTES PER SUBBLOCK       @D51EDGL 81240023
+         ST    R5,STADECDI       SAVE BYTES/SUBBLOCK           @D51EDGL 81280023
+         SLR   R5,R5             CLEAR REGISTER                @D51EDGL 81440023
+         IC    R5,VCTCCF6        NO. OF BLOCK CHECK + ERC BYTES@D51EDGL 81480023
+         SLR   R1,R1             CLEAR REGISTER                @D51EDGL 81520023
+         ICM   R1,1,STADKL       GET AND TEST KEY LENGTH       @D51EDGL 81560023
+         BZ    STARR110          NON-KEYED RECORDS             @D51EDGL 81600023
+         AR    R1,R5             EFFECTIVE KEY LENGTH          @D51EDGL 81640023
+         ST    R1,STADECKL       SAVE EFFECTIVE KEY LENGTH     @D51EDGL 81680023
+STARR110 DS    0H                                              @D51EDGL 81720023
+         SLR   R0,R0             CLEAR REGISTER                @D51EDGL 81760023
+         ICM   R0,3,STADDL       GET USER SUPPLIED DATA LENGTH @D51EDGL 81800023
+         AR    R0,R5             EFFECTIVE DATA LENGTH         @D51EDGL 81840023
+         ST    R0,STADECDL       SAVE EFFECTIVE DATA LENGTH    @D51EDGL 81880023
+         SLR   R4,R4             CLEAR REGISTER                @D51EDGL 81920023
+         IC    R4,VCTCCF1        BYTES/CELL                    @D51EDGL 81960023
+         CLI   STADKL,X'00'      DO WE PROCESS KEYED RECORDS   @D51EDGL 82000023
+         BNE   STARR120          YES,                          @D51EDGL 82040023
+         XC    STADECAD,STADECAD SET ADMINISTR.PART TO 0       @D51EDGL 82080023
+         B     STARR130          JOIN MAIN LINE                @D51EDGL 82120023
+STARR120 DS    0H                KEYED RECORD PROCESS          @D51EDGL 82160023
+         SGCOV SGSTAR              *                           #COVERGL 82200000
+         A     R1,STADECDI       ADD SUBBLOCK LENGTH           @D51EDGL 82280023
+         BCTR  R1,0              MINUS 1                       @D51EDGL 82320023
+         SLR   R0,R0             CLEAR DEVIDEND                @D51EDGL 82360023
+         D     R0,STADECDI       NO. OF SUBBLOCKS USED FOR KEY @D51EDGL 82400023
+         IC    R5,VCTCCF4        CHECK BYTES/SUBBLOCK          @D51EDGL 82440023
+         MR    R0,R5             CHECK BYTES FOR KEY           @D51EDGL 82480023
+         ST    R1,STADECAD       SAVE CHECK BYTES FOR KEY      @D51EDGL 82520023
+         IC    R5,VCTCCF3        POST KEY-GAP (IN CELLS)       @D51EDGL 82560023
+         LR    R1,R5             COPY TO R1                    @D51EDGL 82600023
+         MR    R0,R4             BYTES FOR POST-KEY GAP        @D51EDGL 82640023
+         A     R1,STADECKL       BYTES FOR KEY + GAP           @D51EDGL 82680023
+         A     R1,STADECAD       KEY + CHECK BYTES + GAP       @D51EDGL 82720023
+         AR    R1,R4             ADD BYTES/CELL                @D51EDGL 82800023
+         BCTR  R1,0              MINUS 1                       @D51EDGL 82840023
+         DR    R0,R4             COMPLETE NO. OF CELLS FOR KEY @D51EDGL 82880023
+         MR    R0,R4             FINAL KEY LENGTH              @D51EDGL 82920023
+         ST    R1,STADECAD       SAVE FINAL KEY LENGTH         @D51EDGL 82960023
+STARR130 DS    0H                CALCULATE EFFECTIVE DATA LEN. @D51EDGL 83000023
+         SLR   R1,R1             CLEAR REGISTER                @D51EDGL 83040023
+         IC    R1,VCTCCF2        RECORD OVERHEAD IN CELLS      @D51EDGL 83080023
+         MR    R0,R4             BYTES USED FOR OVERHEAD       @D51EDGL 83120023
+         A     R1,STADECAD       ADD TOTAL KEY BYTES (IF ANY)  @D51EDGL 83160023
+         ST    R1,STADECAD       BYTES USED FOR NON DATA       @D51EDGL 83200023
+         L     R1,STADECDL       EFFECTIVE DATA BYTES          @D51EDGL 83280023
+         A     R1,STADECDI       ADD BYTES/SUBBLOCK            @D51EDGL 83320023
+         BCTR  R1,0              MINUS 1                       @D51EDGL 83360023
+         D     R0,STADECDI       SUBBLOCKS USED FOR DATA       @D51EDGL 83400023
+         IC    R5,VCTCCF4        CHECK BYTES/SUBBLOCK          @D51EDGL 83440023
+         MR    R0,R5             CHECK BYTES FOR DATA          @D51EDGL 83480023
+         A     R1,STADECDL       EFFECTIVE DATA BYTES          @D51EDGL 83520023
+         AR    R1,R4             ADD BYTES/CELL                @D51EDGL 83600023
+         BCTR  R1,0              MINUS 1                       @D51EDGL 83640023
+         DR    R0,R4             NUMBER OF CELLS USED FOR DATA @D51EDGL 83680023
+         MR    R0,R4             NO. OF BYTES FOR DATA         @D51EDGL 83720023
+         LR    R4,R1             TOTAL DATA BYTES REQUIRED     @D51EDGL 83760023
+         A     R4,STADECAD       TOTAL BYTES FOR KEY+DATA      @D51EDGL 83800023
+         LR    R5,R4             TOTAL BYTES FOR KEY + DATA    @D51EDGL 83960023
+         ICM   R0,3,STADDL       GET USERS SUPPLIED LENGTH     @D51EDGL 84000023
+         SR    R5,R0             TOTAL OVERHEAD AS SEEN BY USER@D51EDGL 84040023
+         BR    R8                RETURN =============>>        @D51EDGL 84080000
+***************************************************************         84160000
+*                                                             *         84200000
+*        CODEBLOCK STARR400                                   *         84240000
+*                                                             *         84280000
+* FUNCTION: LENTGH OF LAST RECORD ON A 23XX DEVICE. THIS      *         84320000
+*   SHALL HERE BE CONSIDERED FORMULA '0', ALTHOUGH            *         84360000
+*   SUCH A FORMULA DOES NOT EXIST IN OTHER DOCUMENTATION.     *         84400000
+* ON ENTRY:                                                   *         84440000
+*  RD = BASE, ADDRESS OF SVC75                                *         84480000
+*  R8 = RETURN REGISTER                                       *         84520000
+*  RA = PTR TO VOLUME CHARACTERISTICS TABLE                   *         84560000
+*  RE = PTR TO PARAMETER FIELD STARDATA                       *         84600000
+* ON EXIT TO R8:                                              *         84640000
+*  R4 = RECORD LENGTH                                         *         84680000
+*  R5 = LENGTH OF ADMINISTRATION PART IN THIS RECORD          *         84720000
+*  R0,R1 = WORK                                               *         84760000
+***************************************************************#SECURGL 84800001
+*SGLINK  STARR400,INPUT=(R8,RA,RD,RE),OUTPUT=(R4,R5),WORK=(R0,R1)       84810015
+STARR400 DS    0H                START OF CODEBLOCK            @D51MDGL 85160000
+         SGCOV SGSTAR            *                             #COVERGL 85200000
+         SLR   R5,R5             R5: TAKE LAST RECORDS KEY     @D51MDGL 85240000
+         IC    R5,VCTCCF1        *   AND RECORD OVERHEAD       @D51MDGL 85280000
+         SLR   R0,R0             IF (KEYLENGTH IS  ZERO)       @D51MDGL 85320000
+         ICM   R0,1,STADKL       *                             @D51MDGL 85360000
+         BNZ   STARR410          ***                           @D51MDGL 85400000
+         IC    R0,VCTCCF3          R5: LOAD KEY OVERHEAD       @D51MDGL 85440000
+         SR    R5,R0               *  AND SUBTRACT IT          @D51MDGL 85480000
+         B     STARR420          ELSE                          @D51MDGL 85520000
+STARR410 DS    0H                ***   KEYLNG NOT ZERO         @D51MDGL 85560000
+         AR    R5,R0               R5: ADD KEY LENGTH          @D51MDGL 85600000
+STARR420 DS    0H                ENDIF                         @D51MDGL 85640000
+         SLR   R4,R4             R4: RECORD LENGTH IS          @D51MDGL 85680000
+         ICM   R4,3,STADDL       *  DATA LENGTH                @D51MDGL 85720000
+         AR    R4,R5             *  + RECORD OVERHEAD          @D51MDGL 85760000
+         BR    R8                RETURN ============>>         @D51MDGL 85800000
+*                                END OF CODEBLOCK              @D51MDGL 85840000
+***************************************************************         85880000
+*                                                             *         85920000
+*        CODEBLOCK STARR500                                   *         85960000
+*                                                             *         86000000
+* FUNCTION: SAME AS STARR400, JUST FOR A NONLAST RECORD.      *         86040000
+* ON ENTRY:                                                   *         86080000
+*   RD = BASE, ADDRESS OF SVC75                               *         86120000
+*   R8 = RETURN REGISTER                                      *         86160000
+*   R3 = LENGTH OF A LAST RECORD ON 23XX DEVICE               *         86200000
+*   RA = PTR TO DEVICE CHARACTERISTICS TABLE                  *         86240000
+*   RE = PTR TO PARAMETER FIELD STARDATA                      *         86280000
+* ON EXIT TO R8:                                              *         86320000
+*   R4 = RECORD LENGTH                                        *         86360000
+*   R0,R1 = WORK                                              *         86400000
+***************************************************************#SECURGL 86440001
+*SGLINK  STARR500,INPUT=(R3,R8,RA,RD,RE),OUTPUT=R4,WORK=(R0,R1)         86450015
+STARR500 DS    0H                START OF CODEBLOCK            @D51MDGL 86800000
+         SGCOV SGSTAR            *                             #COVERGL 86840000
+         SLR   R1,R1             R1: CLEAR WORK REGISTER       @D51MDGL 86880000
+         SLR   R0,R0             R0: GET KEY OVERHEAD          @D51MDGL 86920000
+         IC    R0,VCTCCF3        *                             @D51MDGL 86960000
+         LR    R4,R3             R4: LENGTH OF LAST RECORD     @D51MDGL 87000000
+         CLI   STADKL,0          IF (KEY LENGTH IS NOT ZERO)   @D51MDGL 87040000
+         BE    STARR510          ***                           @D51MDGL 87080000
+         SR    R4,R0               R4: SUBTR.KEY OVERHEAD      @D51MDGL 87120000
+STARR510 DS    0H                ENDIF                         @D51MDGL 87160000
+*                                R4: RECORD LENGTH IS          @D51MDGL 87200000
+         MH    R4,VCTCCF45       * ()*TOLERANCE FACTOR FOR 23XX@D51MDGL 87240000
+         SRL   R4,9              * ()/512                      @D51MDGL 87280000
+         IC    R1,VCTCCF2        * + NONLAST RECORD AND KEY    @D51MDGL 87320000
+         AR    R4,R1             *   OVERHEAD                  @D51MDGL 87360000
+         CLI   STADKL,0          RETURN (IF KEY LENGTH NOT 0)  @D51MDGL 87400000
+         BNER  R8                *                             @D51MDGL 87440000
+         SR    R4,R0             R4: SUBTR.KEY OVERHEAD AGAIN  @D51MDGL 87480000
+         BR    R8                RETURN =============>>        @D51MDGL 87520000
+*                                END OF CODEBLOCK              @D51MDGL 87560000
+***************************************************************         87600000
+* DROPS OF SOME GENERALLY USED REGISTERS:                     *         87640000
+***************************************************************         87680000
+         DROP  RA                PTR TO DEVICE CHARACT.TABLE   @D51MDGL 87720000
+         DROP  RE                PTR TO PARM. FIELD            @D51MDGL 87760000
+         DROP  RD                BASE REGISTER                 @D51MDGL 87800000
+***************************************************************         87840000
+*                                                             *         87880000
+*  WORK AREA FOR ALL SGSTAR ROUTINES (SGSTAR IS NOT REENTRANT)*         87920000
+*                                                             *         87960000
+***************************************************************         88000000
+STARDATS DS    XL(STADBOT-STADTOP)  STORAGE FOR STARDATA       @D51MDGL 88040000
+SAV1     DS    16F               SAVE AREA                     @D51MDGL 88080000
+STARVA75 DC    A(SVC75)          FOR CALCBAL                   @D51MDGL 88120000
+LOGBAL   EQU   X'97'             FCODE IN SGTINF FOR LOGBAL    @D51EDGL 88160000
+STARLGBL DC    A(LOGBAL)         FOR CALCBAL/LOGBAL SERVICE    @D51MDGL 88200000
+***************************************************************         91600000
+*                END OF SGSTAR CODE                           *         91640000
+***************************************************************         91680000
+ AIF   (NOT &SGSTAR OR NOT &BGDEBUG).NPRT01                    @D51MDGL 91720000
+         PRINT  NOGEN                                          @D51MDGL 91760000
+.NPRT01  MEXIT                                                 @D51MDGL 91800000
+.STAINVC MNOTE 8,'WRONG REGISTER CONVENTION!'                  #SECURGL 91960001
+         MEXIT                                                 #SECURGL 92000001
+.STAHEAD MEXIT                                                *#SECURGL 92400005
+         MEND                    END OF MACRO SGSTAR           @D51MDGL 92440000

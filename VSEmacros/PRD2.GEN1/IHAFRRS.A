@@ -1,0 +1,220 @@
+*%       GOTO FRRSPLS1;  /*                                             00010000
+         MACRO                                                          00020000
+         IHAFRRS &DSECT=YES                                          */ 00030000
+*%FRRSPLS1 : ;                                                          00040000
+* /* MACMEAN FRRS MEANS FUNCTIONAL RECOVERY ROUTINE STACK            */ 00050000
+* /* MACCOMP SC1CM                                                   */ 00060000
+* /*                                                                 */ 00070000
+* /*  COPYRIGHT =                                                    */ 00080000
+* /*     5685-001                                                    */ 00090000
+* /*     THIS MODULE IS "RESTRICTED MATERIALS OF IBM"                */ 00100000
+* /*     (C) COPYRIGHT IBM CORP. 1980, 1988                          */ 00110000
+* /*     LICENSED MATERIALS - PROPERTY OF IBM                        */ 00120000
+* /*                                                                 */ 00130000
+* /*  STATUS = HBB3310                                               */ 00140000
+* /*                                                                 */ 00150000
+* /*  CHANGE-ACTIVITY=                                               */ 00160000
+* /*     MVS/SYSTEM PRODUCT RELEASE 2 - ADDED A 24 BYTE SAVE         */ 00170000
+* /*               AREA, ENLARGED THE RTM1 WORK AREA, ADDED AN       */ 00180000
+* /*               EXTENSION FOR EACH ENTRY FOR CROSS MEMORY         */ 00190000
+* /*               INFORMATION, AND ADDED FLAGS IN THE SECOND WORD   */ 00200000
+* /*               OF EACH ENTRY.                                    */ 00210000
+* /*     MVS/SYSTEM PRODUCT VERSION 2 RELEASE 1              @G860P1S*/ 00220000
+* /*  $L1=RASENH  ,JBB2220,840627,PDFO: FRR STACK RESTRUCTURE    @L1A*/ 00230000
+* /*  $L2=RASENH  ,JBB2220,841116,PDPY: NESTED FRR RETRY         @L2A*/ 00240000
+* /*  $L3=AR      ,HBB3310,850917,PDPY: ACCESS REGISTER SUPPORT  @L3A*/ 00250000
+* /*  $D1=DCR0059 ,HBB3310,861029,PDU8: SUPPORT FOR DEFERRED CANCEL/ */ 00260000
+* /*                                    DETACH PROCESSING        @D1A*/ 00270000
+* /*                                                                 */ 00280000
+* /*     TO OBTAIN ADDRESSABILITY TO THE FRRSXSTK CODE               */ 00290000
+* /*            L     REG,FRRSXSTA                                   */ 00300000
+* /*            USING FRRSXSTK,REG                                   */ 00310000
+* /*                                                                 */ 00320000
+*%       GOTO FRRSPLS;  /*                                              00330000
+         AIF ('&DSECT' EQ 'YES').FRRS001                                00340000
+FRRS     DS   0D -                                                      00350000
+         AGO  .FRRS002                                                  00360000
+.FRRS001 ANOP                                                           00370000
+FRRSESZE EQU    32            LENGTH OF EACH FRR ENTRY                  00380000
+FRRSEXSZ EQU    16            LENGTH OF EACH FRR EXTENSION        @L3C  00390000
+FRRSNENT EQU    16            NUMBER OF FRR ENTRIES IN STACK  @ZM02352  00400000
+FRRSTLEN EQU    856           TOTAL LENGTH OF NORMAL FRR STACK    @L3C  00410000
+FRRS     DSECT ,       FRRSPTR                                          00420000
+.FRRS002 SPACE 2                                                        00430000
+FRRSND   DS     0CL88         NON-DYNAMIC PART OF FRRS            @L3C  00440000
+FRRSHEAD DS     0CL16         THE HEADER OF THE FRR STACK               00450000
+FRRSEMP  DS     A             ADDRESS WHICH INDICATES AN EMPTY STACK    00460000
+FRRSLAST DS     A             ADDRESS OF LAST ENTRY IN THE STACK        00470000
+FRRSELEN DS     F             LENGTH OF EACH FRR ENTRY IN THE STACK     00480000
+FRRSCURR DS     A             ADDRESS OF CURRENT FRR ENTRY IN THE STACK 00490000
+FRRSRSA  DS     CL24          SETFRR REG 14-3 SAVE AREA       @G381P2F  00500000
+FRRSRTMW DS     CL4           RECURSION CONTROL DATA REMOVED FROM THE  X00510000
+                              RT1W                                @L1C  00520000
+FRRSENTL DS     H             LENGTH OF ENTRIES FOR FRRSCOPY      @L1A  00530000
+FRRSEXTL DS     H             LENGTH OF EXTENSIONS FOR FRRSCOPY   @L1A  00540000
+         DS     CL8           RESERVED FOR FUTURE USE             @L1A  00550000
+FRRSRTMA DS     A             RTM1 WORK AREA ADDRESS              @L1A  00560000
+FRRSXSTA DS     A             ADDRESS OF THE EXTENSIONS TO THE FRR      00570000
+*                             ENTRIES (ACTUAL SIZE IS 16 TIME THE       00580000
+*                             MAXIMUM NUMBER OF ENTRIES           @L1A  00590000
+FRRSASA  DS     CL24          SETFRR AR 14-3 SAVE AREA            @L3A  00600000
+FRRSENTS DS     CL(FRRSNENT*FRRSESZE) FRR ENTRIES IN STACK        @L1C  00610000
+FRRSXSTK DSECT     ,  FRRSXSTA THE FRR EXTENSIONS                 @L1A  00620000
+         DS     CL(FRRSNENT*FRRSEXSZ) ACTUAL SIZE                 @L1A  00630000
+FRRSENTR DSECT     ,  FRREPTR THE MAPPING OF A FRR ENTRY                00640000
+FRRSFRRA DS     0A            THE ADDRESS OF THE FRR                    00650000
+         DS     CL3           HIGH ORDER 3 BYTES OF FRR ADDR  @G381P2F  00660000
+FRRSFRA1 DS     CL1           LOW ORDER BYTE OF FRR ADDRESS   @G381P2F  00670000
+FRRSXFLG EQU    X'01'         FLAG INDICATING FRRSFLGS INITIALIZED      00680000
+*                             WHEN SETFRR WAS ISSUED          @G381P2F  00690000
+FRRSFLGS DS     0CL4          FLAGS USED BY RTM DURING FRR PROCESSING   00700000
+FRRSFLG1 DS     B             RECURSION FLAGS USED BY RTM               00710000
+FRRSRCUR EQU    X'80'         RECURSION FLAG USED WHEN GIVING CONTROL   00720000
+*                             TO FRR AND WHEN RECEIVING CONTROL BACK    00730000
+*                             FROM FRR                                  00740000
+FRRSNEST EQU    X'40'         FLAG INDICATING A NESTED FRR ENTRY        00750000
+FRRSNLCL EQU    X'20'         FLAG INDICATING THAT NESTED FRR IS A     *00760000
+                              MODE=LOCAL FRR                  @G382PPY  00770000
+FRRSNGLB EQU    X'10'         FLAG INDICATING THAT NESTED FRR IS A     *00780000
+                              MODE=GLOBAL FRR                 @G382PPY  00790000
+FRRSNRTY EQU    X'08'         FRR RETRY INDICATOR. IF ON, FRR CANNOT   *00800000
+                              RETRY                               @L2C  00810000
+FRRSFLG2 DS     B             RESERVED                        @ZMB0248  00820000
+FRRSFLG3 DS     B             RESULT OF IAC INSTRUCTION FROM TIME OF   *00830000
+                              SETFRR                               @L3C 00840000
+FRRSFLG4 DS     B             FLAGS TO INDICATE OPTIONS CHOSEN          00850000
+*                             WHEN THE SETFRR WAS ISSUED      @ZMB0248  00860000
+FRRSEUT  EQU    X'80'         ENABLED UNLOCKED TASK FRR (EUT=YES ON     00870000
+*                             SETFRR)                         @G381P2F  00880000
+FRRSNCNL EQU    X'40'         CANCEL=NO REQUESTED, ROUTINE RUNS        *00890000
+                              PROTECTED FROM CANCELS AND DETACHES  @D1A 00900000
+FRRSFULL EQU    X'08'         MODE=FULLXM WAS SPEC ON SETFRR  @G381P2F  00910000
+FRRSPRIM EQU    X'04'         MODE=PRIMARY SPEC ON SETFRR     @G381P2F  00920000
+FRRSLCL  EQU    X'02'         MODE=LOCAL WAS SPEC ON SETFRR   @G381P2F  00930000
+FRRSGLB  EQU    X'01'         MODE=GLOBAL WAS SPEC ON SETFRR  @G381P2F  00940000
+FRRSPARM DS     CL24          PARAMETER AREA PASSED TO FRR              00950000
+FRRSXENT DSECT  ,FRRXPTR      THE MAPPING OF AN FRR ENTRY EXTENSION     00960000
+*                                                             @G381P2F  00970000
+FRRSXM   DS     0CL8          CROSS MEMORY INFORMATION WHEN SETFRR      00980000
+*                             WAS ISSUED                      @G381P2F  00990000
+FRRSCR3  DS     0CL4          CONTROL REGISTER 3              @G381P2F  01000000
+FRRSKM   DS     CL2           KEY MASK                        @G381P2F  01010000
+FRRSSAS  DS     CL2           SASID                           @G381P2F  01020000
+FRRSCR4  DS     0CL4          CONTROL REGISTER 4              @G381P2F  01030000
+FRRSAX   DS     CL2           AUTHORIZATION INDEX             @G381P2F  01040000
+FRRSPAS  DS     CL2           PASID                           @G381P2F  01050000
+FRREAX   DS     A             EAX VALUE AT SETFRR                 @L3A  01060000
+FRRLS    DS     A             LINKAGE STACK AT SETFRR             @L3A  01070000
+         MEND         */                                                01080000
+*%FRRSPLS: ;                                                            01090000
+* DCL FRRSESZE FIXED(31) CONSTANT(32); /* LENGTH OF EACH FRR ENTRY   */ 01100000
+* DCL FRRSEXSZ FIXED(31) CONSTANT(16);  /* LENGTH OF EACH FRR EXTENSION 01110000
+*                                                                @L3C*/ 01120000
+* DCL FRRSNENT FIXED(31) CONSTANT(16); /* NUMBER OF FRR ENTRIES IN      01130000
+*                                         THE STACK          @ZM02352*/ 01140000
+* DCL FRRSTLEN FIXED(31) CONSTANT(856); /*TOTAL LENGTH OF NORMAL FRR    01150000
+*                                         STACK                  @L3C*/ 01160000
+*DECLARE                                                                01170000
+*  1 FRRS    BASED(FRRSPTR),                                            01180000
+*    2 FRRSND     CHAR(88)  BDY(WORD), /* NON-DYNAMIC PART OF THE       01190000
+*                                         FRR STACK              @L3C*/ 01200000
+*      3 FRRSHEAD   CHAR(16) BDY(WORD),/* THE HEADER OF THE FRR         01210000
+*                                         STACK                      */ 01220000
+*        4 FRRSEMP     PTR(31),        /* ADDRESS WHICH INDICATES AN    01230000
+*                                         EMPTY  STACK               */ 01240000
+*        4 FRRSLAST    PTR(31),        /* ADDRESS OF LAST ENTRY IN      01250000
+*                                         STACK                      */ 01260000
+*        4 FRRSELEN   FIXED(31),       /* LENGTH OF EACH ENTRY IN       01270000
+*                                         THE STACK                  */ 01280000
+*        4 FRRSCURR    PTR(31),        /* ADDRESS OF CURRENT FRR        01290000
+*                                         ENTRY IN THE STACK         */ 01300000
+*      3 FRRSRSA     CHAR(24),         /* SETFRR REG 14-3 SAVE AREA     01310000
+*                                                            @G381P2F*/ 01320000
+*      3 FRRSRTMW  CHAR(4) BDY(WORD),  /* RECURSION CONTROL DATA        01330000
+*                                          REMOVED FROM THE RT1W @L1C*/ 01340000
+*      3 FRRSENTL  FIXED(16),           /* RESERVED FOR FRRSCOPY MACRO  01350000
+*                                          TO SAVE LENGTH OF ENTRIES    01360000
+*                                          ACTUALLY COPIED       @L1A*/ 01370000
+*      3 FRRSEXTL  FIXED(16),           /* RESERVED FOR FRRSCOPY MACRO  01380000
+*                                          TO SAVE LENGTH OF EXTENSIONS 01390000
+*                                          ACTUALLY COPIED       @L1A*/ 01400000
+*      3 *         CHAR(8),             /* RESERVED              @L1A*/ 01410000
+*      3 FRRSRTMA  PTR(31),            /* ADDRESS OF RTM1 WORK AREA     01420000
+*                                                                @L1A*/ 01430000
+*      3 FRRSXSTA  PTR(31),            /* ADDRESS OF THE EXTENSIONS TO  01440000
+*                                         THE FRR ENTRIES               01450000
+*                                         (ACTUAL SIZE IS 16 TIMES THE  01460000
+*                                         MAXIMUM NUMBER OF ENTRIES)    01470000
+*                                                                @L1A*/ 01480000
+*      3 FRRSASA     CHAR(24),         /* SETFRR ACCESS REGISTER        01490000
+*                                         14-3 SAVE AREA         @L3A*/ 01500000
+*    2 FRRSENTS    CHAR(FRRSNENT*FRRSESZE); /* THE FRR ENTRIES IN       01510000
+*                                         THE STACK              @L1C*/ 01520000
+*DECLARE                                                                01530000
+*  FRRSXSTK CHAR(FRRSNENT*FRRSEXSZ) BASED(FRRSXSTA); /* FRR EXTENSIONS  01540000
+*                                                                @L1A*/ 01550000
+*DECLARE                                                                01560000
+*  1 FRRSENTR    BASED(FRREPTR),       /* THE MAPPING OF A FRR          01570000
+*                                         ENTRY                      */ 01580000
+*    2 FRRSFRRA    PTR(31),            /* THE ADDRESS OF THE FRR     */ 01590000
+*      3 *         CHAR(3),                               /* @G381P2F*/ 01600000
+*      3 FRRSFRA1  CHAR(1),            /* LOW ORDER BYTE     @G381P2F*/ 01610000
+*        4 *         BIT(7),                              /* @G381P2F*/ 01620000
+*        4 FRRSXFLG  BIT(1),           /* FLAG INDICATING FRRSFLGS      01630000
+*                                         INITIALIZED WHEN SETFRR WAS   01640000
+*                                         ISSUED             @G381P2F*/ 01650000
+*    2 FRRSFLGS    CHAR(4),            /* FLAGS USED BY RTM DURING      01660000
+*                                         FRR PROCESSING             */ 01670000
+*      3 FRRSFLG1  CHAR(1),            /* RECURSION USED BY RTM      */ 01680000
+*        4 FRRSRCUR  BIT(1),           /* RECURSION FLAG USED WHEN      01690000
+*                                         GIVING CONTROL TO FRR         01700000
+*                                         AND WHEN RECEIVING CONTROL    01710000
+*                                         BACK FROM FRR              */ 01720000
+*        4 FRRSNEST  BIT(1),           /* FLAG INDICATING A NESTED      01730000
+*                                         FRR ENTRY                  */ 01740000
+*        4 FRRSNLCL  BIT(1),           /* FLAG INDICATING THAT NESTED   01750000
+*                                         FRR IS A MODE=LOCAL FRR       01760000
+*                                                            @G382PPY*/ 01770000
+*        4 FRRSNGLB  BIT(1),           /* FLAG INDICATING THAT NESTED   01780000
+*                                         FRR IS A MODE=GLOBAL FRR      01790000
+*                                                            @G382PPY*/ 01800000
+*        4 FRRSNRTY  BIT(1),           /* FRR RETRY INDICATOR. IF ON,   01810000
+*                                         FRR CANNOT RETRY.      @L2C*/ 01820000
+*      3 FRRSFLG2  CHAR(1),            /* RESERVED           @ZMB0248*/ 01830000
+*      3 FRRSFLG3  CHAR(1),            /* RESULT OF IAC INSTRUCTION     01840000
+*                                         FROM TIME OF SETFRR    @L3A*/ 01850000
+*        4 * BIT(6),                   /*                        @L3A*/ 01860000
+*        4 FRRSASC BIT(2),             /* ASC FLAGS              @L3A*/ 01870000
+*      3 FRRSFLG4  CHAR(1),            /* FLAGS TO INDICATE OPTIONS     01880000
+*                                         CHOSEN WHEN THE SETFRR WAS    01890000
+*                                         ISSUED             @ZMB0248*/ 01900000
+*        4 FRRSEUT   BIT(1),           /* ENABLED UNLOCKED TASK FRR     01910000
+*                                        (EUT=YES ON SETFRR) @G381P2F*/ 01920000
+*        4 FRRSNCNL  BIT(1),           /* CANCEL=NO FRR, PROTECTED      01930000
+*                                         FROM CANCELS, DETACHES @D1A*/ 01940000
+*        4 *         BIT(2),           /* RESERVED               @D1C*/ 01950000
+*        4 FRRSFULL  BIT(1),           /* MODE=FULLXM WAS SPEC ON THE   01960000
+*                                         SETFRR             @G381P2F*/ 01970000
+*        4 FRRSPRIM  BIT(1),           /* MODE=PRIMARY WAS SPEC ON      01980000
+*                                         THE SETFRR         @G381P2F*/ 01990000
+*        4 FRRSLCL   BIT(1),           /* MODE=LOCAL WAS SPEC ON THE    02000000
+*                                         SETFRR             @G381P2F*/ 02010000
+*        4 FRRSGLB   BIT(1),           /* MODE=GLOBAL WAS SPEC ON THE   02020000
+*                                         SETFRR             @G381P2F*/ 02030000
+*    2 FRRSPARM     CHAR(24);          /* PARAMETER AREA PASSED TO      02040000
+*                                         FRR                        */ 02050000
+*DECLARE                                                                02060000
+*  1 FRRSXENT    BASED,                /* THE MAPPING OF AN FRR         02070000
+*                                         ENTRY EXTENSION    @G381P2F*/ 02080000
+*    2 FRRSXM     CHAR(8) BDY(WORD),   /* CROSS MEMORY INFO WHEN        02090000
+*                                         SETFRR WAS ISSUED  @G381P2F*/ 02100000
+*      3 FRRSCR3     CHAR(4),          /* CONTROL REGISTER 3 WHEN       02110000
+*                                         SETFRR WAS ISSUED  @G381P2F*/ 02120000
+*        4 FRRSKM    CHAR(2),          /* KEY MASK           @G381P2F*/ 02130000
+*        4 FRRSSAS   CHAR(2),          /* SASID              @G381P2F*/ 02140000
+*      3 FRRSCR4     CHAR(4),          /* CONTROL REGISTER 4 WHEN       02150000
+*                                         SETFRR WAS ISSUED  @G381P2F*/ 02160000
+*        4 FRRSAX    CHAR(2),          /*AUTHORIZATION INDEX @G381P2F*/ 02170000
+*        4 FRRSPAS   CHAR(2),          /* PASID                  @L3C*/ 02180000
+*    2 FRREAX PTR(31),                 /* EAX VALUE AT SETFRR    @L3A*/ 02190000
+*    2 FRRLS PTR(31);                  /*LINKAGE STACK AT SETFRR @L3A*/ 02200000

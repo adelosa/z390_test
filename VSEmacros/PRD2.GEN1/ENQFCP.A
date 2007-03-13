@@ -1,0 +1,163 @@
+         MACRO                                                          00000100
+&NAME    ENQFCP &FUNC=(0),&AREA=,&WAIT=YES,&INPUT=,&REQ=,&TYPE=IPL      00000223
+.*                                                                      00000300
+.*       IBM DISK OPERATING SYSTEM                                      00000402
+*        SUPERVISOR - ENQFCP   - 5686-CF7                               00000554
+         AGO   .ZZZ                                                     00000702
+*                                                                       00000800
+*        LICENSED MATERIALS - PROPERTY OF IBM                           00000900
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    00001000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 2004                          00001154
+*        SEE COPYRIGHT INSTRUCTIONS                                     00001200
+*                                                                       00001300
+.ZZZ     ANOP                                                           00001400
+.*                                                                      00001500
+.**** START OF SPECIFICATIONS                                           00001600
+.*                                                                      00001700
+.*  MODULE-TYPE      =  MACRO                                           00001800
+.*                                                                      00001900
+.*  DESCRIPTIVE NAME =  REQUEST SERVICE FROM FCP SYSTEM TASK            00002000
+.*  STATUS           =  EXTENDED MACRO                                  00002100
+.*  FUNCTION         =  ENQUEUES REQUEST INTO FCP REQUEST CHAIN         00002200
+.*                      POSTS FCP SYSTEM TASK                           00002300
+.*                      PERFORM WAIT IF REQUESTED                       00002401
+.*  CHANGE ACTIVITY  =  AS FOLLOWS                                      00002500
+.*                                                                      00002600
+.** END OF SPECICATIONS ***************************************         00002700
+*                                                                       00002800
+         AIF   ('&FUNC' EQ 'GETMSGE').GETMSGE                           00002931
+         AIF   ('&FUNC' EQ 'GETREQE').GETREQE                           00003031
+         AIF   (T'&AREA EQ 'O'                                         X00003108
+               AND T'&INPUT EQ 'O' AND T'&REQ EQ 'O').ERROR1            00003231
+         AIF   (T'&AREA NE 'O'                                         X00003308
+               AND T'&INPUT EQ 'O' AND T'&REQ EQ 'O').INPCKOK           00003408
+         AIF   (T'&AREA EQ 'O'                                         X00003508
+               AND T'&INPUT NE 'O' AND T'&REQ NE 'O').INPCKCO           00003655
+         MNOTE 8,'AREA AND (INPUT,REQ) ARE MUTUALLY EXCLUSIV'           00003708
+         MEXIT                                                          00003808
+.ERROR1  ANOP                                                           00003908
+         MNOTE 8,'EITHER AREA OR (INPUT,REQ) MUST BE SPECIFIED'         00004008
+         MEXIT                                                          00004108
+.ERROR2  ANOP                                                           00004255
+         MNOTE 8,'AREA IS REQUIRED FOR TYPE MSG OR IMSG'                00004355
+         MEXIT                                                          00004455
+.INPCKCO ANOP                                                           00004655
+         AIF   (('&TYPE' EQ 'MSG') OR ('&TYPE' EQ 'IMSG')).ERROR2       00004755
+.INPCKOK ANOP                                                           00004855
+         STM   14,1,ENQA&SYSNDX    SAVE WORK REGISTER                   00005030
+         AIF   ('&FUNC'(1,1) EQ '(').FUNCREG                            00005130
+         LA    0,&FUNC             GET FCT CODE                         00005230
+         AGO   .FUNCEND                                                 00005330
+.FUNCREG ANOP                                                           00005430
+         AIF   ('&FUNC(1)' EQ '0').FUNCEND                              00005530
+         LR    0,&FUNC(1)               FCT CODE TO DEFAULT REG         00005630
+.FUNCEND ANOP                                                           00005730
+         AIF   (T'&AREA EQ 'O').INPTBEG                                 00005830
+         AIF   ('&AREA'(1,1) EQ '(').AREAREG                            00005930
+         LA    1,&AREA             GET ADDR OF PARAMETER AREA           00006030
+         AGO   .AREAEND                                                 00006130
+.AREAREG ANOP                                                           00006230
+         AIF   ('&AREA(1)' EQ '1').AREAEND                              00006330
+         LR    1,&AREA(1)          PARAMTER AREA ADDR TO DEFAULT REG    00006430
+.AREAEND ANOP                                                           00006530
+         AIF   (('&TYPE' EQ 'MSG') OR ('&TYPE' EQ 'IMSG')).PROCMSG      00006750
+         LA    14,EFCPREQB-ENQFCPCB(,1)                                 00006830
+         AGO   .REQTEND                                                 00006930
+.PROCMSG ANOP                                                           00007030
+         LR    14,1               GET ADDR OF REQ ELEMENT               00007133
+         LA    1,EFCPEND-EFCPREQB(,14) GET ADDR OF PARAMETER LIST       00007233
+         AGO   .REQTEND                                                 00007330
+.INPTBEG ANOP                                                           00007430
+         AIF   ('&INPUT'(1,1) EQ '(').INPTREG                           00007530
+         LA    1,&INPUT            GET ADDR OF PARAMETER LIST           00007630
+         AGO   .INPTEND                                                 00007730
+.INPTREG ANOP                                                           00007830
+         AIF   ('&INPUT(1)' EQ '1').INPTEND                             00007930
+         LR    1,&INPUT(1)         PARAMTER INPUT ADDR TO DEFAULT REG   00008030
+.INPTEND ANOP                                                           00008130
+         AIF   ('&REQ'(1,1) EQ '(').REQTREG                             00008230
+         LA    14,&REQ              GET ADDR OF PARAMETER REQ           00008330
+         AGO   .REQTEND                                                 00008430
+.REQTREG ANOP                                                           00008530
+         AIF   ('&REQ(1)' EQ '14').REQTEND                              00008630
+         LR    14,&REQ(1)           PARAMTER REQ ADDR TO DEFAULT REG    00008730
+.REQTEND ANOP                                                           00008830
+         ST    1,EFCPIPTR-EFCPREQB(,14) SAVE PTR TO PARAMETER LIST      00008930
+         STC   0,EFCPFC-EFCPREQB(,14) FCT CODE TO PARAMETER AREA        00009030
+         ASYSCOM 15                                                     00009151
+         AIF   ('&WAIT' NE 'YES').NOGEN2                                00009230
+         XC    EFCPECB-EFCPREQB(4,14),EFCPECB-EFCPREQB(14) CLEAR ECB    00009330
+         LH    1,IJBTIK-IJBSYSBG(,15)                                   00009445
+         STH   1,EFCPTID-EFCPREQB(,14) SAVE REQUESTORS TID              00009943
+         AGO   .NOGEN2A                                                 00010043
+.NOGEN2  ANOP                                                           00010143
+         MVI   EFCPTID-EFCPREQB(14),X'00' CLEAR                         00010243
+         MVI   EFCPTID+1-EFCPREQB(14),X'00' ......TID FIELD             00010343
+.NOGEN2A ANOP                                                           00010443
+         L     15,IJBAFCPA-IJBSYSBG(,15)                                00011145
+         L     15,FCPCHN-FCPTAB(,15) GET ADDRESS OF ANCHOR              00011743
+ENQB&SYSNDX DS    0H                                                    00011843
+         L     1,0(,15)          GET END OF CHAIN                       00011943
+         ST    1,EFCPCPTR-EFCPREQB(,14) CHAIN TO OUR REQ BLOCK          00012043
+         CS    1,14,0(15)         ENQ OUR AT (LOGICAL) BOTTOM OF CHAIN  00012143
+         BNE   ENQB&SYSNDX        ENQ NOT SUCCESSFULL                   00012243
+         B     ENQC&SYSNDX                                              00012343
+ENQA&SYSNDX DC    4F'0'                                                 00012443
+ENQC&SYSNDX DS    0H                                                    00012543
+         AIF   (('&TYPE' EQ 'INT') OR ('&TYPE' EQ 'IMSG')).NOGEN5       00012650
+         LTR    1,1             FIRST REQ BLOCK ENQUEUED                00012743
+         BNZ    ENQD&SYSNDX     NO, SKIP POSTING                        00012843
+         LA    0,X'14'          TASK-ID OF FCP SYSTEM TASK              00012943
+         TREADY IO,TASK=(0)                                             00013043
+ENQD&SYSNDX DS    0H                                                    00013143
+         AIF   ('&WAIT' NE 'YES').NOGEN4                                00013243
+         LA    1,EFCPECB-EFCPREQB(,14)                                  00013343
+         WAIT  (1)                                                      00013452
+.NOGEN4  ANOP                                                           00013543
+         LM    14,1,ENQA&SYSNDX                                         00013643
+         AGO   .NOGEN5A                                                 00013743
+.NOGEN5  ANOP                                                           00013843
+         LM    14,0,ENQA&SYSNDX                                         00013943
+.NOGEN5A ANOP                                                           00014043
+         MEXIT                                                          00014143
+.GETREQE ANOP                                                           00014243
+         STM   15,5,ENQR2&SYSNDX                                        00014343
+         ASYSCOM 15                                                     00014443
+         L     15,IJBAFCPA-IJBSYSBG(,15)                                00014645
+         L     15,FCPFCHN-FCPTAB(,15) HEADER OF REQ QUEUE               00015243
+ENQR1&SYSNDX DS    0H                                                   00015343
+         ICM   4,15,0(15)         GET ELEMENT ADDR                      00015443
+         ST    4,ENQR2&SYSNDX+8                                         00015543
+         BZ    ENQR3&SYSNDX                                             00015643
+         L     5,4(,15)                                                 00015743
+         L     2,0(,4)                                                  00015843
+         LR    R3,R5                                                    00015943
+         BCTR  R3,0                                                     00016043
+         CDS   4,2,0(15)                                                00016143
+         BNE   ENQR1&SYSNDX                                             00016243
+*        MVI   EFCPFLAG-EFCPREQB(4),EFCFREQQ                            00016447
+         MVI   9(4),X'80'         INDICATE ELEMENT FROM REQ QUEUE       00016543
+         B     ENQR3&SYSNDX                                             00016643
+ENQR2&SYSNDX DC    7F'0'                                                00016743
+ENQR3&SYSNDX DS    0H                                                   00016843
+         LM    15,5,ENQR2&SYSNDX                                        00016943
+         MEXIT                                                          00017043
+.GETMSGE ANOP                                                           00017143
+         STM   15,0,ENQM2&SYSNDX                                        00017243
+         ASYSCOM 15                                                     00017343
+         L     15,IJBAFCPA-IJBSYSBG(,15)                                00017545
+         L     15,FCPFMCHN-FCPTAB(,15) HEADER OF MSG QUEUE              00018043
+ENQM1&SYSNDX DS    0H                                                   00018143
+         ICM   1,15,0(15)         GET ELEMENT ADDR                      00018243
+         BZ    ENQM3&SYSNDX                                             00018343
+         L     0,0(,1)                                                  00018438
+         CS    1,0,0(15)                                                00018538
+         BNE   ENQM1&SYSNDX                                             00018638
+         XC    0(256,1),0(1)      CLEAR ELEMENT                         00018749
+*        MVI   EFCPFLAG-EFCPREQB(1),EFCFMSGQ                            00018947
+         MVI   9(1),X'40'         INDICATE ELEMENT FROM MSG QUEUE       00019038
+         B     ENQM3&SYSNDX                                             00019141
+ENQM2&SYSNDX DC    2F'0'                                                00019242
+ENQM3&SYSNDX DS    0H                                                   00019341
+         LM    15,0,ENQM2&SYSNDX                                        00019441
+         MEND                                                           00020030

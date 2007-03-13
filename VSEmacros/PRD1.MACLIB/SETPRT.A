@@ -1,0 +1,898 @@
+         MACRO                                                          00050000
+&LABEL   SETPRT &SYSNNN,&BURST=,&CHARS=,&CINDX=,                       *00100000
+               &COPYG=,&DCHK=,&DEBUG=,&DFLT=,&EP=,                     *00150000
+               &FCB=,&FLASH=,&FORMS=,&INIT=,&MF=,                      *00200000
+               &MODIFY=,&SEP=,&TRC=,&WORKA=                             00250000
+.*/**********************************************************           00300000
+.*                                                          *  @D31TDRH 00350000
+.*      IBM VIRTUAL STORAGE EXTENDED  (VSE)                 *  @D31TDRH 00400000
+.*      COMPONENT: 5686-032-00-C55                          *  @D51MDBK 00450000
+.* @@CPY                                                    *  @D31TDRH 00500000
+.*      THIS MACRO IS "RESTRICTED MATERIALS OF IBM"         *  @D31TDRH 00550000
+.*      5686-032 (C) COPYRIGHT IBM CORP. 1984, 1992         *  @D52VDAK 00600052
+.*      ALL RIGHTS RESERVED                                 *  @D31TDRH 00650000
+.*      LICENSED MATERIALS-PROPERTY OF IBM                  *  @D31TDRH 00700000
+.*      SEE COPYRIGHT INSTRUCTIONS, G120-2083               *  @D31TDRH 00750000
+.*                                                          *  @D31TDRH 00800000
+.************************************************************/          00850000
+.*                                                                      00900000
+.*            CALLED BY AN APPLICATION PROGRAM, JOB CONTROL OR RESTART  00950000
+.*            TO SET A PRINTER UP.                                      01000000
+.* FUNCTION - BUILD ALL OR A PART OF A SETPRT PARAMETER LIST OR CALL    01050000
+.*            SETPRT OR BOTH.                                           01100000
+.* CHANGE SUMMARY -                                                     01150000
+.*                LEVEL 2.1.0                                  @D148LFP 01200000
+.*                JOB CANCELS AFTER CDLOAD FOR IJVSPRDV        @DA35625 01250000
+.*    06/01/89    RELEASE 4.1.0                                @D31TDRH 01300000
+.*    12/15/90    RELEASE 5.1.0                                @D51MDBK 01350000
+.*                                                                      01400000
+.***********************************************************            01450000
+         LCLA  &A,&AX         MISCELLANEOUS COUNTERS                    01500000
+         LCLA  &FROM          DISPLACEMENT TO MOVE FROM IN MVC          01550000
+         LCLA  &LEN           LENGTH TO MOVE IN MVS                     01600000
+         LCLA  &TO            DISPLACEMENT TO MOVE TO IN MVC            01650000
+         LCLB  &BURAOK        FIRST BURST BIT NOT TO BE SET 0           01700000
+         LCLB  &BURAON        FIRST BURST BIT IS TO BE SET 1            01750000
+         LCLB  &BURBOK        SECOND BURST BIT NOT TO BE SET 0          01800000
+         LCLB  &BURBON        SECOND BURST BIT IS TO BE SET 1           01850000
+.*       THE FOLLOWING ARE USED IN OPTIMIZING THE MOVING OF             01900000
+.*       DATA WITH MF=(E,XXX).  THEY ARE INITIALLY SET                  01950000
+.*       ON IF A DC MAY BE NECESSARY AND SOME OR ALL MAY BE             02000000
+.*       SET OFF IF THE FIELDS WOULD BE BLANKED MORE EFFICIENTLY        02050000
+.*       WITH AN MVI AND MVC THAN AN MVC WITH A CONSTANT.               02100000
+         LCLB  &DCHARS        CHARACTER ARRANGEMENT TABLES              02150000
+         LCLB  &DCINDX        COPY INDEX (GROUP TRANSMISSION)           02200000
+         LCLB  &DCOPYGR       COPY GROUPS                               02250000
+         LCLB  &DFCB          FCB NAME                                  02300000
+         LCLB  &DFLASHC       FORMS OVERLAY COPY COUNT                  02350000
+         LCLB  &DFLASHN       FORMS OVERLAY FRAME NAME                  02400000
+         LCLB  &DFORMS        FORM NAME                                 02450000
+         LCLB  &DMODIFP       COPY MODIFICATION PHASE NAME              02500000
+         LCLB  &DMODIFC       CHAR. ARR. TABLE FOR COPY MODIFICATION    02550000
+         LCLB  &DLUNIT        LOGICAL UNIT                              02600000
+         LCLB  &DRES2         RESERVED AREA BEFORE LOGICAL UNIT         02650000
+.*                                                                      02700000
+         LCLB  &DCHKOK        DO NOT TURN OFF DCHK BIT                  02750000
+         LCLB  &DCHKON        DCHK=U CODED                              02800000
+         LCLB  &DCSW          ONE OR MORE DC'S NEEDED IF PLIST=NAME     02850000
+         LCLB  &DEBAOK        DO NOT TURN OFF FIRST DEBUG BIT           02900000
+         LCLB  &DEBAON        TURN ON FIRST DEBUG BIT                   02950000
+         LCLB  &DEBBOK        DO NOT TURN OFF SECOND DEBUG BIT          03000000
+         LCLB  &DEBBON        TURN ON SECOND DEBUG BIT                  03050000
+         LCLB  &DEBCOK        DO NOT TURN OFF THIRD DEBUG BIT           03100000
+         LCLB  &DEBCON        TURN ON THIRD DEBUG BIT                   03150000
+         LCLB  &EFORM         EXECUTE A SEPARATE PARAMETER LIST         03200000
+         LCLB  &FCBVOK        DO NOT TURN OFF FCB VERIFY BIT            03250000
+         LCLB  &FCBVON        FCB VERIFY REQUESTED                      03300000
+         LCLB  &INITOK        DO NOT TURN OFF INIT=Y                    03350000
+         LCLB  &INITON        INIT=Y CODED OR DEFAULTED BY DFLT=Y       03400000
+         LCLB  &LFORM         CREATE PARAMETER LIST ONLY; NO INSTRUC    03450000
+         LCLB  &SEPMOK        DO NOT TURN OFF SEP=M                     03500000
+         LCLB  &SEPMON        SEP=M OR MO                               03550000
+         LCLB  &SEPOOK        DO NOT TURN OFF SEP=O                     03600000
+         LCLB  &SEPOON        SEP=O OR MO                               03650000
+         LCLB  &SWERR         ERROR DETECTED. EXPANSION SUPPRESSED      03700000
+         LCLB  &TRCOK         DO NOT TURN OFF TRC=Y                     03750000
+         LCLB  &TRCON         TRC=Y WAS CODED                           03800000
+         LCLB  &TRC2ON        TRC=Y OR TRC=N WAS CODED                  03850000
+         LCLB  &UNITOK        DO NOT SET LOGICAL UNIT BIT TO 0 (NAME)   03900000
+         LCLB  &UNITON        LOGICAL UNIT IS ADDR, NOT NAME            03950000
+         LCLC  &C             SCRATCH CHARACTER VALUE                   04000000
+         LCLC  &CX            SCRATCH CHARACTER VALUE                   04050000
+         LCLC  &PREF          A SHORT NAME CONTAINING A UNIQUE NAME     04100000
+.*                                                                      04150000
+*        PRINTER SUPPORT - SETPRT - 5745-SC-PRT - RELEASE 34.0          04200000
+.* WHEN ANY OF THE FOLLOWING MACRO BITS IS OFF, THE INDICATED BIT       04250000
+.* IN THE GENERATED LIST IS FORCED OFF.  THE DIFFERENCE BETWEEN THIS    04300000
+.* AND LEAVING A BIT ALONE IS WHEN A REMOTE LIST IS BEING UPDATED.      04350000
+&BURAOK  SETB  1              DO NOT TURN OFF FIRST BURST BIT           04400000
+&BURBOK  SETB  1              DO NOT TURN OFF SECOND BURST BIT          04450000
+&DCHKOK  SETB  1              DO NOT TURN OFF DCHK BIT                  04500000
+&DEBAOK  SETB  1              DO NOT TURN OFF FIRST DEBUG BIT           04550000
+&DEBBOK  SETB  1              DO NOT TURN OFF SECOND DEBUG BIT          04600000
+&DEBCOK  SETB  1              DO NOT TURN OFF THIRD DEBUG BIT           04650000
+&FCBVOK  SETB  1              DO NOT TURN OFF FCB VERIFY BIT            04700000
+&INITOK  SETB  1              DO NOT TURN OFF THE INIT BIT              04750000
+&SEPMOK  SETB  1              DO NOT TURN OFF SEP=M                     04800000
+&SEPOOK  SETB  1              DO NOT TURN OFF SEP=O                     04850000
+&TRCOK   SETB  1              DO NOT TURN OFF TRC BIT                   04900000
+&UNITOK  SETB  1              DO NOT TURN OFF LOGICAL UNIT BIT          04950000
+&PREF    SETC  'IJV&SYSNDX'   CREATE UNIQUE NAME IN A SHORT VARIABLE    05000000
+.********************************************************************** 05050000
+.* ANALYZE THE MF PARAMETER.  IT MUST BE NULL, L OR OF FORM (E,NAME).   05100000
+.********************************************************************** 05150000
+         AIF   ('&MF' EQ '').SYSTEST                                    05200000
+&LFORM   SETB  (N'&MF EQ 1 AND '&MF(1)' EQ 'L')                         05250000
+         AIF   (&LFORM).PLTEST                                          05300000
+         AIF   (N'&MF NE 2 OR '&MF(1)' NE 'E').MFERR                    05350000
+         AIF   ('&MF(2)' EQ '').MFERR                                   05400000
+&EFORM   SETB  1                        REMEMBER IT IS E-FORM OF MACRO  05450000
+         AIF   ('&MF(2)'(1,1) NE '(').SYSTEST  GO IF NOT IN A REGISTER  05500000
+         AIF   ('&MF(2)' NE '(0)').MFNOT0      GO IF NOT IN REGISTER 0  05550000
+         MNOTE 12,'MF SPECIFIES REGISTER 0'                             05600000
+&SWERR   SETB  1                        SUPPRESS MACRO EXPANSION        05650000
+         AGO   .SYSTEST                                                 05700000
+.MFNOT0  AIF   ('&EP' NE '').SYSTEST    GO IF EP WAS CODED              05750000
+         AIF   ('&MF(2)' NE '(1)').SYSTEST  GO IF REG 1 NOT PRELOADED   05800000
+         MNOTE 12,'MF SPECIFIES REGISTER 1 BUT EP IS OMITTED'           05850000
+&SWERR   SETB  1                                                        05900000
+         AGO   .SYSTEST                                                 05950000
+.MFERR   MNOTE 12,'MF IS CODED BUT NOT L OR OF FORM (E,XXX)'            06000000
+&SWERR   SETB  1                                                        06050000
+         AGO   .SYSTEST                                                 06100000
+.* CHECK FOR ANY REGISTER VALUES IN COMBINATION WITH MF=L.              06150000
+.PLTEST  AIF   ('&SYSNNN' EQ '').PL2                                    06200000
+         AIF   ('&SYSNNN'(1,1) EQ '(').PLERR                            06250000
+.PL2     AIF   ('&CINDX' EQ '').PL3                                     06300000
+         AIF   ('&CINDX'(1,1) EQ '(').PLERR                             06350000
+.PL3     AIF   ('&EP' NE '').PLERR                                      06400000
+         AIF   ('&WORKA' EQ '').SYSTEST                                 06450000
+.PLERR   MNOTE 12,'MF=L SPECIFIED BUT LOGICAL UNIT OR CINDX IS IN A REG*06500000
+               ISTER OR EP OR WORKA IS CODED'                           06550000
+&SWERR   SETB  1                        SET ERROR SWITCH                06600000
+.********************************************************************** 06650000
+.* ANALYZE THE SYSNNN POSITIONAL PARAMETER.                             06700000
+.********************************************************************** 06750000
+.SYSTEST ANOP                                                           06800000
+         AIF   ('&SYSNNN' EQ '' AND NOT &EFORM AND NOT &LFORM).SYSERR   06850000
+         AIF   ('&SYSNNN' EQ '').CINDTST  GO IF LOGICAL UNIT OMITTED    06900000
+         AIF   (N'&SYSNNN GT 1).SYSERR  GO IF VALUES IN PARENTHESES     06950000
+         AIF   ('&SYSNNN'(1,1) EQ '(').SYSADDR  GO IF ADDRESS FORM      07000000
+         AIF   (K'&SYSNNN NE 6 OR '&SYSNNN'(1,3) NE 'SYS').SYSERR       07050000
+&UNITOK  SETB  0                   FORCE UNIT BIT OFF                   07100000
+&DLUNIT  SETB  1                   SHOW DC MAY BE NEEDED                07150000
+&C       SETC  '&SYSNNN'(4,3)                                           07200000
+         AIF   ('&C' EQ 'LST' OR '&C' EQ 'LOG').CINDTST                 07250000
+         AIF   ('&C'(1,1) LT '0' OR '&C'(1,1) GT '2').SYSERR            07300000
+         AIF   ('&C'(2,1) LT '0' OR '&C'(2,1) GT '9').SYSERR            07350000
+         AIF   ('&C'(3,1) LT '0' OR '&C'(3,1) GT '9').SYSERR            07400000
+&A       SETA  &C                       CONVERT NNN TO ARITHMETIC       07450000
+         AIF   (&A LE 241).CINDTST                                      07500000
+.SYSERR  MNOTE 12,'THE LOGICAL UNIT PARAMETER IS MISSING OR INVALID'    07550000
+&SWERR   SETB  1                                                        07600000
+         AGO   .CINDTST                                                 07650000
+.SYSADDR ANOP                                                           07700000
+&UNITON  SETB  1                   SHOW LOGICAL UNIT IS ADDRESS         07750000
+         AIF   (T'&SYSNNN(1) NE 'N').CINDTST  GO IF NOT SELF-DEFINING   07800000
+         AIF   (&SYSNNN(1) GE 2 AND &SYSNNN(1) LE 13).CINDTST           07850000
+         MNOTE 12,'REGISTER CONTAINING LUB ADDR IS NOT IN RANGE 2-13'   07900000
+&SWERR   SETB  1                        SUPPRESS MACRO EXPANSION        07950000
+.********************************************************************** 08000000
+.* ANALYZE THE CINDX PARAMETERS.                                        08050000
+.********************************************************************** 08100000
+.CINDTST AIF   ('&CINDX' EQ '').DFLTTST                                 08150000
+         AIF   (N'&CINDX GT 1).CINDERR                                  08200000
+         AIF   ('&CINDX(1)'(1,1) EQ '*').CINDERR                        08250000
+         AIF   ('&CINDX'(1,1) EQ '(').CINDREG  GO IF A REGISTER         08300000
+&DCINDX  SETB  1                   SHOW THAT A DC WILL BE NEEDED        08350000
+         AIF   (T'&CINDX NE 'N').DFLTTST                                08400000
+         AIF   (&CINDX GT 255).CINDERR                                  08450000
+         AGO   .DFLTTST                                                 08500000
+.*   VALUE IS IN A REGISTER.                                            08550000
+.*   ALLOW A SYMBOLIC NAME FOR THE REGISTER.                            08600000
+.CINDREG AIF   (T'&CINDX(1) NE 'N').DFLTTST                             08650000
+         AIF   (&CINDX(1) GE 2 AND &CINDX(1) LE 13).DFLTTST             08700000
+.CINDERR MNOTE 12,'CINDX VALUE NOT 0 TO 255 OR VALID REGISTER'          08750000
+&SWERR   SETB  1                                                        08800000
+.********************************************************************** 08850000
+.* ANALYZE THE DFLT PARAMETER.                                          08900000
+.* IF DFLT=Y AND MF=(E,XXX) WERE BOTH SPECIFIED, CERTAIN FIELDS         08950000
+.* ARE SET TO BLANKS IF THEY WERE NOT SPECIFIED AND CERTAIN FIELDS      09000000
+.* ARE SET OTHERWISE BECAUSE THEY HAVE NO SYSTEM DEFAULTS.  THE         09050000
+.* CHARACTER ARRANGEMENT TABLE FOR MODIFY IS SET TO ZEROES TO ALLOW     09100000
+.* FOR FUTURE SUPPORT OF A SYSTEM DEFAULT FOR IT.  IF NO FLASH          09150000
+.* COUNT IS SPECIFIED, IT IS SET TO 255 TO FLASH ALL COPIES.            09200000
+.********************************************************************** 09250000
+.DFLTTST ANOP                                                           09300000
+&DMODIFC SETB  ('&DFLT' EQ 'Y')   FORCE CAT FOR MODIFY TO BE CHANGED    09350000
+&DFLASHC SETB  ('&DFLT' EQ 'Y')   FORCE THE FLASH COUNT TO CHANGED      09400000
+         AIF   ('&DFLT' EQ '' OR '&DFLT' EQ 'N' OR '&DFLT' EQ 'Y').POST*09450000
+               EST                                                      09500000
+         MNOTE 12,'VALUE OF DFLT IS NOT Y OR N'                         09550000
+&SWERR   SETB  1                                                        09600000
+.********************************************************************** 09650000
+.* VERIFY THERE IS ONLY ONE POSITIONAL PARAMETER.                       09700000
+.********************************************************************** 09750000
+.POSTEST AIF   (N'&SYSLIST LE 1).BURTST                                 09800000
+         MNOTE 12,'EXCESSIVE POSITIONAL PARAMETERS'                     09850000
+&SWERR   SETB  1                                                        09900000
+.********************************************************************** 09950000
+.* ANALYZE THE BURST PARAMETER.                                         10000000
+.********************************************************************** 10050000
+.BURTST  AIF   ('&BURST' EQ '' AND '&DFLT' EQ 'Y').BURDFLT              10100000
+         AIF   ('&BURST' EQ '').CHARTST IF OMITTED, DO NOTHING          10150000
+         AIF   ('&BURST' EQ '*').BURDFLT                                10200000
+&BURBON  SETB  1                   SET SECOND BURST BIT ON              10250000
+         AIF   ('&BURST' EQ 'Y').BURSTON                                10300000
+         AIF   ('&BURST' NE 'N').BURERR                                 10350000
+&BURAOK  SETB  0                   SAVE BURST=N (FORCE BIT OFF)         10400000
+         AGO   .CHARTST                                                 10450000
+.BURDFLT ANOP                                                           10500000
+&BURBOK  SETB  0                   FORCE SECOND BIT OFF                 10550000
+.BURSTON ANOP                                                           10600000
+&BURAON  SETB  1                   FORCE FIRST BIT ON                   10650000
+         AGO   .CHARTST                                                 10700000
+.BURERR  MNOTE 12,'BURST IS NOT Y, N OR *'                              10750000
+&SWERR   SETB  1                                                        10800000
+.********************************************************************** 10850000
+.* ANALYZE THE CHARS PARAMETER.  NO NULL VALUES ARE ALLOWED.            10900000
+.********************************************************************** 10950000
+.CHARTST AIF   ('&CHARS' EQ '').COPGTST                                 11000000
+&DCHARS  SETB  1                   SHOW THAT A DC WILL BE NEEDED        11050000
+         AIF   ('&CHARS' EQ '*').COPGTST                                11100000
+         AIF   ('&CHARS(1)' EQ '').CHARERR     GO IF 1ST VALUE MISSING  11150000
+         AIF   ('&CHARS(1)'(1,1) EQ '*' OR K'&CHARS(1) GT 4).CHARERR    11200000
+         AIF   (N'&CHARS EQ 1).COPGTST                                  11250000
+         AIF   ('&CHARS(2)' EQ '').CHARERR                              11300000
+         AIF   ('&CHARS(2)'(1,1) EQ '*' OR K'&CHARS(2) GT 4).CHARERR    11350000
+         AIF   (N'&CHARS EQ 2).COPGTST                                  11400000
+         AIF   ('&CHARS(3)' EQ '').CHARERR                              11450000
+         AIF   ('&CHARS(3)'(1,1) EQ '*' OR K'&CHARS(3) GT 4).CHARERR    11500000
+         AIF   (N'&CHARS EQ 3).COPGTST                                  11550000
+         AIF   ('&CHARS(4)' EQ '').CHARERR                              11600000
+         AIF   ('&CHARS(4)'(1,1) EQ '*' OR K'&CHARS(4) GT 4).CHARERR    11650000
+         AIF   (N'&CHARS EQ 4).COPGTST           GO IF TOO MANY VALUES  11700000
+.CHARERR MNOTE 12,'CHARS IS NOT * OR 1 TO 4 NAMES OF 1 TO 4 CHARACTERS *11750000
+               EACH'                                                    11800000
+&SWERR   SETB  1                                                        11850000
+.********************************************************************** 11900000
+.* ANALYZE THE COPYG PARAMETER.  A ZERO VALUE IS ALLOWED ONLY IF IT     11950000
+.* IS THE FIRST ONE.  THIS IS SO THAT COPYG IN A PARAMETER LIST         12000000
+.* CREATED WITH MF=L CAN BE CLEARED WITH MF=(E,XXX).                    12050000
+.********************************************************************** 12100000
+.COPGTST AIF   ('&COPYG' EQ '').DCHKTST                                 12150000
+&DCOPYGR SETB  1                         SHOW THAT A DC WILL BE NEEDED  12200000
+         AIF   (T'&COPYG(1) NE 'N').COPSCAN                             12250000
+         AIF   (N'&COPYG GT 1).COPSCAN   A ZERO ALONE IS VALID          12300000
+         AIF   (&COPYG(1) EQ 0).DCHKTST  ARITHMETIC COMPARISON          12350000
+.COPSCAN ANOP                                                           12400000
+.* IF SELF-DEFINING VALUES, VERIFY THAT THE SUM IS NOT OVER 255'        12450000
+&A       SETA  0                   INITIALIZE LOOP COUNTER              12500000
+&AX      SETA  0                   INITIALIZE CUMULATIVE SUM            12550000
+.COPGLUP ANOP                                                           12600000
+&A       SETA  &A+1                GO TO NEXT VALUE                     12650000
+         AIF   (&A GT 8).COPGERR   ONLY 8 VALUES ARE LEGAL              12700000
+         AIF   ('&COPYG(&A)' EQ '').COPGERR                             12750000
+         AIF   (T'&COPYG(&A) NE 'N').COPGNXT                            12800000
+         AIF   (&COPYG(&A) EQ 0).COPGERR                                12850000
+&AX      SETA  &AX+&COPYG(&A)      ADD GROUP VALUE TO TOTAL             12900000
+.COPGNXT ANOP                                                           12950000
+         AIF   (&A LT N'&COPYG).COPGLUP                                 13000000
+         AIF   (&AX LE 255).DCHKTST                                     13050000
+.COPGERR MNOTE 12,'COPYG HAS A NULL OR ZERO VALUE OR MORE THAN 8 GROUPS*13100000
+                OR THE SUM IS GREATER THAN 255'                         13150000
+&SWERR   SETB  1                                                        13200000
+.********************************************************************** 13250000
+.* ANALYZE THE DCHK PARAMETER                                           13300000
+.********************************************************************** 13350000
+.DCHKTST AIF   ('&DCHK' EQ '').EPTEST   IF OMITTED, DO NOTHING          13400000
+         AIF   ('&DCHK' EQ 'U').DCHKU                                   13450000
+         AIF   ('&DCHK' NE 'B').DCHKERR                                 13500000
+&DCHKOK  SETB  0                   TURN OFF DCHK BIT                    13550000
+         AGO   .EPTEST                                                  13600000
+.DCHKU   ANOP                                                           13650000
+&DCHKON  SETB  1                   TURN ON DCHK BIT                     13700000
+         AGO   .EPTEST                                                  13750000
+.DCHKERR MNOTE 12,'DCHK IS NOT B OR U'                                  13800000
+&SWERR   SETB  1                                                        13850000
+.********************************************************************** 13900000
+.* ANALYZE THE EP PARAMETER.                                            13950000
+.********************************************************************** 14000000
+.EPTEST  AIF   ('&EP' EQ '').DEBTEST    GO IF EP IS OMITTED             14050000
+         AIF   (N'&EP NE 1).EPERR       GO IF MULTIPLE VALUES           14100000
+         AIF   ('&EP'(1,1) NE '(').DEBTEST  GO IF NOT IN A REGISTER     14150000
+         AIF   (T'&EP(1) NE 'N').DEBTEST    GO IF NOT SELF-DEFINING     14200000
+         AIF   (&EP(1) EQ 15).DEBTEST       GO IF REGISTER 15           14250000
+         AIF   (&EP(1) GE 2 AND &EP(1) LE 13).DEBTEST  GO IF IN RANGE   14300000
+.EPERR   MNOTE 12,'EP HAS MULTIPLE VALUES OR SPECIFIES A REGISTER NOT 1*14350000
+               5 OR IN RANGE 2-13'                                      14400000
+&SWERR   SETB  1                                                        14450000
+.********************************************************************** 14500000
+.* ANALYZE THE DEBUG PARAMETER.                                         14550000
+.********************************************************************** 14600000
+.DEBTEST AIF   ('&DEBUG' EQ '').FCBTEST GO IF DEBUG NOT CODED           14650000
+         AIF   ('&DEBUG' NE 'NORM').DEBNNOR                             14700000
+&DEBAOK  SETB  0                        SET BITS TO                     14750000
+&DEBBOK  SETB  0                          001 FOR                       14800000
+&DEBCON  SETB  1                          DEBUG=NORM                    14850000
+         AGO   .FCBTEST                                                 14900000
+.DEBNNOR ANOP                                                           14950000
+&DEBCON  SETB  1                       REST OF OPTIONS NEED 3RD BIT ON  15000000
+         AIF   ('&DEBUG' NE 'TERM').DEBNTER                             15050000
+&DEBAOK  SETB  0                        SET BITS TO 010 FOR             15100000
+&DEBBON  SETB  1                          DEBUG=TERM                    15150000
+         AGO   .FCBTEST                                                 15200000
+.DEBNTER AIF   ('&DEBUG' NE 'DUMP').DEBNDUM                             15250000
+&DEBAON  SETB  1                        SET BITS TO 100 FOR             15300000
+&DEBBOK  SETB  0                          DEBUG=DUMP                    15350000
+         AGO   .FCBTEST                                                 15400000
+.DEBNDUM AIF   ('&DEBUG' NE 'TRAC').DEBERR                              15450000
+&DEBAON  SETB  1                        SET BITS TO 110 FOR             15500000
+&DEBBON  SETB  1                          DEBUG=TRAC                    15550000
+         AGO   .FCBTEST                                                 15600000
+.DEBERR  MNOTE 12,'DEBUG VALUE IS NOT NORM, TERM, DUMP OR TRAC'         15650000
+&SWERR   SETB  1                        SUPPRESS MACRO EXPANSION        15700000
+.********************************************************************** 15750000
+.* ANALYZE THE FCB PARAMETER.                                           15800000
+.********************************************************************** 15850000
+.FCBTEST AIF   ('&FCB' EQ '' AND '&DFLT' EQ 'Y').FCBNOV                 15900000
+         AIF   ('&FCB' EQ '').FLATEST                                   15950000
+         AIF   ('&FCB(1)' EQ '').FCBERR                                 16000000
+         AIF   (K'&FCB(1) GT 4).FCBERR                                  16050000
+&DFCB    SETB  1                   SHOW THAT A DC WILL BE NEEDED        16100000
+         AIF   (N'&FCB EQ 1).FCBNOV                                     16150000
+         AIF   (N'&FCB NE 2 OR '&FCB(2)' NE 'V').FCBERR                 16200000
+&FCBVON  SETB  1                                                        16250000
+         AGO   .FLATEST            TURN ON FCB VERIFY                   16300000
+.FCBNOV  ANOP                                                           16350000
+&FCBVOK  SETB  0                   TURN OFF IN CASE MF=(E,XXX)          16400000
+         AGO   .FLATEST                                                 16450000
+.FCBERR  MNOTE 12,'FIRST FCB VALUE NOT A NAME OR * OR SECOND VALUE NEIT*16500000
+               HER V NOR OMITTED'                                       16550000
+&SWERR   SETB  1                                                        16600000
+.********************************************************************** 16650000
+.* ANALYZE THE FLASH PARAMETER.  NOTE THAT THE FLASH COUNT CAN BE 0.    16700000
+.********************************************************************** 16750000
+.FLATEST AIF   ('&FLASH' EQ '').FORMTST                                 16800000
+         AIF   ('&FLASH(1)' EQ '').FLACNT                               16850000
+         AIF   (K'&FLASH(1) GT 4).FLAERR                                16900000
+&DFLASHN SETB  1                   SHOW THAT FLASH NAME WILL BE NEEDED  16950000
+&DFLASHC SETB  1                   SHOW THAT FLASH COUNT WILL BE NEEDED 17000000
+         AIF   (N'&FLASH EQ 1).FORMTST                                  17050000
+.FLACNT  AIF   (N'&FLASH NE 2).FLAERR                                   17100000
+&DFLASHC SETB  1                   SHOW THAT FLASH COUNT WILL BE NEEDED 17150000
+         AIF   (T'&FLASH(2) NE 'N').FORMTST  GO IF CANNOT TEST VALUE    17200000
+         AIF   (&FLASH(2) LE 255).FORMTST    GO IF FLASH COUNT IN RANGE 17250000
+.FLAERR  MNOTE 12,'FIRST FLASH VALUE NOT A NAME, * OR OMITTED OR SECOND*17300000
+                VALUE IS INVALID'                                       17350000
+&SWERR   SETB  1                                                        17400000
+.********************************************************************** 17450000
+.* ANALYZE THE FORMS PARAMETER.                                         17500000
+.********************************************************************** 17550000
+.FORMTST AIF   ('&FORMS' EQ '').INITTST                                 17600000
+&DFORMS  SETB  1                   SHOW THAT DC WILL BE NEEDED          17650000
+         AIF   (N'&FORMS EQ 1 AND K'&FORMS LE 4).INITTST                17700000
+         MNOTE 12,'FORMS IS NOT 1 TO 4 CHARACTERS'                      17750000
+&SWERR   SETB  1                                                        17800000
+.********************************************************************** 17850000
+.* ANALYZE THE INIT PARAMETER.                                          17900000
+.********************************************************************** 17950000
+.INITTST AIF   ('&INIT' EQ '').MODTEST                                  18000000
+         AIF   ('&INIT' EQ 'Y').INITY                                   18050000
+         AIF   ('&INIT' NE 'N').INITERR                                 18100000
+&INITOK  SETB  0                                                        18150000
+         AGO   .MODTEST                                                 18200000
+.INITY   ANOP                                                           18250000
+&INITON  SETB  1                                                        18300000
+         AGO   .MODTEST                                                 18350000
+.INITERR MNOTE 12,'INIT VALUE IS NOT Y OR N'                            18400000
+&SWERR   SETB  1                                                        18450000
+.********************************************************************** 18500000
+.* ANALYZE THE MODIFY PARAMETER.                                        18550000
+.********************************************************************** 18600000
+.MODTEST AIF   ('&MODIFY' EQ '').SEPTEST                                18650000
+         AIF   ('&MODIFY(1)' EQ '' OR K'&MODIFY(1) GT 4).MODERR         18700000
+&DMODIFP SETB  1                                                        18750000
+&DMODIFC SETB  1                   SHOW THAT MODIFY CAT DC NEEDED       18800000
+         AIF   (N'&MODIFY EQ 1).SEPTEST                                 18850000
+         AIF   (N'&MODIFY GT 2 OR '&MODIFY(2)' EQ '').MODERR            18900000
+         AIF   (K'&MODIFY(2) LE 4 AND '&MODIFY(2)'(1,1) NE '*').SEPTEST 18950000
+.MODERR  MNOTE 12,'MODIFY VALUE IS NEITHER * NOR 1 OR 2 NAMES OF 1 TO 4*19000000
+                CHARACTERS EACH'                                        19050000
+&SWERR   SETB  1                                                        19100000
+.********************************************************************** 19150000
+.* ANALYZE THE SEP PARAMETER.                                           19200000
+.********************************************************************** 19250000
+.SEPTEST AIF   ('&SEP' EQ '').TRCTEST                                   19300000
+         AIF   ('&SEP' NE 'M').SEPB                                     19350000
+&SEPMON  SETB  1                   TURN ON M BIT (MARK FORM)            19400000
+         AGO   .SEPOOFF                                                 19450000
+.SEPB    AIF   ('&SEP' NE 'O').SEPC                                     19500000
+&SEPMOK  SETB  0                   TURN OFF M BIT                       19550000
+         AGO   .SEPOON                                                  19600000
+.SEPC    AIF   ('&SEP' NE 'MO').SEPD                                    19650000
+&SEPMON  SETB  1                   TURN ON M BIT                        19700000
+.SEPOON  ANOP                                                           19750000
+&SEPOON  SETB  1                   TURN ON O BIT (OFFSET STACK)         19800000
+         AGO   .TRCTEST                                                 19850000
+.SEPD    AIF   ('&SEP' NE 'NONE').SEPERR                                19900000
+&SEPMOK  SETB  0                   TURN OFF M BIT                       19950000
+.SEPOOFF ANOP                                                           20000000
+&SEPOOK  SETB  0                   TURN OFF O BIT                       20050000
+         AGO   .TRCTEST                                                 20100000
+.SEPERR  MNOTE 12,'SEP IS NOT M, O, MO, OR NONE'                        20150000
+&SWERR   SETB  1                                                        20200000
+.********************************************************************** 20250000
+.* ANALYZE THE TRC PARAMETER.                                           20300000
+.********************************************************************** 20350000
+.TRCTEST AIF   ('&TRC' EQ '').WRKTEST                                   20400000
+&TRC2ON  SETB  1                   TENTATIVELY FORCE BIT ON             20450000
+         AIF   ('&TRC' EQ 'Y').TRCY                                     20500000
+         AIF   ('&TRC' NE 'N').TRCERR                                   20550000
+&TRCOK   SETB  0                   FORCE TRC BIT OFF                    20600000
+         AGO   .WRKTEST                                                 20650000
+.TRCY    ANOP                                                           20700000
+&TRCON   SETB  1                                                        20750000
+         AGO   .WRKTEST                                                 20800000
+.TRCERR  MNOTE 12,'TRC VALUE NOT Y OR N'                                20850000
+&SWERR   SETB  1                                                        20900000
+.********************************************************************** 20950000
+.* ANALYZE THE WORKA PARAMETER.                                         21000000
+.********************************************************************** 21050000
+.WRKTEST AIF   ('&WORKA' EQ '').ERRTEST        GO IF OMITTED            21100000
+         AIF   (N'&WORKA NE 1).WRKERR          GO IF MULTIPLE VALUES    21150000
+         AIF   ('&WORKA'(1,1) NE '(').ERRTEST  GO IF NOT IN A REGISTER  21200000
+         AIF   (T'&WORKA(1) NE 'N').ERRTEST    GO REG NOT SELF-DEFINING 21250000
+         AIF   (&WORKA(1) GE 2 AND &WORKA(1) LE 13).ERRTEST             21300000
+.*  WORKA REG IS NOT IN RANGE 2-13.  CAN BE 0 ONLY IF EP CODED.         21350000
+         AIF   (&WORKA(1) NE 0 OR '&EP' NE '').WRKTST1                  21400000
+         MNOTE 12,'WORKA CANNOT SPECIFY REGISTER 0 UNLESS EP IS ALSO CO*21450000
+               DED'                                                     21500000
+&SWERR   SETB  1                                                        21550000
+         AGO   .ERRTEST                                                 21600000
+.WRKTST1 AIF   (&WORKA(1) EQ 0).ERRTEST                                 21650000
+         MNOTE 12,'WORKA SPECIFIES A REGISTER OTHER THAN 0 OR 2-13'     21700000
+&SWERR   SETB  1                                                        21750000
+         AGO   .ERRTEST                                                 21800000
+.WRKERR  MNOTE 12,'MULTIPLE VALUES FOR WORKA'                           21850000
+&SWERR   SETB  1                        SHOW AN ERROR WAS FOUND         21900000
+.********************************************************************** 21950000
+.* SUPPRESS EXPANSION IF ANY ERROR.  ALL DETECTABLE ERRORS              22000000
+.* HAVE BEEN DETECTED.                                                  22050000
+.********************************************************************** 22100000
+.ERRTEST AIF   (&SWERR).EXIT       GO IF ANY ERROR                      22150000
+.********************************************************************** 22200000
+.* EXPAND ACCORDING TO THE VALUE OF THE MF (MACRO FORM) PARAMETER.      22250000
+.********************************************************************** 22300000
+         AIF   (&LFORM).GENLIST         GO TO GENERATE PARM LIST ONLY   22350000
+         AIF   (NOT &EFORM).GENSTND     GO TO GENERATE STANDARD FORM    22400000
+.********************************************************************** 22450000
+.* MF=(E,XXX) WAS CODED.                                                22500000
+.* BEGIN GENERATION OF CODE TO USE A REMOTE PARAMETER LIST THAT WAS     22550000
+.* CREATED WITH MF=L.                                                   22600000
+.********************************************************************** 22650000
+         AIF   ('&MF(2)' NE '(1)').GENRB                                22700000
+         AIF   ('&LABEL' EQ '').GENRE                                   22750000
+&LABEL   DC    0H'0'                    INSTRUCTION ALIGNMENT           22800000
+         AGO   .GENRE                                                   22850000
+.GENRB   AIF   ('&MF(2)'(1,1) NE '(').GENRC                             22900000
+&LABEL   LR    1,&MF(2)                 GET PARAMETER LIST ADDRESS      22950000
+         AGO   .GENRE                                                   23000000
+.GENRC   ANOP                                                           23050000
+&LABEL   LA    1,&MF(2)                 GET PARAMETER LIST ADDRESS      23100000
+.*                                                                      23150000
+.* GENERATE INSTRUCTIONS TO SET BITS IN SPPFLAG1 IF NECESSARY.          23200000
+.GENRE   ANOP                           ONLY 8 CHARS ALLOWED IN DOS ASM 23250000
+&C       SETC  '&UNITOK.&INITOK.&BURAOK.&BURBOK.&DCHKOK.1&SEPMOK.&SEPOO*23300000
+               K'                       COPY THE BIT VALUES             23350000
+         AIF   ('&C' EQ '11111111').GENRG                               23400000
+         NI    1(1),B'&C'               TURN OFF APPROPRIATE BIT(S)     23450000
+.GENRG   ANOP                                                           23500000
+&C       SETC  '&UNITON.&INITON.&BURAON.&BURBON.&DCHKON.0&SEPMON.&SEPOO*23550000
+               N'                                                       23600000
+         AIF   ('&C' EQ '00000000').GENRI                               23650000
+         OI    1(1),B'&C'               TURN ON APPROPRIATE BIT(S)      23700000
+.*                                                                      23750000
+.* GENERATE INSTRUCTIONS TO SET BITS IN SPPFLAG2 IF NECESSARY.          23800000
+.GENRI   ANOP                                                           23850000
+&C       SETC  '&FCBVOK.1&TRCOK.1&DEBAOK.&DEBBOK.&DEBCOK.1'             23900000
+         AIF   ('&C' EQ '11111111').GENRK                               23950000
+         NI    2(1),B'&C'               TURN OFF APPROPRIATE BIT(S)     24000000
+.GENRK   ANOP                                                           24050000
+&C       SETC  '&FCBVON.0&TRCON.&TRC2ON.&DEBAON.&DEBBON.&DEBCON.0'      24100000
+         AIF   ('&C' EQ '00000000').GENRM                               24150000
+         OI    2(1),B'&C'               TURN ON APPROPRIATE BIT(S)      24200000
+.GENRM   AIF   ('&DFLT' NE 'Y').GENRP                                   24250000
+         MVI   4(1),C' '                REQUEST SYSTEM DEFAULTS BY      24300000
+         MVC   5(35,1),4(1)               SETTING TO BLANKS             24350000
+.* TURN OFF THE DC SWITCH FOR ANY FIELD JUST BLANKED IF THE             24400000
+.* CORRESPONDING PARAMETER WAS CODED WITH * OR WAS OMITTED.             24450000
+&DCHARS  SETB  ('&CHARS' NE '*' AND '&CHARS' NE '')                     24500000
+&DFLASHN SETB  ('&FLASH(1)' NE '*' AND '&FLASH(1)' NE '')               24550000
+&DFCB    SETB  ('&FCB(1)' NE '*' AND '&FCB(1)' NE '')                   24600000
+&DFORMS  SETB  ('&FORMS' NE '*' AND '&FORMS' NE '')                     24650000
+&DMODIFP SETB  ('&MODIFY(1)' NE '*' AND '&MODIFY(1)' NE '')             24700000
+         AGO   .GENRY                                                   24750000
+.* DFLT=Y WAS NOT CODED, BUT INDIVIDUAL KEYWORD PARAMETERS MAY          24800000
+.* HAVE BEEN CODED WITH VALUES OF *.  SUCH PARAMETERS WOULD             24850000
+.* REQUIRE CONSTANTS OF BLANKS TO MOVE.  AN ATTEMPT IS MADE HERE        24900000
+.* TO REDUCE THE NUMBER OF BYTES IN THE MACRO EXPANSION BY              24950000
+.* TRYING TO FIND ONE AREA OF AT LEAST 8 BYTES TO BLANK.  IT            25000000
+.* IS MORE EFFICIENT WITH MVI AND MVC.                                  25050000
+.GENRP   ANOP                                                           25100000
+&TO      SETA  4                        DISPLACEMENT FOR MVI            25150000
+&LEN     SETA  20                       LENGTH TO BLANK                 25200000
+         AIF   ('&FCB(1)' EQ '*' AND '&CHARS' EQ '*').GENRQ1            25250000
+&TO      SETA  8                        TRY FOR CHARS ONLY              25300000
+&LEN     SETA  16                                                       25350000
+         AIF   ('&CHARS' EQ '*').GENRQ2 GO IF AT LEAST GOT CHARS        25400000
+         AGO   .GENRY4                  OPTIMIZATION NOT POSSIBLE       25450000
+.GENRQ1  ANOP                           FCB & CHARS WILL BE BLANKED     25500000
+&DFCB    SETB  0                        SHOW FCB DC NOT NEEDED          25550000
+.GENRQ2  ANOP                                                           25600000
+&DCHARS  SETB  0                        SHOW CHARS DC NOT NEEDED        25650000
+.GENRQ3  AIF   ('&MODIFY(1)' NE '*').GENRX   GO IF NOT TO BLANK NEXT    25700000
+&LEN     SETA  &LEN+8                   STRETCH OVER MODIFY NAME, CHARS 25750000
+&DMODIFP SETB  0                        SHOW MODIFY PHASE DC NOT NEEDED 25800000
+.* ONE OR MORE FIELDS ARE TO BE BLANKED.  DO IT WITH MVI INSTEAD OF     25850000
+.* DC ONLY IF MORE THAN 8 CONTIGUOUS BYTES NEED BLANKING.               25900000
+.GENRX   MVI   &TO.(1),C' '             PREPARE FOR BLANKING            25950000
+&FROM    SETA  &TO                      GET 'FROM' DISPLACEMENT         26000000
+&TO      SETA  &TO+1                    DESTINATION IS NEXT BYTE        26050000
+&LEN     SETA  &LEN-1                   ACCOUNT FOR BLANK DONE          26100000
+         MVC   &TO.(&LEN,1),&FROM.(1)   REQUEST SOME SYSTEM DEFAULTS    26150000
+.GENRY   AIF   ('&DFLT' NE 'Y' AND '&CHARS' NE '*').GENRY4              26200000
+&LEN     SETA  12                       SET LENGTH FOR XC               26250000
+         AIF   ('&DFLT' EQ 'Y' AND N'&MODIFY LT 2).GENRY2               26300000
+         AIF   (N'&MODIFY NE 1).GENRY3                                  26350000
+.GENRY2  ANOP                                                           26400000
+&DMODIFC SETB  0                        SHOW MODIFY CHARS IS NOT NEEDED 26450000
+&LEN     SETA  &LEN+4                   STRETCH OVER THE MODIFY CHARS   26500000
+.GENRY3  XC    12(&LEN,1),12(1)         CLEAR VARIOUS CHARS NAMES       26550000
+.* IF THE FLASH COUNT NEEDS UPDATING AND THE PREVIOUS FIELD (CINDX)     26600000
+.* DOES NOT, THEN UPDATE THE FLASH COUNT VIA MVI INSTEAD OF MVC.        26650000
+.* THIS PROBABLY WILL RESULT IN A SHORTER MACRO EXPANSION, ESPECIALLY   26700000
+.* IF NO OTHER MVC'S ARE NEEDED.                                        26750000
+.GENRY4  AIF   (&DCINDX OR NOT &DFLASHC).GENRZ                          26800000
+&DFLASHC SETB  0                        PREVENT DC FOR FLASH COUNT      26850000
+.* IF THE FLASH COUNT WAS OMITTED, THEN EXPAND IT AS 255.               26900000
+         AIF   (N'&FLASH LT 2 OR '&FLASH(2)' EQ '').GENRY6              26950000
+         MVI   49(1),&FLASH(2)          SET THE FLASH COUNT             27000000
+         AGO   .GENRZ                                                   27050000
+.GENRY6  MVI   49(1),255                FLASH ALL COPIES                27100000
+.* GO IF NO DC NEEDS TO BE GENERATED (AND BRANCHED AROUND).  IN         27150000
+.* THAT CASE ALL OF THE SWITCHES ARE OFF                                27200000
+.GENRZ   AIF   (NOT (&DCHARS OR &DCINDX OR &DFLASHC OR &DFLASHN        *27250000
+               OR &DFCB OR &DFORMS OR &DMODIFP                         *27300000
+               OR &DMODIFC OR &DLUNIT)).COMMON                          27350000
+&PREF.D  B     &PREF.A                  BRANCH AROUND NEW VALUES        27400000
+         AGO   .COMMON                                                  27450000
+.********************************************************************** 27500000
+.* BEGIN PARAMETER LIST.  HAVE MF=L.                                    27550000
+.********************************************************************** 27600000
+.GENLIST ANOP                                                           27650000
+&LABEL   DC    0F'0'                    WORD ALIGNMENT                  27700000
+         AGO   .COMMON                                                  27750000
+.********************************************************************** 27800000
+.* BEGIN BUILD OF STANDARD FORM.  NO MF PARAMETER SPECIFIED.            27850000
+.********************************************************************** 27900000
+.GENSTND CNOP  0,4                                                      27950000
+&LABEL   BAL   1,*+72                   BRANCH AROUND PARAMETER LIST    28000000
+.********************************************************************** 28050000
+.* DO PROCESSING COMMON TO ALL THREE FORMS OF THE MACRO.                28100000
+.********************************************************************** 28150000
+.COMMON  ANOP                                                           28200000
+         AIF   (&EFORM).FCBDC           GO IF MF=(E,XXX)                28250000
+&C       SETC  ''                       ASSUME TO MAKE NULL LABEL       28300000
+         AIF   ('&MF' NE '' OR '&EP' NE '').COMMON2                     28350000
+&C       SETC  '&PREF'                  BUILD LABEL FOR LATER LA INSTR  28400000
+.COMMON2 ANOP                                                           28450000
+&C       DC    AL1(68)                0-LENGTH OF PARAMETER LIST        28500000
+.* SAVE BITS IN TEMPORARY PLACE SO AS TO KEEP THE COMMENT ALIGNED.      28550000
+&C       SETC  '&UNITON.&INITON.&BURAON.&BURBON.&DCHKON.0&SEPMON.&SEPOO*28600000
+               N'                       ONLY 8 ALLOWED IN DOS ASM       28650000
+&CX      SETC  '&FCBVON.0&TRCON.&TRC2ON.&DEBAON.&DEBBON.&DEBCON.0'      28700000
+         DC    B'&C&CX'               1-VARIOUS INDICATORS              28750000
+         DC    X'00'                  3-RESERVED                        28800000
+.********************************************************************** 28850000
+.* DO FCB NAME PROCESSING                                               28900000
+.********************************************************************** 28950000
+.FCBDC   AIF   ('&FCB(1)' EQ '*').FCBDCDF  GO IF DEFAULT WANTED         29000000
+         AIF   ('&FCB' EQ '').FCBDCNO   GO IF NO FCB GIVEN              29050000
+         DC    CL4'&FCB(1)'           4-FORMS CONTROL BUFFER (FCB) NAME 29100000
+         AGO   .CH1DC                                                   29150000
+.FCBDCNO AIF   (&EFORM AND NOT &DFCB).CH1DC                             29200000
+         AIF   ('&DFLT' EQ 'Y').FCBDCDF                                 29250000
+         DC    XL4'0'                 4-FCB NAME OMITTED                29300000
+         AGO   .CH1DC                                                   29350000
+.FCBDCDF AIF   (&EFORM AND ('&DFLT' EQ 'Y' OR NOT &DFCB)).CH1DC         29400000
+         DC    CL4' '                 4-SYSTEM DEFAULT FCB WANTED       29450000
+.********************************************************************** 29500000
+.* DO CHARS (CHARACTER ARRANGEMENT TABLES) PROCESSING.                  29550000
+.********************************************************************** 29600000
+.CH1DC   AIF   ('&CHARS' EQ '*').CH1DCDF GO IF CHARS DEFAULT WANTED     29650000
+         AIF   ('&CHARS' EQ '').CH1DCNO  GO IF NO CHARS GIVEN           29700000
+         DC    CL4'&CHARS(1)'         8-FIRST CHARACTER ARR. TABLE      29750000
+         AIF   (N'&CHARS EQ 1).CH2DCNO                                  29800000
+         DC    CL4'&CHARS(2)'         C-SECOND CHARACTER ARR. TABLE     29850000
+         AIF   (N'&CHARS EQ 2).CH3DCNO                                  29900000
+         DC    CL4'&CHARS(3)'        10-THIRD CHARACTER ARR. TABLE      29950000
+         AIF   (N'&CHARS EQ 3).CH4DCNO                                  30000000
+         DC    CL4'&CHARS(4)'        14-FOURTH CHARACTER ARR. TABLE     30050000
+         AGO   .MODDC                   GO DO NEXT PARAM                30100000
+.CH1DCNO AIF   (&EFORM AND NOT &DCHARS).MODDC                           30150000
+         AIF   ('&DFLT' EQ 'Y').CH1DCDF GO IF DEFAULT WANTED            30200000
+         DC    XL4'0'                 8-FIRST CHARACTER ARR. TABLE      30250000
+.CH2DCNO DC    XL4'0'                 C-SECOND CHARACTER ARR. TABLE     30300000
+.CH3DCNO DC    XL4'0'                10-THIRD CHARACTER ARR. TABLE      30350000
+.CH4DCNO DC    XL4'0'                14-FOURTH CHARACTER ARR. TABLE     30400000
+         AGO   .MODDC                                                   30450000
+.CH1DCDF AIF   (&EFORM AND ('&DFLT' EQ 'Y' OR NOT &DCHARS)).MODDC       30500000
+         DC    CL4' '                 8-DEFAULT CHARACTER ARRANGEMENT   30550000
+         DC    3XL4'0'                C-  TABLE                         30600000
+.********************************************************************** 30650000
+.* DO COPY MODIFICATION (MODIFY=) PROCESSING                            30700000
+.********************************************************************** 30750000
+.MODDC   AIF   ('&MODIFY(1)' EQ '*').MODDCDF GO IF MODIFY DFLT WANTED   30800000
+         AIF   ('&MODIFY' EQ '').MODDCNO   GO IF NO MODIFY GIVEN        30850000
+         AIF   (N'&MODIFY NE 2).MODDC2                                  30900000
+         DC    CL4'&MODIFY(2)'       18-CHAR ARR TABLE FOR MODIFY       30950000
+         AGO   .MODDC3                                                  31000000
+.MODDC2  DC    XL4'0'                18-CHAR ARR TABLE FOR MODIFY       31050000
+.MODDC3  DC    CL4'&MODIFY(1)'       1C-COPY MODIFICATION PHASE         31100000
+         AGO   .FORDC                                                   31150000
+.MODDCNO AIF   (&EFORM AND NOT &DMODIFC).MODDCN2                        31200000
+         AIF   ('&DFLT' EQ 'Y').MODDCDF                                 31250000
+         DC    XL4'0'                18-CHAR ARR TABLE FOR MODIFY       31300000
+.MODDCN2 AIF   (&EFORM AND NOT &DMODIFP).FORDC                          31350000
+         DC    XL4'0'                1C-COPY MODIFICATION PHASE         31400000
+         AGO   .FORDC                                                   31450000
+.MODDCDF AIF   (&EFORM AND NOT &DMODIFC).MODDCD3                        31500000
+         AIF   (N'&MODIFY LT 2).MODDCD2                                 31550000
+         DC    CL4'&MODIFY(2)'       18-CHAR ARR TABLE FOR MODIFY       31600000
+         AGO   .MODDCD3                                                 31650000
+.MODDCD2 DC    XL4'0'                18-CHAR ARR TABLE FOR MODIFY       31700000
+.MODDCD3 AIF   (&EFORM AND NOT &DMODIFP).FORDC                          31750000
+         DC    CL4' '                1C-COPY MODIFICATION PHASE         31800000
+.********************************************************************** 31850000
+.* DO FORMS PROCESSING.                                                 31900000
+.********************************************************************** 31950000
+.FORDC   AIF   ('&FORMS' EQ '*').FORDCDF  GO IF FORMS DEFAULT WANTED    32000000
+         AIF   ('&FORMS' EQ '').FORDCNO   GO IF NO FORM SPECIFIED       32050000
+         DC    CL4'&FORMS'           20-FORMS NAME                      32100000
+         AGO   .FLADC                   GO DO NEXT PARAMETER            32150000
+.FORDCNO AIF   (&EFORM AND NOT &DFORMS).FLADC                           32200000
+         AIF   ('&DFLT' EQ 'Y').FORDCDF                                 32250000
+         DC    XL4'0'                20-NO FORMS REQUESTED              32300000
+         AGO   .FLADC                   GO DO NEXT PARAMETER            32350000
+.FORDCDF AIF   (&EFORM AND ('&DFLT' EQ 'Y' OR NOT &DFORMS)).FLADC       32400000
+         DC    CL4' '                20-DEFAULT FORMS WANTED            32450000
+.********************************************************************** 32500000
+.* DO FORMS OVERLAY NAME (FLASH=) PROCESSING.                           32550000
+.********************************************************************** 32600000
+.FLADC   AIF   ('&FLASH(1)' EQ '*').FLADCDF  GO IF FLASH NAME DEFAULT   32650000
+         AIF   ('&FLASH(1)' EQ '').FLADCNO   GO IF NO FLASH NAME        32700000
+         DC    CL4'&FLASH(1)'        24-FORMS OVERLAY NAME (FLASH=)     32750000
+         AGO   .CGPDC                                                   32800000
+.FLADCNO AIF   (&EFORM AND NOT &DFLASHN).CGPDC                          32850000
+         AIF   ('&DFLT' EQ 'Y').FLADCDF GO IF DEFAULT WANTED            32900000
+         DC    XL4'0'                24-NO FORMS OVERLAY REQUESTED      32950000
+         AGO   .CGPDC                                                   33000000
+.FLADCDF AIF   (&EFORM AND ('&DFLT' EQ 'Y' OR NOT &DFLASHN)).CGPDC      33050000
+         DC    CL4' '                24-DEFAULT FORMS OVERLAY (FLASH=)  33100000
+.********************************************************************** 33150000
+.* DO COPY GROUPING PROCESSING.                                         33200000
+.********************************************************************** 33250000
+.CGPDC   AIF   (&EFORM AND NOT &DCOPYGR).CINDC                          33300000
+         AIF   ('&COPYG' NE '').CGPDCA                                  33350000
+         DC    8AL1(0)               28-COPY GROUPS OMITTED             33400000
+         AGO   .CINDC                                                   33450000
+.CGPDCA  AIF   (N'&COPYG EQ 8).CGPDCC                                   33500000
+.* 1 TO 7 GROUPS SPECIFIED.                                             33550000
+         AIF   ('&COPYG'(1,1) NE '(').CGPDC1  GO IF ONLY 1 & NO PARENS  33600000
+&A       SETA  8-N'&COPYG               NUM OF GROUPS MORE TO MAKE 8    33650000
+         DC    AL1&COPYG,&A.AL1(0)   28-COPY GROUPING                   33700000
+         AGO   .CINDC                                                   33750000
+.CGPDC1  DC    AL1(&COPYG),7AL1(0)   28-COPY GROUPING                   33800000
+         AGO   .CINDC                                                   33850000
+.* EXACTLY 8 GROUPS SPECIFIED.                                          33900000
+.CGPDCC  DC    AL1&COPYG             28-COPY GROUPING                   33950000
+.********************************************************************** 34000000
+.* DO CINDX (COPY INDEX) PROCESSING.                                    34050000
+.********************************************************************** 34100000
+.CINDC   AIF   (&EFORM AND NOT &DCINDX).FLCDC                           34150000
+         AIF   ('&CINDX' EQ '').CINDCF  GO IF NOT SPECIFIED             34200000
+         AIF   ('&CINDX'(1,1) EQ '(').CINDCZ  GO IF IN REGISTER         34250000
+         DC    AL1(&CINDX)           30-COPY INDEX                      34300000
+         AGO   .FLCDC                                                   34350000
+.CINDCF  AIF   ('&COPYG' EQ '').CINDCZ                                  34400000
+         DC    AL1(1)                30-COPY INDEX                      34450000
+         AGO   .FLCDC                                                   34500000
+.CINDCZ  DC    AL1(0)                30-COPY INDEX                      34550000
+.********************************************************************** 34600000
+.* DO FLASH COUNT PROCESSING.  IT IS THE SECOND VALUE OF THE            34650000
+.* FLASH PARAMETER.                                                     34700000
+.********************************************************************** 34750000
+.FLCDC   AIF   (&EFORM AND NOT &DFLASHC).LUNDC                          34800000
+         AIF   (N'&FLASH NE 2 OR '&FLASH(2)' EQ '').FLCDCNO             34850000
+         DC    AL1(&FLASH(2))        31-FLASH (FORMS OVERLAY) COUNT     34900000
+         AGO   .LUNDC                                                   34950000
+.FLCDCNO AIF   ('&FLASH(1)' NE '' OR '&DFLT' EQ 'Y').FLCDCAL            35000000
+         DC    AL1(0)                31-FLASH NAME & COUNT OMITTED      35050000
+         AGO   .LUNDC                                                   35100000
+.FLCDCAL DC    AL1(255)              31-FLASH ALL COPIES                35150000
+.********************************************************************** 35200000
+.* DO LOGICAL UNIT PROCESSING.                                          35250000
+.********************************************************************** 35300000
+.LUNDC   AIF   ('&SYSNNN' EQ '').LUNDCNO GO IF LOGICAL UNIT OMITTED     35350000
+         AIF   (&EFORM AND '&SYSNNN'(1,1) EQ '(').REGDC                 35400000
+         AIF   ('&SYSNNN'(1,1) EQ '(').LUNDCNO                          35450000
+         AIF   (&EFORM AND NOT &DFLASHC).LUNDCC TRY TO NOT MOVE RESERVD 35500000
+&DRES2   SETB  1                        SHOW TO MOVE RESERVED AREA      35550000
+         DC    XL4'0'                32-RESERVED                        35600000
+.LUNDCC  ANOP                                                           35650000
+&A       SETA  0                        ASSUME SYSTEM LOGICAL UNIT      35700000
+&C       SETC  '3'                      ASSUME SYSLST                   35750000
+         AIF   ('&SYSNNN' EQ 'SYSLST').LUNDCLU                          35800000
+&C       SETC  '4'                      ASSUME SYSLOG                   35850000
+         AIF   ('&SYSNNN' EQ 'SYSLOG').LUNDCLU                          35900000
+&C       SETC  '&SYSNNN'(4,3)           GET THE THREE NUMERIC DIGITS    35950000
+&A       SETA  1                        SHOW PROGRAMMER LOGICAL UNIT    36000000
+.LUNDCLU DC    AL1(&A,&C)            36-LOGICAL UNIT                    36050000
+         AGO   .REGDC                                                   36100000
+.LUNDCNO AIF   (&EFORM).REGDC           GO IF REMOTE FORM               36150000
+         DC    XL2'0'                32-RESERVED                        36200000
+         DC    A(0)                  34-LOGICAL UNIT                    36250000
+.********************************************************************** 36300000
+.* CREATE AREA FOR SAVING REGISTERS.  IT IS ALWAYS NEEDED WITH          36350000
+.* MF=L AND WHEN MF IS OMITTED AND NEVER NEEDED WITH MF=(E,XXX).        36400000
+.********************************************************************** 36450000
+.REGDC   AIF   (&EFORM).LISTEND         GO IF REMOTE LIST               36500000
+         DC    3A(0)                 38-REGISTER SAVE AREA              36550000
+.********************************************************************** 36600000
+.* END OF PARAMETER LIST EXPANSION.  GENERATE ANY NECESSARY             36650000
+.* INSTRUCTIONS FOR DYNAMIC CHANGES.                                    36700000
+.********************************************************************** 36750000
+.LISTEND AIF   (&LFORM).EXIT                                            36800000
+         AIF   (NOT &EFORM).DOREG                                       36850000
+.********************************************************************** 36900000
+.* BUILD MVC INSTRUCTIONS TO MOVE PARAMETERS INTO THE REMOTE            36950000
+.* PARAMETER LIST SPECIFIED WITH THE MF=(E,XXX) PARAMETER.              37000000
+.********************************************************************** 37050000
+&CX      SETC  '&PREF.A'           LABEL FOR FIRST MVC                  37100000
+&FROM    SETA  4                   'FROM' STARTS AFTER THE BRANCH INSTR 37150000
+.SCAN    ANOP                                                           37200000
+&LEN     SETA  0                   INITIALIZE THE MVC LENGTH            37250000
+&TO      SETA  0                   INITIALIZE 'TO' DISPLACEMENT         37300000
+.*                                                                      37350000
+.* TAKE CARE OF MOVE FOR FCB.                                           37400000
+         AIF   (NOT &DFCB).MVCHARS GO IF NO FCB                         37450000
+&DFCB    SETB  0                   SHOW OPERAND TAKEN CARE OF           37500000
+&LEN     SETA  &LEN+4              INCREASE ACCUMULATED LENGTH          37550000
+&TO      SETA  4                   SET 'TO' DISPLACEMENT                37600000
+.*                                                                      37650000
+.* TAKE CARE OF MOVE FOR CHARS.                                         37700000
+.MVCHARS AIF   (NOT &DCHARS AND &LEN NE 0).MOVE                         37750000
+         AIF   (NOT &DCHARS).MVMODIC                                    37800000
+&DCHARS  SETB  0                   SHOW OPERAND TAKEN CARE OF           37850000
+&LEN     SETA  &LEN+16             INCREASE ACCUMULATED LENGTH          37900000
+         AIF   (&LEN NE 16).MVMODIC                                     37950000
+&TO      SETA  8                   SET 'TO' DISPLACEMENT                38000000
+.*                                                                      38050000
+.* TAKE CARE OF MOVE FOR CHARACTER ARRANGEMENT TABLE FOR COPY           38100000
+.* MODIFICATION.                                                        38150000
+.MVMODIC AIF   (NOT &DMODIFC AND &LEN NE 0).MOVE                        38200000
+         AIF   (NOT &DMODIFC).MVMODIF                                   38250000
+&DMODIFC SETB  0                   SHOW OPERAND TAKEN CARE OF           38300000
+&LEN     SETA  &LEN+4              INCREASE ACCUMULATED LENGTH          38350000
+         AIF   (&LEN NE 4).MVMODIF                                      38400000
+&TO      SETA  24                  SET 'TO' DISPLACEMENT                38450000
+.*                                                                      38500000
+.* TAKE CARE OF MOVE FOR COPY MODIFICATION NAME.                        38550000
+.MVMODIF AIF   (NOT &DMODIFP AND &LEN NE 0).MOVE                        38600000
+         AIF   (NOT &DMODIFP).MVFORMS                                   38650000
+&DMODIFP SETB  0                   SHOW OPERAND TAKEN CARE OF           38700000
+&LEN     SETA  &LEN+4              INCREASE ACCUMULATED LENGTH          38750000
+         AIF   (&LEN NE 4).MVFORMS                                      38800000
+&TO      SETA  28                  SET 'TO' DISPLACEMENT                38850000
+.*                                                                      38900000
+.* TAKE CARE OF MOVE FOR FORMS.                                         38950000
+.MVFORMS AIF   (NOT &DFORMS AND &LEN NE 0).MOVE                         39000000
+         AIF   (NOT &DFORMS).MVFLAN                                     39050000
+&DFORMS  SETB  0                   SHOW OPERAND TAKEN CARE OF           39100000
+&LEN     SETA  &LEN+4              INCREASE ACCUMULATED LENGTH          39150000
+         AIF   (&LEN NE 4).MVFLAN                                       39200000
+&TO      SETA  32                  SET 'TO' DISPLACEMENT                39250000
+.*                                                                      39300000
+.* TAKE CARE OF MOVE FOR FORMS OVERLAY NAME (FLASH=).                   39350000
+.MVFLAN  AIF   (NOT &DFLASHN AND &LEN NE 0).MOVE                        39400000
+         AIF   (NOT &DFLASHN).MVCGRP                                    39450000
+&DFLASHN SETB 0                    SHOW OPERAND TAKEN CARE OF           39500000
+&LEN     SETA  &LEN+4              INCREASE ACCUMULATED LENGTH          39550000
+         AIF   (&LEN NE 4).MVCGRP                                       39600000
+&TO      SETA  36                  SET 'TO' DISPLACEMENT                39650000
+.*                                                                      39700000
+.* TAKE CARE OF MOVE FOR COPY GROUP VALUES.                             39750000
+.MVCGRP  AIF   (NOT &DCOPYGR AND &LEN NE 0).MOVE                        39800000
+         AIF   (NOT &DCOPYGR).MVCIND                                    39850000
+&DCOPYGR SETB  0                   SHOW OPERAND TAKEN CARE OF           39900000
+&LEN     SETA  &LEN+8              INCREASE ACCUMULATED LENGTH          39950000
+         AIF   (&LEN NE 8).MVCIND                                       40000000
+&TO      SETA  40                  SET 'TO' DISPLACEMENT                40050000
+.*                                                                      40100000
+.* TAKE CARE OF MOVE FOR CINDX.                                         40150000
+.MVCIND  AIF   (NOT &DCINDX AND &LEN NE 0).MOVE                         40200000
+         AIF   (NOT &DCINDX).MVFLAC                                     40250000
+&DCINDX  SETB  0                   SHOW OPERAND TAKEN CARE OF           40300000
+&LEN     SETA  &LEN+1              INCREASE ACCUMULATED LENGTH          40350000
+         AIF   (&LEN NE 1).MVFLAC                                       40400000
+&TO      SETA  48                  SET 'TO' DISPLACEMENT                40450000
+.*                                                                      40500000
+.* TAKE CARE OF MOVE FOR FORMS OVERLAY COUNT (FLASH=(X,COUNT)).         40550000
+.MVFLAC  AIF   (NOT &DFLASHC AND &LEN NE 0).MOVE                        40600000
+         AIF   (NOT &DFLASHC).MVRES2                                    40650000
+&DFLASHC SETB  0                   SHOW OPERAND TAKEN CARE OF           40700000
+&LEN     SETA  &LEN+1              INCREASE ACCUMULATD LENGTH           40750000
+         AIF   (&LEN NE 1).MVRES2                                       40800000
+&TO      SETA  49                  SET 'TO' DISPLACEMENT                40850000
+.*                                                                      40900000
+.* TAKE CARE OF MOVE FOR RESERVED BYTES.  NEEDED ONLY IF THE            40950000
+.* FIELD BEFORE AND THE FIELD AFTER ARE MOVED.                          41000000
+.MVRES2  AIF   (NOT &DRES2 AND &LEN NE 0).MOVE                          41050000
+         AIF   (NOT &DRES2).MVLUNIT                                     41100000
+&DRES2   SETB  0                   SHOW FIELD TAKEN CARE OF             41150000
+&LEN     SETA  &LEN+4              INCREASE ACCUMULATED LENGTH          41200000
+.* NO NEED TO CHANGE &TO                                                41250000
+.*                                                                      41300000
+.* TAKE CARE OF MOVE FOR LOGICAL UNIT NAME.                             41350000
+.MVLUNIT AIF   (NOT &DLUNIT AND &LEN NE 0).MOVE                         41400000
+         AIF   (NOT &DLUNIT).DOREG                                      41450000
+&DLUNIT  SETB  0                                                        41500000
+&LEN     SETA  &LEN+2                                                   41550000
+         AIF   (&LEN NE 2).MOVE                                         41600000
+&TO      SETA  54                                                       41650000
+.*                                                                      41700000
+.* GENERATE AN INSTRUCTION TO MOVE 1 OR MORE FIELDS INTO THE            41750000
+.* REMOTE PARAMETER LIST.                                               41800000
+.*                                                                      41850000
+.MOVE    ANOP                                                           41900000
+&C       SETC  '&PREF.D'                COPY LABEL TO SHORT NAME        41950000
+&CX      MVC   &TO.(&LEN,1),&C+&FROM    MOVE TO PARAMETER LIST          42000000
+&CX      SETC  ''                       PREVENT SYMBOL REDEFINITION     42050000
+&FROM    SETA  &FROM+&LEN               UPDATE THE FROM DISPLACEMENT    42100000
+         AGO   .SCAN                                                    42150000
+.********************************************************************** 42200000
+.* GENERATE AN ST INSTRUCTION IF LUB IS IN A REGISTER.                  42250000
+.********************************************************************** 42300000
+.DOREG   AIF   ('&SYSNNN' EQ '').CINREG                                 42350000
+         AIF   ('&SYSNNN'(1,1) NE '(').CINREG                           42400000
+         STCM  &SYSNNN(1),7,53(1)       STORE LOG. UNIT BLOCK ADDRESS   42450000
+.CINREG  AIF   ('&CINDX' EQ '').GETEP                                   42500000
+         AIF   ('&CINDX'(1,1) NE '(').GETEP  GO IF CINDX NOT IN REG     42550000
+         STC   &CINDX(1),48(,1)         STORE CINDX                     42600000
+.********************************************************************** 42650000
+.* GENERATE CODE TO GET THE ENTRY POINT ADDRESS OF THE SETPRT ROUTINE.  42700000
+.* IF EP WAS NOT CODED, A CDLOAD MACRO IS ISSUED TO GET THE ADDRESS     42750000
+.* IN SVA.                                                              42800000
+.********************************************************************** 42850000
+.GETEP   AIF   ('&EP' EQ '').DOLOAD                                     42900000
+         AIF   ('&EP'(1,1) EQ '(').GETEREG                              42950000
+         L     15,&EP                   GET SETPRT ROUTINE ADDRESS      43000000
+         AGO   .GETWORK                                                 43050000
+.GETEREG AIF   ('&EP' EQ '(15)').GETWORK  GO IF REG 15 ALREADY LOADED   43100000
+         LR    15,&EP(1)                GET SETPRT ROUTINE ADDRESS      43150000
+         AGO   .GETWORK                                                 43200000
+.DOLOAD  CDLOAD IJVSPRDV,RETPNF=YES     GET SETPRT ADDRESS     @DA35625 43250000
+         SLA   15,8                     CLEAR BYTE AND TEST FOR ZERO    43300000
+         LA    15,X'30'(,15)            INSERT SETPRT FAILURE CODE      43350000
+         BNZ   &PREF.E                  BRANCH IF CDLOAD FAILED         43400000
+         LR    15,1                     LOAD SETPRT ROUTINE ADDRESS     43450000
+         AIF   (&EFORM).GETLIST         GO IF E-FORM                    43500000
+         LA    1,&PREF                  GET ADDR OF SETPRT PARM LIST    43550000
+         AGO   .GETWORK                                                 43600000
+.GETLIST AIF   ('&MF(2)'(1,1) EQ '(').GETREG  GO IF IN REGISTER         43650000
+         LA    1,&MF(2)                 GET ADDR OF SETPRT PARM LIST    43700000
+         AGO   .GETWORK                 BRANCH IF NOT FOUND IN SVA      43750000
+.GETREG  ANOP                                                           43800000
+&C       SETC  '&MF(2)'(2,K'&MF(2)-2)   REMOVE PARENTHESES              43850000
+         LR    1,&C                     GET ADDR OF SETPRT PARM LIST    43900000
+.GETWORK AIF   ('&WORKA' EQ '').WORKCLR GO IF NO WORK AREA PROVIDED     43950000
+         AIF   ('&WORKA' EQ '(0)').CALL (CANNOT BE CODED WITH EP)       44000000
+         AIF   ('&WORKA'(1,1) EQ '(').WORKREG                           44050000
+         LA    0,&WORKA                 SUPPLY WORK AREA ADDRESS        44100000
+         AGO   .CALL                                                    44150000
+.WORKREG LR    0,&WORKA(1)              SUPPLY WORK AREA ADDRESS        44200000
+         AGO   .CALL                                                    44250000
+.WORKCLR SR    0,0                      INDICATE LACK OF WORK AREA      44300000
+.CALL    XR    14,14               SET LENGTH CODE TO 1        @D52VDAK 44312552
+         BALR  14,0           GET NEXT INSTRUCTION ADDRESS AND @D52VDAK 44325052
+*                             SET HIGH ORDER BIT IF AMODE 31   @D52VDAK 44337552
+         LTR   14,14          RUNNING IN 24 BIT MODE ?         @D52VDAK 44350052
+         BP    8(,14)         YES,OK                           @D52VDAK 44362552
+         SVC   130            EXECUTION MODE VIOLATION         @D52VDAK 44375052
+         BALR  14,15                    CALL SETPRT ROUTINE             44387552
+         AIF   ('&EP' NE '').EXIT       GO IF CDLOAD NOT ISSUED         44400000
+&PREF.E  EQU   *                        END OF MACRO                    44450000
+.EXIT    ANOP                                                           44500000
+*                                                                       44550000
+         MEND                                                           44600000

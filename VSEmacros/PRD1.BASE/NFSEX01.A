@@ -1,0 +1,81 @@
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *   00001000
+* Program: NFSEX01                                                  *   00002000
+*                                                                   *   00003000
+* (C) 1998 Connectivity Systems - All Rights Reserved               *   00004000
+*                                                                   *   00005000
+* Author: Leo Langevin - leo@tcpip4vse.com                          *   00006000
+*                                                                   *   00007000
+* Description: Sample DIRLIST exit that validates an entry and      *   00008000
+*         determines if it should be seen by a user.                *   00009000
+*                                                                   *   00010000
+* Incoming: R1 = NFSEXIT Parameter list pointer                     *   00011000
+*           R11 = IVBLOK pointer                                    *   00012000
+*           R13 = Savearea                                          *   00013000
+*           R14 = Return address                                    *   00014000
+*           R15 = Incoming base                                     *   00015000
+*                                                                   *   00016000
+* Incoming AMODE must be AMODE31 for XA or ESA systems.             *   00017000
+*                                                                   *   00018000
+* Outgoing: R15=0 - Okay to display                                 *   00019000
+*           R15=4 - Don't display                                   *   00020000
+*                                                                   *   00021000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *   00022000
+NFSEX01  SUBRT PHASE=YES                Setup the AMODE                 00023000
+         USING IVBLOK,R11               Map to the IVBLOK layout        00024000
+         USING NFSEXIT,R2               Map to parameter layout         00025000
+         USING FIBLOK,R5                Map to the FIBLOK layout        00026000
+         L     R2,0(R1)                 Point to the parameter list     00027000
+         L     R5,NFSFIADR              Point to the FIBLOK             00028000
+         XR    R15,R15                  Default to OK                   00029000
+*                                                                       00030000
+* In this example, we will make the following limitations:              00031000
+*      1) Don't allow the viewing of "*.PHASE" members                  00032000
+*      2) Don't allow viewing of "*.Z" from user "CLUELESS"             00033000
+*      3) Don't allow any viewing from ip address 100.100.9.9           00034000
+*                                                                       00035000
+*                                                                       00036000
+* Don't allow access from 100.100.9.9                                   00037000
+*                                                                       00038000
+         CLC  NFSIPAD(4),IPNO           Is it from 100.100.9.9 ?        00039000
+         BZ   NFSEXNO                   Yes...forget it                 00040000
+*                                                                       00041000
+* If it's LIBR, we'll do something special                              00042000
+*                                                                       00043000
+         CLI  FITYPE,FITYLIBR           Is it LIBR ?                    00044000
+         BNZ  NFSEXOK                   No...just get out               00045000
+*                                                                       00046000
+* Let's figure out the file type                                        00047000
+*                                                                       00048000
+         LA   R1,NFSMEMB                Point to the member name        00049000
+         LA   R2,16                     Maximum length                  00050000
+NFSEXLP1 CLI  0(R1),C'.'                Did we find a delimiter ?       00051000
+         BZ   NFSEXCK                   Yes...proceed                   00052000
+         LA   R1,1(,R1)                 Skip a byte                     00053000
+         BCT  R2,NFSEXLP1               And look some more              00054000
+         B    NFSEXOK                   Bad name, get out               00055000
+*                                                                       00056000
+* Don't let CLUSLESS edit .Z members                                    00057000
+*                                                                       00058000
+NFSEXCK  CLC  NFSUSER(8),=C'CLUELESS'   Is it a special person ?        00059000
+         BNZ  NFSEXPH                   No...check for phases           00060000
+         CLC  0(3,R1),=C'.Z '           JCL member ?                    00061000
+         BZ   NFSEXNO                   Yes...forbid it                 00062000
+*                                                                       00063000
+* Don't let anyone see .PHASE members. Not useful to non-VSE anyway     00064000
+*                                                                       00065000
+NFSEXPH  CLC  0(7,R1),=C'.PHASE '       PHASE ?                         00066000
+         BZ   NFSEXNO                   Yes...forbid it                 00067000
+         B    NFSEXOK                   No...allow it                   00068000
+*                                                                       00069000
+* Return to caller                                                      00070000
+*                                                                       00071000
+NFSEXNO  LA   R15,4                     Indicate failure                00072000
+NFSEXOK  SUBRT RC=0(R15)                Return to caller                00073000
+* ------------- Working Storage Section -------- *                      00074000
+         LTORG ,                        Literal pool                    00075000
+IPNO     DC   AL1(100),AL1(100),AL1(9),AL1(9)                           00076000
+* ----------------- Dummy Section -------------- *                      00077000
+NFSEXIT  NFSEXIT FORMAT=NFSEX01         Layout of parameter             00078000
+         IVBLOK DSECT=YES               Layout of IVBLOK                00079000
+         FIBLOK DSECT=YES               Layout of FIBLOK                00080000
+         END  NFSEX01                   End of the exit                 00081000

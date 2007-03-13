@@ -1,0 +1,228 @@
+         TITLE 'Sample batch predump abnormal termination exit'         00001000
+**********************************************************************  00002000
+*                                                                    *  00003000
+*     LICENSED MATERIALS - PROPERTY OF IBM                           *  00004000
+*                                                                    *  00005000
+*     5686-066  (C) COPYRIGHT IBM CORP. 1998, 2002                   *  00006000
+*     ALL RIGHTS RESERVED.                                           *  00007000
+*                                                                    *  00008000
+*      US Government Users Restricted Rights - Use, duplication or   *  00009000
+*      disclosure restricted by GSA ADP Schedule Contract with IBM   *  00010000
+*      Corp.                                                         *  00011000
+*                                                                    *  00012000
+**********************************************************************  00013000
+CEEBATX1 CEEENTRY PPA=ASMPPA,AUTO=WORKSIZE,MAIN=NO                      00014000
+         USING WORKAREA,R13                                             00015000
+         USING CEECAA,R12                                               00016000
+**********************************************************************  00017000
+* Get CIB address into register 2                                    *  00018000
+**********************************************************************  00019000
+         L     R2,0(,R1)                                                00020000
+         L     R2,0(,R2)                                                00021000
+         USING CEECIB,R2                                                00022000
+**********************************************************************  00023000
+* Initialize our return code in Register 9                           *  00024000
+**********************************************************************  00025000
+         LA    R9,0                                                     00026000
+**********************************************************************  00027000
+* Call CEE5GRN to get the name of the program which was executing    *  00028000
+* when the condition was raised.                                     *  00029000
+**********************************************************************  00030000
+         LA    R4,RNAME                                                 00031000
+         LA    R5,FBCODE                                                00032000
+         STM   R4,R5,PLIST                                              00033000
+         LA    R1,PLIST                                                 00034000
+         L     R15,GRN                                                  00035000
+         BALR  R14,R15                                                  00036000
+         CLC   FBCODE(8),CEE000                                         00037000
+         BNE   GETOUT                                                   00038000
+**********************************************************************  00039000
+* Check if the program is one for which any LE dumps should be       *  00040000
+* suppressed.                                                        *  00041000
+**********************************************************************  00042000
+         LA    R3,PROG_NAMES                                            00043000
+         L     R4,0(,R3)          Get count of program names in R4      00044000
+         LA    R5,0               Initialize R5 as the loop counter     00045000
+LOOP     DS    0H                                                       00046000
+         LA    R6,1                                                     00047000
+         ALR   R5,R6              Increment the loop counter            00048000
+         CR    R5,R4              Check if at the end of the table      00049000
+         BH    ENDLOOP            ...Yes, leave the loop                00050000
+         LA    R6,8                                                     00051000
+         ALR   R3,R6              Bump R3 to the next table entry       00052000
+         CLC   0(8,R3),PGMNAME    Is this table entry the program name? 00053000
+         BNE   LOOP               ...No, keep looking.                  00054000
+         LA    R9,8               ...Yes, set return code to 8          00055000
+*********************************************************************** 00056000
+* Check the return code to see if the program name was found in the   * 00057000
+* table. If so, call CEEDCOD to decompose the condition raised in the * 00058000
+* progtram in order to extract the facility ID, message number and    * 00059000
+* severity.                                                           * 00060000
+*********************************************************************** 00061000
+ENDLOOP  DS    0H                                                       00062000
+         LTR   R9,R9                                                    00063000
+         BZ    GETOUT                                                   00064000
+         MVC   C_TOK(12),CIB_COND                                       00065000
+         LA    R4,C_TOK                                                 00066000
+         ST    R4,PARM1                                                 00067000
+         LA    R4,SEV                                                   00068000
+         ST    R4,PARM2                                                 00069000
+         LA    R4,MSGNO                                                 00070000
+         ST    R4,PARM3                                                 00071000
+         LA    R4,CASE                                                  00072000
+         ST    R4,PARM4                                                 00073000
+         LA    R4,SEV2                                                  00074000
+         ST    R4,PARM5                                                 00075000
+         LA    R4,CNTRL                                                 00076000
+         ST    R4,PARM6                                                 00077000
+         LA    R4,FAC_ID                                                00078000
+         ST    R4,PARM7                                                 00079000
+         LA    R4,I_S_I                                                 00080000
+         ST    R4,PARM8                                                 00081000
+         LA    R4,FBCODE                                                00082000
+         ST    R4,PARM9                                                 00083000
+         LA    R1,PLIST                                                 00084000
+         L     R15,DCOD                                                 00085000
+         BALR  R14,R15                                                  00086000
+         CLC   FBCODE(8),CEE000                                         00087000
+         BE    MSGOUT                                                   00088000
+         LA    R9,0               Call failed, reset return code        00089000
+         B     GETOUT             and return to the caller              00090000
+*********************************************************************** 00091000
+* If the call to CEEDCOD was successful CEEMOUT is called to write    * 00092000
+* a message showing the program name, facility ID, message number     * 00093000
+* and severity and indicating the dump has been suppressed.           * 00094000
+*********************************************************************** 00095000
+MSGOUT   DS    0H                                                       00096000
+         LH    R4,MSGNO                                                 00097000
+         CVD   R4,MSGDEC                                                00098000
+         UNPK  MSG_NO,MSGDEC+5(3)                                       00099000
+         OI    MSG_NO+7,X'F0'                                           00100000
+         MVC   MOUTMSG(OUT_LEN),OUT_MSG                                 00101000
+         MVC   MOUTMSG+11(8),PGMNAME                                    00102000
+         MVC   MOUTMSG+47(3),FAC_ID                                     00103000
+         MVC   MOUTMSG+50(4),MSG_NO+4                                   00104000
+         LH    R4,SEV                                                   00105000
+         LTR   R4,R4                                                    00106000
+         BNZ   SEV_1                                                    00107000
+         MVI   MOUTMSG+54,C'I'                                          00108000
+         B     GOTSEV                                                   00109000
+SEV_1    CLC   SEV(2),=H'1'                                             00110000
+         BNE   SEV_2                                                    00111000
+         MVI   MOUTMSG+54,C'W'                                          00112000
+         B     GOTSEV                                                   00113000
+SEV_2    CLC   SEV(2),=H'2'                                             00114000
+         BNE   SEV_3                                                    00115000
+         MVI   MOUTMSG+54,C'E'                                          00116000
+         B     GOTSEV                                                   00117000
+SEV_3    CLC   SEV(2),=H'3'                                             00118000
+         BNE   SEV_4                                                    00119000
+         MVI   MOUTMSG+54,C'S'                                          00120000
+         B     GOTSEV                                                   00121000
+SEV_4    MVI   MOUTMSG+54,C'C'                                          00122000
+*   Setup the parameter list to CEEMOUT. Do not omit the feedback code. 00123000
+GOTSEV   DS    0H                                                       00124000
+         LA    R4,MOUTMSG                                               00125000
+         LA    R5,DEST                                                  00126000
+         LA    R6,FBCODE                                                00127000
+         STM   R4,R6,PLIST                                              00128000
+*   Point to the parameter list and call CEEMOUT                        00129000
+         LA    R1,PLIST                                                 00130000
+         L     R15,MOUT                                                 00131000
+         BALR  R14,R15                                                  00132000
+GETOUT   DS    0H                                                       00133000
+         CEETERM  RC=(9)                  Return to LE/VSE.             00134000
+* ====================================================================  00135000
+*              CONSTANTS                                                00136000
+* ====================================================================  00137000
+*                                                                       00138000
+         DS 0F                                                          00139000
+CEE000   DS    3F'0'              Success feedback code                 00140000
+*                                                                       00141000
+OUT_MSG  DS     0F                                                      00142000
+         DC     AL2(OUT_END-OUT_ST)                                     00143000
+OUT_ST   DC    C'Program: XXXXXXXX failed with error message: XXXXXXXX X00144000
+               - LE dump suppressed by CEEBATX1'                        00145000
+OUT_END  EQU    *                                                       00146000
+OUT_LEN  EQU    *-OUT_MSG                                               00147000
+*                                                                       00148000
+**********************************************************************  00149000
+* Table of names of programs for which dumps should be supressed.    *  00150000
+**********************************************************************  00151000
+PROG_NAMES DS   0D                                                      00152000
+         DC     A((PROG_NAMES_END-PROG_1)/8)                            00153000
+         DS     0D                Align on a doubleword                 00154000
+PROG_1   DC     C'PROG1   '                                             00155000
+         DC     C'PROG2   '                                             00156000
+         DC     C'PROG3   '                                             00157000
+         DC     C'PROG4   '                                             00158000
+         DC     C'PROG5   '                                             00159000
+         DC     C'PROG6   '                                             00160000
+PROG_NAMES_END DS 0H                                                    00161000
+*                                                                       00162000
+         DS 0F                                                          00163000
+DEST     DC     F'2'              The destination is the MSGFILE        00164000
+         DS 0F                                                          00165000
+MOUT     DC     V(CEEMOUT)        LE Message service                    00166000
+GRN      DC     V(CEE5GRN)        LE Get Routine Name service           00167000
+DCOD     DC     V(CEEDCOD)        LE Decompose Cond. Token service      00168000
+ASMPPA   CEEPPA                                                         00169000
+* ====================================================================  00170000
+*        The Workarea and DSA                                           00171000
+* ====================================================================  00172000
+WORKAREA DSECT                                                          00173000
+         ORG   *+CEEDSASZ         Leave space for the DSA fixed part    00174000
+         DS    0D                                                       00175000
+MOUTMSG  DS    XL(OUT_LEN)                                              00176000
+         DS 0F                                                          00177000
+RNAME    DS 0D                                                          00178000
+PGMNAME  DS CL8                                                         00179000
+         DS CL72                                                        00180000
+         DS 0D                                                          00181000
+MSGDEC   DS PL15                  To convert msgno to decimal           00182000
+         DS 0D                                                          00183000
+MSG_NO   DS CL8                   To make msgno printable               00184000
+         DS 0F                                                          00185000
+FBCODE   DS 3F                    Space for a 12-byte feedback code     00186000
+C_TOK    DS CL12                                                        00187000
+SEV      DS FL2                                                         00188000
+MSGNO    DS H                                                           00189000
+CASE     DS H                                                           00190000
+SEV2     DS H                                                           00191000
+CNTRL    DS H                                                           00192000
+FAC_ID   DS CL3                                                         00193000
+I_S_I    DS F                                                           00194000
+PLIST    DS 0D                                                          00195000
+PARM1    DS A                                                           00196000
+PARM2    DS A                                                           00197000
+PARM3    DS A                                                           00198000
+PARM4    DS A                                                           00199000
+PARM5    DS A                                                           00200000
+PARM6    DS A                                                           00201000
+PARM7    DS A                                                           00202000
+PARM8    DS A                                                           00203000
+PARM9    DS A                                                           00204000
+*                                                                       00205000
+         DS    0D                                                       00206000
+WORKSIZE EQU   *-WORKAREA                                               00207000
+         CEEDSA  ,                Mapping of the dynamic save area      00208000
+         CEECAA  ,                Mapping of the common anchor area     00209000
+         CEECIB  ,                Mapping of the cond. info. block      00210000
+*                                                                       00211000
+R0       EQU   0                                                        00212000
+R1       EQU   1                                                        00213000
+R2       EQU   2                                                        00214000
+R3       EQU   3                                                        00215000
+R4       EQU   4                                                        00216000
+R5       EQU   5                                                        00217000
+R6       EQU   6                                                        00218000
+R7       EQU   7                                                        00219000
+R8       EQU   8                                                        00220000
+R9       EQU   9                                                        00221000
+R10      EQU   10                                                       00222000
+R11      EQU   11                                                       00223000
+R12      EQU   12                                                       00224000
+R13      EQU   13                                                       00225000
+R14      EQU   14                                                       00226000
+R15      EQU   15                                                       00227000
+         END CEEBATX1                                                   00228000

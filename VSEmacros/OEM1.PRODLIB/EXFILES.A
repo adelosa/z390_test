@@ -1,0 +1,370 @@
+         MACRO                                                          00001000
+&L       EXFILES  &TYPE,&DTF,&EOF=,&ERROR=,&FILENAME=,&RECFORM=,       *00002000
+               &IOAREA1=,&RECSIZE=,&NEWNAME=,&BLKSIZE=,&COMMAND=,      *00003000
+               &CC=,&DISP=,&USERNAME=,&PASSWORD=,&SUBDIR=,&FIBLOK=      00004000
+         GBLB     &XFISECT                                              00005000
+         LCLC     &REQ,&NREG                                            00006000
+         LCLA     &NLEN,&SLEN,&RLEN,&CLEN,&DLEN                         00007000
+&CLEN    SETA     K'&COMMAND-2                                          00008000
+*---------------------------------------------------------------------* 00009000
+*        Copyright 2001 -- Connectivity Systems Incorporated          * 00010000
+*---------------------------------------------------------------------* 00011000
+.*-----------------------------------------*                            00012000
+.*                                         *                            00013000
+.*       External File I/O Control Block   *                            00014000
+.*                                         *                            00015000
+.*-----------------------------------------*                            00016000
+&REQ     SETC     'G'                                                   00017000
+         AIF      ('&TYPE' EQ 'READ').GOON                              00018000
+&REQ     SETC     'P'                                                   00019000
+         AIF      ('&TYPE' EQ 'WRITE').GOON                             00020000
+&REQ     SETC     'C'                                                   00021000
+         AIF      ('&TYPE' EQ 'CLOSE').GOON                             00022000
+         AIF      ('&TYPE' EQ 'CLEAR_RESPONSE').GOON                    00023000
+&REQ     SETC     'D'                                                   00024000
+         AIF      ('&TYPE' EQ 'DELETE').GOON                            00025000
+&REQ     SETC     'B'                                                   00026000
+         AIF      ('&TYPE' EQ 'DIRLIST').GOON                           00027000
+&REQ     SETC     'R'                                                   00028000
+         AIF      ('&TYPE' EQ 'RENAME').GOON                            00029000
+&REQ     SETC     'A'                                                   00030000
+         AIF      ('&TYPE' EQ 'APPEND').GOON                            00031000
+&REQ     SETC     'X'                                                   00032000
+         AIF      ('&TYPE' EQ 'PROCESS').GOON                           00033000
+         AIF      ('&TYPE' EQ 'SEND_COMMAND').GOON                      00034000
+&REQ     SETC     'Y'                                                   00035000
+         AIF      ('&TYPE' EQ 'INQUIRE').GOON                           00036000
+         AIF      ('&TYPE' EQ 'GET_RESPONSE').GOON                      00037000
+&REQ     SETC     'Q'                                                   00038000
+         AIF      ('&TYPE' EQ 'QUIT').QUIT                              00039000
+         AIF      ('&TYPE' EQ 'SHUTDOWN').QUIT                          00040000
+         AIF      ('&TYPE' EQ 'DSECT').DEFDS                            00041000
+         MNOTE    8,'XFILEIO PARAMETER INCORRECT: &TYPE '               00042000
+         MEXIT                                                          00043000
+.DEFDS   ANOP                                                           00044000
+         AIF      (&XFISECT).XFDONE                                     00045000
+*------------------------------------------*                            00046000
+*                                          *                            00047000
+*        External File I/O Control Block   *                            00048000
+*                                          *                            00049000
+*------------------------------------------*                            00050000
+XFILEDS  DSECT ,                                                        00051000
+&XFISECT  SETB     1                                                    00052000
+XFIBEGIN DS    D                       Eyecatcher to validate block     00053000
+XFISZ    DS    F                       Size of the control block        00054000
+XFISYSID DS    A                       Pointer to the SYSID             00055000
+XFIREQ   DS    A                       Pointer to the request           00056000
+XFIFILE  DS    A                       Pointer to the file name         00057000
+XFISUBD  DS    A                       Pointer to subdirectory name     00058000
+XFIRCODE DS    A                       Pointer to the return code       00059000
+XFIREASN DS    A                       Pointer to the reason code       00060000
+XFIFIBLK EQU   XFIREASN                FIBLOK pointer if dynamic "%"    00061000
+*                                                                       00062000
+*        Return code information....                                    00063000
+*        ---------------------------------------------                  00064000
+*        RC          REAS    Description                                00065000
+*        ---------------------------------------------                  00066000
+*        0           0       Process worked                             00067000
+*        0           1       Driver loaded with BEGIN error. Maybe ok   00068000
+*        4           0       Eof encountered on READ or READDIR         00069000
+*        8           0       OPEN or OPENDIR failed                     00070000
+*        8           1       Invalid request type passed in block       00071000
+*        8           2       No OPEN routine in file I/O driver         00072000
+*        8           3       No OPENDIR routine in file I/O driver      00073000
+*        12          0       Unable to load file I/O driver             00074000
+*        32          --      Bad control block. R15 set, not XFIRCODE.  00075000
+*                                                                       00076000
+XFIDISP  DS    A                       Pointer to the disposition       00077000
+XFIUSER  DS    A                       Pointer to the user name         00078000
+XFIPASS  DS    A                       Pointer to the password          00079000
+XFIRECFM DS    A                       Pointer to the record format     00080000
+XFICC    DS    A                       Pointer to the CC value          00081000
+XFILRECL DS    A                       Pointer to the LRECL value       00082000
+XFIBLOCK DS    A                       Pointer to the BLOCKSIZE value   00083000
+XFIBUFF  DS    A                       Pointer to the Buffer            00084000
+XFIBUFFL DS    A                       Pointer to the Actual buff leng  00085000
+XFINEWNM DS    A                       Pointer to the New member name   00086000
+XFILENGT DS    A                       Pointer to the READ result leng  00087000
+XFIWORK  DS    0CL80                   Special work fields              00088000
+XFIEOFIN DS    X                          EOF Indicator                 00089000
+XFIREXX  DS    X                          REXX Use                      00090000
+         DS    XL2                        Reserved                      00091000
+XFIPOINT DS    A                          Pointer to this block         00092000
+XFIFRBLA DS    A                          FRBLOK pointer                00093000
+XFIROFFS DS    A                          Offset Pointer for getresp    00094000
+XFITOTBL DS    A                          Total bytes for getresp       00095000
+XFIRC    DS    F                          Return code                   00096000
+XFIRS    DS    F                          Reason code                   00097000
+XFILEN   DS    F                          Returned length               00098000
+XFIREXA  DS    A                          Special pointer               00099000
+         DS    CL44                       Reserved                      00100000
+XFISIZE  EQU     *-XFIBEGIN  Length of this block                       00101000
+.XFDONE  ANOP                                                           00102000
+         MEXIT                                                          00103000
+.*                                                                      00104000
+.* Generic use of parms                                                 00105000
+.*                                                                      00106000
+.GOON    ANOP                                                           00107000
+         AIF ('&L' EQ '').NODS                                          00108000
+&L       DS   0H                                                        00109000
+.NODS    ANOP                                                           00110000
+         USING XFILEDS,1                                                00111000
+.*                                                                      00112000
+.* DTF                                                                  00113000
+.*                                                                      00114000
+         AIF ('&DTF' EQ '').BADMFG                                      00115000
+         AIF ('&DTF'(1,1) EQ '(').MSGA                                  00116000
+         LA   1,&DTF                                                    00117000
+         AGO  .START                                                    00118000
+.MSGA    ANOP                                                           00119000
+&NREG    SETC  '&DTF'(2,K'&DTF-2)                                       00120000
+         LR    1,&NREG                                                  00121000
+.*                                                                      00122000
+.* IOAREA1                                                              00123000
+.*                                                                      00124000
+.START   ANOP                                                           00125000
+         LA   14,=C'&REQ'             Point to request area             00126000
+         ST   14,XFIREQ               Save the pointer                  00127000
+         AIF ('&IOAREA1' EQ '').NOBUFF                                  00128000
+         AIF ('&IOAREA1'(1,1) EQ '(').MFGREG1                           00129000
+         LA  14,&IOAREA1              Point to the work area            00130000
+         AGO  .MFG1                                                     00131000
+.NOBUFF  DS   0H                                                        00132000
+         ICM   14,15,XFIBUFF          Point to buffer                   00133000
+         BNZ   *+8                    If there is one, go ahead         00134000
+         LA    14,=CL80' '            Prevent an abend                  00135000
+         AGO   .MFG1                                                    00136000
+.MFGREG1 ANOP                                                           00137000
+         LA  14,0&IOAREA1             Point to the work area            00138000
+.MFG1    ANOP                                                           00139000
+         ST   R14,XFIBUFF             Update the pointer                00140000
+.*                                                                      00141000
+.* FILENAME                                                             00142000
+.*                                                                      00143000
+         AIF ('&FILENAME' EQ '').RECF                                   00144000
+         AIF ('&FILENAME'(1,1) EQ '''').FILEC                           00145000
+         AIF ('&FILENAME' EQ '(').FILEA                                 00146000
+         LA  14,&FILENAME                                               00147000
+         AGO .FILES                                                     00148000
+.FILEC   ANOP                                                           00149000
+&NLEN    SETA     K'&FILENAME-1                                         00150000
+         LA   14,=CL&NLEN&FILENAME                                      00151000
+         AGO  .FILES                                                    00152000
+.FILEA   ANOP                                                           00153000
+         LA   14,0&FILENAME                                             00154000
+.FILES   ANOP                                                           00155000
+         ST   14,XFIFILE                                                00156000
+.*                                                                      00157000
+.* RECFORM                                                              00158000
+.*                                                                      00159000
+.RECF    ANOP                                                           00160000
+         AIF ('&RECFORM' EQ '').RECSIZ                                  00161000
+         AIF ('&RECFORM'(1,1) EQ '''').RECFC                            00162000
+         AIF ('&RECFORM' EQ '(').RECFA                                  00163000
+         LA  14,&RECFORM                                                00164000
+         AGO .RECFS                                                     00165000
+.RECFC   ANOP                                                           00166000
+         LA   14,=CL2&RECFORM                                           00167000
+         AGO  .RECFS                                                    00168000
+.RECFA   ANOP                                                           00169000
+         LA   14,0&RECFORM                                              00170000
+.RECFS   ANOP                                                           00171000
+         ST   14,XFIRECFM                                               00172000
+.*                                                                      00173000
+.* RECSIZE                                                              00174000
+.*                                                                      00175000
+.RECSIZ  ANOP                                                           00176000
+         AIF ('&RECSIZE' EQ '').BLKSIZE                                 00177000
+         AIF ('&RECSIZE'(1,1) EQ '''').RECSC                            00178000
+         AIF ('&RECSIZE' EQ '(').RECSA                                  00179000
+         LA  14,&RECSIZE                                                00180000
+         AGO .RECSS                                                     00181000
+.RECSC   ANOP                                                           00182000
+         LA   14,=F&RECSIZE                                             00183000
+         AGO  .RECSS                                                    00184000
+.RECSA   ANOP                                                           00185000
+         LA   14,0&RECSIZE                                              00186000
+.RECSS   ANOP                                                           00187000
+         ST   14,XFILRECL                                               00188000
+         ST   14,XFIBUFFL                                               00189000
+.*                                                                      00190000
+.* BLKSIZE                                                              00191000
+.*                                                                      00192000
+.BLKSIZE ANOP                                                           00193000
+         AIF ('&BLKSIZE' EQ '').NEWNAM                                  00194000
+         AIF ('&BLKSIZE'(1,1) EQ '''').BLKSC                            00195000
+         AIF ('&BLKSIZE' EQ '(').BLKSA                                  00196000
+         LA  14,&BLKSIZE                                                00197000
+         AGO .BLKSS                                                     00198000
+.BLKSC   ANOP                                                           00199000
+         LA   14,=F&BLKSIZE                                             00200000
+         AGO  .BLKSS                                                    00201000
+.BLKSA   ANOP                                                           00202000
+         LA   14,0&BLKSIZE                                              00203000
+.BLKSS   ANOP                                                           00204000
+         ST   14,XFIBLOCK                                               00205000
+.*                                                                      00206000
+.* NEWNAME                                                              00207000
+.*                                                                      00208000
+.NEWNAM  ANOP                                                           00209000
+         AIF ('&NEWNAME' EQ '').CC                                      00210000
+         AIF ('&NEWNAME'(1,1) EQ '''').NEWNC                            00211000
+         AIF ('&NEWNAME' EQ '(').NEWNA                                  00212000
+         LA  14,&NEWNAME                                                00213000
+         AGO .NEWNS                                                     00214000
+.NEWNC   ANOP                                                           00215000
+&RLEN    SETA     K'&NEWNAME-1                                          00216000
+         LA   14,=CL&RLEN&NEWNAME                                       00217000
+         AGO  .NEWNS                                                    00218000
+.NEWNA   ANOP                                                           00219000
+         LA   14,0&NEWNAME                                              00220000
+.NEWNS   ANOP                                                           00221000
+         ST   14,XFINEWNM                                               00222000
+.*                                                                      00223000
+.* CC                                                                   00224000
+.*                                                                      00225000
+.CC      ANOP                                                           00226000
+         AIF ('&CC' EQ '').SUBD                                         00227000
+         AIF ('&CC'(1,1) EQ '''').CCC                                   00228000
+         AIF ('&CC' EQ '(').CCA                                         00229000
+         LA  14,&CC                                                     00230000
+         AGO .CCS                                                       00231000
+.CCC     ANOP                                                           00232000
+         LA   14,=C&CC                                                  00233000
+         AGO  .CCS                                                      00234000
+.CCA     ANOP                                                           00235000
+         LA   14,0&CC                                                   00236000
+.CCS     ANOP                                                           00237000
+         ST   14,XFICC                                                  00238000
+.*                                                                      00239000
+.* SUBDIR                                                               00240000
+.*                                                                      00241000
+.SUBD    ANOP                                                           00242000
+         AIF ('&SUBDIR' EQ '').USER                                     00243000
+         AIF ('&SUBDIR'(1,1) EQ '''').SUBDC                             00244000
+         AIF ('&SUBDIR' EQ '(').SUBDA                                   00245000
+         LA  14,&SUBDIR                                                 00246000
+         AGO .SUBDS                                                     00247000
+.SUBDC   ANOP                                                           00248000
+&SLEN    SETA     K'&SUBDIR-1                                           00249000
+         LA   14,=CL&SLEN&SUBDIR                                        00250000
+         AGO  .SUBDS                                                    00251000
+.SUBDA   ANOP                                                           00252000
+         LA   14,0&SUBDIR                                               00253000
+.SUBDS   ANOP                                                           00254000
+         ST   14,XFISUBD                                                00255000
+.*                                                                      00256000
+.* USERNAME                                                             00257000
+.*                                                                      00258000
+.USER    ANOP                                                           00259000
+         AIF ('&USERNAME' EQ '').PASS                                   00260000
+         AIF ('&USERNAME'(1,1) EQ '''').USERC                           00261000
+         AIF ('&USERNAME' EQ '(').USERA                                 00262000
+         LA  14,&USERNAME                                               00263000
+         AGO .USERS                                                     00264000
+.USERC   ANOP                                                           00265000
+         LA   14,=CL16&USERNAME                                         00266000
+         AGO  .USERS                                                    00267000
+.USERA   ANOP                                                           00268000
+         LA   14,0&USERNAME                                             00269000
+.USERS   ANOP                                                           00270000
+         ST   14,XFIUSER                                                00271000
+.*                                                                      00272000
+.* PASSWORD                                                             00273000
+.*                                                                      00274000
+.PASS    ANOP                                                           00275000
+         AIF ('&PASSWORD' EQ '').DISP                                   00276000
+         AIF ('&PASSWORD'(1,1) EQ '''').PASSC                           00277000
+         AIF ('&PASSWORD' EQ '(').PASSA                                 00278000
+         LA  14,&PASSWORD                                               00279000
+         AGO .PASSS                                                     00280000
+.PASSC   ANOP                                                           00281000
+         LA   14,=CL16&PASSWORD                                         00282000
+         AGO  .PASSS                                                    00283000
+.PASSA   ANOP                                                           00284000
+         LA   14,0&PASSWORD                                             00285000
+.PASSS   ANOP                                                           00286000
+         ST   14,XFIPASS                                                00287000
+.*                                                                      00288000
+.* DISP                                                                 00289000
+.*                                                                      00290000
+.DISP    ANOP                                                           00291000
+         AIF ('&DISP' EQ '').COMM                                       00292000
+         AIF ('&DISP'(1,1)  EQ '''').DISPC                              00293000
+         AIF ('&DISP' EQ '(').DISPA                                     00294000
+         LA  14,&DISP                                                   00295000
+         AGO .DISPS                                                     00296000
+.DISPC   ANOP                                                           00297000
+         LA   14,=C&DISP                                                00298000
+         AGO  .DISPS                                                    00299000
+.DISPA   ANOP                                                           00300000
+         LA   14,0&DISP                                                 00301000
+.DISPS   ANOP                                                           00302000
+         ST   14,XFIDISP                                                00303000
+.*                                                                      00304000
+.* SEND_COMMAND                                                         00305000
+.*                                                                      00306000
+.COMM    ANOP                                                           00307000
+         AIF  ('&COMMAND' EQ '').NEXT                                   00308000
+         L    14,XFIBUFF                                                00309000
+         LA   15,&CLEN                                                  00310000
+         ST   15,0(14)                                                  00311000
+         MVC  4(&CLEN,14),=C&COMMAND                                    00312000
+.*                                                                      00313000
+.*       Setup the pointer                                              00314000
+.*                                                                      00315000
+.NEXT    ANOP                                                           00316000
+         ST   1,XFIPOINT              Update the pointer                00317000
+         LA   1,XFIPOINT              Point there                       00318000
+         AGO  .NEXT1                                                    00319000
+.*                                                                      00320000
+.* QUIT or SHUTDOWN                                                     00321000
+.*                                                                      00322000
+.QUIT    ANOP                                                           00323000
+         USING XFILEDS,1                                                00324000
+         LA   1,=CL8'QUIT'                                              00325000
+         AGO  .NEXT1                                                    00326000
+.*                                                                      00327000
+.* Call the routine                                                     00328000
+.*                                                                      00329000
+.NEXT1  ANOP                                                            00330000
+        AIF ('&FIBLOK' EQ '').NORMA                                     00331000
+        MVC   XFIREASN(4),&FIBLOK                                       00332000
+.NORMA  ANOP                                                            00333000
+         L   15,=V(XFILEIOS)          Get the module address            00334000
+         BALR 14,15                   Call the module                   00335000
+         AIF ('&REQ' NE 'Q').NORMX                                      00336000
+         XR  15,15                                                      00337000
+         AGO  .DONE                                                     00338000
+.NORMX   ANOP                                                           00339000
+         AIF ('&DTF'(1,1) EQ '(').MSGA1                                 00340000
+         LA   1,&DTF                                                    00341000
+         AGO  .START2                                                   00342000
+.MSGA1   ANOP                                                           00343000
+         LR    1,&NREG                                                  00344000
+.START2  ANOP                                                           00345000
+         L   14,XFIREASN              Point to reason code              00346000
+         L   0,0(14)                  Get reason code                   00347000
+         L   15,XFIRCODE              Point to return code              00348000
+         L   15,0(15)                 Get return code                   00349000
+         L   14,XFILENGT              Point to the length               00350000
+         L   1,0(14)                  And get the length                00351000
+         LTR 15,15                    Setup for a branch                00352000
+         AIF ('&EOF' NE '').EOF                                         00353000
+         AIF ('&ERROR' NE '').ERR                                       00354000
+         AGO  .NOERR                                                    00355000
+.EOF     ANOP                                                           00356000
+         C   15,=F'4'                 EOF ?                             00357000
+         BE  &EOF                                                       00358000
+         AIF ('&ERROR' EQ '').NOERR                                     00359000
+.ERR    ANOP                                                            00360000
+         LTR  15,15                   Did it work ?                     00361000
+         BNZ  &ERROR                  No...error                        00362000
+.NOERR   ANOP                                                           00363000
+.DONE    ANOP                                                           00364000
+         DROP  1                                                        00365000
+         MEXIT                                                          00366000
+.*                                                                      00367000
+.BADMFG  MNOTE 8,'MISSING "DTFNAME" PARAMETER. REQUIRED'                00368000
+         MEXIT                                                          00369000
+         MEND                                                           00370000

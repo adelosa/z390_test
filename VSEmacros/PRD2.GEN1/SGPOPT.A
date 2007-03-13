@@ -1,0 +1,1937 @@
+         MACRO                                                          00010015
+         SGPOPT                                                         00020015
+.************************************************************* @D368DRP 00030015
+*                                                            * @D368DRP 00040015
+.*       IBM DISK OPERATING SYSTEM                           * @D368DRP 00050015
+*        SUPERVISOR - SGPOPT - 5686-066                      * @D61NDRP 00060015
+************************************************************** @D368DRP 00070015
+*                                                            * @D368DRP 00080015
+*        LICENSED MATERIALS - PROPERTY OF IBM                * @D31UDRP 00090015
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"         * @D31UDRP 00100015
+*        5686-066 (C) COPYRIGHT IBM CORP. 1979, 2001         *          00110015
+*        SEE COPYRIGHT INSTRUCTIONS                          * @D31UDRP 00120015
+*                                                            * @D368DRP 00130015
+************************************************************** @D368DRP 00140015
+         TITLE 'VSE/AF SUPERVISOR  SGPOPT           PAGE HANDL. OPTIM. *00150015
+               ROUTINES'                                       @D14BDRP 00160015
+         SPACE 2                                               @DL2982P 00170015
+* /* START OF SPECIFICATIONS ********************************* @D51GDRP 00180015
+*                                                              @D51GDRP 00190015
+*01* MODULE NAME = SGPOPT                                      @D51GDRP 00200015
+*                                                              @D51GDRP 00210015
+*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                 @D51GDRP 00220015
+*                                                              @D51GDRP 00230015
+*01* DESCRIPTIVE NAME = PAGE HANDLING OPTIMIZATION SERVICES    @D51GDRP 00240015
+*                                                              @D51GDRP 00250015
+*01* CHANGE ACTIVITY = AS FOLLOWS                              @D51GDRP 00260015
+*    CHANGE DESCRIPTION                                        @D51GDRP 00270015
+*        E SUPPORT                                             @D35EDRP 00280015
+*        /370 SUPPORT                                          @D35CDRP 00290015
+*        VIO SUPPORT                                           @D14BDRP 00300015
+*        VAE SUPPORT                                           @DA33314 00310015
+*        PTE UPDATE AFTER IPTE                                 @DA35476 00320015
+*        MORE THAN 16MB REAL                                   @D51GDTP 00330015
+*        NEW SYSTEM LAYOUT                                     @D51GDRP 00340015
+*        MORE PARTITION SUPPORT                                @D51IDRP 00350015
+*        INVALID ADDRESS INDICATED FOR PAGEIN, FCEPGOUT,       @DY40069 00360015
+*           RELPAG OUT OF DYNAMIC PARTITION                    @DY40069 00370015
+*        LOOP IN TIBCHAIN, TIBSTATE NOT IN R5 FOR GETDEVCB     @DA40720 00380015
+*        SCB NOT SETUP IN CLEARTAB RTN, TO POST USER ECB       @DA40737 00390015
+*        ISSUE ISKE AHEAD OF 'DIAGNOSE 10', INST. THEREAFTER   @DA41877 00400015
+*        31-BIT VIRTUAL ENABLING                               @D52VDRP 00410015
+*        DATA SPACE SUPPORT                                    @D52GDWL 00420015
+*        UNPRED. RESULTS, IF PARAMETERLIST DESTROYED DURING    @KX40685 00430015
+*        PROCESSING                                @D35EDRP    @KX40685 00440015
+*        LAST PAGE IN MAX. SPACE NOT RELEASED      @D52GDWL    @KD40286 00450015
+*        PARAMETER LIST HANDLING BLOCKED PAGE-IN   @D52VDVB    @KD40354 00460015
+*        RELPAG CHANGES FOR PERFORMANCE                        @D61BDRP 00470015
+*        SKIP PAGEIN AND FCEPGOUT FOR NON PDS SYSTEM           @D61BDRP 00480015
+*        SKIP BLOCKED PAGE-IN IF NO COPY ON PDS                @D61NDVB 00490015
+*        MULTI-PROCESSOR SUPPORT                               @D61RDRP 00500015
+*        MORE THAN 255 TASKS                                   @D66CDOW 00510015
+**** END OF SPECIFICATIONS *******************************************/ 00520015
+         SPACE 2                                                        00530015
+         DS    0D                                              @D14ZDVB 00540015
+         DC    CL8'*SGPOPT*'                                   @D14ZDVB 00550015
+         DC    C'09/29/2000'      LAST APAR/DEVELOPMENT (MM/DD/YY)      00560015
+PAGEOPT  DS    0H                                              @D35EDRP 00570015
+*                                                                       00580015
+*********************************************************************** 00590015
+*                                                                       00600015
+*        ROUTINE PROLOGUE                                               00610015
+*        ROUTINE NAME= RELPAG                                           00620015
+*        MACRO=        SGPOPT                                           00630015
+*        FUNCTION= THIS MODULE HANDLES THE RELPAG REQUESTS              00640015
+*                  ALL PAGES TOTALY CONTAINED IN THE AREAS SPECIFIED    00650015
+*                  BY THE PARAMETER-LIST ARE INVALIDATED. I.E. THE      00660015
+*                  PAGE-STATE IS CHANGED TO DISCONNECTED AND NO COPY    00670015
+*                  ON PDS; EXCEPT IN THE CASES INDICATED BY RETURN      00680015
+*                  CODES.                                               00690015
+*        CALLED BY= SVC 85, AMODE(24),DATON  AT RELPAGE                 00700015
+*                   SVC 121, AMODE(24),DATON AT RELPG2ND                00710015
+*                   'DSPSERV RELEASE', AMODE(31),DATON AT RELPGAGX      00720015
+*        CALLS:                                                @D529DRP 00730015
+*              VALLIST WITH AMODE(REQUESTOR),DATON             @D529DRP 00740015
+*              HANDLLST/HANDLENT WITH AMODE(31),DATON          @D529DRP 00750015
+*              CLEARPF,SCNPGQO,PMRREMOV WITH AMODE(31),DATOFF  @D529DRP 00760015
+*        ENTRY POINTS = RELPAGE, RELPG2ND, RELPAGX                      00770015
+*        OPERATION                                                      00780015
+*        1. IF TASK IN 'REAL' MODE  AND REQUEST NOT FOR DATA SPACE,     00790015
+*           RETURN TO CALLER WITH RETURN CODE 0                         00800015
+*        2. IF PARAMETER-LIST NOT TOTALY CONTAINED IN REQUESTORS ADDR.  00810015
+*           SPACE AND REQUEST NOT FOR DATA SPACE,                       00820015
+*           RETURN TO CALLER WITH RETURN CODE 16.                       00830015
+*        3. CALL HANDLLST TO HANDLE THE PAGES SPECIFIED IN THE          00840015
+*           PARAMETER-LIST TILL SPECIAL HANDLING OF A PAGE IS NECESSARY 00850015
+*           OR END OF PARAMETER-LIST IS REACHED.                        00860015
+*        4. IF END OF PARAMETER-LIST REACHED, RETURN TO CALLER WITH     00870015
+*           RETURN CODE GIVEN BY HANDLLST OR HANDLENT ROUTINE.          00880015
+*        5. SET PAGE-STATE TO NO COPY ON PDS AND SET R- AND C-BIT OFF.  00890015
+*        6. IF PAGE DISCONNECTED, CONTINUE WITH 10.                     00900015
+*        7. IF PAGE CONNECTED OR PAGE-OUT ACTIVE FOR THIS PAGE,         00910015
+*           ENTER HARDWAIT (SITUATION HAS TO BE HANDLED BY HANDLLST).   00920015
+*        8. CALL SCNPGQUO TO HANDLE POSL AND ENTRY IN PGQUO.            00930015
+.*DEL    9. REMOVE PFTE FROM PSQ AND DISCONNECT PAGE.                   00940015
+*        9. REMOVE PFTE FROM PSQ, CLEAR FRAME, INSERT IT       @D61BDRP 00950015
+*           ON TOP OF PSQ. SET REFERENCE AND CHANGE BIT OFF.   @D61BDRP 00960015
+*       10. CALL HANDLENT TO CONTINUE HANDLING OF PAGES FROM PARAMETER- 00970015
+*           LIST TILL SPECIAL HANDLING IS REQUIRED OR END OF LIST       00980015
+*           DETECTED.                                                   00990015
+*       11. CONTINUE WITH 4.                                            01000015
+*                                                                       01010015
+*        INPUT:                                                         01020015
+*         R6 ADDR OF DISPATCHER (USED IN VALLIST RTN)                   01030015
+*         R1 POINTS TO PARAMETER-LIST WITH ENTRIES                      01040015
+*           PTR(31) ADDR. OF 1ST BYTE OF AREA                           01050015
+*           BIN FIXED(31) LENGTH-1 OF AREA                              01060015
+*         R1 ADDR OF SCB IF CALLED BY DSPSERV RELEASE AT       @D52GDWL 01070015
+*            ENTRY POINT  RELPAGX                              @D52GDWL 01080015
+*                                                              @D52GDWL 01090015
+*        OUTPUT:                                                        01100015
+*         PAGES SPECIFIED BY THE PARAMETER-LIST ARE RELEASED.           01110015
+*        EXIT NORMAL= RETURN TO CALLER                                  01120015
+*         CONDITION= FUNCTION FOR ALL PAGES COMPLETED OR TASK IN 'REAL' 01130015
+*                    MODE                                               01140015
+*         OUTPUT= AS DESCRIBED ABOVE OR NONE IF TASK IN 'REAL' MODE.    01150015
+*         RETURN CODE= RETURN CODE 0 IS RETURNED IN R15                 01160015
+*        EXIT ERROR= RETURN TO CALLER                                   01170015
+*         CONDITIONS= RETURN CODE 2 IS GIVEN IF NEGATIVE LENGTH         01180015
+*                     DETECTED IN AT LEAST ONE ENTRY.                   01190015
+*                     RETURN CODE 4 IS GIVEN IF AT LEAST ONE OF THE     01200015
+*                     ADDRESSES IS INVALID.                             01210015
+*                     RETURN CODE 8 IS GIVEN IF AT LEAST ONE OF THE     01220015
+*                     REQUESTED PAGES IS FIXED                          01230015
+*                     RETURN CODE 16 IS GIVEN IF THE PARAMETER-LIST IS  01240015
+*                     NOT TOTALY IN THE REQUESTORS ADDRESS-RANGE.       01250015
+*         OUTPUT= ALL PAGES WHICH DON'T INDICATE A RETURN CODE ARE      01260015
+*                 HANDLED. NOTHING IS DONE IF RETURN CODE IS 16.        01270015
+*         RETURN CODES= RETURN CODE 2,4,8,16 OR A COMBINATION OF 2,4,8  01280015
+*                       IS RETURNED IN R15.                             01290015
+*        EXTERNAL REFERENCES                                            01300015
+*         ROUTINES=  SCNPGQUO TO HANDLE PFTE IN PGQUO.                  01310015
+*                    HANDLLST/HANDLENT TO DO ACTIONS COMMON FOR         01320015
+*                                       RELPAG AND FCEPGOUT             01330015
+*         DATA= PGQUI(READ)                                             01340015
+*               PAGE-STATE(READ,WRITE)                                  01350015
+*               PFTE(READ,WRITE)  PAGE FRAME TABLE ENTRY                01360015
+*                                                                       01370015
+*********************************************************************** 01380015
+*                                                                       01390015
+*        INTERNAL REGISTER USAGE                               @D35EDRP 01400015
+*              R0 - ADDRESSING MODE OF RELPAG REQUESTOR        @D529DRP 01410015
+*              R1 - ADDR OF CURRENT PARAMETER-LIST ENTRY       @D35EDRP 01420015
+*              R2 - ADDR OF PAGE TO BE HANDLED                 @D35EDRP 01430015
+*              R3 - WORK REGISTER                              @D149DRP 01440015
+*              R4 - WORK-REGISTER                              @D35EDRP 01450015
+*              R5 - WORK-REGISTER                              @D35EDRP 01460015
+*              R6 - END-ADDR OF CURRENT AREA                   @D35EDRP 01470015
+*              R7 - LINK REGISTER                              @D35EDRP 01480015
+*              R8 - BASE REGISTER FOR DATA AREA                @D35EDRP 01490015
+*              R9 - BASE REGISTER FOR CODE AREA                @D35EDRP 01500015
+*              RA - LINK REGISTER                              @D35EDRP 01510015
+*              RB - ADDR OF SCB                                @D52GDWL 01520015
+*              RC - ADDR OF PFTE BELONG. TO R2 IF ANY          @D35EDRP 01530015
+*              RD - ADDR OF PAGE-TABLE-ENTRY CORRESP. TO R2    @D35CDRP 01540015
+*              RE - ADDR OF PCB OF PARTITION                   @D35EDRP 01550015
+*              RF - ACTUAL RETURN CODE                         @D35EDRP 01560015
+*                                                              @D35EDRP 01570015
+*                                                              @D35EDRP 01580015
+         SPACE 2                                               @D35EDRP 01590015
+RELPAGX  DS    0H                 ENTRY POINT OF DSPSERV -     @D52GDWL 01600015
+*                                 RELEASE (R1 POINTS TO SCB)   @D52GDWL 01610015
+         LR    RB,R1              ADDR OF SCB                  @D52GDWL 01620015
+         USING SCBADR,RB          RB IS BASE FOR SCB           @D52GDWL 01630015
+         L     R8,APMGMDAT        PMR DATA AREA                @D52GDWL 01640015
+         USING PMGMDATA,R8        SET BASE FOR DATA AREA       @D52GDWL 01650015
+         L     R9,APAGEOPT        GET BASE ADDRRESS FOR CODE   @D52GDWL 01660015
+         USING PAGEOPT,R9         SET BASE FOR CODE            @D52GDWL 01670015
+         LR    R0,R14             RETURN ADDRESS               @D52GDWL 01680015
+         LA    R1,DSCBREL         LOAD R1 WITH ADDR OF PSEUDO  @D52GDWL 01690015
+*                                 PARAMTER LIST IN DSCB        @D52GDWL 01700015
+         B     RELPG01            SKIP FORWARD                 @D52GDWL 01710015
+         SPACE 1                                               @D52GDWL 01720015
+RELPAGE  DS    0H                                              @D35EDVB 01730015
+         LA    RF,PMRRELPG(,0)    OLD INTERFACE  X'00000003'   @D52VDVB 01740015
+RELPG2ND DS    0H                                              @D52VDVB 01750015
+         L     R8,APMGMDAT                                     @D35EDVB 01760015
+         USING PMGMDATA,R8        SET BASE FOR DATA AREA       @D35EDRP 01770015
+         L     R9,APAGEOPT                                     @D35EDRP 01780015
+         USING PAGEOPT,R9         SET BASE FOR CODE AREA       @D35EDRP 01790015
+         SGCOV SGPOPT,MC=0                                     @D52VDRP 01800015
+         L     RB,SCBPTR          GET ADDR OF ACTIVE SCB       @D52GDWL 01810015
+         LR    R0,RF              GET ADDRESSING MODE IN R0    @D52VDRP 01820015
+         N     R0,BIT0OMSK        CLEAR FUNCTION CODE          @D52GDWL 01830015
+RELPG01  SR    RF,RF              SET RETURN CODE REG TO ZERO  @D35EDRP 01840015
+         L     RE,PIBPTR2         GET PIB2 ADDR                @D51IDRP 01850015
+         USING PIB2ADR,RE                                      @D51IDRP 01860015
+         L     RE,PIBPCB          GET PCB ADDR OF SERV. PART.  @D51IDRP 01870015
+         USING PCBADR,RE          BASE FOR PCB                 @D365DRP 01880015
+         L     R3,PCEPIB          GET ADDR OF PIB              @D51IDRP 01890015
+         USING PIBADR,R3          SET BASE FOR PIB             @D35EDRP 01900015
+         TM    SCBFLG,SCBDSP      DATA SPACE TO BE HANDLED?    @D52GDWL 01910015
+         BO    RELPG03            YES                          @D52GDWL 01920015
+*        AMODESW SET,AMODE=31,WR=(RA)                          @D52VDRP 01930015
+         AMODESW SET,AMODE=31,WR=(RA)                          @D52VDRP 01940015
+         TM    PIBDATFL,PIBTRAM   TASK IN REAL MODE            @D51IDRP 01950015
+         BZ    RELRET             YES, BRANCH                  @D35EDRP 01960015
+         DROP  R3                 DROP BASE FOR PIB            @D14BDRP 01970015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=VALLIST,REGS=(RA,RA)  @D52VDRP 01980015
+*             CALL VALLIST IN AMODE OF RELPAG REQUESTOR        @D52VDRP 01990015
+         AMODESW CALL,AMODE=(R0),ADDRESS=VALLIST,REGS=(RA,RA)  @D52VDRP 02000015
+         B     RELRET16           WHOLE LIST NOT IN USERS ADDR @D35EDRP 02010015
+*                                 SPACE                        @D35EDRP 02020015
+RELPG03  BAL   R7,HANDLLST        HANDLE 1ST ENTRY OF PARAMLIST@D35EDRP 02030015
+RELPGRT1 DS    0H                 RETURN WITH OFSET 0          @D52VDRP 02040015
+         B     RELRET             END OF LIST REACHED          @D35EDRP 02050015
+*        B     RELPG10            RETURN WITH OFFSET 4         @D52VDRP 02060015
+RELPG10  L     RE,PIBPTR2         RESTORE ..                   @D52VDRP 02070015
+         USING PIB2ADR,RE         ... PCB ADDR ..              @D52VDRP 02080015
+         L     RE,PIBPCB           ... FOR 2ND TIME AROUND     @D52VDRP 02090015
+         USING PCBADR,RE          BASE FOR PCB                 @D52VDRP 02100015
+         TM    SCBFLG,SCBDSP      DATA SPACE TO BE HANDLED?    @D52GDWL 02110015
+         BO    RELPG11            YES                          @D52GDWL 02120015
+         C     R2,SMPSAVE         PART. SAVEAREA TO BE RELEASED@D35EDRP 02130015
+         BE   RELPG20             YES, IGNORE THIS PAGE        @D35EDRP 02140015
+RELPG11  DS    0H                                              @D52GDWL 02150015
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 02160015
+         AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 02170015
+*        ON RETURN FROM HANDLLST, RD POINTS TO PTE (REAL)      @D52VDRP 02180015
+         USING PTE,RD             SET BASE FOR PAGE TABLE ENTRY@D35CDRP 02190015
+         NI    PTESTAT2,X'FF'-PTEPDS INDICATE NO COPY ON PDS   @D14ADVB 02200015
+         TM    PTESTAT,PTEIBIT    PAGE STATE NOT ...           @D14ADVB 02210015
+         BO    RELPG18            ... ADDRESSABLE --->         @D14ADVB 02220015
+         SPACE 1                                               @D14ADVB 02230015
+*       PAGE IS ADDRESSABLE, RC POINTS TO PFTE SET BY HANDLLST @D35CDRP 02240015
+         USING PFTE,RC            SET BASE FOR PFTE            @D35EDRP 02250015
+         L     RA,ASCNPGQO        GET ENTRY ADDR FOR SCNPGQO RT@D14BDRP 02260015
+         BALR  RA,RA              DELETE ENTRY FROM PGQUO      @D14BDRP 02270015
+*SGLINK  SCDELPGO,INPUT=(RA,RC),NOMODR=(R0-RF),AMODE=31 DATOFF          02280015
+         BAL   RA,PMRREMOV        REMOVE PFTE FROM PSQ         @D35EDRP 02290015
+*SGLINK  PMRREMOV,INPUT=(R8:APMGMDAT,RA:LINK,RC:PFTE),WORK=(R4,R5)      02300015
+         SPACE 1                                               @D35CDRP 02310015
+*       GET STORAGE KEY OF FRAME, MARK PFTE AS UNUSED          @D14ZDRP 02320015
+         DROP  RE                 DROP BASE FOR PCB            @D51IDRP 02330015
+         L     RE,RELPF           GET ADDR OF PAGE FRAME       @DA41877 02340015
+         ISKE  RA,RE              GET STORAGE KEY              @DA41877 02350015
+         N     RA,ISKFMASK        RESET R AND C BIT  IN KEY    @D14ZDRP 02360015
+         NOP   NEW1               SKIP NEW CODE                @D61BDRP 02370015
+.*             IN CASE THAT A USER DOES NOT LIKE THE NEW IMPLEMENTATION 02380015
+         STM   RA,RD,PMRSLEV0+OFR10 SAVE KEY AND SCB           @D61BDRP 02390015
+         L     RB,PSQFPTR         GET 1ST ENTRY IN PSQ         @D61BDRP 02400015
+         BAL   RA,PMRINSBT        INSERT PFTE ON TOP OF PSQ    @D61BDRP 02410015
+*SGLINK  PMRINSBT,INPUT=(R8:APMGMDAT,RA:LINK,RB,RC:PFTE),WORK=(R4,R5)   02420015
+*    CLEAR FRAME                                               @D61BDRP 02430015
+         L     RB,PAGESIZE        GET LENGTH OF FRAME          @D61BDRP 02440015
+         LR    RA,RE              GET SOURCE ADDR FOR MVCL     @D61BDRP 02450015
+         LR    RC,RE              GET TARGET ADDR FOR MVCL     @D61BDRP 02460015
+         SLR   RD,RD              SET PAD AND LENGTH TO ZERO   @D61BDRP 02470015
+         MVCL  RA,RC              CLEAR PAGE FRAME             @D61BDRP 02480015
+         LM    RA,RD,PMRSLEV0+OFR10 RESTORE KEY AND SCB        @D61BDRP 02490015
+         SSKE  RA,RE              RESTORE KEY                  @D61BDRP 02500015
+         B     RELPG18            SKIP OLD CODE                @D61BDRP 02510015
+*-------------------------------------------------------------*         02520015
+NEW1     DS    0H                                              @D61BDRP 02530015
+*       SET CORRECT STORAGE-KEY IN PTE AND INVALID-BIT ON      @D35CDRP 02540015
+         SLL   RA,8               STORAGE KEY INTO FIRST BYTE  @D14ADVB 02550015
+         LA    RA,PTEIBIT(RA)                                  @D35CDRP 02560015
+*        GENSERV LRADBG,RREG=(R7),VADD=(RB),ERR=NADDR          @D52VDRP 02570015
+         GENSERV LRADBG,RREG=(R7),VADD=(RB),ERR=NADDR          @D52VDRP 02580015
+*        GENSERV IPTE,VADD=(R2),SCB=(R7),WORKR=(R4,R5)         @D52VDRP 02590015
+*                                 DO IPTE OR PTLB              @D52VDRP 02600015
+         GENSERV IPTE,VADD=(R2),SCB=(R7),WORKR=(R4,R5)         @D52VDRP 02610015
+         STCM  RA,7,PTE           SET STORAGE KEY IN PTE       @D61NDRP 02620015
+         NI    PTESTAT2,XFF-PTEPDS SET PDSBIT OFF              @D51GDTP 02630015
+         SPACE 1                                                        02640015
+         LR    R3,RB              SAVE SCB ADDR                @DA41877 02650015
+         BAL   R7,CLEARPF         CLEAR PAGE FRAME ENQ. IN IPFQ@D14BDRP 02660015
+*SGLINK  CLEARPF,INPUT=(R7,RC,RE),WORK=(R4,R5,RA,RB),AMODE=31 DATON     02670015
+         DROP  RC                 DROP BASE FOR PFTE           @D52VDRP 02680015
+         LR    RB,R3              RESTORE SCB                  @DA41877 02690015
+*-------------------------------------------------------------*         02700015
+RELPG18  DS    0H                                              @D52VDRP 02710015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE AGAIN     @D52VDRP 02720015
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE AGAIN     @D52VDRP 02730015
+         DROP  RD                 FORGET BASE FOR PTE          @D35CDRP 02740015
+RELPG20  BAL   R7,HANDLENT        CONTINUE TO HANDLE PARAM-LIST@D35EDRP 02750015
+RELPGRT2 DS    0H                 RETURN WITH OFFSET 0         @D52VDRP 02760015
+         B     RELRET             END OF LIST REACHED          @D35EDRP 02770015
+         B     RELPG10            DO SPEC. ACTION FOR THIS PAGE@D35EDRP 02780015
+         SPACE 1                                                        02790015
+RELRET16 LA    RF,16              INDICATE RETURN CODE 16      @D35EDRP 02800015
+RELRET   EQU   *                                               @D36IDRP 02810015
+         LR    R14,R0             RETURN ADDR / MODE           @D52GDWL 02820015
+         N     R0,BIT0OFF         CLEAR ADDRESSING MODE BIT    @D52GDWL 02830015
+         LTR   R0,R0              IS THERE A RETURN ADDRESS?   @D52GDWL 02840015
+         BZ    RELRET05           NO, RETURN VIA DISPATCHER    @D52GDWL 02850015
+*        AMODESW RETURN,REG=(R14) =========> RETURN TO CALLER  @D52GDWL 02860015
+         AMODESW RETURN,REG=(R14) =========> RETURN TO CALLER  @D52GDWL 02870015
+RELRET05 L     R6,DISPAD          GET ADDR OF DISPATCHER       @D35EDRP 02880015
+         LA    R1,SVER0F-SVEARA   GET DISPL. IN SAVEAREA       @D52VDRP 02890015
+*        AMODESW BRANCH,AMODE=24,ADDRESS=RETCODE,REG=(R7)              *02900015
+                       =========>SET RETURN CODE, EXIT TO DISP @D52VDRP 02910015
+         AMODESW BRANCH,AMODE=24,ADDRESS=RETCODE,REG=(R7)              *02920015
+                       =========>SET RETURN CODE, EXIT TO DISP @D52VDRP 02930015
+*SGLINK  RETCODE,INPUT=(R1,R6,RF),WORK=()                      @D52VDRP 02940015
+         DROP  R8,R9              FORGET BASE FOR CODE AND DATA@D369DRP 02950015
+         DROP  RB                 DROP BASE FOR SCBADR         @D52GDRP 02960015
+         EJECT                                                 @D35EDRP 02970015
+*********************************************************************** 02980015
+*                                                                       02990015
+*        ROUTINE PROLOGUE= FCEPGOUT                                     03000015
+*        MACRO NAME=       SGPOPT                                       03010015
+*        FUNCTION= THIS MODULE HANDLES THE FCEPGOUT REQUESTS            03020015
+*                  ALL PAGES TOTALY CONTAINED IN THE AREAS SPECIFIED    03030015
+*                  BY THE PARAMETER-LIST ARE GIVEN FREE FOR PAGE-OUT.   03040015
+*        CALLED BY= SVC 86, AMODE(24),DATON AT FCEPGOUT                 03050015
+*                   SVC 121, AMODE(24),DATON AT FCEPGO2ND               03060015
+*        CALLS:                                                @D529DRP 03070015
+*              VALLIST WITH AMODE(REQUESTOR),DATON             @D529DRP 03080015
+*              HANDLLST/HANDLENT WITH AMODE(31),DATON          @D529DRP 03090015
+*              PMRINSBT, PMRREMOV WITH AMODE(31),DATOFF        @D529DRP 03100015
+*        ENTRY POINT= FCEPGOUT                                          03110015
+*        OPERATION                                                      03120015
+*        1. IF TASK IN 'REAL' MODE RETURN TO CALLER WITH RETURN CODE 0  03130015
+*        2. IF PARAMETER-LIST NOT TOTALY CONTAINED IN REQUESTORS ADDR.  03140015
+*           SPACE, RETURN TO CALLER WITH RETURN CODE 16.                03150015
+*        3. CALL HANDLLST TO HANDLE THE PAGES SPECIFIED BY THE          03160015
+*           PARAMETER-LIST TILL SPECIAL HANDLING OF A PAGE IS REQUIRED  03170015
+*           OR END OF PARAMETER-LIST IS REACHED.                        03180015
+*        4. IF END OF PARAMETER-LIST REACHED, RETURN TO CALLER WITH     03190015
+*           RETURN CODE GIVEN BY HANDLLST OR HANDLENT ROUTINE.          03200015
+*        5. IF PAGE NOT ADDRESSABLE, CONTINUE WITH 9.                   03210015
+*        6. SET R-BIT OFF.                                              03220015
+*        7. IF C-BIT OFF ENQUEUE PFTE ON TOP OF PSQ.                    03230015
+*        8. IF C-BIT ON ENQUEUE PFTE AFTER LAST PFTE HANDLED BY         03240015
+*           PAGE-SELECTION.                                             03250015
+*        9. CALL HANDLENT TO CONTINUE HANDLING OF PAGES TILL SPECIAL    03260015
+*           HANDLING IS REQUIRED OR END OF PARAMETER-LIST IS REACHED.   03270015
+*       10. CONTINUE WITH 4.                                            03280015
+*                                                                       03290015
+*        INPUT:                                                         03300015
+*         R6 ADDR OF DISPATCHER (USED IN VALLIST RTN)                   03310015
+*         R1 POINTS TO PARAMETER-LIST WITH ENTRIES                      03320015
+*           PTR(31) ADDR. OF 1ST BYTE OF AREA                           03330015
+*           BIN FIXED(31) LENGTH-1 OF AREA                              03340015
+*        OUTPUT:                                                        03350015
+*         PAGES SPECIFIED BY THE PARAMETER-LIST ARE GIVEN FREE FOR      03360015
+*         PAGE-OUT.                                                     03370015
+*        EXIT NORMAL= RETURN TO CALLER                                  03380015
+*         CONDITION= FUNCTION FOR ALL PAGES COMPLETED OR TASK IN 'REAL' 03390015
+*                    MODE                                               03400015
+*         OUTPUT= AS DESCRIBED ABOVE OR NONE IF TASK IN 'REAL' MODE.    03410015
+*         RETURN CODE= RETURN CODE 0 IS RETURNED IN R15                 03420015
+*        EXIT ERROR= RETURN TO CALLER                                   03430015
+*         CONDITIONS= RETURN CODE 2 IS GIVEN IF NEGATIVE LENGTH         03440015
+*                     DETECTED IN AT LEAST ONE ENTRY.                   03450015
+*                     RETURN CODE 4 IS GIVEN IF AT LEAST ONE OF THE     03460015
+*                     ADDRESSES IS INVALID.                             03470015
+*                     RETURN CODE 8 IS GIVEN IF AT LEAST ONE OF THE     03480015
+*                     REQUESTED PAGES IS FIXED                          03490015
+*                     RETURN CODE 16 IS GIVEN IF THE PARAMETER-LIST IS  03500015
+*                     NOT TOTALY IN THE REQUESTORS ADDRESS-RANGE.       03510015
+*         OUTPUT= ALL PAGES WHICH DON'T INDICATE A RETURN CODE ARE      03520015
+*                 HANDLED. NOTHING IS DONE IF RETURN CODE IS 16.        03530015
+*         RETURN CODES= RETURN CODE 2,4,8,16 OR A COMBINATION OF 2,4,8  03540015
+*                       IS RETURNED IN R15.                             03550015
+*        EXTERNAL REFERENCES                                            03560015
+*         ROUTINES=  SCNPGQUO TO HANDLE PFTE IN PGQUO.                  03570015
+*                    HANDLLST/HANDLENT TO DO ACTIONS COMMON FOR RELPAG  03580015
+*                                      AND FCEPGOUT                     03590015
+*         DATA= PGQUI(READ)                                             03600015
+*               PAGE-STATE(READ,WRITE)                                  03610015
+*               PFTE(READ,WRITE)  PAGE FRAME TABLE ENTRY                03620015
+*                                                                       03630015
+*        MACROS= REMOVE - REMOVE PFTE FROM PSQ                          03640015
+*                INSTOP - INSERT PFTE ON TOP OF PSQ                     03650015
+*********************************************************************** 03660015
+*                                                                       03670015
+*        INTERNAL REGISTER USAGE                               @D35EDRP 03680015
+*              R0 - ADDRESSING MODE OF FCEPGOUT REQUESTOR      @D529DRP 03690015
+*              R1 - ADDR OF CURRENT PARAMETER-LIST ENTRY       @D35EDRP 03700015
+*              R2 - ADDR OF PAGE TO BE HANDLED                 @D35EDRP 03710015
+*              R3 - WORK-REGISTER                              @D149DRP 03720015
+*              R4 - WORK-REGISTER                              @D35EDRP 03730015
+*              R5 - WORK-REGISTER                              @D35EDRP 03740015
+*              R6 - END-ADDR OF CURRENT AREA                   @D35EDRP 03750015
+*              R7 - LINK REGISTER                              @D35EDRP 03760015
+*              RA - LINK REGISTER                              @D35EDRP 03770015
+*              RB - WORK-REGISTER                              @D369DRP 03780015
+*              RC - ADDR OF PFTE BELONG. TO R2 IF ANY          @D35EDRP 03790015
+*              RD - ADDR OF PAGE-TABLE-ENTRY CORRESP. TO R2    @D35CDRP 03800015
+*              RE - ADDR OF PCB OF PARTITION (USED IN VALLIST) @DY40069 03810015
+*              RF - RETURN CODE UP TO NOW                      @D35EDRP 03820015
+*                                                              @D35EDRP 03830015
+*                                                              @D35EDRP 03840015
+         SPACE 2                                               @D35EDRP 03850015
+FCEPGOUT DS    0H                                              @D35EDRP 03860015
+         LA    RF,PMRFCEPT(,0)    OLD INTERFACE  X'00000004'   @D52VDVB 03870015
+FCPGO2ND DS    0H                                              @D52VDVB 03880015
+         L     R8,APMGMDAT                                     @D35EDRP 03890015
+         USING PMGMDATA,R8        SET BASE FOR DATA AREA       @D35EDRP 03900015
+         L     R9,APAGEOPT                                     @D35EDRP 03910015
+         USING PAGEOPT,R9         SET BASE FOR CODE AREA       @D35EDRP 03920015
+         SGCOV SGPOPT,MC=1                                     @D52VDRP 03930015
+         LR    R0,RF              GET ADDR MODE IN R0          @D52VDRP 03940015
+         N     R0,BIT0OMSK        CLEAR FUNCTION CODE          @D52GDWL 03950015
+         SR    RF,RF              SET RETURN CODE REG TO ZERO  @D35EDRP 03960015
+         L     R3,PIBPTR2                                      @D51IDRP 03970015
+         USING PIB2ADR,R3                                      @D51IDRP 03980015
+         L     RE,PIBPCB          GET PCB OF SERVICED PART.    @DY40069 03990015
+         USING PCBADR,RE                                       @DY40069 04000015
+         L     R3,PCEPIB          GET ADDR OF PIB              @D51IDRP 04010015
+         USING PIBADR,R3          SET BASE FOR PIB             @D35EDRP 04020015
+*        AMODESW SET,AMODE=31,WR=(RA)                          @D52VDRP 04030015
+         AMODESW SET,AMODE=31,WR=(RA)                          @D52VDRP 04040015
+         TM    PIBDATFL,PIBTRAM   TASK IN REAL MODE            @D51IDRP 04050015
+         BZ    RELRET             YES, BRANCH                  @D35EDRP 04060015
+         DROP  R3                                              @D14BDRP 04070015
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 04080015
+         BO    RELRET             YES, ====> EXIT              @D61BDRP 04090015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=VALLIST,REGS=(RA,RA)  @D52VDRP 04100015
+*                      CALL VALLIST IN AMODE OF FCEPGOUT REQUESTOR      04110015
+         AMODESW CALL,AMODE=(R0),ADDRESS=VALLIST,REGS=(RA,RA)  @D52VDRP 04120015
+         DROP  RE                 DROP BASE FOR PCB            @DY40069 04130015
+         B     RELRET16           WHOLE LIST NOT IN USERS ADDR @D35EDRP 04140015
+*                                 SPACE                        @D35EDRP 04150015
+         L     RB,SCBPTR          GET ADDR OF ACTIVE SCB       @D52GDWL 04160015
+         BAL   R7,HANDLLST        HANDLE 1ST ENTRY OF PARAMLIST@D35EDRP 04170015
+         B     RELRET             END OF LIST REACHED          @D35EDRP 04180015
+FCEPG00  EQU   *                                               @D35EDRP 04190015
+*        ON RETURN FROM HANDLLST, RD POINTS TO PTE (REAL)               04200015
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 04210015
+         AMODESW SET,DAT=OFF                                   @D52VDRP 04220015
+         USING PTE,RD             SET BASE FOR PAGE-TABLE-ENTR.@D35CDRP 04230015
+         TM    PTESTAT,PTEIBIT    PAGE NOT ADDRESSABLE         @D14ADVB 04240015
+         BO    FCEPG10            YES, BRANCH                  @D35CDRP 04250015
+         DROP  RD                 FORGET BASE FOR PTE          @D35CDRP 04260015
+*       PAGE IS ADDRESSABLE, RC POINTS TO PFTE, SET BY HANDLLST@D35CDRP 04270015
+         L     R4,RELPF           GET ADDR OF PAGE-FRAME       @D35CDRP 04280015
+         RRBE  0,R4               RESET REFERENCE BIT          @D51GDTP 04290015
+         L     RB,PSQFPTR         GET 1ST ENTRY IN PSQ         @D365DRP 04300015
+         BC    10,FCEPG09         BRANCH IF CHANGE BIT OFF     @D365DRP 04310015
+         L     R5,SCANCUR                                      @D52VDVB 04320015
+         LA    RB,PGQOMAX         GET MAX. PAGE-OUT TIBS       @D52VDRP 04330015
+         CH    RB,PGQOCNT         PAGE-OUT-QUEUE EMPTY         @D52VDRP 04340015
+         BE    FCEPG07            YES, BRANCH                  @D14BDRP 04350015
+         L     R5,SCANMAX         TAKE LARGER VALUE            @D52VDVB 04360015
+FCEPG07  L     RB,PSQPTR          GET ADDR OF PSQ              @D365DRP 04370015
+*   GET PFTE BEFORE WHICH THE CURRENT PFTE HAS TO BE INSERTED  @D369DRP 04380015
+         USING PFTE,RB                                         @D365DRP 04390015
+FCEPG08  L     RB,PFTEFPTR        GET NEXT PSQ-ENTRY           @D365DRP 04400015
+         BCT   R5,FCEPG08                                      @D365DRP 04410015
+FCEPG09  CR    RB,RC              HEADER ENTRY AND ENTRY TO    @D14ZDRP 04420015
+*                                 BE HANDLED  ARE THE SAME     @D369DRP 04430015
+         BE    FCEPG10            YES, BRANCH                  @D365DRP 04440015
+         DROP  RB                 DROP BASE FOR PFTE           @D365DRP 04450015
+         USING PFTE,RC            SET BASE FOR PFTE            @D35EDRP 04460015
+         BAL   RA,PMRREMOV        REMOVE PFTE FROM PSQ         @D35EDRP 04470015
+*SGLINK  PMRREMOV,INPUT=(R8:APMGMDAT,RA:LINK,RC:PFTE),WORK=(R4,R5)      04480015
+         BAL   RA,PMRINSBT        INSERT PFTE BEFORE SELECTED  @D369DRP*04490015
+                                  PFTE                         @D369DRP 04500015
+*SGLINK  PMRINSBT,INPUT=(R8:APMGMDAT,RA:LINK,RB,RC:PFTE),WORK=(R4,R5)   04510015
+         DROP  RC                 FORGET BASE FOR PFTE         @D35EDRP 04520015
+FCEPG10  DS    0H                                              @D52VDRP 04530015
+         L     RB,SCBPTR          GET ADDR OF ACTIVE SCB       @D52GDWL 04540015
+*        AMODESW SET,DAT=ON                                    @D52VDRP 04550015
+         AMODESW SET,DAT=ON                                    @D52VDRP 04560015
+         BAL   R7,HANDLENT        CONTINUE TO HANDLE PARAMLIST @D35EDRP 04570015
+         B     RELRET             END OF LIST REACHED          @D35EDRP 04580015
+         B     FCEPG00            DO SPEC. ACTION FOR THIS PAGE@D35EDRP 04590015
+         DROP  R8,R9              FORGET BASE REGISTERS        @D35EDRP 04600015
+         EJECT                                                          04610015
+*********************************************************************** 04620015
+*                                                                       04630015
+*        ROUTINE PROLOGUE                                               04640015
+*        ROUTINE NAME= HANDLLST                                         04650015
+*        MACRO=        SGPOPT                                           04660015
+*        FUNCTION= THIS ROUTINE DOES THE FUNCTION COMMON FOR RELPAG     04670015
+*                  AND FCEPGOUT REQUESTS.                               04680015
+*                  THE PARAMETERLIST-ENTRIES ARE HANDLED AS LONG AS NO  04690015
+*                  DIFFERENT ACTION FOR RELPAG AND FCEPGOUT IS          04700015
+*                  REQUIRED.                                            04710015
+*                  IF A SITUATION OCCURES WHICH REQUIRES DIFFERENT      04720015
+*                  ACTION, RETURN IS TO CALLER WITH OFFSET 4, ELSE THE  04730015
+*                  LIST IS HANDLED TO THE END AND RETURN TO CALLER IS   04740015
+*                  WITH OFFSET 0 AFTER END OF LIST IS DETECTED.         04750015
+*                                                                       04760015
+*        CALLED BY= RELPAG,FCEPGOUT WITH AMODE(31),DATON                04770015
+*        CALLS:                                                @D529DRP 04780015
+*              GETDEVCB WITH AMODE(31),DATON                   @D529DRP 04790015
+*              HANDPADR/HNDNPADR WITH AMODE(REQUESTOR),DATON   @D529DRP 04800015
+*        ENTRY POINT= HANDLLST  FOR 1ST TIME INVOCATION                 04810015
+*                     HANDLENT  FOR INVOCATION AFTER HANDLLST OR        04820015
+*                               HANDLENT HAD RETURNED TO CALLER WITH    04830015
+*                               OFFSET 4.                               04840015
+*        OPERATION                                                      04850015
+*        1. IF A PARAMETER-LIST ENTRY WITH NEGATIVE LENGTH IS DETECTED  04860015
+*           BIT 30 OF REG15 IS SET ON (RETCOD=2) AND THE NEXT ENTRY     04870015
+*           IS HANDLED.                                                 04880015
+*        2. IF END OF PARAMETER-LIST DETECTED RETURN TO CALLER WITH     04890015
+*           OFFSET 0.                                                   04900015
+*        FOR EACH PAGE FULLY CONTAINED IN THE AREA SPECIFIED BY THE     04910015
+*        PARAMETER-LIST ENTRY THE FOLLOWING ACTION IS DONE.             04920015
+*        2. IF THE PAGE IS OUTSIDE THE ADDRESS RANGE OF THE REQUESTING  04930015
+*           TASKS PARTITION, BIT 29 OF REG15 IS SET ON (RETCOD=4).      04940015
+*        3. IF THE PAGE IS FOUND TO BE FIXED,                           04950015
+*           BIT 28 OF REG15 IS SET ON (RETCOD=8).                       04960015
+*        4. IF PAGE IS CONNECTED, OR PRE-PAGE-OUT IS ACTIVE ON PAGE,    04970015
+*           AND REQUEST IS FROM RELPAGE,                                04980015
+*           WAIT FOR COMPLETION OF PAGE I/O AND CONTINUE WITH 3.        04990015
+*        5. IF CONDITIONS 2, 3 OR 4 ARE NOT VALID,                      05000015
+*           RETURN TO CALLER WITH OFFSET 4.                             05010015
+*                                                                       05020015
+*        INPUT:                                                         05030015
+*        R0 - ADDRESSING MODE OF REQUESTOR AT SVC TIME         @D529DRP 05040015
+*        R1 - POINTS TO PARAMETER-LIST WITH ENTRIES                     05050015
+*             PTR(31) ADDR. OF 1ST BYTE OF AREA                         05060015
+*             BIN FIXED(31) LENGTH-1 OF AREA                            05070015
+*        RB - ADDRESS OF SCB                                   @D52GDWL 05080015
+*                                                                       05090015
+*        OUTPUT:                                                        05100015
+*        R15 - CONDITIONS DETECTED UP TO NOW                            05110015
+*        IN ADDITION IF RETURN IS WITH OFFSET 4, SEE BELOW.             05120015
+*                                                                       05130015
+*        EXIT NORMAL=                                                   05140015
+*        1. RETURN TO CALLER WITH OFFSET 0                              05150015
+*          CONDITION= END OF PARAMETER LIST REACHED                     05160015
+*          OUTPUT= AS DESCRIBED ABOVE                                   05170015
+*          RETURN CODES= NONE                                           05180015
+*        2. RETURN TO CALLER WITH OFFSET 4                              05190015
+*          CONDITION= DIFFERENT ACTION FOR RELPAG AND FCEPGOUT REQUIRED 05200015
+*          OUTPUT= R2 - ADDR OF PAGE WHICH REQUIRES DIFFERENT ACTION    05210015
+*                  RC - ADDR. OF PFTE IF PAGE IS ADDRESSABLE            05220015
+*                  RD - REAL ADDR. OF PAGE-TABLE ENTRY CORRESP. TO R2   05230015
+*                  R15 - CONDITIONS DETECTED UP TO NOW.                 05240015
+*          RETURN CODES= NONE                                           05250015
+*********************************************************************** 05260015
+*        INTERNAL REGISTER USAGE                               @D35EDRP 05270015
+*              R1 - ADDR OF CURRENT PARAMETER-LIST ENTRY       @D35EDRP 05280015
+*              R2 - ADDR OF PAGE TO BE HANDLED                 @D35EDRP 05290015
+*              R3 - WORK REGISTER                              @D149DRP 05300015
+*              R4 - WORK-REGISTER                              @D35EDRP 05310015
+*              R5 - WORK-REGISTER                              @D35EDRP 05320015
+*              R6 - END-ADDR OF CURRENT AREA                   @D35EDRP 05330015
+*              R7 - RETURN REGISTER                            @D35EDRP 05340015
+*              RA - LINK REGISTER TO NEXT LEVEL                @D35EDRP 05350015
+*              RB - ADDR OF SCB                                @D149DRP 05360015
+*              RC - ADDR OF PFTE BELONG. TO R2 IF ANY          @D35EDRP 05370015
+*              RD - ADDR OF PAGE-TABLE-ENTRY CORRESP. TO R2    @D35CDRP 05380015
+*              RE - WORK REGISTER                              @D52VDRP 05390015
+*              RF - RETURN CODE UP TO NOW                      @D35EDRP 05400015
+*                                                              @D35EDRP 05410015
+*                                                              @D35EDRP 05420015
+         SPACE 2                                               @D35EDRP 05430015
+         USING PAGEOPT,R9         BASE FOR CODE AREA           @D35EDRP 05440015
+         USING PMGMDATA,R8        BASE FOR DATA AREA           @D35EDRP 05450015
+HANDLLST DS    0H                                              @D35EDRP 05460015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=HANDPADR,REGS=(RA,RA) @D52VDRP 05470015
+         AMODESW CALL,AMODE=(R0),ADDRESS=HANDPADR,REGS=(RA,RA) @D52VDRP 05480015
+         B     D0(R7)             END OF PARAM-LIST, RETURN    @D35EDRP 05490015
+         B     HANDLRT2           NEGATIVE LENGTH DETECTED     @D35EDRP 05500015
+         B     HANDLRT4           ADDR OF PAGE INVALID         @D35EDRP 05510015
+         B     HNDLPAGE           HANDLE THIS PAGE             @D52VDRP 05520015
+HANDLENT EQU   *                  SECONDARY ENTRY POINT OF RTN @D35EDRP 05530015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=HNDNPADR,REGS=(RA,RA) @D52VDRP 05540015
+         AMODESW CALL,AMODE=(R0),ADDRESS=HNDNPADR,REGS=(RA,RA) @D52VDRP 05550015
+         B     D0(R7)             END OF PARAM-LIST, RETURN    @D35EDRP 05560015
+         B     HANDLRT2           NEGATIVE LENGTH DETECTED     @D35EDRP 05570015
+         B     HANDLRT4           ADDR OF PAGE INVALID         @D35EDRP 05580015
+*        B     HNDLPAGE           HANDLE THIS PAGE             @D52VDRP 05590015
+HNDLPAGE DS    0H                                              @D52VDRP 05600015
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 05610015
+         AMODESW SET,DAT=OFF                                   @D52VDRP 05620015
+         LR    RD,R2              PAGE ADDRESS                 @D52GDWL 05630015
+         L     RA,AREALADV        GET ENTRY POINT FOR REALADV  @D52GDRP 05640015
+*SGLINK  REALADV,INPUT=(R8,RA,RB,RD),OUTPUT=(R4,RC)            @D52GDWL 05650015
+         BALR  RA,RA              TEST PAGE STATUS             @D52GDRP 05660015
+         B     HANDL010           PAGE IS ADDRESSABLE          @D52GDWL 05670015
+*                                 PAGE IS NOT ADDRESSABLE      @D52VDRP 05680015
+         LR    RD,R4              LOAD REAL ADDR OF PTE        @D52GDWL 05690015
+         USING PTE,R4                                          @D52VDRP 05700015
+         TM    PTESTAT,PTEIBIT+PTEPGCO PAGE CONNECTED          @D52VDRP 05710015
+         BO    HANDL030           YES, WAIT FOR COMPL. OF I/O  @D52VDRP 05720015
+         DROP  R4                 DROP BASE FOR PTE            @D52VDRP 05730015
+*        AMODESW SET,DAT=ON                                    @D52VDRP 05740015
+         AMODESW SET,DAT=ON                                    @D52VDRP 05750015
+         B     4(R7)              NO, =====> RETURN, OFFSET 4  @D52VDRP 05760015
+HANDL010 DS    0H                                              @D52VDRP 05770015
+         LR    RD,R4              LOAD REAL ADDR OF PTE        @D52GDWL 05780015
+         ST    RC,RELPF           SAVE PAGE FRAME ADDRESS      @D52GDWL 05790015
+         SRL   RC,PFSHIFT         *  CALCULATE ADDRESS OF      @D51GDRP 05800015
+         A     RC,APFT            *  PFTE                      @D35EDRP 05810015
+         USING PFTE,RC            SET BASE FOR PFTE            @D35EDRP 05820015
+         CLC   FIXC,F0            IS PAGE FIXED                @D35EDRP 05830015
+         BNE   HANDLRT8           YES, SET RETURN CODE 8       @D35CDRP 05840015
+         TM    PFTEFLG,POABIT+POEBIT PAGE-OUT ACTIVE           @D52VDRP 05850015
+         BO    HANDL030           YES, WAIT FOR COMPL.         @D52VDRP 05860015
+         TM    S370FLG,NFVP       PFIX REQUEST PENDING         @D35CDRP 05870015
+         DROP  RC                 FORGET BASE FOR PFTE         @D35EDRP 05880015
+*        AMODESW SET,DAT=ON                                    @D52VDRP 05890015
+         AMODESW SET,DAT=ON                                    @D52VDRP 05900015
+         BZ    4(R7)              NO, ======> RETURN, OFFSET 4 @D35CDRP 05910015
+HANDLRT8 DS    0H                                              @D52VDRP 05920015
+*        AMODESW SET,DAT=ON                                    @D52VDRP 05930015
+         AMODESW SET,DAT=ON                                    @D52VDRP 05940015
+         O     RF,F8              INDICATE RETURN CODE 8       @D14ZDVB 05950015
+         B     HANDLENT           HANDLE NEXT PAGE IN ENTRY    @D35EDRP 05960015
+HANDLRT2 O     RF,F2              INDICATE RETURN CODE 2       @D14ZDVB 05970015
+         LA    R1,L'POPTENT(R1)   POINT TO NEXT PARAMLIST ENTRY@D35EDRP 05980015
+         B     HANDLLST           CONTINUE WITH THIS ENTRY     @D35EDRP 05990015
+HANDLRT4 O     RF,F4              INDICATE RETURN CODE 4       @D14ZDVB 06000015
+         B     HANDLENT           HANDLE NEXT PAGE IN ENTRY    @D35EDRP 06010015
+         SPACE 1                                                        06020015
+HANDL030 DS    0H                                              @D52VDRP 06030015
+*        AMODESW SET,DAT=ON                                    @D52VDRP 06040015
+         AMODESW SET,DAT=ON                                    @D52VDRP 06050015
+         N     R7,ADDRMSK         CLEAR HIGH ORDER BYTE        @D52VDRP 06060015
+         LA    R4,RELPGRT1        CALLED ...                   @D52VDRP 06070015
+         CR    R4,R7              ...    BY RELPAGE            @D52VDRP 06080015
+         BE    HANDL031           YES, WAIT FOR COMPL. OF I/O  @D52VDRP 06090015
+         LA    R4,RELPGRT2        CALLED ...                   @D52VDRP 06100015
+         CR    R4,R7              ...    BY RELPAGE            @D52VDRP 06110015
+         BNE   4(R7)              NO, ======> RETURN, OFFSET 4 @D52VDRP 06120015
+HANDL031 DS    0H                                              @D52VDRP 06130015
+         SGCOV SGPOPTS,MC=0                                    @D52VDRP 06140015
+         LR    R4,RB              ADDR OF ACTIVE SCB           @D52GDWL 06150015
+         LR    RD,R2              GET PAGE-ADDR IN CORRECT REG.@D52VDRP 06160015
+         BAL   R2,CHKSAREX        GET SCB BELONG. TO ADDRESS   @D52GDWL 06170015
+*SGLINK  CHKSAREX,INPUT=(R2,R4,RD),WORK=(R3),OUTPUT=(R4)       @D52GDWL 06180015
+         LR    R2,RD              RESTORE PAGE ADDRESS IN R2   @D52VDRP 06190015
+         BAL   RE,EPACNVR2        CONVERT PAGE-ADDR. TO EPA    @D52VDRP 06200015
+*SGLINK  EPACNVR2,INPUT=(R4,R8,RD,RE),WORK=(R5),OUTPUT=(RD)    @D52VDRP 06210015
+         LR    R5,RD              GET EPA IN CORRECT REG.      @D52VDRP 06220015
+         L     RC,TIBPTR          GET ACTIVE TIB               @D52VDRP 06230015
+         USING TIBADR,RC                                       @D52VDRP 06240015
+         ST    R4,TIBPFSCB        SET SCB FOR GETDEVCB/GETPDS  @D52VDRP 06250015
+         LR    RE,RB              SAVE ADDR OF SCB             @D52GDWL 06260015
+         L     R9,APMRSERV        GET BASE ADDR OF GETDEVCB RTN@D52VDRP 06270015
+         USING PMRSERV,R9                                      @D52VDRP 06280015
+         BAL   R4,GETDEVCB        GET DEVICE CONTRL. BLOCK     @D14BDRP 06290015
+*SGLINK  GETDEVCB INPUT=(R4,R5,RC),WORK=(R3,R5,RB),OUTPUT=(RB) @D14BDRP 06300015
+         DROP  RC                 DROP BASE FOR TIBADR         @D52VDRP 06310015
+         L     R9,APAGEOPT        RESET BASE ADDR FOR CODE     @D14BDRP 06320015
+         USING PAGEOPT,R9                                      @D14BDRP 06330015
+         LR    R3,R1              SAVE PARAMETERLIST ADDR      @D52VDRP 06340015
+         LR    R1,RB              GET DEVCB TO WAIT FOR        @D52VDRP 06350015
+         LR    RB,RE              RESTORE ADDR OF SCB          @D52VDRP 06360015
+         L     R5,ASRQTAB         GET SRQ TABLE ADDRESS        @D61RDRP 06370015
+         LA    R5,SRQPGIO-SRQTAB(,R5) P.TO PAGE I/O WAIT QUEUE @D61RDRP 06380015
+         BAL   RC,RWAIT           WAIT FOR COMPL. OF I/O       @D52VDRP 06390015
+*SGLINK  RWAIT,INPUT=(R1,R5,RC)                                @D52VDRP 06400015
+         LR    R1,R3              RESTORE LIST ADDR.           @D52VDRP 06410015
+         B     HNDLPAGE           CHECK PAGE ONCE MORE         @D52VDRP 06420015
+         SPACE 3                                                        06430015
+******** ROUTINE TO GET THE NEXT 1ST/NEXT PAGE TO BE HANDLED   @D51ZDRP 06440015
+*                        BY PAGEIN  ********                   @D51ZDRP 06450015
+*        CALLED BY:                                            @D529DRP 06460015
+*              PGIN AT POPTPADR WITH AMODE(REQUESTOR),DATON    @D529DRP 06470015
+*              PGIN AT POPNPADR WITH AMODE(REQUESTOR),DATON    @D529DRP 06480015
+*              SVPGIN, HANDPADR/HNDNPADR AT POPTVAL            @D529DRP 06490015
+*                                 WITH AMODE(REQUESTOR),DATON  @D529DRP 06500015
+*        CALLS: VALIDAD WITH AMODE(REQUESTOR),DATON            @D529DRP 06510015
+*        ENTRY POINTS:                                         @D51ZDRP 06520015
+*              POPTPADR                                        @D51ZDRP 06530015
+*              POPNPADR                                        @D51ZDRP 06540015
+*              POPTVAL  - TO VALIDATE GIVEN ADDRESS (R2)       @D51ZDRP 06550015
+*                                                              @D35EDRP 06560015
+*        INPUT:                                                @D51ZDRP 06570015
+*              R1 - ADDR OF PARAMETER-LIST ENTRY               @D35EDRP 06580015
+*              R2 - ADDR OF PAGE LAST PAGE HANDLED (POPNPADR)  @D35EDRP 06590015
+*              R6 - END OF CURRENT AREA            (POPNPADR)  @D35EDRP 06600015
+*              RA - RETURN ADDR                                @D35EDRP 06610015
+*              RD - ADDR OF PAGETAB ENTRY                      @D35EDRP 06620015
+*        OUTPUT:                                               @D51ZDRP 06630015
+*              R1 - ADDRESS OF PARAMETER-LIST ENTRY            @D51ZDRP 06640015
+*              R2 - ADDR OF PAGE TO BE HANDLED                 @D51ZDRP 06650015
+*              R6 - END OF CURRENT AREA            (POPNPADR)  @D35EDRP 06660015
+*        INTERNAL REGISTER USAGE                               @D51ZDRP 06670015
+*              R4,R5 - WORK REGISTER                           @D35EDRP 06680015
+*                                                              @D35EDRP 06690015
+         USING POPTLSTE,R1        SET BASE FOR PARAM-LIST ENTRY@D35EDRP 06700015
+POPTNENT LA    R1,L'POPTENT(R1)   POINT TO NEXT PARAMLIST ENTRY@D35EDRP 06710015
+         CLC   POPTBEG(L'POPTENT),POPTBEG CHECK FOR VALID ENTRY@KX40685 06720015
+PCKOPT1 EQU    *                                               @KX40685 06730015
+.* THIS EQU STMT MUST FOLLOW THE CLC-STMT IMMEDIATELY          @KX40685 06740015
+POPTPADR DS    0H                                              @D52VDRP 06750015
+         L     R2,POPTBEG         GET BEGIN ADDR OF AREA       @D35EDRP 06760015
+         LA    R5,0(,R2)          END OF ...                   @D52VDRP 06770015
+         CR    R2,R5              ... LIST REACHED             @D52VDRP 06780015
+         BNE   POPTEXT0           YES, ----------->            @D52VDRP 06790015
+         ICM   R5,M15,POPTLNG     GET LENGTH OF AREA           @D35EDRP 06800015
+         BM    POPTEXT4           RETURN WITH OFFSET 4 IF NEGAT@D52VDRP 06810015
+         ALR   R5,R2              GET END ADDR OF AREA         @D52VDRP 06820015
+         LA    R6,0(,R5)          END ADDR  VALID IN ...       @D52VDRP 06830015
+         CR    R6,R5              ... USERS ADDRESSING MODE    @D52VDRP 06840015
+         BE    POPTADR1           YES,  BRANCH                 @D52VDRP 06850015
+         USING PGTABADR,RD                                     @D35EDRP 06860015
+         L     R6,PADDRMSK        GET FICTICIOUS ...           @D52VDRP 06870015
+         LA    R6,0(,R6)          ... END ADDRESS              @D52VDRP 06880015
+         OI    PGTBIND,INVPG      INDICATE INVALID ADDR. DETECT@D35EDRP 06890015
+         DROP  RD                                              @D35EDRP 06900015
+POPTADR1 N     R2,PADDRMSK        SET BEGIN ADDR ON PAGE BOUND.@D35EDRP 06910015
+         B     POPNADR1           VALIDATE ADDR                @D35EDRP 06920015
+POPNPADR AL    R2,PAGESIZE        POINT TO NEXT PAGE           @D52VDRP 06930015
+POPNADR1 CLR   R6,R2              PAGE STILL IN AREA           @D35EDRP 06940015
+         BL    POPTNENT           NO, GET NEXT LIST ENTRY      @D35EDRP 06950015
+         SPACE 1                                               @D14ZDVB 06960015
+POPTVAL  STM   R1,R2,PMRSAVE2     SAVE REGISTERS               @D14BDRP 06970015
+         LR    R4,R6              SAVE R6                      @D14BDRP 06980015
+         LR    R1,R2              SET BEGIN ADDR               @D14BDRP 06990015
+         L     R6,DISPAD          GET ADDR OF DISP.            @D14BDRP 07000015
+         USING DISP,R6                                         @D14BDRP 07010015
+         BAL   R8,VALIDAD         VALIDATE ADDR                @D14BDRP 07020015
+*SGLINK  VALIDAD,INPUT=(R1,R2,R6,R8),WORK=(R2),OUTPUT=(R5)     @D14BDRP 07030015
+         DROP  R6                                              @D14BDRP 07040015
+         B     POPTEXT8           OFFS 0 = INVALID AREA        @D64ADOW 07050015
+         B     POPTEXT8           OFFS 4 = PROTECTION          @D64ADOW 07060015
+*        B     *+4                OFFS 8 = VALIDATION OK       @D64ADOW 07070015
+*END OF BRANCH TABLE                                                    07080015
+         LR    R6,R4              RESTORE R6                   @D14BDRP 07090015
+         LH    R4,PIK             GET ADDR                     @DY40069 07100015
+         SRL   R4,2               *  OF                        @DY40069 07110015
+         A     R4,APCBATAB        *    PCB                     @DY40069 07120015
+         L     R4,0(R4)           *       OUT OF PIK           @DY40069 07130015
+         USING PCBADR,R4          SET BASE FOR PCB             @DY40069 07140015
+         CLM   R5,1,PCEKEY        DOES KEY MATCH KEY IN PCB    @DY40069 07150015
+         BE    POPTEXTC           YES, RETURN WITH OFFSET 12   @D64ADVB 07160015
+         DROP  R4                 DROP BASE FOR PCB            @DY40069 07170015
+         L     R2,TCBPTR          TCB OF CURRENT TASK          @D64ADOW 07180015
+         L     R2,TCBATCBE-TCBADR(,R2) ... ITS TCBX            @D64ADOW 07190015
+         LH    R2,TCBX1CR3-TCBXADR(R2) ... ITS PKM             @D64ADOW 07200015
+         SLL   R2,16              ... TO BYTE 0,1              @D64ADOW 07210015
+         SRL   R5,4               RETRIEVE PKM                 @D64ADOW 07220015
+         L     R1,BIT0OMSK        ... RELATED TO               @D64ADOW 07230015
+         SRL   R1,0(R5)           ... STORAGE KEY              @D64ADOW 07240015
+         NR    R1,R2              VALID KEY                    @D64ADOW 07250015
+         BZ    POPTEXT8           NO,   -------> RETURN OFFS 8 @D64ADVB 07260015
+POPTEXTC AL    RA,F4              OK,  RETURN WITH OFFSET 12   @D64ADVB 07270015
+POPTEXT8 AL    RA,F4              RETURN WITH OFFSET 8         @D52VDRP 07280015
+POPTEXT4 AL    RA,F4              RETURN WITH OFFSET 4         @D52VDRP 07290015
+POPTEXT0 DS    0H                 RETURN WITH OFFSET 0         @D52VDRP 07300015
+         L     R8,APMGMDAT        BASE OF PMGR DATA AREA       @D64ADOW 07310015
+         LM    R1,R2,PMRSAVE2     RESTORE REGISTERS            @D64ADOW 07320015
+         BSM   0,RA               =========> RETURN            @D64ADOW 07330015
+*                                                                       07340015
+POPVPKM  DC    A(0)               LOCAL WORK AREA              @D64ADOW 07350015
+         DROP  R1                 DROP BASE FOR PARMLIST ENTRY @D52VDRP 07360015
+         SPACE 3                                                        07370015
+******** ROUTINE TO GET THE NEXT 1ST/NEXT PAGE TO BE HANDLED   @D51ZDRP 07380015
+*                        BY FCEPGOUT/RELPAGE                   @D51ZDRP 07390015
+*        ENTRY POINTS:                                         @D51ZDRP 07400015
+*              HANDPADR - FROM HANDLLST WITH AMODE(REQUESTOR),DATON     07410015
+*              HNDNPADR - FROM HANDLENT WITH AMODE(REQUESTOR),DATON     07420015
+*                                                              @D35EDRP 07430015
+*        INPUT:                                                @D51ZDRP 07440015
+*              R1 - ADDR OF PARAMETER-LIST ENTRY               @D35EDRP 07450015
+*              R2 - ADDR OF PAGE LAST PAGE HANDLED (HNDNPADR)  @D35EDRP 07460015
+*              R6 - END OF CURRENT AREA            (HNDNPADR)  @D35EDRP 07470015
+*              RA - RETURN ADDR                                @D35EDRP 07480015
+*              RB - ADDR OF SCB                                @D52GDWL 07490015
+*        OUTPUT:                                               @D51ZDRP 07500015
+*              R1 - ADDRESS OF PARAMETER-LIST ENTRY            @D51ZDRP 07510015
+*              R2 - ADDR OF PAGE TO BE HANDLED                 @D51ZDRP 07520015
+*                   (HAS TO BE HANDLED AS 32-BIT ADDR HERE)    @KD40286 07530015
+*              R6 - END OF CURRENT AREA            (HNDNPADR)  @D35EDRP 07540015
+*        INTERNAL REGISTER USAGE                               @D51ZDRP 07550015
+*              R5 - WORK REGISTER                              @D35EDRP 07560015
+*                                                              @D35EDRP 07570015
+         SPACE 2                                               @D35EDRP 07580015
+         USING POPTLSTE,R1        SET BASE FOR PARAM-LIST ENTRY@D35EDRP 07590015
+HANDPADR DS    0H                                              @D52VDRP 07600015
+         USING SCBADR,RB          SET BASE FOR SCB             @D52GDWL 07610015
+         CLC   POPTBEG(L'POPTENT),POPTBEG CHECK FOR VALID ENTRY@KX40685 07620015
+PCKOPT2 EQU    *                                               @KX40685 07630015
+.* THIS EQU STMT MUST FOLLOW THE CLC-STMT IMMEDIATELY          @KX40685 07640015
+         L     R2,POPTBEG         GET BEGIN ADDR OF AREA       @D35EDRP 07650015
+         LA    R5,0(,R2)          END OF ...                   @D52VDRP 07660015
+         CLR   R2,R5              ... LIST REACHED             @D52VDRP 07670015
+         BNE   HANDPXT0           YES, RETURN WITH OFFSET 0    @D52VDRP 07680015
+         ICM   R5,M15,POPTLNG     GET LENGTH OF AREA           @D35EDRP 07690015
+         BM    HANDPXT4           RETURN WITH OFFSET 4 IF NEGAT@D52VDRP 07700015
+         ALR   R5,R2              GET END ADDR OF AREA         @D52VDRP 07710015
+         LA    R6,0(,R5)          END ADDR  VALID IN ...       @D52VDRP 07720015
+         CLR   R6,R5              ... USERS ADDRESSING MODE    @D52VDRP 07730015
+         BE    HANDADR1           YES,  BRANCH                 @D52VDRP 07740015
+         L     R6,ADDRMASK        GET FICTICIOUS END ADDRESS ..@KD40286 07750015
+         LA    R6,0(,R6)          ... IN MODE OF CALLER        @D52VDRP 07760015
+         O     RF,F4              INVALID ADDRESS  =  RC  (4)  @D14ZDVB 07770015
+HANDADR1 AL    R2,PMDISMSK        SET BEG ADDR ON PAGE BOUND.  @KD40286 07780015
+         N     R2,PMPAGMSK        ... OF 1ST PAGE TO BE HANDLED@KD40286 07790015
+         S     R6,PMDISMSK        SET END ADDR ON LAST PAGE    @DA33314 07800015
+*                                  OF THE AREA TO BE HANDLED   @DA33314 07810015
+         BM    HNDNADR2           HANDLE NEXT LIST ENTRY, IF   @KX40685 07820015
+*                                  WE WERE IN PAGE ZERO        @KX40685 07830015
+         B     HNDNADR1           START HANDLING OF THE AREA   @D35EDRP 07840015
+HNDNPADR AL    R2,PAGESIZE        GET NEXT PAGE TOTALLY IN AREA@D52VDRP 07850015
+HNDNADR1 CLR   R6,R2              PAGE STILL COMPLETE IN AREA  @D52VDRP 07860015
+         BL    HNDNADR3           NO, GET NEXT ENTRY           @KD40286 07870015
+         TM    SCBFLG,SCBDSP      DATA SPACE TO BE HANDLED?    @D52GDWL 07880015
+         BZ    POPTVAL            NO, VALIDATE ADDRESS         @D52GDWL 07890015
+         L     R5,SCBCUSZ         DATA SPACE SIZE IN K         @D52GDWL 07900015
+         SLL   R5,10              SIZE IN BYTES                @D52GDWL 07910015
+         CLR   R2,R5              ADDR WITHIN CURR DATA SPACE? @KD40286 07920015
+         BL    HANDPX12           YES, ADDR O.K.               @D52GDWL 07930015
+HNDNADR2 O     RF,F4              INDICATE INVALID ADDRESS     @KD40286 07940015
+HNDNADR3 LA    R1,L'POPTENT(R1)   POINT TO NEXT PARAMLIST ENTRY@D35EDRP 07950015
+         B     HANDPADR           HANDLE IT                    @D35EDRP 07960015
+HANDPX12 AL    RA,F4              OFFSET 12  ADDRESS O.K.      @D52GDWL 07970015
+         AL    RA,F4              OFFSET 8  INVALID ADDRESS    @D52GDWL 07980015
+HANDPXT4 AL    RA,F4              OFFSET 4  LENGTH IS NEGATIVE @D52VDRP 07990015
+HANDPXT0 DS    0H                 OFFSET 0  END OF PARM LIST   @D52VDRP 08000015
+*        AMODESW RETURN,REG=(RA)  =========> RETURN            @D52VDRP 08010015
+         AMODESW RETURN,REG=(RA)  =========> RETURN            @D52VDRP 08020015
+         DROP  R1                 FORGET BASE FOR PARAM-LIST   @D35EDRP 08030015
+         DROP  R8,R9              FORGET BASE FOR CODE-AND DATA@D35EDRP 08040015
+         DROP  RB                 RELEASE SCB ADDRESSABILITY   @D52GDWL 08050015
+         SPACE 2                                               @DL2982P 08060015
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *@DL2982F 08070015
+*                                                                       08080015
+*        ROUTINE PROLOGUE                                               08090015
+*        ROUTINE NAME= SVPGIN                                           08100015
+*        MACRO=        SGPOPT                                           08110015
+*        FUNCTION= HANDLES REQUESTS TO CHANGE THE PAGE-STATE OF ONE OR  08120015
+*                  MORE PAGES TO ADDRESSABLE.                           08130015
+*                  IF AT LEAST ONE PAGETAB-ENTRY IS FREE, THE REQUEST   08140015
+*                  IS ENQUEUED IN PAGETAB. IF THE PAGETAB IS FULL, THE  08150015
+*                  REQUEST IS IGNORED AND THE ECB IF PRESENT IS POSTED. 08160015
+*        INVOKED BY= SVC 85 WITH AMODE(24),DATON                        08170015
+*        CALLS: POPTVAL, VALLIST WITH AMODE(REQUESTOR),DATON   @D529DRP 08180015
+*        EXIT: DISP WITH AMODE(24),DATON; OR PGIN WITH AMODE(31),DATON  08190015
+*        OPERATION                                                      08200015
+*        1. IF ECB SPECIFIED AND NOT IN ADDRESS SPACE OF REQUESTOR,     08210015
+*           CANCEL USER WITH INVALID ADDRESS.                           08220015
+*        2. IF REQUEST FROM TASK IN 'REAL' MODE, POST ECB IF PRESENT    08230015
+*           AND RETURN TO CALLER.                                       08240015
+*        3. IF PAGETAB FULL, INDICATE PAGETAB FULL IN ECB AND POST      08250015
+*           ECB IF PRESENT AND RETURN TO CALLER.                        08260015
+*        4. IF PARAMETER-LIST NOT TOTALY CONTAINED IN REQUESTORS        08270015
+*           ADDRESS SPACE, INDICATE THIS COND. IN ECB AND POST ECB IF   08280015
+*           PRESENT AND RETURN TO CALLER.                               08290015
+*        5. ENQUEUE REQUEST IN PAGETAB                                  08300015
+*        6. IF 1ST ENTRY IN PAGETAB, POST PAGEIN-TASK, TO HANDLE THE    08310015
+*           REQUEST.                                                    08320015
+*        7. RETURN TO CALLER                                            08330015
+*                                                                       08340015
+*        INPUT:                                                         08350015
+*         R0 POINTS TO AN ECB OR CONTAINS ZERO IF NO ECB PRESENT        08360015
+*         R1 POINTS TO A PARAMETER-LIST WITH ENTRIES                    08370015
+*         R6 ADDR OF DISPATCHER                                @D369DRP 08380015
+*           PTR(32) ADDR. OF 1ST BYTE OF AREA                           08390015
+*           BIN FIXED(31) LENGTH-1 OF AREA                              08400015
+*         RF FUNCTION CODE (IF CALLED VIA ENTRY PGIN2ND)       @D52VDVB 08410015
+*        OUTPUT:                                                        08420015
+*         PAGETAB-ENTRY (SEE DSECT PGTABADR)                            08430015
+*        EXIT NORMAL= RETURN TO DISPATCHER                              08440015
+*         CONDITION= AT LEAST ONE ENTRY FREE IN PAGETAB AND REQUEST     08450015
+*                    CORRECT.                                           08460015
+*         OUTPUT= AS DESCRIBED ABOVE                                    08470015
+*         RETURN CODE= NONE                                             08480015
+*        EXIT ERROR= RETURN TO DISPATCHER OR ERR25                      08490015
+*         CONDITIONS= REQUESTOR IN 'REAL' MODE OR PAGETAB FULL OR       08500015
+*                     PARAMETER-LIST OR ECB NOT TOTALY CONTAINED IN     08510015
+*                     REQUESTORS ADDRESS SPACE.                         08520015
+*         OUTPUT= IF ECB CORRECTLY SPECIFIED, THE CONDITION IS          08530015
+*                 INDICATED IN THE ECB AND THE ECB IS POSTED, ELSE NONE 08540015
+*         RETURN CODE= NONE                                             08550015
+*        EXTERNAL REFERENCES                                            08560015
+*         ROUTINES= ERR25 TO CANCEL TASK DUE TO INVALID ADDR   @D369DRP 08570015
+*         DATA= PAGETAB(READ,WRITE)                                     08580015
+*                                                                       08590015
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *@DL2982F 08600015
+         SPACE 2 .                                             @DL2982F 08610015
+*                                                              @DL2982F 08620015
+*        THIS ROUTINE INSERTS THE PAGEIN REQUEST INTO THE      @DL2982F 08630015
+*        PAGETAB. IF THE PAGETAB IS FULL THE REQUEST IS IGNORED@DL2982F 08640015
+*                                                              @DL2982F 08650015
+*        INTERNAL REGISTER USAGE IN SVPGIN ROUTINE             @D35EDRP 08660015
+*        R0 - ADDR OF ECB IF PRESENT OR  ZERO                  @D35EDRP 08670015
+*        R1 - ADDR OF PARAM-LIST ENTRY                         @D35EDRP 08680015
+*        R2 - ADDR OF 3RD BYTE OF ECB                          @D35EDRP 08690015
+*        R3 - ADDR OF PIB                                      @D35EDRP 08700015
+*        R4 - ADDR OF ECB                                      @D369DRP 08710015
+*        R5 - WORK REGISTER                                    @D35EDRP 08720015
+*        R6 - ADDR OF DISPATCHER                               @D369DRP 08730015
+*        R7 - NOT USED                                         @D35EDRP 08740015
+*        R8 - BASE REGISTER FOR DATA AREA                      @D35EDRP 08750015
+*        R9 - BASE REGISTER FOR CODE AREA                      @D35EDRP 08760015
+*        RA - LINK REGISTER                                    @D35EDRP 08770015
+*        RB - NOT USED                                         @D35EDRP 08780015
+*        RC - NOT USED                                         @D35EDRP 08790015
+*        RD - ADDR OF PAGETAB ENTRY                            @D35EDRP 08800015
+*        RE - ADDR OF PCB OF PARTITION (USED IN VALLIST)       @DY40069 08810015
+*        RF - FUNCTION CODE                                    @D52VDVB 08820015
+         SPACE 2 .                                             @DL2982F 08830015
+         USING DISP,R6                                         @D365DRP 08840015
+SVPGIN   DS    0H                                              @D35EDRP 08850015
+         LA    RF,PMRPAGIN(,0)    OLD INTERFACE  X'00000005'   @D52VDVB 08860015
+PAGIN2ND DS    0H                                              @D52VDVB 08870015
+         L     R8,APMGMDAT                                     @D35EDRP 08880015
+         USING PMGMDATA,R8        SET BASE FOR DATA AREA       @D35EDRP 08890015
+         L     R9,APAGEOPT                                     @D35EDRP 08900015
+         USING PAGEOPT,R9         SET BASE FOR CODE AREA       @D35EDRP 08910015
+         SGCOV SGPOPT,MC=2                                     @D52VDRP 08920015
+         L     R3,PIBPTR2                                      @D51IDRP 08930015
+         USING PIB2ADR,R3                                      @D51IDRP 08940015
+         L     RE,PIBPCB          GET PCB ADDR OF SERV. PART.  @DY40069 08950015
+         USING PCBADR,RE                                       @DY40069 08960015
+         L     R3,PCEPIB          R3 POINTS TO PIB             @D51IDRP 08970015
+         USING PIBADR,R3          SET BASE FOR PIB             @D35EDRP 08980015
+*        AMODESW SET,AMODE=31,WR=(R4)                          @D52VDRP 08990015
+         AMODESW SET,AMODE=31,WR=(R4)                          @D52VDRP 09000015
+         LTR   R4,R0 .            ECB SPECIFIED                @D365DRP 09010015
+         BZ    SKIPVAL .          NO, SKIP VALIDATION          @DL2982F 09020015
+         LA    R2,D2(R4)                                       @D365DRP 09030015
+*        AMODESW CALL,AMODE=(RF),ADDRESS=POPTVAL,REGS=(RA,RA)  @D52VDRP 09040015
+*            CALL POPTVAL IN AMODE OF REQUESTOR                @D52VDRP 09050015
+         AMODESW CALL,AMODE=(RF),ADDRESS=POPTVAL,REGS=(RA,RA)  @D52VDRP 09060015
+         NOP   SVPGIN             RET. WITH OFFSET 0 NOT POSS. @D35EDRP 09070015
+         NOP   SVPGIN             RET. WITH OFFSET 4 NOT POSS. @D35EDRP 09080015
+         B     SVPGER25           INV. ADDRESS, CANCEL TASK    @D52VDRP 09090015
+*        B     SVPGIN01           RET. IF ADDR IS VALID        @D52VDRP 09100015
+SVPGIN01 MVI   0(R2),ZERO         RESET ECB BITS               @D14ZDRP 09110015
+         LR    RD,RF              GET FUNCTION/OPTION          @D52GDVB 09120015
+         N     RD,PGSERC20        ... CHECK ON CONSISTANCY     @D52GDVB 09130015
+         BNZ   PSTRC20            NO, ---------->              @D52GDVB 09140015
+SKIPVAL  TM    PIBDATFL,PIBTRAM   TASK IN REAL MODE            @D51IDRP 09150015
+         BZ    PSTRL .            YES, IGNORE REQUEST          @DL2982F 09160015
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 09170015
+         BO    PSTRL              YES, ====> EXIT              @D61BDRP 09180015
+         L     RD,AEOPGTAB .      IS PAGETAB                   @D35EDRP 09190015
+         C     RD,PGTABEND .      FULL                         @D35EDRP 09200015
+         BNL   PSTFULL .          YES, IGNORE REQUEST          @DL2982F 09210015
+*              INSERT ENTRY IN PAGETAB                         @DL2982F 09220015
+         USING PGTABADR,RD .                                   @D35EDRP 09230015
+*        AMODESW CALL,AMODE=(RF),ADDRESS=VALLIST,REGS=(RA,RA)  @D52VDRP 09240015
+*                   CALL VALLIST WITH AMODE OF REQUESTOR       @D52VDRP 09250015
+         AMODESW CALL,AMODE=(RF),ADDRESS=VALLIST,REGS=(RA,RA)  @D52VDRP 09260015
+         DROP  RE                 DROP BASE FOR PCB            @DY40069 09270015
+         B     PSTINVLI .         INVALID ADDR                 @DL2982F 09280015
+         ST    R1,PGTLISTP        LIST O.K. STORE LIST POINTER @D52VDVB 09290015
+         LH    R5,TID             GET TID OF REQUESTOR         @D36IDRP 09300015
+         STH   R5,PGTBTID         STORE IT                     @D52VDVB 09310015
+         ST    R0,PGTECBP         STORE ECB POINTER OR ZERO    @D52VDVB 09320015
+         MVI   PGTBIND,ZERO .     CLEAR POST INDICATORS        @DL2982F 09330015
+         STCM  RF,M8,PGTBMODE     PROVIDE ADDRESSING MODE      @D52VDVB 09340015
+         LA    R5,L'PGTBLNG(,RD)  CALC. NEW ENDADDR OF PAGETAB @D52VDVB 09350015
+         ST    R5,AEOPGTAB        AND STORE IT                 @D35EDRP 09360015
+         DROP  RD                                              @D35EDRP 09370015
+         DROP  R3                 FORGET BASE FOR PIB          @D35EDRP 09380015
+*        END OF SVPGIN ROUTINE                                 @D35EDRP 09390015
+*             CHECK WHETHER PAGETAB WAS EMPTY BEFORE,          @D51ZDRP 09400015
+*             AND ACTIVATE PAGEIN TASK IF YES                  @D51ZDRP 09410015
+         C     RD,APAGETAB        WAS IT FIRST ENTRY           @D52VDRP 09420015
+         BE    PGINACT            YES, ACTIVATE PAGEIN TASK    @D52VDRP 09430015
+         B     SVPGINRT           ========> NO, EXIT TO DISP   @D52VDRP 09440015
+         SPACE 1 .                                             @DL2982F 09450015
+SVPGER25 DS    0H                                              @D52VDRP 09460015
+*        AMODESW BRANCH,AMODE=24,ADDRESS=ERR25,REG=(R5)        @D52VDRP 09470015
+*                  CANCEL REQUESTOR, ECB ADDR INVALID          @D52VDRP 09480015
+         AMODESW BRANCH,AMODE=24,ADDRESS=ERR25,REG=(R5)        @D52VDRP 09490015
+PSTFULL  LTR   R5,R0 .            ECB PRESENT                  @DL2982F 09500015
+         BZ    SVPGINRT           ========> NO, EXIT TO DISP   @D52VDRP 09510015
+         OI    D2(R5),PGTFULL+TRABIT POST NO PAGETAB ENTRY     @DL2982F 09520015
+         B     SVPGINRT           ========> EXIT TO DISP  R    @D52VDRP 09530015
+         SPACE 1 .                                             @DL2982F 09540015
+PSTRL    LTR   R5,R0 .            ECB PRESENT                  @DL2982F 09550015
+         BZ    SVPGINRT           ========> NO, EXIT TO DISP   @D52VDRP 09560015
+         OI    D2(R5),TRABIT .    POST ECB                     @DL2982F 09570015
+         B     SVPGINRT           ========> EXIT TO DISP  R    @D52VDRP 09580015
+PSTRC20  DS    0H                                              @D52GDVB 09590015
+         OI    0(R2),INVFUNC+TRABIT POST ECB: INCONSISTANT FCT @D52GDVB 09600015
+         B     SVPGINRT           ========> EXIT TO DISP       @D52GDVB 09610015
+PSTINVLI LTR   R5,R0 .            ECB PRESENT                  @DL2982F 09620015
+         BZ    SVPGINRT           ========> NO, EXIT TO DISP   @D52VDRP 09630015
+         OI    D2(R5),TRABIT+INVLI POST INV. ADDR              @DL2982F 09640015
+SVPGINRT DS    0H                                              @D52VDRP 09650015
+*        AMODESW RETURN,REG=(R6)  ==============> EXIT TO DISP @D52VDRP 09660015
+         AMODESW RETURN,REG=(R6)  ==============> EXIT TO DISP @D52VDRP 09670015
+         SPACE 2                                                        09680015
+PGINACT  SGSETUP ACTIVATE,STASK=PGN,WR1=R5,                            *09690015
+               OPTION=SYSOWNER                                 @D14BDVB 09700015
+         DROP  R6                                              @D36IDFG 09710015
+         SPACE 4                                                        09720015
+*---------------------------------------------------------------------* 09730015
+*                                                                       09740015
+*        ROUTINE PROLOGUE                                               09750015
+*        ROUTINE NAME= PAGEIN                                           09760015
+*        MACRO=        SGPOPT                                           09770015
+*        FUNCTION= PROCESSES THE PAGETAB-ENTRIES ONE AFTER THE OTHER.   09780015
+*                  THE PAGES SPECIFIED IN THE PARAMETER-LIST OF AN      09790015
+*                  ENTRY ARE MADE ADDRESSABLE.                          09800015
+*        INVOKED BY= SVPGIN BY POSTING THE PAGEIN-TASK AMODE(31),DATON  09810015
+*        CALLS:                                                @D529DRP 09820015
+*              POPTPADR/POPNPADR WITH AMODE(REQUESTOR),DATON   @D529DRP 09830015
+*              GENPGQE, DELETENT WITH AMODE(31),DATON          @D529DRP 09840015
+*              PMRINSBT,PMRREMOV WITH AMODE(31),DATOFF         @D529DRP 09850015
+*              IOPOST0, POST     WITH AMODE(31),DATON          @D529DRP 09860015
+*              PGINPSLI, PGINPSLB, PGINENQI WITH AMODE(31),    @D529DVB 09870015
+*                                                 DATON        @D529DVB 09880015
+*        OPERATION                                                      09890015
+*        1. ALL PAGES SPECIFIED BY THE PARAMETER-LIST ARE PROCESSED     09900015
+*           ONE AFTER THE OTHER.                                        09910015
+*        2. FOR A PAGE NOT IN THE REQUESTORS ADDRESS SPACE OR FOR A     09920015
+*           NEGATIVE LENGTH SPECIFICATION, POST THE (OPTIONAL) ECB AND  09930015
+*           IGNORE THE REQUEST FOR THE PAGE OR THE AREA RESPECTIVELY.   09940015
+*        3. IF PAGE IS ADDRESSABLE THEN DO:                             09950015
+*              SET R-BIT ON                                             09960015
+*              IF PAGE IS NOT FIXED  MOVE PFTE AT BOTTOM OF PSQ.        09970015
+*           ELSE DO:                                                    09980015
+*              INDICATE 2ND SCAN NEEDED                                 09990015
+*              IF IN LAST SCAN, THEN CALL GENPGQE TO GENERATE PGQUI     10000015
+*              ENTRY IN ORDER TO BRING PAGE IN STORAGE AND THE PFTE     10010015
+*              AT BOTTOM OF PSQ.                                        10020015
+*        4. REPEAT STEP 2 TO 4  UNTIL END-OF-LIST IS REACHED.           10030015
+*        5. IF NOT LAST SCAN AND 2ND-SCAN NEEDED THEN DO:               10040015
+*              IF IPFQ = 0 THEN GOTO STEP 6                             10050015
+*              RESET PISL                                               10060015
+*              DO FOR ALL PAGES UNTIL END OF LIST IS REACHED:           10070015
+*                 IF PAGE IS NOT ADDRESSABLE THEN PROVIDE PISL-ENTRY    10080015
+*                 IF PISL COMPLETED THEN DO:                            10090015
+*                    SET-UP BLOCKED PAGE-IN REQUEST                     10100015
+*                    RESET PISL                                         10110015
+*              ENDDO (EOL)                                              10120015
+*              SET-UP BLOCKED PAGE-IN REQUEST FOR CURRENT PISL          10130015
+*        6. INDICATE LAST-SCAN AND GOTO STEP 1                          10140015
+*        7. SET PAGEIN REQUESTOR READY TO RUN                           10150015
+*           IF ECB PROVIDED, POST ECB AND PROVIDE INDICATIONS IN ECB    10160015
+*           REMOVED ENTRY FROM THE PAGETAB.                             10170015
+*        8. IF PAGETAB NOT EMPTY,THE NEXT ENTRY IS HANDLED, ELSE SET    10180015
+*           PAGEIN-TASK IN WAIT FOR PAGETAB-ENTRY AND RETURN TO         10190015
+*           DISPATCHER.                                                 10200015
+*                                                                       10210015
+*        INPUT=                                                         10220015
+*         PAGETAB-ENTRY (SEE DSECT PGTABADR)                            10230015
+*        OUTPUT= ECB IF PRESENT                                         10240015
+*        EXIT NORMAL= RETURN TO DISPATCHER AFTER PAGEIN-TASK IS SET IN  10250015
+*                     WAIT FOR PAGETAB-ENTRIES.                         10260015
+*         CONDITION= PAGETAB EMPTY                                      10270015
+*         OUTPUT= AS DESCRIBED ABOVE                                    10280015
+*         RETURN CODE= NONE                                             10290015
+*        EXIT ERROR= NONE                                               10300015
+*        EXTERNAL REFERENCES                                            10310015
+*         ROUTINES= GENPGQE                                             10320015
+*         DATA= PAGETAB(READ,WRITE)                                     10330015
+*               PSQ(READ,WRITE)  PAGE SELECTION QUEUE                   10340015
+*               PAGE-STATE(READ,WRITE)                                  10350015
+*               PFIXC(READ)      # TIMES THE PAGE IS PFIXED             10360015
+*               TFIXC(READ)      # TIMES THE PAGE IS TFIXED             10370015
+*         MACROS= REMOVE -REMOVE PFTE FROM PSQ                          10380015
+*                 INSBOT - INSERT PFTE ON BOTTOM OF PSQ                 10390015
+*---------------------------------------------------------------------* 10400015
+*     INTERNAL REGISTER USAGE                                  @DL2982F 10410015
+*        R0 - ADDR OF ECB IF PRESENT OR  ZERO                  @D35EDRP 10420015
+*        R1 - ADDR OF CURRENT PARAM-LIST ENTRY                 @D35EDRP 10430015
+*        R2 - CONTAINS ADDR OF PAGE TO BE HANDLED              @D35EDRP 10440015
+*        R3 - TID OF REQUESTOR                                 @D369DFG 10450015
+*        R4 - WORK REGISTER                                    @D35EDRP 10460015
+*        R5 - WORK REGISTER                                    @D35EDRP 10470015
+*        R6 - END ADDR OF CURRENT AREA                         @D35EDRP 10480015
+*        R7 - NOT USED                                         @D35EDRP 10490015
+*        R8 - BASE REGISTER FOR DATA AREA                      @D35EDRP 10500015
+*        R9 - BASE REGISTER FOR CODE AREA                      @D35EDRP 10510015
+*        RA - LINK REGISTER                                    @D35EDRP 10520015
+*        RB - ADDR OF PSQ-HEADER                               @D35EDRP 10530015
+*        RC - ADDR. OF PFTE BELONG. TO R2 IF ANY               @D35EDRP 10540015
+*        RD - ADDR OF PAGETAB ENTRY                            @D35EDRP 10550015
+*        RE - NOT USED                                         @D35EDRP 10560015
+*        RF - NOT USED                                         @D35EDRP 10570015
+*---------------------------------------------------------------------* 10580015
+         SPACE 1                                               @DL2982F 10590015
+         USING PGTABADR,RD .                                   @D35EDRP 10600015
+         L     RD,APAGETAB        SET BASE REGISTER FOR PAGETAB@D36DDRP 10610015
+         L     RB,PSQPTR          RB POINTS TO PSQ-HEADER      @D35EDRP 10620015
+PGINIT   DS 0H                                                 @D52VDRP 10630015
+*        AMODESW SET,AMODE=31,WR=(R3)                          @D52VDRP 10640015
+         AMODESW SET,AMODE=31,WR=(R3)                          @D52VDRP 10650015
+         LH    R3,PGTBTID         GET USER TID                 @D52VDVB 10660015
+         LR    R4,R3                                           @D36IDRP 10670015
+         SPACE 1                                               @D36IDRP 10680015
+*      SET OWNER INFORMATION                                   @D369DRP 10690015
+         SGSETUP SWOWNER,STASK=PGN,WR1=R4,WR2=R5,                      *10700015
+               OPTION=SETOWNER                                 @D14BDRP 10710015
+         SPACE 1                                               @D36IDRP 10720015
+PGINLAST L     R1,PGTLISTP        GET LIST POINTER             @D52VDVB 10730015
+         SPACE 1                                               @D52VDVB 10740015
+NEXTENTR DS    0H                                              @D52VDRP 10750015
+         ICM   R0,M8,PGTBMODE     PROVIDE ADDRESSING MODE      @D52VDVB 10760015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=POPTPADR,REGS=(RA,RA) @D52VDVB 10770015
+         AMODESW CALL,AMODE=(R0),ADDRESS=POPTPADR,REGS=(RA,RA) @D52VDVB 10780015
+         B     PGIN1END           END OF LIST REACHED          @D35EDRP 10790015
+         B     PSTNEG             NEGATIVE LENGTH DETECTED     @D35EDRP 10800015
+         B     PSTINVPG           INVALID ADDR DETECTED        @D35EDRP 10810015
+VALIDE   DS    0H                 PAGE ADDRESSABLE             @D51GDTP 10820015
+         TM    PGTBIND,TERMIN+TERMLL TERMINATION REQUIRED      @D52VDRP 10830015
+         BNZ   PGINENDT           YES, SIMULATE END            @D52VDRP 10840015
+         LRA   RC,0(R2)           PAGE ADDRESSABLE             @D35CDRP 10850015
+         BC    8,VALIDE01         YES, BRANCH                  @D35EDRP 10860015
+         BC    5,PGINHW01         NO PTE      --------> HW FF1 @D61NDVB 10870015
+         OI    PGTBIND,PGT2ND     INDICATE 2ND TIME NEEDED     @D35EDRP 10880015
+         TM    PGTBIND,PGTSCND    ALREADY LAST SCAN            @D35EDRP 10890015
+         BZ    GETNXTPG           NO, ------>  CHECK NEXT PAGE @D35EDRP 10900015
+         ST    R2,TRADDR          STORE PAGE ADDR              @D35EDRP 10910015
+         L     RC,AGENPGQE        GENERATE PGQUI               @D35EDRP 10920015
+         BALR  RC,RC              * SIMULATE PAGE FAULT        @D35EDRP 10930015
+         B     VALIDE             TRY IT ONCE MORE             @D35EDRP 10940015
+VALIDE01 DS    0H                                              @D52VDRP 10950015
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 10960015
+         AMODESW SET,DAT=OFF                                   @D52VDRP 10970015
+         CLI   0(RC),0            SET R-BIT ON FOR THIS FRAME  @D52VDRP 10980015
+         N     RC,PADDRMSK         GET OFFSET                  @D52VDRP 10990015
+         SRL   RC,PFSHIFT          IN PFT                      @D35CDRP 11000015
+         A     RC,APFT .          GET ADDR OF PFTE             @D35EDRP 11010015
+         USING PFTE,RC            SET BASE FOR PFTE            @D35EDRP 11020015
+         CLC   FIXC,F0            PAGE FIXED                   @D35EDRP 11030015
+         BNE   GETNXTPG           YES, IGNORE THIS PAGE        @D35EDRP 11040015
+         BAL   RA,PMRREMOV        REMOVE PFTE FROM PSQ         @D35EDRP 11050015
+*SGLINK  PMRREMOV,INPUT=(R8:APMGMDAT,RA:LINK,RC:PFTE),WORK=(R4,R5)      11060015
+         BAL   RA,PMRINSBT        INSERT PFTE ON BOTTOM OF PSQ @D35EDRP 11070015
+*SGLINK  PMRINSBT,INPUT=(R8:APMGMDAT,RA:LINK,RB,RC:PFTE),WORK=(R4,R5)   11080015
+         DROP  RC                 FORGET BASE FOR PFTE         @D35EDRP 11090015
+GETNXTPG DS    0H                                              @D52VDRP 11100015
+*        AMODESW SET,DAT=ON                                    @D52VDRP 11110015
+         AMODESW SET,DAT=ON                                    @D52VDRP 11120015
+         TM    PGTBIND,TERMIN+TERMLL TERMINATION REQUIRED      @D52VDRP 11130015
+         BNZ   PGINENDT           YES, SIMULATE END            @DL2982F 11140015
+         ICM   R0,M8,PGTBMODE     PROVIDE ADDRESSING MODE      @D52VDVB 11150015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=POPNPADR,REGS=(RA,RA) @D52VDRP 11160015
+         AMODESW CALL,AMODE=(R0),ADDRESS=POPNPADR,REGS=(RA,RA) @D52VDRP 11170015
+         B     PGIN1END           END OF LIST REACHED          @D35EDRP 11180015
+         B     PSTNEG             NEGATIVE LENGTH DETECTED     @D35EDRP 11190015
+         B     PSTINVPG           INVALID ADDR DETECTED        @D35EDRP 11200015
+         B     VALIDE .           HANDLE THE PAGE              @DL2982F 11210015
+         SPACE 2                                               @D35EDRP 11220015
+*-------------------------------------------------------------*@D529DVB 11230015
+*   THIS PART IS ENTERED IF END OF LIST IS FOUND.              @D35EDRP 11240015
+*   IT TEST WHETHER AN ADDITIONAL SCAN IS NEEDED OR NOT        @D35EDRP 11250015
+*-------------------------------------------------------------*@D529DVB 11260015
+         SPACE 1                                               @D35EDRP 11270015
+PGIN1END TM    PGTBIND,TERMIN+TERMLL TERMINATION REQUIRED      @D52VDRP 11280015
+         BNZ   PGINENDT           YES, SIMULATE END            @D52VDRP 11290015
+         TM    PGTBIND,PGTSCND    WAS THIS LAST SCAN           @D52VDRP 11300015
+         BO    PGINEND            YES, REQUEST COMPLETE        @D52VDRP 11310015
+         TM    PGTBIND,PGT2ND     IS SECOND SCAN NEEDED ?      @D35EDRP 11320015
+         BZ    PGINEND            NO, REQUEST COMPLETE         @D35EDRP 11330015
+         SPACE 1                                               @D36IDRP 11340015
+*-------------------------------------------------------------*@D52VDVB 11350015
+*    DO SECOND SCAN AND TRY BLOCKED PAGE-IN                    @D52VDRP 11360015
+*    BUILD PISL (PAGE STATE LIST FOR PAGE-IN)                  @D52VDVB 11370015
+*-------------------------------------------------------------*@D52VDVB 11380015
+         L     R5,IPFQPTR         IPFQ                         @D52VDVB 11390015
+         USING PFTE,R5            ... SUFFICIENT               @D52VDVB 11400015
+         L     R0,PFTEFPTR        1ST ENTRY                    @D52VDVB 11410015
+         DROP  R5                                              @D52VDVB 11420015
+         CLR   R0,R5              IPFQ EMPTY                   @D52VDVB 11430015
+         BE    PGIN3RDL           YES, --------->  SKIP BLOCKED        *11440015
+                                  * PAGE-IN                    @D52VDVB 11450015
+         SPACE 1                                               @D52VDVB 11460015
+         L     R1,PGTLISTP        GET LIST POINTER             @D52VDVB 11470015
+PGINBLNE ICM   R0,M8,PGTBMODE     PROVIDE ADDRESSING MODE      @D52VDVB 11480015
+*        AMODESW CALL,AMODE=(R0),ADDRESS=POPTPADR,REGS=(RA,RA) @D52VDRP 11490015
+         AMODESW CALL,AMODE=(R0),ADDRESS=POPTPADR,REGS=(RA,RA) @D52VDRP 11500015
+         B     PGINENQP           END OF LIST REACHED          @D61NDVB 11510015
+         B     PSTNEG2            NEGATIVE LENGTH DETECTED     @D52VDVB 11520015
+         B     PSTINVP2           INVALID ADDR DETECTED        @D52VDVB 11530015
+*------> B     PGINSETP           PROCESS ALLOCATION UNIT      @D52VDVB 11540015
+PGINSETP DS    0H                                              @D52VDVB 11550015
+         BAL   RA,PGINPSLI        INITIALIZE PISL              @D52VDVB 11560015
+*SGLINK  PGINPSLI,INPUT=(R2,R8,R9,RA,RD),NOMODR=(R1,R2,R6,R8-RB,RD,RF)  11570015
+PGINBLDP DS    0H                                              @D52VDVB 11580015
+         TM    PGTBIND,TERMIN+TERMLL TERMINATION REQUIRED      @D52VDRP 11590015
+         BNZ   PGINENDT           YES, ----------> SIMULATE END@D52VDRP 11600015
+         LRA   RC,0(R2)           PAGE STATE =                 @D52VDVB 11610015
+         BC    8,PGINXTP2         ADDRESSABLE -------->        @D52VDVB 11620015
+         BC    5,PGINHW02         NO PTE      --------> HW FF1 @D61NDVB 11630015
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE (REAL PTE)   @D52VDVB 11640015
+         AMODESW SET,DAT=OFF                                   @D52VDVB 11650015
+*                                 RC IS REAL ADDRESS OF PTE    @D52VDVB 11660015
+         USING PTE,RC                                          @D52VDVB 11670015
+         TM    PTESTAT,PTEPGCO+PTEERR PTE CONNECTED OR IN ERROR@KD40354 11680015
+         DROP  RC                                              @D52VDVB 11690015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDVB 11700015
+         AMODESW SET,DAT=ON                                    @D52VDVB 11710015
+         BNZ   PGINXTP2           HANDLE NEXT PAGE             @KD40354 11720015
+*SGLINK  PGINPSLB,INPUT=(R2,R8,R9,RA),NOMODR=(R0-R3,R6,R8-RB,RD,RF)     11730015
+         BAL   RA,PGINPSLB        CHECK IF ENTRY IS IN PISL    @KD40354 11740015
+         B     PGINXENQ           PAGE NOT IN ALLOCATION UNIT  @KD40354 11750015
+*------> B     PGINXTP2           PAGE IN ALLOCATION UNIT      @KD40354 11760015
+PGINXTP2 DS    0H                                              @D52VDVB 11770015
+         ICM   RC,M8,PGTBMODE     PROVIDE ADDRESSING MODE      @D52VDVB 11780015
+*SGLINK  POPNPADR,INPUT=(R1,R2,R6,R8,R9,RA,RD),OUTPUT=(R1,R2,R6),      *11790015
+               NOMODR=(R7-R0,R3,R4),AMODE=31 DATON                      11800015
+*        AMODESW CALL,AMODE=(RC),ADDRESS=POPNPADR,REGS=(RA,RA) @D52VDVB 11810015
+         AMODESW CALL,AMODE=(RC),ADDRESS=POPNPADR,REGS=(RA,RA) @D52VDVB 11820015
+         B     PGINENQP           END OF LIST REACHED          @D52VDVB 11830015
+         B     PSTNEG2            NEGATIVE LENGTH DETECTED     @D52VDVB 11840015
+         B     PSTINVP2           INVALID ADDR DETECTED        @D52VDVB 11850015
+         B     PGINBLDP           HANDLE PAGE                  @D52VDVB 11860015
+PGINXENQ DS    0H                                              @KD40354 11870015
+         BAL   RA,PGINENQI        ENQUEUE PISL TO DO BLOCKED PAGE-IN   *11880015
+                                  ... (ONE ALLOCATION UNIT)    @D52VDVB 11890015
+*SGLINK  PGINENQI,INPUT=(R8,R9,RA),NOMODR=(R1-RF),AMODE=31 DATON        11900015
+         B     PGINSETP           ---------->  TRY NEXT BLOCK  @D52VDVB 11910015
+         B     PGIN3RDL           ---------->  DO IT UNBLOCKED @D52VDVB 11920015
+         SPACE 1                                               @D52VDVB 11930015
+PGINENQP DS    0H                                              @D52VDVB 11940015
+         TM    PGTBIND,TERMIN+TERMLL TERMINATION REQUIRED      @D52VDRP 11950015
+         BNZ   PGINENDT           YES, ----------> SIMULATE END@D52VDRP 11960015
+*    HANDLE LAST PISL, WHICH MIGHT BE INCOMPLETE               @D52VDVB 11970015
+         BAL   RA,PGINENQI        ENQUEUE PISL TO DO BLOCKED PAGE-IN   *11980015
+                                  *   (ONE ALLOCATION UNIT)    @D52VDVB 11990015
+*SGLINK  PGINENQI,INPUT=(R8,R9,RA),NOMODR=(R1-RF),AMODE=31 DATON        12000015
+         B     PGINEND            ALL DONE                     @D52VDVB 12010015
+*------> B     PGIN3RDL           DO IT UNBLOCKED              @D52VDVB 12020015
+         SPACE 1                                               @D52VDVB 12030015
+*-------------------------------------------------------------*@D52VDRP 12040015
+* THIS POINT IS REACHED ONLY IF A 3RD SCAN IS NEEDED           @D52VDRP 12050015
+*-------------------------------------------------------------*@D52VDRP 12060015
+         SPACE 1                                               @D52VDVB 12070015
+PGIN3RDL DS    0H                                              @D52VDRP 12080015
+         OI    PGTBIND,PGTSCND    INDICATE LAST SCAN           @D52VDRP 12090015
+         B     PGINLAST           START WITH LAST SCAN         @D52VDRP 12100015
+         SPACE 1                                                        12110015
+*     ROUTINES TO SET ECB-BITS                                 @DL2982F 12120015
+         SPACE 1 .                                                      12130015
+PSTINVPG OI    PGTBIND,INVPG .    INDICATE INVALID ADDR        @DL2982F 12140015
+         B     GETNXTPG .         GET NEXT PAGE                @DL2982F 12150015
+         SPACE 1 .                                                      12160015
+PSTINVP2 OI    PGTBIND,INVPG      INDICATE INVALID ADDR        @D52VDVB 12170015
+         B     PGINXTP2           GET NEXT PAGE - SECOND CYCLE @D52VDVB 12180015
+         SPACE 1                                                        12190015
+PSTNEG   OI    PGTBIND,LENGNEG .  INDICATE NEGATIV LENGTH      @DL2982F 12200015
+         LA    R1,L'POPTENT(,R1)  POINT TO NEXT LIST ENTRY     @D52VDVB 12210015
+         B     NEXTENTR .         BEGIN TO HANDLE THE ENTRY    @DL2982F 12220015
+         SPACE 1                                                        12230015
+PSTNEG2  OI    PGTBIND,LENGNEG    INDICATE NEGATIV LENGTH      @D52VDRP 12240015
+         LA    R1,L'POPTENT(,R1)  POINT TO NEXT LIST ENTRY     @D52VDVB 12250015
+         B     PGINBLNE           BEGIN TO HANDLE THE ENTRY    @D52VDRP 12260015
+         SPACE 1                                                        12270015
+*     THIS PART IS ENTERED IF THE PAGEIN REQUEST IS HANDLED OR @DL2982F 12280015
+*     THE TERMINATOR BIT IS SET ON BY THE SCANPGT ROUTINE      @DL2982F 12290015
+*     RD POINTS TO PAGETAB ENTRY                               @D35EDRP 12300015
+         SPACE 1 .                                             @DL2982F 12310015
+PGINENDT TM    PGTBIND,TERMIN     TERMIN. ACTIVE FOR REQUESTOR @D52VDRP 12320015
+         BNO   CLEARTAB           NO, TERMINATION BY LAOD-LEV. @D52VDRP 12330015
+         LH    R8,PGTBTID         GET TID OF REQUESTOR         @D36IDFG 12340015
+         SLL   R8,2                                            @D66CDOW 12350015
+         AL    R8,ATIBATAB                                     @D66CDOW 12360015
+         L     R8,0(,R8)          R8 = TIB ADDR OF REQUESTOR   @D66CDOW 12370015
+         L     R6,DISPAD          MAKE DISPATCHER ADDRESSABLE  @D36IDFG 12380015
+         USING DISP,R6                                         @D36IDRP 12390015
+         BAL   RF,POST            MAKE TASK READY              @D36IDRP 12400015
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=(RE)                       @D369DRP 12410015
+         L     R8,APMGMDAT        RESTORE BASE OF PMR DATA     @D36IDFG 12420015
+         TM    PGTBIND,TERMLL     TERMINATION BY LOAD LEVELLER @D52VDRP 12430015
+         BO    CLEARTAB           YES, DELETE PAGEIN REQUESTS  @D52VDRP 12440015
+         B     NOPST              SKIP POSTING OF ECB          @D36IDFG 12450015
+         SPACE 1                                                        12460015
+PGINEND  DS    0H                                              @D61NDRP 12470015
+         TM    PGTBIND,TERMIN+TERMLL TERMINATION REQUIRED      @D61NDRP 12480015
+         BNZ   PGINENDT           YES, ----> DO SPECIAL ACTION @D61NDRP 12490015
+         L     R6,DISPAD          MAKE DISPATCHER ADDRESSABLE  @D36IDRP 12500015
+         OI    PGTBIND,TRABIT .   IND. REQU. COMPL.            @DL2982F 12510015
+         NI    PGTBIND,X'FF'-PGTSCND RESET 2ND TIME SWITCH     @D35EDRP 12520015
+         ICM   R5,15,PGTECBP      GET POINTER TO ECB           @D52VDRP 12530015
+         BZ    NOPST .            BRANCH IF NO ECB PRESENT     @DL2982F 12540015
+         MVC   D2(L1,R5),PGTBIND .POST USERS ECB               @DL2982F 12550015
+         LH    R8,PGTBTID         GET TID OF REQUESTOR         @D52VDRP 12560015
+         BAL   RF,IOPOST0         READY TASK IF I/O BOUND      @D36IDFG 12570015
+*SGLINK  IOPOST0,INPUT=(R6,R8,RF),WORK=(R8,RE)                 @D369DRP 12580015
+         L     R8,APMGMDAT        RESTORE BASE OF PMR DATA     @D36IDFG 12590015
+NOPST    BAL   RA,DELETENT .      DELETE ENTRY FROM PAGETAB    @D36IDFG 12600015
+         CR    R5,RD .            IF ANOTHER REQU. PENDING     @D35EDRP 12610015
+         BH    PGINIT .           BRANCH                       @DL2982F 12620015
+         SPACE 1                                                        12630015
+*     UNREADY PAGEIN-TASK                                      @D36IDRP 12640015
+PGINDACT DS    0H                                              @D52VDRP 12650015
+         SGSETUP UNPOST,STASK=PGN,WR1=R4 UNPOST, EXIT TO DISP  @D36IDRP 12660015
+         DROP  R6                                              @D36IDFG 12670015
+         SPACE 1                                                        12680015
+PGINHW01 BAL   R5,PMRHWERR        ===========>   HW X'FF1'     @D61NDVB 12690015
+PGINHW02 BAL   R5,PMRHWERR        ===========>   HW X'FF1'     @D61NDVB 12700015
+         SPACE 1                                                        12710015
+*        END OF PGINIT ROUTINE                                 @D35EDRP 12720015
+         SPACE 2 .                                                      12730015
+*-------------------------------------------------------------*@D529DVB 12740015
+*    THIS ROUTINE DELETES ONE ENTRY FROM PAGETAB               @DL2982F 12750015
+*                                                              @D369DRP 12760015
+*    CALLED BY:                                                @D529DRP 12770015
+*             PGIN, CLEARTAB WITH AMODE(31),DATON              @D529DRP 12780015
+*             SCANPGT WITH AMODE(24),DATON                     @D529DRP 12790015
+*    INPUT:   RD _ ADDR OF ENTRY TO BE DELETED                 @D369DRP 12800015
+*             RA - RETURN ADDR                                 @D369DRP 12810015
+*    OUTPUT:  R5 - ADDR OF 1ST FREE ENTRY IN PAGETAB           @D369DRP 12820015
+*             RD - UNCHANGED                                            12830015
+*    INTERNAL REGISTER USAGE:                                  @D35EDRP 12840015
+*              R4 - WORK REGISTER                              @D149DRP 12850015
+*-------------------------------------------------------------*@D529DVB 12860015
+         SPACE 1 .                                             @DL2982F 12870015
+DELETENT L     R5,AEOPGTAB        LOAD ENDADDR OF PAGETAB      @D35EDRP 12880015
+         CR    R5,RD              ALREADY DELETED              @D14BDRP 12890015
+         BER   RA                 ========> YES, RETURN        @D14BDRP 12900015
+         SH    R5,PAGTBLNG        UPDATE ENDADDR OF            @D35EDRP 12910015
+         ST    R5,AEOPGTAB               PAGETAB               @D35EDRP 12920015
+         LR    R4,R5              GET RESIDUAL LENGTH          @D14BDRP 12930015
+         SR    R4,RD                     FOR MOVE              @D14BDRP 12940015
+         BZR   RA                 ========> RETURN IF LAST ENTRY       *12950015
+                                                DELETED        @D14BDRP 12960015
+         EX    R4,MOVERST         DELETE ENTRY                 @D35EDRP 12970015
+         BR    RA                 ========> RETURN             @D35EDRP 12980015
+MOVERST  MVC   D0(1,RD),L'PGTBLNG(RD) MOVE REST OF PAGETAB     @D35EDRP 12990015
+         SPACE 2 .                                             @DL2982F 13000015
+*-------------------------------------------------------------*@D529DVB 13010015
+*    THIS ROUTINE VALIDATES THE PARAMETER LIST ADDRESSED VIA R1@D529DVB 13020015
+*    IF THE LIST IS TOTALLY PART OF THE PARTITION, RETURN      @D529DVB 13030015
+*    IS VIA OFFSET 4, OTHERWISE VIA OFFSET 0                   @D529DVB 13040015
+*    CALLED BY:                                                @D529DRP 13050015
+*              FCEPGOUT, RELPAGE, SVPGIN WITH AMODE(REQUESTOR),DATON    13060015
+*    CALLS: VALIDAD WITH AMODE(REQUESTOR),DATON                @D529DRP 13070015
+*        RE - ADDR OF PCB                                      @DY40069 13080015
+*-------------------------------------------------------------*@D529DVB 13090015
+         SPACE 1                                                        13100015
+VALLIST  DS    0H                                              @D52VDRP 13110015
+         LA    R1,0(,R1)          CLEAR BYTE/BIT ZERO          @D52VDRP 13120015
+         LR    R4,R1              GET BEGIN OF PARAMETER LIST  @D14BDRP 13130015
+         LR    R3,R1                                           @D14BDRP 13140015
+         N     R3,PADDRMSK        * GET ADDR                   @D14BDRP 13150015
+         BCTR  R3,0               * OF LAST BYTE               @D14BDRP 13160015
+VALLISTP AL    R3,PAGESIZE        *  IN PAGE                   @D14BDRP 13170015
+         LR    R2,R3              GET END ADDR                 @D14BDRP 13180015
+         CL    R2,EOVSADR         ADDRESS WITHIN ADDRESS SPACE @D52VDRP 13190015
+         BH    VALLEXT0           NO, EXIT ERROR               @D52VDRP 13200015
+         USING DISP,R6                                         @D14BDRP 13210015
+         BAL   R8,VALIDAD                                      @D14BDRP 13220015
+*SGLINK  VALIDAD,INPUT=(R1,R2,R6,R8),OUTPUT=(R5),WORK=(R2)     @D14BDRP 13230015
+         DROP  R6                                              @D14BDRP 13240015
+         B     VALLIST1                                        @D14BDRP 13250015
+         B     VALLIST1                                        @D14BDRP 13260015
+         L     R8,APMGMDAT        RESTORE DATA BASE            @D14BDRP 13270015
+         USING PCBADR,RE          SET BASE FOR PCB             @DY40069 13280015
+         CLM   R5,1,PCEKEY        DOES KEY MATCH KEY IN PCB    @DY40069 13290015
+         BE    VALLISTS           YES,   --------->            @D64ADVB 13300015
+         DROP  RE                                (INVALID ADDR)@D64ADVB 13310015
+         STCTL CR3,CR3,VALVPKM    GET CURRENT PKM              @D64ADOW 13320015
+         SRL   R5,4               GET PKM                      @D64ADOW 13330015
+         L     R2,BIT0OMSK        ... RELATED TO               @D64ADOW 13340015
+         SRL   R2,0(R5)           ... STORAGE KEY              @D64ADOW 13350015
+         N     R2,VALVPKM         VALID KEY                    @D64ADOW 13360015
+         BZ    VALLEXT0           NO,   -------> RETURN OFFS 0 @D62ADVB 13370015
+*                                                (INVALID ADDR)         13380015
+VALLISTS L     R5,0(R4)           END OF ....                  @D52VDRP 13390015
+         LA    R5,0(,R5)          ... LIST ...                 @D52VDRP 13400015
+         C     R5,0(R4)           ... REACHED                  @D52VDRP 13410015
+         BNE   VALLEXT4           YES, RETURN, LIST IS VALID   @D52VDRP 13420015
+         LA    R4,L'POPTENT(R4)   UPDATE POINTER               @D35EDRP 13430015
+         LA    R2,L'POPTBEG(R4)                                @D52VDRP 13440015
+         CR    R2,R3              STILL WITHIN SAME PAGE       @D14BDRP 13450015
+         BL    VALLISTS           YES, CONTINUE SCAN           @D35EDRP 13460015
+         B     VALLISTP           VALIDATE NEXT PAGE           @D14BDRP 13470015
+VALLEXT4 AL    RA,F4              RETURN WITH OFFSET 4         @D52VDRP 13480015
+VALLIST1 L     R8,APMGMDAT        RESTORE DATA BASE            @D14BDRP 13490015
+VALLEXT0 DS    0H                                              @D52VDRP 13500015
+         BSM   0,RA               =========> RETURN            @D64ADOW 13510015
+*                                                                       13520015
+VALVPKM  DC    A(0)               LOCAL WORK AREA              @D64ADOW 13530015
+         SPACE 1                                                        13540015
+         DROP  RD                 FORGET BASE FOR PAGETAB      @D35EDRP 13550015
+         EJECT                                                 @D35EDRP 13560015
+*-------------------------------------------------------------*@D35EDRP 13570015
+*   SCANPGT: THIS ROUTINE IS CALLED IF A TASK TERMINATES       @DL2982F 13580015
+*            TO DELETE PAGETAB ENTRIES FROM THIS TASK          @DL2982F 13590015
+*            OR TO WAIT FOR COMPLETION OF PAGE I/O             @DL2982F 13600015
+*   CALLED BY: SGAP WITH AMODE(24),DATON                       @D529DRP 13610015
+*   CALLS: DELETENT, UNPOST WITH AMODE(24),DATON               @D529DRP 13620015
+*   INPUT:                                                     @D369DRP 13630015
+*        R6 - ADDR OF DISPATCHER                               @D369DRP 13640015
+*        R7 - RETURN REGISTER                                  @DL2982F 13650015
+*        R8 - ADDR OF PAGEMANAGEMENT DATA AREA                 @D35EDRP 13660015
+*                                                              @D35EDRP 13670015
+*   INTERNAL REGISTER USAGE IN SCANPGT ROUTINE                 @D35EDRP 13680015
+*        R4 - WORK REGISTER (USED BY DELENT RTN)               @D149DRP 13690015
+*        R5 - WORK REGISTER                                    @D35EDRP 13700015
+*        RA - LINK REGISTER                                    @D369DFG 13710015
+*        RD - ADDR OF PAGETAB ENTRY                            @D35EDRP 13720015
+*-------------------------------------------------------------*@D35EDRP 13730015
+         SPACE 1 .                                             @DL2982F 13740015
+*SGLINK  SCANPGT,S,INPUT=(R6:DISP,R7:LINK,R8:APMGMDAT)         @D52VDRP 13750015
+         USING DISP,R6                                         @D36IDFG 13760015
+SCANPGT  STM   R4,RD,PMRSAVE      SAVE CALLERS REGISTER        @D35EDRP 13770015
+         L     R9,APAGEOPT        GET ADDR OF CODE AREA        @D35EDRP 13780015
+         L     RD,APAGETAB        SCAN PAGETAB                 @D36DDRP 13790015
+         L     R5,AEOPGTAB        STARTING FROM 2ND ENTRY      @D35EDRP 13800015
+         CR    RD,R5              PAGETAB EMPTY                @D35EDRP 13810015
+         BNL   SCANFIN2           YES, BRANCH                  @DL2982F 13820015
+         USING PGTABADR,RD                                     @D35EDRP 13830015
+CNTSCAN0 LA    RD,L'PGTBLNG(RD)   POINT TO NEXT PAGETAB ENTRY  @D35EDRP 13840015
+CNTSCAN1 CR    RD,R5              END OF PAGETAB REACHED       @D35EDRP 13850015
+         BNL   SCANFIN1          YES, BRANCH                   @DL2982F 13860015
+         CLC   TID,PGTBTID        IS IT TERMINATING TASK?      @D52VDVB 13870015
+         BNE   CNTSCAN0           NO, CONTINUE SCAN            @DL2982F 13880015
+         BAL   RA,DELETENT        YES, DELETE ENTRY FROM PAGETA@D35EDRP 13890015
+         B     CNTSCAN1           CONTINUE SCAN                @DL2982F 13900015
+*              SPECIAL HANDLING FOR FIRST ENTRY                @DL2982F 13910015
+SCANFIN1 L     RD,APAGETAB        POINT TO 1ST ENTRY           @D36DDRP 13920015
+         CLC   TID,PGTBTID        IS IT TERMINATING TASK?      @D52VDVB 13930015
+         BNE   SCANFIN2           NO, SCAN FINISHED            @DL2982F 13940015
+         SGCOV SGPOPTS,MC=1                                    @D52VDRP 13950015
+         OI    PGTBIND,TERMIN     MARK TERMIN. FOR THIS TASK   @DL2982F 13960015
+         L     R5,ASRQTAB                                      @D61RDRP 13970015
+         LA    R5,SRQPGIN-SRQTAB(,R5) ADDR OF RESOURCE DESCR.  @D61RDRP 13980015
+         BAL   RF,UNPOST          UNREADY CURRENT TASK         @D36IDRP 13990015
+*SGLINK  UNPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                  @D369DRP 14000015
+*        AMODESW RETURN,REG=(R6)  =========> GOTO DISPATCHER   @D52VDRP 14010015
+         AMODESW RETURN,REG=(R6)  =========> GOTO DISPATCHER   @D52VDRP 14020015
+         DROP  R6                 DROP BASE FOR DISP           @D36IDRP 14030015
+SCANFIN2 LM    R4,RD,PMRSAVE      RESTORE CALLERS REGISTER     @D35EDRP 14040015
+*        AMODESW RETURN,REG=(R7)  =========> RETURN TO CALLER  @D52VDRP 14050015
+         AMODESW RETURN,REG=(R7)  =========> RETURN TO CALLER  @D52VDRP 14060015
+         DROP  RD                 FORGET BASE FOR PAGETAB ENTRY@D35EDRP 14070015
+*        END OF SCANPGT ROUTINE                                @D35EDRP 14080015
+         EJECT                                                          14090015
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D35EDRP 14100015
+*        THIS ROUTINE IS CALLED FROM THE LOAD-LEVELLER         @DL2982F 14110015
+*        AND INITIATES THE DELETION OF ALL PAGEIN REQUESTS     @DL2982F 14120015
+*        FROM THE PAGETAB, BY SETTING TERMLL IN PGTBIND        @DL2982F 14130015
+*                                                                       14140015
+*        CALLED BY DEACTP, TPIN WITH AMODE(24),DATON           @D529DRP 14150015
+*                                                              @D35EDRP 14160015
+*        INPUT                                                 @D35EDRP 14170015
+*              R6 - ADDR OF DISP                               @D369DRP 14180015
+*              R7 - RETURN ADDRESS                             @D35EDRP 14190015
+*              R8 - ADDRESS OF PAGEMANAGEMENT DATA AREA        @D35EDRP 14200015
+*        INTERNAL REGISTER USAGE IN TERMPGIN ROUTINE           @D35EDRP 14210015
+*              R6 - ADDR OF DISPATCHER                         @D35EDRP 14220015
+*              R8 - BASE ADDR OF DATA AREA                     @D35EDRP 14230015
+*              R9 - BASE ADDR OF CODE AREA                     @D35EDRP 14240015
+*              RC - ADDR OF PAGETAB-ENTRY                      @D369DRP 14250015
+*                                                              @D35EDRP 14260015
+         SPACE 2 .                                             @DL2982F 14270015
+         USING DISP,R6                                         @D36IDFR 14280015
+TERMPGIN STM   R2,RF,PMRSAVE      SAVE REGISTERS               @D14BDVB 14290015
+         SGCOV SGPOPT,MC=3        LOAD LEVELLING ACTIVE AT ALL @D52VDRP 14300015
+         L     R9,APAGEOPT        GET BASE ADDRESS OF CODE AREA@D35EDRP 14310015
+         L     RC,APAGETAB        PAGETAB                      @D36DDRP 14320015
+         USING PGTABADR,RC        SET BASE FOR PAGETAB ENTRY   @D35EDRP 14330015
+         C     RC,AEOPGTAB .      EMPTY ?                      @D35EDRP 14340015
+         BNL   TERMFIN1           YES, RETURN                  @DL2982F 14350015
+         OI    PGTBIND,TERMLL .   INDICATE TERM IN PROCESS     @DL2982F 14360015
+         SGCOV SGPOPTS,MC=2       LOAD LEV. ACTIVE WITH PAGEIN @D52VDRP 14370015
+         DROP  RC                                              @D36IDRP 14380015
+TERMFIN1 LM    R2,RF,PMRSAVE      RELOAD REGISTERS             @D14BDVB 14390015
+         BR    R7                 ===========> RETURN          @D35EDRP 14400015
+         DROP  R6                 DROP BASE FOR DISP                    14410015
+         DROP  R9                                              @D14BDVB 14420015
+         SPACE 3 .                                             @DL2982F 14430015
+*        THIS ROUTINE DELETES ALL PAGEIN REQUESTS FROM THE     @DL2982F 14440015
+*        PAGETAB. THE ROUTINE IS ENTERED IF THE LOAD-LEVELLER  @DL2982F 14450015
+*        WAS ACTIVE IN THE SYSTEM. TRIGGERED BY TERMLL BIT IN  @D529DRP 14460015
+*        1ST PAGETAB ENTRY. AMODE(31),DATON                    @D529DRP 14470015
+*                                                                       14480015
+*        CALLS: DELETENT, IOPOST1 WITH AMODE(31),DATON         @D529DRP 14490015
+*        EXIT: TO PGINIT OR PGINDACT WITH AMODE(31),DATON      @D529DRP 14500015
+*                                                              @D369DRP 14510015
+*        INTERNAL REGISTER USAGE:                              @D369DRP 14520015
+*         R3 - ADDR OF TIB OF TASK OWNING THE PAGETAB ENTRY    @D369DRP 14530015
+*         R4 - WORK REGISTER                                   @D369DRP 14540015
+*         R5 - ADDR OF 1ST FREE PAGETAB ENTRY                  @D369DRP 14550015
+*         R6 - ADDR OF DISPATCHER                              @D369DRP 14560015
+*         RA - LINK REGISTER/WORK REGISTER                     @DA40737 14570015
+*         RD - ADDR OF PAGETAB ENTRY                           @D369DRP 14580015
+*         RF - LINK REGISTER/WORK REGISTER                     @DA40737 14590015
+         SPACE 1 .                                             @DL2982F 14600015
+         USING PAGEOPT,R9         SET BASE FOR CODE AREA       @D35EDRP 14610015
+         USING PGTABADR,RD                                     @D35EDRP 14620015
+CLEARTAB L     RD,APAGETAB        POINT TO PAGETAB             @D36DDRP 14630015
+         L     R6,DISPAD                                       @D36IDRP 14640015
+         USING DISP,R6                                         @D36IDRP 14650015
+         SR    R5,R5 .                                         @DL2982F 14660015
+CLEARCNT OI    PGTBIND,TERMLL     INDICATE TERM IN PROCESS     @DL2982F 14670015
+         LH    R4,PGTBTID         GET REQUESTOR ID             @D52VDVB 14680015
+         LR    RA,R4              SAVE TID FOR SGSETUP         @DA40737 14690015
+         SLL   R4,2                                            @D66CDOW 14700015
+         AL    R4,ATIBATAB                                     @D66CDOW 14710015
+         L     R3,0(,R4)          GET ADDR OF TIB              @D66CDOW 14720015
+         USING TIBADR,R3                                       @D36IDFR 14730015
+         TM    PGTBIND,TERMIN     TASK IN TERMINATION          @D52VDRP 14740015
+         BO    CLEARDEL           YES, SKIP POSTING            @D52VDRP 14750015
+         TM    SUPFLAG,TPBIT      TPIN ACTIVE?                 @D35EDRP 14760015
+         BZ    CLEARTB1           NO, BRANCH                   @D35EDRP 14770015
+         CLC   TPPIK,TIBPIK      REQUEST FROM TP PARTITION     @D36IDRP 14780015
+         DROP  R3                 FORGET BASE FOR TIB          @D36IDRP 14790015
+         BNE   CLEARTB1           NO, BRANCH                   @D35EDRP 14800015
+         NI    PGTBIND,X'FF'-TERMLL RESET TERMINATION INDIC.   @D35EDRP 14810015
+         LA    RD,L'PGTBLNG(RD)   SKIP THIS ENTRY              @D35EDRP 14820015
+         B     CLEARTB2           DON'T DELETE IT              @D35EDRP 14830015
+CLEARTB1 DS    0H                                              @D35EDRP 14840015
+         ICM   R5,15,PGTECBP      GET POINTER TO ECB           @D52VDRP 14850015
+         BZ    CLEARDEL           NO ECB PRESENT               @DL2982F 14860015
+         SPACE 1                                                        14870015
+*      SET OWNER INFORMATION                                   @DA40737 14880015
+         SGSETUP SWOWNER,STASK=PGN,WR1=RA,WR2=RF,                      *14890015
+               OPTION=SETOWNER                                 @DA40737 14900015
+         SPACE 1                                                        14910015
+         OI    D2(R5),TRABIT+TERMLL POST ECB                   @DL2982F 14920015
+         LR    R8,R3              GET TIB POINTER              @D36IDFG 14930015
+         BAL   RF,IOPOST1         READY TASK IF I/O BOUND      @D36IDRP 14940015
+*SGLINK  IOPOST1,INPUT=(R6,R8,RF),WORK=(RE)                    @D369DRP 14950015
+         L     R8,APMGMDAT        RESTORE BASE OF PMR DATA     @D36IDFG 14960015
+CLEARDEL BAL   RA,DELETENT        DELETE PAGETAB ENTRY         @D35EDRP 14970015
+CLEARTB2 CR    R5,RD              PAGETAB EMPTY                @D35EDRP 14980015
+         BH    CLEARCNT           NO, CONTINUE                 @DL2982F 14990015
+         L     RD,APAGETAB                                     @D36DDRP 15000015
+         CR    R5,RD              PAGETAB EMPTY                @D35EDRP 15010015
+         BNE   PGINIT             ===> NO, HANDLE REQUEST FROM @D35EDRP 15020015
+*                                     TP-PARTITION             @D35EDRP 15030015
+         B     PGINDACT           ===> YES, DEACTIVATE PAGEIN  @DL2982F 15040015
+*                                 RETURN TO DISPATCHER         @DL2982F 15050015
+         DROP  R6                 DROP BASE FOR DISP           @D36IDFG 15060015
+         DROP  RD                 DROP BASE FOR PAGETAB        @D52VDVB 15070015
+         EJECT                                                 @D52VDVB 15080015
+*-------------------------------------------------------------*@D52VDVB 15090015
+*   PGINPSLI:   INITIALIZES PISL AND IORE FOR BLOCKED PAGE-IN  @D52VDVB 15100015
+*        CALLED BY: PGIN WITH AMODE(31),DATON                  @D52VDVB 15110015
+*        CALLS: CHKSAREA (31,DATON)                            @D52VDVB 15120015
+*               EPACNVR2 (31,DATON)                            @D52VDVB 15130015
+*                                                              @D52VDVB 15140015
+*   INPUT:                                                     @D52VDVB 15150015
+*        R2  -  VIRTUAL ADDRESS OF PAGE TO BE HANDLED          @D52VDVB 15160015
+*        R8  -  ADDR OF PGM DATA AREA                          @D52VDVB 15170015
+*        R9  -  BASE OF CODE                                   @D52VDVB 15180015
+*        RA  -  RETURN REGISTER                                @D52VDVB 15190015
+*        RD  -  ADDR OF PAGETAB ENTRY                          @D52VDVB 15200015
+*   OUTPUT:                                                    @D52VDVB 15210015
+*-------------------------------------------------------------*@D52VDVB 15220015
+         SPACE 1                                               @D52VDVB 15230015
+*SGLINK  PGINPSLI,S,INPUT=(R2,R8,R9,RA,RD),                            *15240015
+               NOMODR=(R1,R2,R6,R8-RB,RD,RF),AMODE=31 DATON             15250015
+PGINPSLI DS    0H                                              @D52VDVB 15260015
+         SGCOV SGPOPT,MC=4                                     @D52VDRP 15270015
+         LR    R0,RD              SAVE A(PAGETAB)              @D52VDVB 15280015
+         LR    RD,R2                                           @D52VDVB 15290015
+*SGLINK  CHKSAREA,INPUT=(R2,RD),OUTPUT=(R4),WORK=(R3)                   15300015
+         BAL   R2,CHKSAREA        GET SCB ADDRESS WHERE PAGE           *15310015
+                                  * BELONGS TO                 @D52VDVB 15320015
+         LR    R2,RD                                           @D52VDVB 15330015
+         L     R7,APGIPISL        ADDRESS OF PISL              @D52VDVB 15340015
+         USING PSLCB,R7                                        @D52VDVB 15350015
+         ST    R4,PSLASCB         PROVIDE USER'S SCB           @D52VDVB 15360015
+*SGLINK  EPACNVR2,INPUT=(R4,R8,RD,RE),OUTPUT=(RD),WORK=(R5)             15370015
+         BAL   RE,EPACNVR2        CONVERT VIRT ADDRESS TO EPA  @D52VDVB 15380015
+         N     RD,PMBLKMSK        ROUND TO NEXT LOWER BOUNDARY         *15390015
+                                  * OF ALLOCATION UNIT         @D52VDVB 15400015
+         SRL   RD,PNSHIFT         PROVIDE EPA NR OF ALLOC UNIT @D52VDVB 15410015
+         ST    RD,PSLABEGP        START ADDRESS                @D52VDVB 15420015
+         LA    RD,NPAGPBLK(,RD)   + ALLOCATION UNIT            @D52VDVB 15430015
+         ST    RD,PSLAENDP        END ADDRESS OF ALLOC- UNIT   @D52VDVB 15440015
+         MVI   PSLSTATE,0         INITIALIZE STATE             @D52VDVB 15450015
+         DROP  R7                                              @D52VDVB 15460015
+         L     R7,APGINTIB        PROVIDE IORE FOR BLOCKED             *15470015
+                                  ... PAGE-IN                  @D52VDVB 15480015
+         USING TIBADR,R7          ADDRESSABILITY TO PCB        @D52VDVB 15490015
+         SLR   R3,R3                                           @D61NDVB 15500015
+         ST    R3,PGOEQPSL        CLEAR BLOCKING MASKS         @D61NDVB 15510015
+         XC    TIBAPFT(NPAGPBLK*4),TIBAPFT                             *15520015
+                                       CLEAR PFTE ADDRESS LIST @D52VDVB 15530015
+         LR    RD,R0              RESET A(PAGETAB)             @D52VDVB 15540015
+         USING PGTABADR,RD        ADDRESS BASE OF PAGETAB      @D52VDVB 15550015
+         LH    R3,PGTBTID         GET TID OF REQUESTOR         @D52VDVB 15560015
+         SLL   R3,2                                            @D66CDOW 15570015
+         AL    R3,ATIBATAB                                     @D66CDOW 15580015
+         L     R3,0(,R3)          R8 = TIB ADDR OF REQUESTOR   @D66CDOW 15590015
+         MVC   TIBPCB,TIBPCB-TIBADR(R3) PROVIDE PCB ADDR OF REQ@D52VDVB 15600015
+         BR    RA                 ==========>   EXIT PGINPSLI  @D52VDVB 15610015
+         SPACE 2                                               @D52VDVB 15620015
+         DROP  R7                 RESET ADDR TO TIB            @D52VDVB 15630015
+         DROP  RD                 FORGET BASE FOR PAGETAB ENTRY@D35EDRP 15640015
+         SPACE 2                                               @D52VDVB 15650015
+*SGLINK  PGINPSLB,S,INPUT=(R2,R8,R9,RA),NOMODR=(R0-R3,R6,R8-RB,RD,RF)   15660015
+PGINPSLB DS    0H                                              @D52VDVB 15670015
+         SGCOV SGPOPT,MC=5                                     @D52VDRP 15680015
+         LR    RC,RD              SAVE A(PAGETAB)              @D52VDVB 15690015
+         L     R7,APGIPISL        ADDRESS OF PISL              @D52VDVB 15700015
+         USING PSLCB,R7                                        @D52VDVB 15710015
+         LR    RD,R2                                           @D52VDVB 15720015
+         L     R4,PSLASCB         GET SCB ADDR FOR EPACNVR2    @D52VDVB 15730015
+*SGLINK  EPACNVR2,INPUT=(R4,R8,RD,RE),OUTPUT=(RD),WORK=(R5)             15740015
+         BAL   RE,EPACNVR2        CONVERT VIRT ADDRESS TO EPA  @D52VDVB 15750015
+         LR    R4,RD                                           @D52VDVB 15760015
+         LR    RD,RC              RESET A(PAGETAB)             @D52VDVB 15770015
+         SRL   R4,PNSHIFT         GET EPA NR                   @D52VDVB 15780015
+         S     R4,PSLABEGP        RELATIVE EPA-NR              @D52VDVB 15790015
+         BMR   RA                 RETURN, ==========> EXIT     @KD40354 15800015
+*                                 OUTSIDE ALLOC UNIT           @KD40354 15810015
+         CH    R4,PGALLOC                                      @D52VDVB 15820015
+         BNLR  RA                 RETURN, ==========> EXIT     @KD40354 15830015
+*                                 OUTSIDE ALLOC UNIT           @KD40354 15840015
+         SPACE 1                                               @D52VDVB 15850015
+         SLR   R5,R5                                           @D52VDVB 15860015
+         IC    R5,RTMASK(R4)      GET RELATED BIT PATTERN      @D52VDVB 15870015
+         EX    R5,PGINPOI         ... AND UPDATE PISL          @D52VDVB 15880015
+         DROP  R7                                              @D52VDVB 15890015
+         L     R7,APGINTIB        PROVIDE IORE                 @D52VDVB 15900015
+         USING TIBADR,R7                                       @D52VDVB 15910015
+         ALR   R4,R4              EPA-NR * 4                   @D52VDVB 15920015
+         ALR   R4,R4              ...= OFFSET IN PFTE ADDR LIST@D52VDVB 15930015
+         ST    R5,TIBAPFT(R4)     MARK ADDRESS AS USED         @D52VDVB 15940015
+         DROP  R7                                              @D52VDVB 15950015
+         B     4(,RA)             ==========>   EXIT PGINPSLB  @D52VDVB 15960015
+         SPACE 1                                               @D52VDVB 15970015
+         USING PSLCB,R7                                        @D52VDVB 15980015
+PGINPOI  OI    PSLSTATE,0         SET RELATED BIT MASK         @D52VDVB 15990015
+PGALLOC  DC    AL2(NPAGPBLK)      NUMBER OF PAGES IN ALLOC-UNIT@D52VDVB 16000015
+         DROP  R7                                              @D52VDVB 16010015
+         DROP  R8,R9              DROP DATA AND CODE BASE      @D52VDRP 16020015
+         EJECT                                                 @D52VDVB 16030015
+*-------------------------------------------------------------*@D52VDVB 16040015
+*   PGINENQI:   ON BEHALF ON THE PASSED PISL THE ROUTINE EN-   @D52VDVB 16050015
+*               QUEUES AN IORE (FOR BLOCKED PAGE-IN) TO THE    @D52VDVB 16060015
+*               RELATED DEVCB AND WAITS ON COMPLETION          @D52VDVB 16070015
+*        CALLED BY: PGIN WITH AMODE(31),DATON                  @D52VDVB 16080015
+*        CALLS: REMOVE (31,DATOFF),                            @D52VDVB 16090015
+*               GETDVCBF (31,DATAOFF)                          @D52VDVB 16100015
+*   INPUT:                                                     @D52VDVB 16110015
+*        R0  -  ADDRESS OF PISL     -> IF CALLED FROM OUTSIDE  @D61NDVB 16120015
+*               (LOCATED IN SHARED AREA)                       @D61NDVB 16130015
+*        R8  -  ADDR OF SGPDATA     -> IF CALLED BY PAGE-IN    @D61NDVB 16140015
+*        RA  -  RETURN REGISTER                                @D52VDVB 16150015
+*        RD  -  NON-ZERO VALUE      -> IF CALLED BY PAGE-IN    @D61NDVB 16160015
+*               ADDRESS OF SAVE AREA-> IF CALLED FROM OUTSIDE  @D61NDVB 16170015
+*               (18 FULLWORDS, FIRST FULLWORD MUST BE X'0',    @D61NDVB 16180015
+*                LOCATED IN SHARED AREA)                       @D61NDVB 16190015
+*   OUTPUT:                                                    @D52VDVB 16200015
+*                                                              @D52VDVB 16210015
+*   EXIT:                                                      @D52VDVB 16220015
+*        RETURN TO CALLER                                      @D52VDVB 16230015
+*               OFFSET 0   -  PAGE-IN DONE FOR ALLOCATION UNIT @D52VDVB 16240015
+*                  ( WAIT FOR I/O COMPLETION DONE IN ROUTINE)  @D52VDVB 16250015
+*               OFFSET 4   -  NOT ENOUGH PFTE-S IN IPFQ        @D52VDVB 16260015
+*                                                              @D52VDVB 16270015
+*   ERROR EXIT: NONE                                           @D52VDVB 16280015
+*                                                              @D52VDVB 16290015
+*   INTERNAL REGISTER USAGE:                                   @D52VDVB 16300015
+*         R0...R5 - WORK REGISTERS                             @D52VDVB 16310015
+*         RA -      LINK REGISTER                              @D52VDVB 16320015
+*         RB -      ADDR OF DEVCB                              @D52VDVB 16330015
+*         RC -      ADDR OF PFTE                               @D52VDVB 16340015
+*         RD -      ADDR OF SAVE AREA                          @D52VDVB 16350015
+*         RE -      ADDR OF FRAME IDENTIFIED BY RD             @D52VDVB 16360015
+*         RF -      ADDR OF IORE                               @D52VDVB 16370015
+*-------------------------------------------------------------*@D52VDVB 16380015
+*    OPERATION:                                                @D52VDVB 16390015
+*        PISL = (* PISL OF PAGE-IN *)                          @D52VDVB 16400015
+*        TIB  = (* IORE OF PAGE-IN *)                          @D52VDVB 16410015
+*        TIB.TIBAALU  = ADDRESS(PISL)                          @D52VDVB 16420015
+*        IF (* BLOCKING FACTOR = 0 *)                          @D52VDVB 16430015
+*          |(* LEN(IPFQ) < BLOCKING FACTOR *)                  @D52VDVB 16440015
+*          THEN RETURN                                         @D52VDVB 16450015
+*        TIB.TIBSTATE = 0                                      @D52VDVB 16460015
+*        TIB.PGQTYP = PGIN & PGBLK                             @D52VDVB 16470015
+*        EPA = (* LOWEST PAGE GIVEN PISL *)                    @D52VDVB 16480015
+*        DO FOR ALL EPAS OF PISLSTATE                          @D52VDVB 16490015
+*          IF TIB.TIBAPFT(EPA) /=  0                           @D52VDVB 16500015
+*            THEN DO                                           @D52VDVB 16510015
+*               CALL REMOVE(PFI,IPFQ) /*REMOV FRAME FROM IPFQ*/@D52VDVB 16520015
+*               PFTE(EPA) = (* CONNECT FRAME TO CURRENT PAGE *)@D52VDVB 16530015
+*               PTE(EPA)  = (* SET PTE TO CONNECTED STATE    *)@D52VDVB 16540015
+*               TIB.TIBAPFT(EPA) = ADDRESS(PFT(EPA))           @D52VDVB 16550015
+*               IF PTE.PDSBIT(EPA) = OFF                       @D61NDVB 16560015
+*                 THEN DO                                      @D61NDVB 16570015
+*                   CALL MAKEADDR(PTE(EPA),FRAME(PFI))         @D61NDVB 16580015
+*                   TIB.TIBAPFT(EPA) = 0 /* NO PAGE-IN REQ   */@D61NDVB 16590015
+*                 END                                          @D61NDVB 16600015
+*             END                                              @D52VDVB 16610015
+*          END DO_FOR                                          @D52VDVB 16620015
+*        IF (* BLOCKING FACTOR = 0 *)    /* NO COPIES ON PDS */@D61NDVB 16630015
+*          THEN RETURN                                         @D61NDVB 16640015
+*        DVCB = (* RELATED DEVCB *)                            @D52VDVB 16650015
+*        CALL ENQENTR2(TIB,DEVCB)                              @D52VDVB 16660015
+*        IF PMRTASK NOT ACTIVE                                 @D52VDVB 16670015
+*          THEN SGSETUP ACTIVATE,STASK=PMR                     @D52VDVB 16680015
+*        CALL SETUPSA(PAGE-IN) /* SAVE STATUS OF PAGEIN TASK */@D52VDVB 16690015
+*        CALL UNPOST(SRQPMR)   /* SET PAGEIN  TASK IN WAIT   */@D52VDVB 16700015
+*        EXIT DISP             /* WAIT FOR COMPLETION        */@D52VDVB 16710015
+*     RETURN                                                   @D52VDVB 16720015
+*-------------------------------------------------------------*@D52VDVB 16730015
+         SPACE 2                                                        16740015
+*SGLINK  PGINENQI,S,INPUT=(R8,R9,RA),NOMODR=(R1-RF),AMODE=31 DATON      16750015
+PGINENQI DS    0H                 ENTRY POINT FOR PAGE-IN      @D61NDVB 16760015
+         USING PMGMDATA,R8                                     @D52VDVB 16770015
+         ST    RD,PGINSAVE+PGINASAV SAVE RD                    @D61NDVB 16780015
+         LA    RD,PGINSAVE                                     @D61NDVB 16790015
+         USING PGINSAVE,RD                                     @D61NDVB 16800015
+         L     R0,APGIPISL        PISL FOR ONE ALLOCATION UNIT @D52VDVB 16810015
+         DROP  R8                                              @D61NDVB 16820015
+         SPACE 1                                                        16830015
+PISLENQI DS    0H                 ENTRY POINT                  @D52VDVB 16840015
+         STM   RE,RC,PGINSAVE+PGINARE  SAVE CALLERS REGISTERS  @D61NDVB 16850015
+         DROP  RD                                              @D61NDVB 16860015
+         L     R8,APMGMDAT                                     @D52VDVB 16870015
+         USING PMGMDATA,R8                                     @D52VDVB 16880015
+         L     R9,APAGEOPT        BASE ADDRESS OF CODE         @D52VDVB 16890015
+         USING PAGEOPT,R9                                      @D52VDVB 16900015
+         L     RF,APGINTIB        PROVIDE IORE FOR BLOCKED             *16910015
+                                  ... PAGE-IN                  @D52VDVB 16920015
+         USING TIBADR,RF                                       @D52VDVB 16930015
+         LR    R4,R0              PISL OF ALLOCATION UNIT      @D61NDVB 16940015
+         USING PSLCB,R4                                        @D52VDVB 16950015
+         MVC   TIBPFSCB,PSLASCB   PROVIDE SCB ADDR             @D52VDVB 16960015
+         LA    R5,PSLSTATE                                     @D52VDVB 16970015
+         ST    R5,TIBAALU         PROVIDE ADDRESS OF PSLSTATE  @D52VDVB 16980015
+         SLR   R5,R5                                           @D52VDVB 16990015
+         ST    R5,PGOEQPSL                                     @D52VDVB 17000015
+         IC    R5,PSLSTATE        GET CURRENT PISL VALUE       @D52VDVB 17010015
+         STC   R5,PGOEQPSL                                     @D52VDVB 17020015
+         SLL   R5,PGIOFSH                                      @D52VDVB 17030015
+         DROP  R4                                              @D52VDVB 17040015
+         AL    R5,APGINTAB        ADDRESS TABLE TO DETERMINE   @D52VDVB 17050015
+         USING PGINENT,R5         ... THE NUMBER OF PAGE FRAMES@D52VDVB 17060015
+         SLR   R3,R3                                           @D52VDVB 17070015
+         IC    R3,PGINPFR         ... REQUIRED TO DO BLOCKED           *17080015
+                                  ... PAGE - IN                @D52VDVB 17090015
+         DROP  R5                                              @D52VDVB 17100015
+         LTR   R3,R3              ANY PAGE REQUESTED AT ALL    @D52VDVB 17110015
+         BZ    PGINEXIT           NO , -------->               @D52VDVB 17120015
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDVB 17130015
+         AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDVB 17140015
+         L     RC,IPFQPTR         VERIFY                       @D52VDVB 17150015
+         LR    R5,RC              ... THAT                     @D52VDVB 17160015
+         USING PFTE,R5            ... THERE ARE                @D52VDVB 17170015
+         L     R7,PFTEFPTR        ... SUFFICIENT               @D61NDVB 17180015
+*              ADDRESS OF FIRST PFTE SAVED FOR LATER USE       @D61NDVB 17190015
+PGINEQ10 L     R5,PFTEFPTR        ... FRAMES                   @D52VDVB 17200015
+         CL    R5,IPFQPTR         ... AVAILABLE                @D52VDVB 17210015
+         BE    PGINEQEX           NO, ==========>              @D52VDVB 17220015
+         BCT   R3,PGINEQ10                                     @D52VDVB 17230015
+         DROP  R5                 RESET ADDRESSABILITY PFTE    @D52VDVB 17240015
+         SPACE 1                                                        17250015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D61NDVB 17260015
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D61NDVB 17270015
+         L     R3,TIBPFSCB        OWNERS SCB ADDRESS           @D61NDVB 17280015
+         USING SCBADR,R3          ADDRESSABILITY SCB           @D61NDVB 17290015
+         L     R3,SCBAPMRA        GET PMRSCB FOR PT AND PTAS   @D61NDVB 17300015
+         DROP  R3                 RESET ADDRESSABILITY SCB     @D61NDVB 17310015
+         L     R5,TIBPTR          GET CURRENT TIB ADDRSS       @D61NDVB 17320015
+         USING PGINSAVE,RD        SAVE ADDRESS OF CURRENT...   @D61NDVB 17330015
+         MVC   PGINSAVE+PGINASCB,TIBSCB-TIBADR(R5) ... SCB     @D61NDVB 17340015
+         DROP  RD                                              @D61NDVB 17350015
+*     SWITCH TO PMR ADDRESS SPACE                              @D61NDVB 17360015
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          17370015
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          17380015
+         SPACE 1                                               @D52VDVB 17390015
+*     CONNECT PFTE-S AND PTE-S OF REGARDED ALLOCATION UNIT     @D52VDVB 17400015
+         SPACE 1                                               @D52VDVB 17410015
+         SGCOV SGPOPT,MC=6                                     @D52VDRP 17420015
+         LA    R0,NPAGPBLK(,0)                                 @D52VDVB 17430015
+PGINEQ20 DS    0H                                              @D61NDVB 17440015
+         LR    R3,R0                                           @D61NDVB 17450015
+         BCTR  R3,0                                            @D52VDVB 17460015
+         LR    R6,R3              = RELATIVE EPA-NR IN ALLOCATION      *17470015
+                                    ...  UNIT                  @D52VDVB 17480015
+         ALR   R6,R6              EPA * 4                      @D52VDVB 17490015
+         ALR   R6,R6              = OFFSET IN IORE.PFTE-ADDRL. @D52VDVB 17500015
+         SLR   RE,RE                                           @D52VDVB 17510015
+         CL    RE,TIBAPFT(R6)     PAGE-IN REQUESTED FOR EPA    @D52VDVB 17520015
+         BE    PGINEQ30           NO, ---------->              @D52VDVB 17530015
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D61NDVB 17540015
+         AMODESW SET,DAT=OFF      ENTER REAL MODE              @D61NDVB 17550015
+         LR    RC,R7                                           @D52VDVB 17560015
+         USING PFTE,RC                                         @D52VDVB 17570015
+         L     R7,PFTEFPTR        ADDRESS OF NEXT FREE FRAME           *17580015
+                                  SAVED FOR LATER USE          @D61NDVB 17590015
+         LR    RE,RC              GET NEXT ...                 @D52VDVB 17600015
+         SL    RE,APFT            ... FRAME                    @D52VDVB 17610015
+         SLL   RE,PFSHIFT         ... FROM                     @D52VDVB 17620015
+         BAL   RA,PMRREMOV        ... IPFQ                     @D52VDVB 17630015
+*SGLINK  PMRREMOV,INPUT=(R8,RA,RC),NOMODR=(R6-R3),AMODE=31 DATOFF       17640015
+         L     R4,APGIPISL        PISL FOR ONE ALLOCATION UNIT @D52VDVB 17650015
+         USING PSL,R4                                          @D52VDVB 17660015
+         AL    R3,PSLABEGP        EPA-NR FOR PAGE TABLE        @D52VDVB 17670015
+         L     R4,PSLASCB         PROVIDE RELATED SCB ADDRESS  @D52VDVB 17680015
+         DROP  R4                                              @D52VDVB 17690015
+         ST    R3,PFTEPNR         SET UP PFTE ... EPA-NR       @D52VDVB 17700015
+         OI    PFTEFLG,PCBIT      ... CONNECTED STATE          @D52VDVB 17710015
+         NI    S370FLG,NFRP+PFTERES  RESET ALL EXCEPT THE TWO  @KY30163 17720015
+         ST    R4,PFTESCB         ... SCB OF PAGE OWNER        @D52VDVB 17730015
+         DROP  RC                 RESET BASE FOR PFTE          @D52VDVB 17740015
+         LR    R5,RC              SAVE ADDRESS CURRENT PFTE    @D61NDVB 17750015
+         LR    R4,RF              SAVE ADDRESS CURRENT IORE    @D61NDVB 17760015
+*                                 GET ADDRESS OF RELATED PTE   @D61NDVB 17770015
+*    GENSERV VPTE,PFTE=(RC),VPTE=(R2),WORKR=(R1),DAT=OFFON     @D61NDVB 17780015
+     GENSERV VPTE,PFTE=(RC),VPTE=(R2),WORKR=(R1),DAT=OFFON     @D61NDVB 17790015
+         USING PTE,R2                                          @D61NDVB 17800015
+         OI    PTESTAT,PTEPGCO    PTE = CONNECTED              @D52VDVB 17810015
+         TM    PTESTAT2,PTEPDS    VALID COPY ON PDS            @D61NDVB 17820015
+         BO    PGINEQ25           YES, ---------->             @D61NDVB 17830015
+         DROP  R2                                              @D61NDVB 17840015
+         L     R5,TIBAALU         ADDRESS OF PISLSTATE         @D61NDVB 17850015
+         USING PSLSTATE,R5                                     @D61NDVB 17860015
+         IC    R4,PSLSTATE        RESET ...                    @D61NDVB 17870015
+         X     R4,TIBAPFT(R6)     ....  CURRENT                @D61NDVB 17880015
+         STC   R4,PSLSTATE        ....  PISLSTATE              @D61NDVB 17890015
+         DROP  R5                                              @D61NDVB 17900015
+         ST    RF,PFPGQE          PROVIDE CURRENT IORE FOR     @D61NDVB 17910015
+*                                 ... MAKEADDR                 @D61NDVB 17920015
+         L     R9,APMRSERV        ESTABLISH ...                @D61NDVB 17930015
+         USING PMRSERV,R9         ... ADDRESSABILITY TO MODULE @D61NDVB 17940015
+         BAL   RA,MAKEADDR        ENQUEUE IORE                 @D61NDVB 17950015
+*SGLINK  MAKEADDR,INPUT=(R2,R8,R9,RA,RC,RE),NOMODR=(R6-R3),            *17960015
+               AMODE=31 DATON                                           17970015
+         L     R9,APAGEOPT        BASE ADDRESS OF CODE         @D61NDVB 17980015
+         USING PAGEOPT,R9                                      @D61NDVB 17990015
+         SLR   R4,R4                                           @D61NDVB 18000015
+         LR    R5,R4                                           @D61NDVB 18010015
+*    UPDATE PFTETIB AND CURRENT SLOT IN IORE.PFTETAB           @D61NDVB 18020015
+PGINEQ25 ST    R5,TIBAPFT(R6)     PROVIDE CURRENT PFTE ADDRESS         *18030015
+                                  OR RESET SLOT TO ZERO        @D61NDVB 18040015
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D61NDVB 18050015
+         AMODESW SET,DAT=OFF      ENTER REAL MODE              @D61NDVB 18060015
+         USING PFTE,RC            ADDRESSABILITY TO PFTE       @D61NDVB 18070015
+         ST    R4,PFTETIB         CLEAR ADDR OF IORE IN PFTE   @D61NDVB 18080015
+         DROP  RC                 RESET BASE FOR PFTE          @D52VDVB 18090015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D61NDVB 18100015
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D61NDVB 18110015
+PGINEQ30 BCT   R0,PGINEQ20                                     @D52VDVB 18120015
+         SPACE 1                                                        18130015
+*     SWITCH TO REQUESTOR'S SPACE                              @D61NDVB 18140015
+         SPACE 1                                                        18150015
+         USING PGINSAVE,RD                                     @D61NDVB 18160015
+         L     R3,PGINSAVE+PGINASCB                            @D61NDVB 18170015
+         DROP  RD                 RESET BASE FOR SAVE AREA     @D61NDVB 18180015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D61NDVB 18190015
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D61NDVB 18200015
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5 @D61NDVB 18210015
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5 @D61NDVB 18220015
+         SPACE 1                                                        18230015
+         L     R4,TIBAALU         ADDRESS OF PSLSTATE          @D61NDVB 18240015
+         USING PSLSTATE,R4                                     @D61NDVB 18250015
+         SLR   R3,R3                                           @D61NDVB 18260015
+         IC    R3,PSLSTATE        CURRENT PISLSTATE            @D61NDVB 18270015
+         DROP  R4                                              @D61NDVB 18280015
+         LTR   R3,R3              NO VALID COPIES ON PDS       @D61NDVB 18290015
+         BZ    PGINEXIT           YES, --------->              @D61NDVB 18300015
+         SPACE 1                                                        18310015
+*   ENQUEUE IORE TO DEVCB                                      @D52VDVB 18320015
+         SPACE 1                                               @D52VDVB 18330015
+         MVI   PGQTYP,PGIN+PGBLK  INDICATE BLOCKED PAGE-IN     @D52VDVB 18340015
+         L     R9,APMRSERV        PROVIDE...                   @D52VDVB 18350015
+         USING PMRSERV,R9         ... ADDRESSABILITY           @D52VDVB 18360015
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D61NDVB 18370015
+         AMODESW SET,DAT=OFF      ENTER REAL MODE              @D61NDVB 18380015
+         BAL   R4,GETDVCBF        GET CORRECT DEVICE CONTR. BL.@D14BDRP 18390015
+*SGLINK  GETDVCBF,INPUT=(R4,R8,R9,RC),OUTPUT=(RB),                     *18400015
+               NOMODR=(RC-R2,R4,R6-RA),AMODE=31 DATOFF                  18410015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDVB 18420015
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDVB 18430015
+PGINEQ40 DS    0H                                              @D52VDVB 18440015
+         LR    R0,RD              SAVE ADDR(SA)                @D61NDVB 18450015
+         LR    RC,RF              PROVIDE IORE                 @D52VDVB 18460015
+         L     RE,ASYSPCB         CLASS-PCB = SYSTEM-PCB       @D52VDVB 18470015
+         L     R9,APMRSERV                                     @D52VDVB 18480015
+         BAL   R7,ENQENTR2        ENQUEUE IORE                 @D52VDVB 18490015
+*SGLINK  ENQENTR2,INPUT=(R7,R8,R9,RB,RC,RE),NOMODR=(RE-R2,R6-RC),      *18500015
+               AMODE=31  DATON                                          18510015
+         LR    RD,R0              GET ADDR(SA)                 @D61NDVB 18520015
+         USING PGINSAVE,RD                                     @D61NDVB 18530015
+         L     R9,APAGEOPT        BASE ADDRESS OF CODE         @D52VDVB 18540015
+         USING PAGEOPT,R9                                      @D52VDVB 18550015
+         SPACE 1                                               @D52VDVB 18560015
+*     ACTIVATE PMR TASK IF NO PENDING REQUEST ON DEVCB         @D52VDVB 18570015
+         SPACE 1                                               @D52VDVB 18580015
+         L     R6,DISPAD                                       @D52VDVB 18590015
+         USING DISP,R6                                         @D52VDVB 18600015
+         USING DEVCB,RB                                        @D52VDVB 18610015
+         TM    DEVSTAT,XFF        REQUEST IN PROCESS ON DEVICE @D52VDVB 18620015
+         BNZ   PGINEQ60           YES, ---------->             @D52VDVB 18630015
+         DROP  RF                 DROP BASE FOR TIBADR         @D52VDVB 18640015
+         L     R8,APMRTIB         PMR_TASK-TIB IS INPUT TO POST@D52VDVB 18650015
+         BAL   RF,IOPOST1         POST PMR TASK                @KD40355 18660015
+*SGLINK  IOPOST1,INPUT=(R6,R8,RF),WORK=(RE)                    @D52VDVB 18670015
+         L     R8,APMGMDAT        RELOAD BASE FOR PMR_DATA_AREA@D52VDVB 18680015
+         SPACE 1                                               @D52VDVB 18690015
+*     SAVE CURRENT STATE AND UNPOST PAGE-IN TASK               @D52VDVB 18700015
+         SPACE 1                                               @D52VDVB 18710015
+PGINEQ60 DS    0H                                              @D52VDVB 18720015
+         LA    RC,PGINEQ80        GET ADDR FOR CONTINUATION    @D52VDVB 18730015
+         NI    DEVSTAT,XFF-DEVEMPTY REQEUEST QUEUED            @D52VDVB 18740015
+         DROP  R9                 DROP CURRENT BASE            @D52VDVB 18750015
+         DROP  RB                                              @D52VDVB 18760015
+         STM   R9,RD,ERA          SAVE REGISTERS FOR SETUPSA   @D52VDVB 18770015
+         L     RD,AFLIH           GET BASE FOR SETUPSA         @D52VDVB 18780015
+         USING FLIH,RD                                         @D52VDVB 18790015
+         BAL   R9,SETUPSA         SAVE STATUS                  @D52VDVB 18800015
+*SGLINK  SETUPSA,INPUT=(R9,RC,RD),WORK=(RB,RC),OUTPUT=(R6,RA)  @D52VDVB 18810015
+         DROP  RD                                              @D52VDVB 18820015
+.*  R9-RD ARE SAVED IN ERA AND ARE AVAILABLE AT PGINEQ80       @D61NDVB 18830015
+         SPACE 1                                               @D52VDVB 18840015
+*     ON RETURN FROM SETUPSA: R6 = BASE OF DISPATCHER          @D52VDVB 18850015
+*     SET PAGEIN-TASK PAGEFAULT BOUND                          @D52VDVB 18860015
+         SPACE 1                                               @D52VDVB 18870015
+         L     R5,ASRQTAB                                      @D61RDRP 18880015
+         LA    R5,SRQPMR-SRQTAB(,R5) GET WAIT QUEUE            @D61RDRP 18890015
+*SGLINK  UNPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                  @D52VDVB 18900015
+         BAL   RF,UNPOST          SET TASK IN WAIT             @D52VDVB 18910015
+         SPACE 1                                                        18920015
+*     EXIT TO DISPATCHER                                       @D52VDVB 18930015
+*        AMODESW RETURN,REG=(R6)  =========> EXIT TO DISP      @D52VDVB 18940015
+         AMODESW RETURN,REG=(R6)  =========> EXIT TO DISP      @D52VDVB 18950015
+         DROP  R6                 DROP BASE FOR DISP           @D52VDVB 18960015
+         SPACE 2                                                        18970015
+PGINEQ80 DS    0H                                              @D52VDVB 18980015
+         L     R8,APMGMDAT        RELOAD BASE FOR PMR_DATA_AREA@D52VDVB 18990015
+         USING PAGEOPT,R9                                      @D52VDVB 19000015
+         L     RF,APGINTIB        PROVIDE IORE FOR BLOCKED             *19010015
+                                  ... PAGE-IN                  @D52VDVB 19020015
+         L     R4,APGIPISL        PISL FOR ONE ALLOCATION UNIT @D52VDVB 19030015
+         USING PSL,R4                                          @D52VDVB 19040015
+*    CHECK WHETHER EOC DETECTED IN CURRENT PISL (CKD ONLY)     @D52VDVB 19050015
+*        IF SO RETRY UNPROCCESED PART OF PISL                  @D52VDVB 19060015
+.*       NO SPECIAL HANDLING FOR I/O ERRORS IS DONE.           @D52VDVB 19070015
+.*       PROCESSING IS CONTINUED, THE PAGE(-S) WILL BE         @D52VDVB 19080015
+.*       PAGED IN AT LATER TIME VIA NORMAL PAGE FAULT PROCESS  @D52VDVB 19090015
+.*       WHEN THE PAGE IS REFERENCED.                          @D52VDVB 19100015
+*    GENSERV  TEST,FIELD=PSLSTATE,REG=(R0),BC=BNZ,LAB=PGINEQ40 @D52VDVB 19110015
+     GENSERV  TEST,FIELD=PSLSTATE,REG=(R0),BC=BNZ,LAB=PGINEQ40 @D52VDVB 19120015
+         DROP  R4                                              @D52VDVB 19130015
+         SPACE 1                                               @D61NDVB 19140015
+         USING PGINSAVE,RD                                     @D61NDVB 19150015
+PGINEXIT DS    0H            EXIT: ALL PAGE-INS HANDLED,                19160015
+*                                 BUT POSSIBLY I/O ERROR       @D52VDVB 19170015
+         LM    RE,RC,PGINSAVE+PGINARE RESET CALLER'S REGISTERS @D61NDVB 19180015
+         ICM   R0,15,PGINSAVE+PGINASAV  CALLED BY PAGE-IN      @D61NDVB 19190015
+         BZR   RA                 NO, ==========>              @D61NDVB 19200015
+         LR    RD,R0              PROVIDE ORIGINAL RD          @D61NDVB 19210015
+         BR    RA                 ===============> EXIT OFFS. 0@D52VDVB 19220015
+         SPACE 2                                               @D52VDVB 19230015
+PGINEQEX DS    0H            EXIT: NOT ENOUGH FRAMES IN IPFQ   @D52VDVB 19240015
+         SGCOV SGPOPTS,MC=3                                    @D52VDRP 19250015
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDVB 19260015
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDVB 19270015
+         LM    RE,RC,PGINSAVE+PGINARE RESET CALLER'S REGISTERS @D61NDVB 19280015
+         ICM   R0,15,PGINSAVE+PGINASAV  CALLED BY PAGE-IN      @D61NDVB 19290015
+         BZ    4(,RA)             NO, ==========>  EXIT OFFS. 4@D61NDVB 19300015
+         LR    RD,R0              PROVIDE ORIGINAL RD          @D61NDVB 19310015
+         B     4(,RA)             ===============> EXIT OFFS. 4@D52VDVB 19320015
+         SPACE 1                                               @D52VDVB 19330015
+         DROP  RD                 RESET BASE TO SAVE AREA      @D52VDVB 19340015
+         DROP  R8,R9              FORGET CODE AND DATAAREA BASE@D35EDRP 19350015
+*-------------------------------------------------------------*@D52VDVB 19360015
+         MEND                                                           19370015

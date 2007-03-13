@@ -1,0 +1,117 @@
+         MACRO                                                          00001000
+&INCNAME IGZBRDGE &ENTNAMES=                                            00002000
+.*                                                                      00003000
+.*                                                                      00004000
+.*                                                                      00005000
+.* ******************************************************************** 00006000
+.*                                                                    * 00007000
+.*       LICENSED MATERIALS - PROPERTY OF IBM.                        * 00008000
+.*                                                                    * 00009000
+.*       5686-094 COPYRIGHT IBM CORP. 1988, 1996                      * 00010000
+.*       ALL RIGHTS RESERVED.                                         * 00011000
+.*                                                                    * 00012000
+.*       US GOVERNMENT USERS RESTRICTED RIGHTS - USE, DUPLICATION     * 00013000
+.*       OR DISCLOSURE RESTRICTED BY GSA ADP SCHEDULE CONTRACT WITH   * 00014000
+.*       IBM CORP.                                                    * 00015000
+.* ******************************************************************** 00016000
+.*                                                                      00017000
+.* THIS MACRO WILL GENERATE AN ASSEMBLY MODULE WITH AN ENTRY POINT      00018000
+.* FOR EVERY COBOL PROGRAM SPECIFIED.  WHEN THE RESULTING MODULE        00019000
+.* IS CALLED, CONTROL IMMEDIATELY GOES TO IGZEBRG TO DO COMMON          00020000
+.* PROCESSING.                                                          00021000
+.*                                                                      00022000
+.* THE CALLING FORMAT IS:                                               00023000
+.*                                                                      00024000
+.*       MODULENAME IGZBRDGE ENTNAMES=(NAME1,NAME2,...,NAMEN)           00025000
+.*                                                                      00026000
+.* IF MODULENAME IS NOT SPECIFIED, THE DEFAULT NAME IS IGZEBR1.         00027000
+.*                                                                      00028000
+         LCLA  &NPARMS,&I                                               00029000
+         LCLC  &MODNAM                                                  00030000
+         LCLA  &WORK2                                                   00031000
+         LCLC  &WORK1                                                   00032000
+         LCLC  &PGM(80)                                                 00033000
+.*    THE FOLLOWING WILL CHECK THE POSSIBILITY OF UNDIAGNOSED           00034000
+.*    POSITIONAL PARAMETERS. THRU MISSPELLING OR OTHER MISTAKES.        00035000
+         LCLA  &NUPRMS                                                  00036000
+&NUPRMS  SETA  N'&SYSLIST                                               00037000
+.MLP1    ANOP ,                                                         00038000
+         AIF   (&NUPRMS EQ 0).PRMSOK1                                   00039000
+         MNOTE 8,'''&SYSLIST(&NUPRMS)'' <----- NOT RECOGNIZED'          00040000
+&NUPRMS  SETA  &NUPRMS-1                                                00041000
+         AGO   .MLP1                                                    00042000
+.PRMSOK1 ANOP  ,                                                        00043000
+.*    SET THE SPECIFIED OR DEFAULT CSECT NAME.                          00044000
+&MODNAM  SETC  '&INCNAME'                                               00045000
+         AIF   (K'&MODNAM NE 0).L1                                      00046000
+&MODNAM  SETC  'IGZEBR1'                                                00047000
+.L1      ANOP                                                           00048000
+.*                                                                      00049000
+.*     CHECK THAT SOME PARAMITERS  ARE SPECIFIED.                       00050000
+.*                                                                      00051000
+&NPARMS  SETA  N'&ENTNAMES                                              00052000
+&I       SETA  1                                                        00053000
+         AIF   (&NPARMS NE 0).L2                                        00054000
+         MNOTE 8,'ENTNAMES EMPTY. NO PROGRAMS TO REMOVE FROM MODULE'    00055000
+&MODNAM  SETC  ' '                                                      00056000
+         AGO   .ENDIT                                                   00057000
+         MEXIT                                                          00058000
+.*                                                                      00059000
+.*     INSURE THAT THE NUMBER OF ENTRIES DOES NOT EXCEED 80             00060000
+.*                                                                      00061000
+.L2      ANOP                                                           00062000
+&PGM(&I) SETC  '&ENTNAMES(&I)'                                          00063000
+&I       SETA  &I+1                                                     00064000
+         AIF   (&I LE &NPARMS).L2                                       00065000
+         AIF   (&NPARMS LE 80).L4                                       00066000
+         MNOTE 8,'MORE THAN 80 PROGRAMS.  CREATE ANOTHER BRIDGE.'       00067000
+&MODNAM  SETC  ' '                                                      00068000
+         AGO   .ENDIT                                                   00069000
+         MEXIT                                                          00070000
+.L4      ANOP                                                           00071000
+.*   GENERATE THE CSECT INFORMATION.                                    00072000
+&I       SETA  1                                                        00073000
+&MODNAM  CSECT                                                          00074000
+&MODNAM  AMODE ANY                                                      00075000
+&MODNAM  RMODE ANY                                                      00076000
+.L5      ANOP                                                           00077000
+&WORK1   SETC  '&PGM(&I)'                                               00078000
+&WORK2   SETA  K'&WORK1                                                 00079000
+.*                                                                      00080000
+.*   IF A NULL ENTRY IS IN THE LIST ISSUE A WARNING MNOTE.              00081000
+.*                                                                      00082000
+         AIF   (&WORK2 GT 0).SIZEOK                                     00083000
+         MNOTE 0,'OPERAND ENTNAMES CONTAINS AN NULL ENTRY '             00084000
+         AGO   .NEXTPGM                                                 00085000
+.SIZEOK  ANOP  ,                                                        00086000
+.*                                                                      00087000
+.*    CODE GENERATED FOR EACH BRIDGE ENTRY POINT.                       00088000
+.*                                                                      00089000
+         CNOP  2,4                  ALIGN PARAMETER LIST                00090000
+         ENTRY &PGM(&I)                                                 00091000
+&PGM(&I) EQU   *                                                        00092000
+         USING &PGM(&I),15                                              00093000
+         ST    1,PSAV&I             SAVE PARM LIST POINTER              00094000
+         LA    1,PLIST&I            GET ADDRESS OF PARM LIST            00095000
+         L     15,EBRGADDR          GET ADDR OF IGZEBRG                 00096000
+         BR    15                   GO DO COMMON PROCESSING             00097000
+PLIST&I  DC    XL1'95'              CALL, LITERAL, USING, CLLE@         00098000
+         DC    AL1(&WORK2)         PROGRAM NAME LENGTH                  00099000
+         DC    AL2(0)               *** RESERVED ***                    00100000
+         DC    AL4(0)               ADDR(RUNCOM)                        00101000
+         DC    AL4(PNAM&I)          ADDR(PGM NAME)                      00102000
+PSAV&I   DC    AL4(0)               ADDR(PARM LIST)                     00103000
+         DC    AL4(0)               ADDR(CLLE)                          00104000
+PNAM&I   DC    CL8'&PGM(&I)'        PGM NAME                            00105000
+*                                                                       00106000
+.NEXTPGM ANOP  ,                                                        00107000
+&I       SETA  &I+1                                                     00108000
+         AIF   (&I LE &NPARMS).L5                                       00109000
+* END OF THE BRIDGE                                                     00110000
+EBRGADDR DC    V(IGZEBRG)           COMMON COBOL II MODULE              00111000
+.*                                                                      00112000
+.*     EXIT THE MACRO. CAN BE EXITED UNDER ERROR CASES.                 00113000
+.*                                                                      00114000
+.ENDIT   ANOP   ,                                                       00115000
+         END   &MODNAM                                                  00116000
+         MEND                                                           00117000

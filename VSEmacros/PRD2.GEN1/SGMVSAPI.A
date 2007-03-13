@@ -1,0 +1,692 @@
+         MACRO                                                          00010007
+         SGMVSAPI                                                       00020007
+******************************************************         @D64ADMK 00030007
+*                                                    *         @D64ADMK 00040007
+*   LICENSED MATERIALS - PROPERTY OF IBM             *         @D64ADMK 00050007
+*   THIS MACRO IS "RESTRICTED MATERIALS OF IBM"      *         @D64ADMK 00060007
+*   5686-066 (C) COPYRIGHT IBM CORP. 1996            *         @D64ADMK 00070007
+*   SEE COPYRIGHT INSTRUCTIONS                       *         @D64ADMK 00080007
+*                                                    *         @D64ADMK 00090007
+******************************************************         @D64ADMK 00100007
+.*                                                             @D64ADMK 00110007
+.*                                                             @D64ADMK 00111007
+.* /* START OF SPECIFICATIONS *********************************@D64ADMK 00112007
+.*                                                             @D64ADMK 00113007
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                @D64ADMK 00114007
+.*                                                             @D64ADMK 00115007
+.*01* DESCRIPTIVE NAME = MVS SVC PROCESSING                    @D64ADMK 00116007
+.*                                                             @D64ADMK 00117007
+.*01* CHANGE ACTIVITY  = AS FOLLOWS                            @D64ADMK 00118007
+.*    ECB VALIDATION IN MVS WAIT FCT NOT MP CAPABLE            @DY45829 00119007
+.*    CICS CANCELED WITH SYS COMPLETION CODE 201               @DY45939 00120007
+.*                                                             @D64ADMK 00130007
+.**** END OF SPECIFICATIIONS *********************************/@D64ADMK 00140007
+         FMCA DECLARE=YES                                      @D64ADMK 00150007
+         MAPFMBD DSECT=YES                                     @D64ADMK 00160007
+&SYSECT  CSECT                                                 @D64ADMK 00170007
+         DC    CL8'SGMVSAPI'                                            00180007
+         DC    CL10'06/20/2002'  LAST APAR FIX/DEV CHAN                 00190007
+         SPACE 1                                               @DY45037 00200007
+***************************************************************@DY45037 00200107
+* WAITM SVC ENTRY POINT                                        @DY45037 00200207
+*  R0 CONTAINS THE NUMBER OF NUMBER OF ECBS TO WAIT FOR        @DY45037 00200307
+*  R1 CONTAINS THE PLIST POINTER                               @DY45037 00200407
+***************************************************************@DY45037 00200507
+         USING DISP,R6                                         @DY45037 00200607
+         USING SGMVSWT,R9                                      @DY45037 00200707
+         USING TCBADR,R10                                      @DY45037 00200807
+         ENTRY SGMVSWT                                         @DY45037 00200907
+SGMVSWT  DS    0H                                              @DY45037 00201007
+         LR    R9,R13                                          @DY45037 00202007
+         L     R11,ASGMVSW0                                    @DY45037 00203007
+         BSM   0,R11              SWITCH TO AMODE 31           @DY45037 00204007
+SGMVSWT0 DS    0H                                              @DY45037 00205007
+         MVI   RID+1,RESVCID      DO A RESVC ON PAGE FAULT     @DY45037 00206007
+***************************************************************@DY45037 00207007
+* WAIT PARAMETER CHECKING                                      @DY45037 00208007
+* VALIDATE ADDRESS RANGE FOR PARMLIST AND EACH ECB             @DY45037 00209007
+***************************************************************@DY45037 00210007
+         TM    TCBEXFLG,TCBEXARM  CALLER IN AR MODE ?          @DY45037 00220007
+         BO    SGMW41D                                         @DY45037 00230007
+         L     R11,TCBSAVE        GET CALLERS SAVE AREA PTR    @DY45037 00240007
+         USING SVEARA,R11                                      @DY45037 00250007
+         TM    SVEPSWST,ENABLIO+ENABLEXT ENABLED FOR I/O AND   @DY45037 00251007
+         BNO   SGMW421            EXTERNAL INTERRUPTS ?        @DY45037 00252007
+* SWITCH TO USER KEY ? (NOT FOR CICS OR VENDORS)               @DY45196 00253007
+         TM    TCBAUTHF,TCBVEND    IS REQUESTOR A VENDOR       @DY45196 00254007
+         BO    SGMVSWTX            YES, DON'T SWITCH KEYS      @DY45196 00254107
+         L     R15,PCBPTR          POINTER TO PCB              @DY45196 00254207
+         USING PCBADR,R15                                      @DY45196 00254307
+         TM    PCBSSFLG,CICS       IS IT CICS PARTITION        @DY45196 00254407
+         BO    SGMVSWTX            YES, DON'T SWITCH KEYS      @DY45196 00254507
+         IC    R15,SVEPSWKY       GET USER KEY                 @DY45037 00254607
+         SPKA  0(R15)             SWITCH TO USER KEY           @DY45037 00254707
+         DROP  R11                                             @DY45037 00254807
+SGMVSWTX DS    0H                                              @DY45196 00254907
+***************************************************************@DY45037 00255007
+* TWO POSSIBILITIES FOR THE PLIST POINTER:                     @DY45037 00255107
+* 1) R1 CONTAINS THE POINTER TO A SINGLE ECB, R1 IS POSITIV    @DY45037 00255207
+* 2) R1 CONTAINS THE NEGATED POINTER TO A ECB LIST, R1 IS NEG. @DY45037 00255307
+***************************************************************@DY45037 00255407
+         LR    R15,R0             DUPLICATE WAIT COUNT         @DY45037 00255507
+         LCR   R11,R1             ECB OF ECB LIST ?            @DY45037 00255607
+         BP    SGMVSWT5             ECB LIST -->               @DY45037 00255707
+* 1) CHECK SINGLE ECB                                          @DY45037 00255807
+         LA    R14,SGMW422        VALIDATE MVS PLIST ADDR      @DY45037 00255907
+         LR    R13,R1                                          @DY45037 00256007
+         N     R13,BIT31OFF       CLEAR BIT 31                 @DY45037 00257007
+         LA    R2,3(,R13)         GET ADDRESS  (FW BOUNDARY)   @DY45939 00258007
+         N     R2,B3132OFF        ... OF RELEVANT PART OF ECB  @DY45939 00259007
+SGMVSL1  DS    0H                                              @DY45829 00259107
+         L     R5,0(,R2)          CHECK FOR                    @DY45939 00259207
+PCKMVSW3 EQU   *                                               @DY45829 00259307
+         CS    R5,R5,0(R2)        ... READ/WRITE ACCESS        @DY45939 00259407
+PCKMVSW0 EQU   *                                               @DY45037 00259507
+         BNE   SGMVSL1            ...                          @DY45829 00259607
+         SPKA  0                  SWITCH BACK TO KEY ZERO      @DY45037 00259707
+         O     R1,BIT0OMSK        SET BIT 0 TO INDICATE EOL    @DY45037 00259807
+         ST    R1,SVCSV3          LIST WITH 1 ECB IN SVCSV3    @DY45037 00259907
+         LA    R11,SVCSV3         LOAD POINTER TO LIST         @DY45037 00260007
+* VALIDATE ECB FORMAT                                          @DY45037 00260107
+         TM    3(R11),B'00000001' TEST MVS OR VSE ECB ?        @DY45037 00260207
+         BZ    SGMVSWT1           MVS ECB -->                  @DY45037 00260307
+* VALIDATE ONE VSE ECB                                         @DY45037 00260407
+         TM    2(R13),TRABIT      TEST IF VSE ECB IS POSTED    @DY45037 00260507
+         B     SGMVSWT3           EVAL CC DONE AT SGMVSWT3     @DY45037 00260607
+* VALIDATE ONE MVS ECB                                         @DY45037 00260707
+SGMVSWT1 DS    0H                                              @DY45037 00260807
+         TM    3(R11),B'00000010' TEST BIT 30 OF ECB POINTER   @DY45037 00260907
+         BO    SGMWA201           ECB NOT ON WORD BOUNDARY --> @DY45037 00261007
+         TM    0(R13),TRABIT      WAIT BIT ALREADY ON ?        @DY45037 00261107
+         BNO   SGMVSWT2             NO --> OK                  @DY45037 00261207
+         L     R13,TCBATCBE       GET ADDRESS OF TCBX          @DY45037 00261307
+         USING TCBXADR,R13                                     @DY45037 00261407
+         TM    TCBXFLG2,TCBXFMWT  TEST IF TCBXFMWT IS ON       @DY45037 00261507
+         DROP  R13                                             @DY45037 00261607
+         BNO   SGMWA301             NOT ON --> ERROR           @DY45037 00261707
+SGMVSWT2 TM    0(R1),B'01000000'  POST BIT ON ?                @DY45037 00261807
+SGMVSWT3 BNO   SGMVSWT4             NO -->                     @DY45037 00261907
+         BCTR  R15,0              DECREMENT WAIT COUNT         @DY45037 00262007
+SGMVSWT4 DS    0H                                              @DY45037 00263007
+         CL    R0,F1              CHECK IF WAIT COUNT > 1      @DY45037 00263107
+         BNH   SGMVSWTB             NO -->                     @DY45037 00263207
+         B     SGMWA101           WAIT COUNT TO BIG            @DY45037 00263307
+* 2) CHECK LIST OF ECBS                                        @DY45037 00263407
+SGMVSWT5 DS    0H                 PROCESSING FOR ECBLIST       @DY45037 00263507
+         LR    R12,R11            DUPLICATE ECBLIST POINTER    @DY45037 00263607
+SGMVSWT6 LA    R14,SGMW422                                     @DY45037 00263707
+         L     R13,0(0,R12)       LOAD ECB PTR FROM PLIST      @DY45037 00263807
+PCKMVSW1 EQU   *                                               @DY45037 00263907
+         LA    R14,SGMWA201                                    @DY45037 00264007
+         N     R13,BIT31OFF       CLEAR BIT 31                 @DY45037 00264107
+         LA    R2,3(,R13)         GET ADDRESS  (FW BOUNDARY)   @DY45939 00264207
+         N     R2,B3132OFF        ... OF RELEVANT PART OF ECB  @DY45939 00264307
+SGMVSL2  DS    0H                                              @DY45829 00264407
+         L     R5,0(,R2)          CHECK FOR                    @DY45939 00264507
+PCKMVSW4 EQU   *                                               @DY45829 00264607
+         CS    R5,R5,0(R2)        ... READ/WRITE ACCESS        @DY45939 00264707
+PCKMVSW2 EQU   *                                               @DY45037 00264807
+         BNE   SGMVSL2            ...                          @DY45829 00264907
+* VALIDATE ECB FORMAT                                          @DY45037 00265007
+         TM    3(R12),B'00000001' TEST MVS OR VSE ECB ?        @DY45037 00265107
+         BZ    SGMVSWT7           MVS ECB -->                  @DY45037 00265207
+* VALIDATE VSE ECB                                             @DY45037 00265307
+         TM    2(R13),TRABIT      TEST IF VSE ECB IS POSTED    @DY45037 00265407
+         B     SGMVSWT9           EVAL CC DONE AT SGMVSWT9     @DY45037 00265507
+* VALIDATE MVS ECB                                             @DY45037 00265607
+SGMVSWT7 DS    0H                                              @DY45037 00265707
+         TM    3(R12),B'00000010' TEST BIT 30 OF ECB POINTER   @DY45037 00265807
+         BO    SGMWA201           ECB NOT ON WORD BOUNDARY --> @DY45037 00265907
+         TM    0(R13),TRABIT      WAIT BIT ALREADY ON ?        @DY45037 00266007
+         BNO   SGMVSWT8             NO --> OK                  @DY45037 00266107
+         L     R14,TCBATCBE       GET ADDRESS OF TCBX          @DY45037 00266207
+         USING TCBXADR,R14                                     @DY45037 00266307
+         TM    TCBXFLG2,TCBXFMWT  TEST IF TCBXFMWT IS ON       @DY45037 00266407
+         DROP  R14                                             @DY45037 00266507
+         BNO   SGMWA301             NOT ON --> ERROR           @DY45037 00266607
+SGMVSWT8 TM    0(R13),B'01000000' POST BIT ON ?                @DY45037 00266707
+SGMVSWT9 BNO   SGMVSWTA             NO -->                     @DY45037 00266807
+         BCTR  R15,0              DECREMENT WAIT COUNT         @DY45037 00266907
+SGMVSWTA DS    0H                                              @DY45037 00267007
+         LA    R12,4(0,R12)       INCREMENT ECB LIST POINTER   @DY45037 00267107
+         LTR   R13,R13            TEST ECB POINTER             @DY45037 00267207
+         BNM   SGMVSWT6           BIT 0 NOT SET -> LOOP        @DY45037 00267307
+         SPKA  0                  SWITCH BACK TO KEY ZERO      @DY45037 00267407
+         SLR   R12,R11                                         @DY45037 00267507
+         SRL   R12,2              R12 = # ECBS IN ECB LIST     @DY45037 00267607
+         CLR   R0,R12             CHECK WAIT COUNT > ECB       @DY45037 00267707
+         BH    SGMWA101                                        @DY45037 00267807
+SGMVSWTB DS    0H                                              @DY45037 00267907
+         LTR   R15,R15            ENOUGH ECBS SET TO CONTINUE? @DY45037 00268007
+         BNP   SGMVSWTF             YES -->                    @DY45037 00268107
+***************************************************************@DY45037 00268207
+* SET WAIT BITS ON MVS ECBS                                    @DY45037 00268307
+* R11 = POINTER TO ECB ARRAY, LAST ECB HAS BIT 0 SET           @DY45037 00268407
+***************************************************************@DY45037 00268507
+         LR    R12,R11            DUPLICATE ECB LIST POINTER   @DY45037 00268607
+SGMVSWTC DS    0H                                              @DY45037 00268707
+         LA    R14,SGMW422                                     @DY45037 00268807
+         L     R13,0(0,R12)       LOAD ECB POINTER             @DY45037 00268907
+         N     R13,BIT31OFF       CLEAR BIT 31                 @DY45037 00269007
+         TM    3(R12),B'00000001' TEST MVS OR VSE ECB ?        @DY45037 00269107
+         BNZ   SGMVSWTE           VSE ECB -->                  @DY45037 00269207
+SGMVSWTD DS    0H                                              @DY45037 00269307
+         L     R14,0(R13)         LOAD ECB CONTENT             @DY45037 00269407
+         LR    R15,R14                                         @DY45037 00269507
+         O     R15,BIT0OMSK       R15 = ECB OR X'80000000'     @DY45037 00269607
+         CS    R14,R15,0(R13)     SET WAIT BIT ATOMICALLY      @DY45037 00269707
+         BNE   SGMVSWTD             NE --> TRY AGAIN           @DY45037 00269807
+SGMVSWTE DS    0H                                              @DY45037 00269907
+         LA    R12,4(0,R12)       INCREMENT ECB LIST POINTER   @DY45037 00270007
+         LTR   R13,R13            TEST BIT 0 OF ECB            @DY45037 00271007
+         BNM   SGMVSWTC           LOOP OVER ALL ECBS           @DY45037 00272007
+         L     R15,TCBATCBE       POINTER TO TCBX              @DY45037 00273007
+         USING TCBXADR,R15                                     @DY45037 00274007
+         OI    TCBXFLG2,TCBXFMWT  SET WAIT FLAG                @DY45037 00274107
+         DROP  R15                                             @DY45037 00274207
+***************************************************************@DY45037 00274307
+* EXIT FROM SGMVSWT AND LET THIS TASK SLEEP                    @DY45037 00274407
+***************************************************************@DY45037 00274507
+         DS    0H                                              @DY45037 00274607
+         SLR   R1,R1              TIBSTATE INFO                @DY45037 00274707
+         L     R5,ASRQTAB         SELECT THIS QUEUE            @DY45037 00274807
+         LA    R5,SRQWAIT-SRQTAB(,R5)                          @DY45037 00274907
+         MVI   RID+1,REENTRID     RESET RID TO 4               @DY45037 00275007
+         B     RESVCX             AND EXIT                     @DY45037 00275107
+***************************************************************@DY45037 00275207
+* THERE ARE >= WAIT COUNT ECBS SET, WE CAN GO BACK TO THE TASK @DY45037 00275307
+* BUT FIRST RESET WAIT BITS: VTAM FIX 02.06.96BD               @DY45037 00275407
+***************************************************************@DY45037 00275507
+SGMVSWTF DS    0H                                              @DY45037 00275607
+         LR    R12,R11            DUPLICATE ECB LIST POINTER   @DY45037 00275707
+SGMVSWTG DS    0H                                              @DY45037 00275807
+         L     R13,0(0,R12)       LOAD ECB POINTER             @DY45037 00275907
+         TM    3(R12),B'00000001' TEST MVS OR VSE ECB ?        @DY45037 00276007
+         BO    SGMVSWTI             VSE ECB -->                @DY45037 00276107
+SGMVSWTH DS    0H                                              @DY45037 00276207
+         L     R14,0(R13)         R14 = COMPARE WORD           @DY45037 00276307
+         LR    R15,R14                                         @DY45037 00276407
+         N     R15,BIT0OFF        R15 = ECB & X'7FFFFFFF'      @DY45037 00276507
+         CS    R14,R15,0(R13)     RESET WAIT BIT ATOMICALLY    @DY45037 00276607
+         BNE   SGMVSWTH             NE --> TRY AGAIN           @DY45037 00276707
+SGMVSWTI LA    R12,4(0,R12)       INCREMENT ECB LIST POINTER   @DY45037 00276807
+         LTR   R13,R13            TEST BIT 0 OF ECB            @DY45037 00276907
+         BNM   SGMVSWTG           LOOP OVER ALL ECBS           @DY45037 00277007
+         L     R11,TCBATCBE       POINTER TO TCBX              @DY45037 00277107
+         USING TCBXADR,R11                                     @DY45037 00277207
+         NI    TCBXFLG2,X'FF'-TCBXFMWT   CLEANUP WAIT FLAG     @DY45037 00277307
+         DROP  R11                                             @DY45037 00277407
+***************************************************************@DY45037 00277507
+* EXIT FROM SGMVSWT AND CONTINUE WITH THE TASK                 @DY45037 00277607
+***************************************************************@DY45037 00277707
+         MVI   RID+1,REENTRID     RESET RID TO 4               @DY45037 00277807
+         SR    R15,R15            SET RC=0                     @DY45037 00277907
+         L     R11,TCBSAVE        GET USER SAVE AREA           @DY45037 00278007
+         USING SVEARA,R11                                      @DY45037 00278107
+         ST    R15,SVER0F         STORE RC IN USER REG. 15     @DY45037 00278207
+         DROP  R11                                             @DY45037 00278307
+         B     DISPMVS            AND EXIT                     @DY45037 00278407
+***************************************************************@DY45037 00278507
+* EXIT FROM SGMVSWT AND CANCEL THIS TASK                       @DY45037 00278607
+***************************************************************@DY45037 00278707
+SGMWTERR DS    0H                                              @DY45037 00278807
+         SPKA  0                  SWITCH BACK TO KEY ZERO      @DY45037 00278907
+         MVI   RID+1,REENTRID     RESET RID TO 4               @DY45037 00279007
+***************************************************************@DY45037 00279107
+* SETUP ABEND/REASON/SUBREASON CODES                           @DY45037 00279207
+***************************************************************@DY45037 00279307
+         L     R7,TCBATCBE                                     @DY45037 00279407
+         L     R7,TCBXFMBD-TCBXADR(,R7)                        @DY45037 00279507
+         LA    R7,FM_CAN-FM_FMCA(,R7)                          @DY45037 00279607
+         USING MAPDMPIF,R7                                     @DY45037 00279707
+         XC    CANC48LN(L'CANC48LN+L'CANC48FX+8),CANC48LN      @DY45037 00279807
+*                                 CLEAR MESSAGE AREA           @DY45037 00279907
+         LA    R5,L'CANC48FX+8    GET LENGTH OF ADDITIONAL INFO@DY45037 00280007
+         ST    R5,CANC48LN        ... TO MESSAGE AREA          @DY45037 00280107
+         SLL   13,12              SHIFT SYSTEM ABEND CODE      @DY45037 00280207
+         ST    13,CANC48AB        STORE ABEND CODE (00XXX000)  @DY45037 00280307
+         ST    14,CANC48RC        STORE REASON CODE            @DY45037 00280407
+         ST    15,CANC48RX        STORE SUBREASON CODE         @DY45037 00280507
+         MVC   CANC48MN(8),SGMWTMN COPY 'WAIT' TO MACRO NAME   @DY45037 00280607
+         OI    CANC48FL,C48VALMC  MARK MACRO NAME AVAILABLE    @DY45037 00280707
+         LA    R12,X'FFF'                                      @DY45037 00280807
+         CLR   R14,R12            REASON CODE AVAILABLE ?      @DY45037 00280907
+         BE    SGMWTER0                                        @DY45037 00281007
+         OI    CANC48FL,C48VALRS  MARK REASON CODE AVAILABLE   @DY45037 00281107
+SGMWTER0 DS    0H                                              @DY45037 00281207
+         LTR   R15,R15            SUBREASON CODE AVAILABLE ?   @DY45037 00281307
+         BE    SGMWTER1                                        @DY45037 00281407
+         OI    CANC48FL,C48VALSU  MARK SUBREASON AVAILABLE     @DY45037 00281507
+SGMWTER1 DS    0H                                              @DY45037 00281607
+         L     R6,ASYSCOM                                      @DY45037 00281707
+         L     R6,IJBSPAVT-SYSCOM(,R6)                         @DY45037 00281807
+         L     R6,ADISPSER-SUPAVT(,R6)                         @DY45037 00281907
+         LA    R0,4               FUNCTION CODE                @DY45037 00282007
+         LR    R1,R7                                           @DY45037 00282107
+         LA    R11,72             CANCEL CODE 48               @DY45037 00282207
+         BASSM R7,R6              EXIT TO CANCEL USER          @DY45037 00282307
+***************************************************************@DY45037 00282407
+* ERROR HANDLING ROUTINES                                      @DY45037 00282507
+***************************************************************@DY45037 00282607
+SGMW41D  DS    0H                                              @DY45037 00282707
+         LA    R13,ABND2C5        ABEND CODE                   @DY45037 00282807
+         LA    R14,RSNUC41D       REASON CODE                  @DY45037 00282907
+         LA    R15,0              SUBREASON CODE               @DY45037 00283007
+         B     SGMWTERR                                        @DY45037 00283107
+SGMW421  DS    0H                                              @DY45037 00283207
+         LA    R13,ABND2C5        ABEND CODE                   @DY45037 00283307
+         LA    R14,RSNUC421       REASON CODE                  @DY45037 00283407
+         LA    R15,0              SUBREASON CODE               @DY45037 00283507
+         B     SGMWTERR                                        @DY45037 00283607
+SGMW422  DS    0H                                              @DY45037 00283707
+         LA    R13,ABND2C5        ABEND CODE                   @DY45037 00283807
+         LA    R14,RSNUC422       REASON CODE                  @DY45037 00283907
+         LA    R15,0              SUBREASON CODE               @DY45037 00284007
+         B     SGMWTERR                                        @DY45037 00285007
+SGMWA301 DS    0H                                              @DY45037 00285107
+         LA    R13,ABND301        ABEND CODE                   @DY45037 00285207
+         LA    R14,X'FFF'         REASON CODE                  @DY45037 00285307
+         LA    R15,0              SUBREASON CODE               @DY45037 00285407
+         B     SGMWTERR                                        @DY45037 00285507
+SGMWA201 DS    0H                                              @DY45037 00285607
+         LA    R13,ABND201        ABEND CODE                   @DY45037 00285707
+         LA    R14,X'FFF'         REASON CODE                  @DY45037 00285807
+         LA    R15,0              SUBREASON CODE               @DY45037 00285907
+         B     SGMWTERR                                        @DY45037 00286007
+SGMWA101 DS    0H                                              @DY45037 00286107
+         LA    R13,ABND101        ABEND CODE                   @DY45037 00286207
+         LA    R14,X'FFF'         REASON CODE                  @DY45037 00286307
+         LA    R15,0              SUBREASON CODE               @DY45037 00286407
+         B     SGMWTERR                                        @DY45037 00286507
+ASGMVSW0 DC    A(X'80000000'+SGMVSWT0) AMODE 31 RTN ADDR       @DY45037 00286607
+SGMWTMN  DC    C'WAIT    '                                     @DY45037 00286707
+BIT31OFF DC    X'FFFFFFFE'                                     @DY45037 00286807
+B3132OFF DC    X'FFFFFFFC'                                     @DY45939 00286907
+         DROP  R6                                              @DY45037 00287007
+         DROP  R9                                              @DY45037 00287107
+         DROP  R10                                             @DY45037 00287207
+         SPACE 1                                               @D64ADMK 00287307
+         USING DISP,R6                                         @D64ADMK 00287407
+         USING SGMVSAPI,R9                                     @D64ADMK 00287507
+         USING TCBADR,R10                                      @D64ADMK 00287607
+***************************************************************@D64ADMK 00287707
+* SVC ENTRY POINT                                              @D64ADMK 00287807
+***************************************************************@D64ADMK 00287907
+         ENTRY SGMVSAPI                                        @D64ADMK 00288007
+SGMVSAPI DS    0H                                              @D64ADMK 00289007
+         LR    R9,R13                                          @D64ADMK 00290007
+***************************************************************@D64ADMK 00300007
+* GET A SAVE AREA AND BRANCH TO CHECK ROUTINE                  @D64ADMK 00310007
+***************************************************************@D64ADMK 00320007
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00330007
+         L     R13,TCBATCBE       GET TCB EXTENSION            @D64ADMK 00340007
+         L     R13,TCBXFMBD-TCBXADR(,R13) GET FMBD             @D64ADMK 00350007
+         MVI   RID+1,RESVCID         DO A RESVC ON PAGE FAULT  @ 64ADMS 00360007
+         CLC   0(1,13),FMCALEN-1(13) FORCE FMCA INTO STORAGE   @D64ADMS 00370007
+         MVI   RID+1,REENTRID        RESET RID TO 4            @D64ADMS 00380007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 00390007
+         LA    R1,FM_INIT         INIT CHECK/CONVERSION ROUTINE@D64ADMK 00400007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 00410007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 00420007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 00430007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 00440007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 00450007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 00460007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 00470007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 00480007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 00490007
+***************************************************************@D64ADMK 00500007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 00510007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 00520007
+***************************************************************@D64ADMK 00530007
+         LTR   R15,R15            INIT DONE?                   @D64ADMK 00540007
+         BZ    SGMAPI01           YES                          @D64ADMK 00550007
+         B     SGMERROR           NO, HARDWAIT                 @D64ADMK 00560007
+SGMAPI01 DS    0H                                              @D64ADMK 00570007
+         LH    R1,TCBMVSIS+2      FUNCTION CODE                @D64ADMK 00580007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 00590007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 00600007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 00610007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 00620007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 00630007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 00640007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 00650007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 00660007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 00670007
+***************************************************************@D64ADMK 00680007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 00690007
+* BRANCH ON FUNCTION CODE                                      @D64ADMK 00700007
+***************************************************************@D64ADMK 00710007
+         CL    R15,SGMAPIMX       VALIDATE                     @D64ADMK 00720007
+         BH    SGMERROR           WRONG FUNCTION               @D64ADMK 00730007
+         SLL   R15,2              MULTIPLY WITH 4              @D64ADMK 00740007
+         B     SGMAPIBR(R15)      CONTINUE WITH ROUTINE        @D64ADMK 00750007
+SGMAPIBR B     SGMAPISV           VSE SVC                      @D64ADMK 00760007
+         B     SGMAPIRS           RESVC                        @D64ADMK 00770007
+         B     SGMAPIUP           WAITM (RESVCX)               @D64ADMK 00780007
+         B     SGMAPIEX           WAITM AND ECB ALREADY POSTED @D64ADMK 00790007
+         B     SGMAPIRP           POST                         @D64ADMK 00800007
+         EJECT                                                          00810007
+SGMAPISV DS    0H                                              @D64ADMK 00820007
+         LH    R12,INTINFO+2      GET SVC CODE                 @D64ADMK 00830007
+         L     R1,TCBSAVE         GET USER SAVE AREA           @D64ADMK 00840007
+         USING SVEARA,R1          MAPPING                      @D64ADMK 00850007
+         LM    R15,R1,SVER0F      RELOAD USER'S R15-R1         @D64ADMK 00860007
+         DROP  R1                                              @D64ADMK 00870007
+SGMAPISS DS    0H                                              @D64ADMK 00880007
+         CLI   INTINFO+3,FM_VSE_CANCEL                         @D64ADMK 00890007
+         BE    SGMAPIEX           VSE CANCEL                   @D64ADMK 00900007
+         CLI   INTINFO+3,FM_VSE_ATTACH                         @D64ADMK 00910007
+         BE    SGMAPISU           VSE ATTACH                   @D64ADMK 00920007
+         CLI   INTINFO+3,FM_VSE_EXITS                          @D64ADMK 00930007
+         BE    SGMAPIXA           VSE ESTAEX                   @D64ADMK 00940007
+         CLI   INTINFO+3,FM_VSE_CHAP                           @D64ADMK 00950007
+         BE    CHAPMVS            CHAP                         @D64ADMK 00960007
+         CLI   INTINFO+3,FM_VSE_DETACH                         @D64ADMK 00970007
+         BE    SGMAPIDT           VSE DETACH                   @D64ADMK 00980007
+         CLI   INTINFO+3,FM_VSE_STIMER                         @D64ADMK 00990007
+         BE    SGMAPISU           VSE STXIT IT                 @D64ADMK 01000007
+         CLI   INTINFO+3,FM_VSE_TTIMER                         @D64ADMK 01010007
+         BE    SGMAPISU           VSE TEST TIMER               @D64ADMK 01020007
+         B     SGMAPIEX           SVC NOT IN LIST              @D64ADMK 01030007
+SGMAPISU DS    0H                                              @D64ADMK 01040007
+         SLL   R12,2              CALCULATE OFFSET INTO SVC TABLE64ADMK 01050007
+         AMODESW SET,AMODE=24,WR=(R14) AMODE 24                @D64ADMK 01060007
+         L     R13,AFLIH          GET SVC TABLE ADDRESS        @D64ADMK 01070007
+         USING FLIH,R13                                        @D64ADMK 01080007
+         L     R13,VSESVCTB       GET SVC TABLE ADDRESS        @D64ADMK 01090007
+         DROP  R13                                             @D64ADMK 01100007
+         ALR   R12,R13            GET SVCTAB ENTRY             @D64ADMK 01110007
+         L     R12,0(,R12)        LOAD ADDR. OF SVC ROUTINE    @D64ADMK 01120007
+         LTR   R13,R12            IF THERE IS NO BASE ADDRESS  @D64ADMK 01130007
+         LA    R12,0(,R12)        CLEAR HIGH ORDER BYTE        @D64ADMK 01140007
+         BPR   R12                BRANCH DIRECT TO SVC ROUT    @D64ADMK 01150007
+         SRL   R13,24             GET OFFSET OF BASE ADDR.     @D64ADMK 01160007
+         L     R13,SVCBASE(R13)   LOAD BASE ADDRESS            @D64ADMK 01170007
+         BR    R13                BRANCH TO BASE ADDRESS       @D64ADMK 01180007
+         EJECT                                                          01190007
+***************************************************************@D64ADMK 01200007
+* DETACH: CHECK IF DETACH IS FOR CURRENT TASK                  @D64ADMK 01210007
+***************************************************************@D64ADMK 01220007
+SGMAPIDT DS    0H                                              @D64ADMK 01230007
+         LTR   R1,R1              SAVE PARAMETER SPECIFIED     @D64ADMK 01240007
+         BNZ   SGMAPISU           YES, DETACH AND THEN CLEANUP @D64ADMK 01250007
+         EJECT                                                          01260007
+         EJECT                                                          01270007
+***************************************************************@D64ADMK 01280007
+* EXITS                                                        @D64ADMK 01290007
+***************************************************************@D64ADMK 01300007
+***************************************************************@D64ADMK 01310007
+* EXIT TO DISPATCHER AFTER VSE SVC EXECUTION                   @D64ADMK 01320007
+* EXIT TO DISPATCHER WITHOUT SPECIAL HANDLING                  @D64ADMK 01330007
+***************************************************************@D64ADMK 01340007
+SGMAPIEX DS    0H                                              @D64ADMK 01350007
+         L     R1,TCBSAVE         GET USER SAVE AREA           @D64ADMK 01360007
+         USING SVEARA,R1          MAPPING                      @D64ADMK 01370007
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 01380007
+         LTR   R15,R15            SUCCESSFUL?                  @D64ADMK 01390007
+         BZ    SGMAPIE2           YES                          @D64ADMK 01400007
+         XC    SVER01,SVER01      CLEAR USER REGISTER 1        @D64ADMK 01410007
+SGMAPIE2 ST    R15,SVER0F         SETUP USER REGISTER 15       @D64ADMK 01420007
+         DROP  R1                                              @D64ADMK 01430007
+         CLI   INTINFO+3,FM_VSE_DETACH                         @D64ADMK 01440007
+         BE    SGMAPIE3           VSE DETACH                   @D64ADMK 01450007
+         L     R13,TCBATCBE       GET EXTENSION                @D64ADMK 01460007
+         L     R13,TCBXFMBD-TCBXADR(,R13) GET FMBD             @D64ADMK 01470007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 01480007
+         LA    R1,FM_CLEANUP      CLEANUP FUNCTION             @D64ADMK 01490007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 01500007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 01510007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 01520007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 01530007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 01540007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 01550007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 01560007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 01570007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 01580007
+***************************************************************@D64ADMK 01590007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 01600007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 01610007
+***************************************************************@D64ADMK 01620007
+         LTR   R15,R15            ERROR IN CLEANUP             @D64ADMK 01630007
+         BNZ   SGMERROR           YES HARDWAIT                 @D64ADMK 01640007
+SGMAPIE3 DS    0H                                              @D64ADMK 01650007
+         B     DISPMVS            AND EXIT                     @D64ADMK 01660007
+***************************************************************@D64ADMK 01670007
+* EXIT TO RESVC WITHOUT VSE SVC PROCESSING                     @D64ADMK 01680007
+***************************************************************@D64ADMK 01690007
+SGMAPIRS DS    0H                                              @D64ADMK 01700007
+         LA    R1,FM_CLEANUP      CLEANUP FUNCTION             @D64ADMK 01710007
+         L     R13,TCBATCBE       GET EXTENSION                @D64ADMK 01720007
+         L     R13,TCBXFMBD-TCBXADR(,R13) GET FMBD             @D64ADMK 01730007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 01740007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 01750007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 01760007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 01770007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 01780007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 01790007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 01800007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 01810007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 01820007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 01830007
+***************************************************************@D64ADMK 01840007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 01850007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 01860007
+***************************************************************@D64ADMK 01870007
+         LTR   R15,R15            ERROR IN CLEANUP             @D64ADMK 01880007
+         BNZ   SGMERROR           YES HARDWAIT                 @D64ADMK 01890007
+         B     RESVC              AND EXIT                     @D64ADMK 01900007
+***************************************************************@D64ADMK 01910007
+* UNPOST FOR MVS WAITM                                         @D64ADMK 01920007
+***************************************************************@D64ADMK 01930007
+SGMAPIUP DS    0H                                              @D64ADMK 01940007
+         LA    R1,FM_CLEANUP      CLEANUP FUNCTION             @D64ADMK 01950007
+         L     R13,TCBATCBE       GET EXTENSION                @D64ADMK 01960007
+         L     R13,TCBXFMBD-TCBXADR(,R13) GET FMBD             @D64ADMK 01970007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 01980007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 01990007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 02000007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 02010007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 02020007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 02030007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 02040007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 02050007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 02060007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 02070007
+***************************************************************@D64ADMK 02080007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 02090007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 02100007
+***************************************************************@D64ADMK 02110007
+         LTR   R15,R15            ERROR IN CLEANUP             @D64ADMK 02120007
+         BNZ   SGMERROR           YES HARDWAIT                 @D64ADMK 02130007
+         SLR   R1,R1              TIBSTATE INFO                @D64ADMK 02140007
+         L     R5,ASRQTAB         SELCET THIS QUEUE            @D64ADMK 02150007
+         LA    R5,SRQWAIT-SRQTAB(,R5)                          @D64ADMK 02160007
+         B     RESVCX             AND EXIT                     @D64ADMK 02170007
+***************************************************************@D64ADMK 02180007
+* POST TASKS FOR MVS POST                                      @D64ADMK 02190007
+***************************************************************@D64ADMK 02200007
+SGMAPIRP DS    0H                                              @D64ADMK 02210007
+         L     R1,TCBSAVE         USER SAVE AREA               @D64ADMK 02220007
+         USING SVEARA,R1          USER SAVE AREA               @D64ADMK 02230007
+         L     R1,SVER01          GET ECB ADDRESS              @D64ADMK 02240007
+         DROP  R1                 ADDRESSABILITY               @D64ADMK 02250007
+*        L     R5,ASRQTAB         SELCET THIS QUEUE            @D64ADMK 02260007
+*        LA    R5,SRQWAIT-SRQTAB(,R5)                          @D64ADMK 02270007
+*        BAL   R7,RPOSTALL        POST WAITER                  @D64ADMK 02280007
+         L     RE,PCBPTR          GET CURRENT PCB              @D64ADMK 02290007
+         BAL   RF,RPOSTIOP        POST WAITER                  @D64ADMK 02300007
+         LA    R1,FM_CLEANUP      CLEANUP FUNCTION             @D64ADMK 02310007
+         L     R13,TCBATCBE       GET EXTENSION                @D64ADMK 02320007
+         L     R13,TCBXFMBD-TCBXADR(,R13) GET FMBD             @D64ADMK 02330007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 02340007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 02350007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 02360007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 02370007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 02380007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 02390007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 02400007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 02410007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 02420007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 02430007
+***************************************************************@D64ADMK 02440007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 02450007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 02460007
+***************************************************************@D64ADMK 02470007
+         LTR   R15,R15            ERROR IN CLEANUP             @D64ADMK 02480007
+         BNZ   SGMERROR           YES HARDWAIT                 @D64ADMK 02490007
+         B     DISPMVS            AND EXIT                     @D64ADMK 02500007
+***************************************************************@D64ADMK 02510007
+* INSTEAD OF HARDWAIT FOR TEST PURPOSE CANCEL USER             @D64ADMK 02520007
+***************************************************************@D64ADMK 02530007
+SGMERROR DS    0H                                              @D64ADMK 02540007
+         MVI   INTINFO+3,6        CANCEL FUNCTION              @D64ADMK 02550007
+         SLR   R0,R0              CANCEL FUNCTION              @D64ADMK 02560007
+         B     SGMAPISV           CANCEL                       @D64ADMK 02570007
+         USING DISP,R6                                         @D64ADMK 02580007
+***************************************************************@D64ADMK 02590007
+* SPECIAL HANDLING FOR POST EXIT ROUTINES PC                   @D64ADMK 02600007
+* BASE = R15                                                   @D64ADMK 02610007
+***************************************************************@D64ADMK 02620007
+         ENTRY IEA0PT0E                                        @D64ADMK 02630007
+IEA0PT0E DS    0H                                              @D64ADMK 02640007
+         L     R15,TCBPTR                                      @D64ADMK 02650007
+         STNSM SVCWORKA-TCBADR(R15),DISABLE SAV SYSMASK AND DIS@D64ADMK 02660007
+IEA0PCK1 DS    0H                                              @D64ADMK 02670007
+         STM   R9,R8,SVCWORK-TCBADR(R15)                       @D64ADMK 02680007
+         L     R10,TCBPTR         GET TCB ADDR FOR LATER USE   @D64ADMK 02690007
+         L     R9,ASGMVSAP        BASE FOR SGMVSAPI            @D64ADMS 02700007
+         USING SGMVSAPI,R9                                     @D64ADMK 02710007
+         AMODESW SET,AMODE=31,WR=(R14),SAVE=(R8)               @D64ADMK 02720007
+         ST    R8,SVCWORKA+4      SAVE AMODE                   @D64ADMK 02730007
+***************************************************************@D64ADMK 02740007
+* SAVE USER'S RID AND P/NP STATUS                              @D64ADMK 02750007
+***************************************************************@D64ADMK 02760007
+         L     R8,TDCPUPTR        GET CURRENT TCPU             @D64ADMK 02770007
+         MVC   SVCWORKB,TCPFLAG1-TCPUADR(R8) SAVE STATUS       @D64ADMK 02780007
+         MVC   SVCWORKB+2,RID     SAVE RID                     @D64ADMK 02790007
+         TM    SVCWORKB,X'80'     NON PARALLEL CODE ACTIVE?    @D64ADMK 02800007
+         BO    IEA0PTP1           YES, DON'T CHANGE STATUS     @D64ADMK 02810007
+         TDLOCK FUNC=OBTAIN,TYPE=NP,WR1=R3,WR2=R4              @D64ADMK 02820007
+IEA0PTP1 DS    0H                                              @D64ADMK 02830007
+***************************************************************@D64ADMK 02840007
+* GET A SAVE AREA AND BRANCH TO CHECK ROUTINE                  @D64ADMK 02850007
+***************************************************************@D64ADMK 02860007
+         MVI   RID+1,REENTRID     SET RID                      @D64ADMK 02870007
+         LR    R2,R0              SAVE FUNCTION CODE           @D64ADMK 02880007
+         L     R13,TCBATCBE       GET EXTENSION                @D64ADMK 02890007
+         L     R13,TCBXFMBD-TCBXADR(,R13) GET FMBD             @D64ADMK 02900007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 02910007
+         ST    R1,SGMAPIP2(,R13)  FILL PARM2                   @D64ADMK 02920007
+         LA    R1,FM_POXFIRST     BASE FOR POST EXIT FC.       @D64ADMK 02930007
+         AR    R1,R2              ADD FUNCTION                 @D64ADMK 02940007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 02950007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 02960007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 02970007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 02980007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 02990007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 03000007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 03010007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 03020007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 03030007
+***************************************************************@D64ADMK 03040007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 03050007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 03060007
+***************************************************************@D64ADMK 03070007
+         LA    R15,TCBWAREA                                    @D64ADMK 03080007
+         USING SVEARA,R15         TEMP SAVE AREA               @D64ADMK 03090007
+***************************************************************@D64ADMK 03100007
+* RESTORE USER'S STATUS                                        @D64ADMK 03110007
+***************************************************************@D64ADMK 03120007
+         TM    SVCWORKB,X'80'     NON PARALLEL CODE ACTIVE?    @D64ADMK 03130007
+         BO    IEA0PTP2           YES, DON'T CHANGE STATUS     @D64ADMK 03140007
+         TDLOCK FUNC=RELEASE,TYPE=NP,WR1=R3                    @D64ADMK 03150007
+IEA0PTP2 DS    0H                                              @D64ADMK 03160007
+         SSM   SVCWORKA           RESTORE SYSTEM MASK          @D64ADMK 03170007
+         L     R8,TDCPUPTR        GET CURRENT TCPU             @D64ADMK 03180007
+*        MVC   TCPFLAG1-TCPUADR(1,R8),SVCWORKB                 @D64ADMK 03190007
+         MVC   RID(2),SVCWORKB+2                               @D64ADMK 03200007
+         L     R8,SVCWORKA+4      RESTORE AMODE                @D64ADMK 03210007
+         AMODESW SET,AMODE=(R8),WR=(R14)                       @D64ADMK 03220007
+         LM    R9,R8,SVCWORK                                   @D64ADMK 03230007
+         SLR   R15,R15                                         @D64ADMK 03240007
+         BR    R14                RETURN TO CALLER             @D64ADMK 03250007
+         DROP  R15                                             @D64ADMK 03260007
+***************************************************************@D64ADMK 03270007
+* ENQ/DEQ ENTRY POINTS                                         @D64ADMK 03280007
+***************************************************************@D64ADMK 03290007
+SGENQDEQ DS    0H                                              @D64ADMK 03300007
+         L     R11,ASVASVDL       GET MVS ENQ/DEQ ADDRESS      @D64ADMK 03310007
+         L     R11,AIJBEQDQ-SVASVDL(R11)                       @D64ADMK 03320007
+*        AMODESW CALL,REGS=(RE,RB) CALL $IJBEQDQ               @D64ADMK 03330007
+         AMODESW CALL,REGS=(RE,RB) CALL $IJBEQDQ               @D64ADMK 03340007
+***************************************************************@D64ADMK 03350007
+* EXIST PROCESSING ENTRY POINTS                                @D64ADMK 03360007
+***************************************************************@D64ADMK 03370007
+SGMAPIXA DS    0H                                              @D64ADMK 03380007
+         USING FMXIT_PARMS,R1                                  @D64ADMK 03390007
+         CLI   FMXIT_OPER,FMXIT_INVOKE IS IT POST EXIT?        @D64ADMK 03400007
+         BE    POSTEX             YES                          @D64ADMK 03410007
+         DROP  R1                                              @D64ADMK 03420007
+         L     R13,SGMAPAXA       GET ESTAEX BASE ADDR         @D64ADMK 03430007
+         BR    R13                AND BRANCH THERE             @D64ADMK 03440007
+SGMAPAXA DC    A(FAMRECOV)        EXIT ROUTINES                @D64ADMK 03450007
+***************************************************************@D64ADMK 03460007
+* COMMON CLEANUP ROUTINE IF A SERVICE IS ABENDED               @D64ADMK 03470007
+*        CALLED IN AMODE 31                                    @D64ADMK 03480007
+* INPUT:  R8 = RETURN ADDRESS                                  @D64ADMK 03490007
+*         R9 = SGMVSAPI BASE                                   @D64ADMK 03500007
+*        R10 = CURRENT TCB                                     @D64ADMK 03510007
+* WORK:   R1,R13,R14,R15                                       @D64ADMK 03520007
+***************************************************************@D64ADMK 03530007
+SGMAPICL DS    0H                                              @D64ADMK 03540007
+*SGLINK SGMAPICL,S,INPUT=(R8,R9,RA),WORK=(R1,RD,RE,RF)         @D64ADMK 03550007
+         TM    TCBMVSIS,TCBMVSSA  SIMULATED SVC ?              @D64ADMK 03560007
+         BZ    SGMAPICZ           NO, EXIT                     @D64ADMK 03570007
+         L     R13,TCBATCBE       GET EXTENSION                @D64ADMK 03580007
+         USING TCBXADR,R13                                     @DY45037 03590007
+         TM    TCBXFMCA,X'80'     IJBFMBD CLEANUP NEEDED ?     @DY45037 03600007
+         BZ    SGMAPICZ           NO CLEANUP FOR WAIT          @DY45037 03610007
+         L     R13,TCBXFMBD       GET FMBD                     @DY45037 03620007
+         DROP  R13                                             @DY45037 03630007
+         LTR   R13,R13            AREA ALLOCATED ?             @D64ADUL 03640007
+         BZ    SGMAPICZ           NO, EXIT                     @D64ADUL 03650007
+         LA    R13,FM_MK-FM_FMCA(,R13) GET MKPTR               @D64ADMK 03660007
+         LA    R1,FM_CLEANUP      CLEANUP FUNCTION             @D64ADMK 03670007
+         ST    R1,SGMAPIFC(,R13)  FILL FUNCTION CODE           @D64ADMK 03680007
+         LA    R1,SGMAPIFC(,R13)  POINT TO PARAMETER           @D64ADMK 03690007
+         ST    R1,SGMAPIA1(,R13)  FILL ADDRESS OF PARM         @D64ADMK 03700007
+         LA    R1,SGMAPIP2(,R13)  POINT TO PARAMETER           @D64ADMK 03710007
+         ST    R1,SGMAPIA2(,R13)  FILL ADDRESS OF PARM         @D64ADMK 03720007
+         LA    R1,SGMAPIA1(,R13)  POINT TO PARAMETER           @D64ADMK 03730007
+         L     R15,ASVASVDL       GET CHECK ROUTINE ADDRESS    @D64ADMK 03740007
+         L     R15,AIJBFMBD-SVASVDL(R15)                       @D64ADMK 03750007
+         BALR  R14,R15            AND BRANCH THERE             @D64ADMK 03760007
+***************************************************************@D64ADMK 03770007
+* BACK FROM CHECK/CONVERSION                                   @D64ADMK 03780007
+* RETURN CODE 0 EXPECTED                                       @D64ADMK 03790007
+***************************************************************@D64ADMK 03800007
+         LTR   R15,R15            ERROR IN CLEANUP             @D64ADMK 03810007
+         BNZ   SGMERROR           YES HARDWAIT                 @D64ADMK 03820007
+SGMAPICZ DS    0H                                              @D64ADMK 03830007
+         BSM   0,R8               RETURN                       @D64ADMK 03840007
+***************************************************************@D64ADMK 03850007
+* CONSTANTS AND EQUATES                                        @D64ADMK 03860007
+***************************************************************@D64ADMK 03870007
+SGMAPIMX DC    F'4'               MAX RETURN INFO FROM IJBFMBD @D64ADMK 03880007
+SGMAPICS DC    H'13'              DUMMY COMREG SVC             @D64ADMK 03890007
+         DS    0F                                              @D64ADMK 03900007
+SGMAPIBT DC    AL4(RESVC)         RESVC                        @D64ADMK 03910007
+         DC    AL4(UNPOST)        UNPOST                       @D64ADMK 03920007
+         DC    AL4(RPOST)         RPOST                        @D64ADMK 03930007
+SGMAPIA1 EQU   X'78'              ADDRESS OF PARM 1            @D64ADMK 03940007
+SGMAPIA2 EQU   X'7C'              ADDRESS OF PARM 2            @D64ADMK 03950007
+SGMAPIFC EQU   X'80'              PARAMETER FIELD 'FUNCTION'   @D64ADMK 03960007
+SGMAPIP2 EQU   X'84'              PARAMETER FIELD 'PARM2'      @D64ADMK 03970007
+SGMAPIBS EQU   X'88'              STORAGE BUFFER SIZE          @D64ADMK 03980007
+         DROP  R6                                              @D64ADMK 03990007
+         DROP  R9                                              @D64ADMK 04000007
+         DROP  R10                                             @D64ADMK 04010007
+         TITLE 'VSE/AF SUPERVISOR  SGMVSSRV   MVS-SVC/PC SERVICES     ' 04020007
+         SGMVSSRV                                                       04030007
+         MEND                                                           04040007

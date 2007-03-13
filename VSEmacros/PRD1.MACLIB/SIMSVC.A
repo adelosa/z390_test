@@ -1,0 +1,128 @@
+*%GOTO   SIMSVC1; /* PLX COMMENT TO AVOID UNMATCHED QUOTE PROBLEMS      00050053
+         MACRO                                                          00100053
+&LABL    SIMSVC &WR=,&INST=                                             00150053
+         LCLC  &WREG       STRING FOR THE WORK REGISTER                 00166653
+         LCLC  &WINST      STRING FOR INSTRUCTION TO BE REPLACED        00183253
+*        SUPERVISOR - SIMSVC - 5686-032 - LAST CHANGE: 10/27/93         00200053
+         AGO   .ZZZ                                                     00250053
+******************************************************                  00300053
+*                                                    *                  00350053
+*   LICENSED MATERIALS - PROPERTY OF IBM             *                  00400053
+*   THIS MACRO IS "RESTRICTED MATERIALS OF IBM"      *                  00450053
+*   5686-032 (C) COPYRIGHT IBM CORP. 1993            *                  00500053
+*   SEE COPYRIGHT INSTRUCTIONS                       *                  00550053
+*                                                    *                  00600053
+******************************************************                  00650053
+.ZZZ     ANOP                                                           00700053
+.**** START OF SPECIFICATIONS *************************                 00750053
+.*                                                                      00800053
+.*01*  MACRO NAME: SIMSVC                                               00850053
+.*                                                                      00900053
+.*01*  FUNCTION:                                                        00950053
+.*                                                                      01000053
+.*        ALLOWS THE SIMULATION OF MVS/ESA SERVICES. SIMSVC             01050053
+.*        HAS TO BE PLACED JUST BEFORE THE SVC INSTRUCTION OF           01100053
+.*        THE MVS/ESA API (E.G. WTO). SIMSVC CHECKS THE                 01150053
+.*        ENVIRONMENT WHEN EXECUTED, AND IF RUNNING ON MVS/ESA,         01200053
+.*        THE MVS/ESA SVC WILL BE EXECUTED (AS BEFORE).                 01250053
+.*        IF IT IS RUNNING ON VSE/ESA, THE NEW VSE/ESA SVC 131          01300053
+.*        INSTRUCTION WILL BE EXECUTED AND THE MVS/ESA SVC              01350053
+.*        WILL BE USED AS A FUNCTION CODE.                              01400053
+.*                                                                      01450053
+.*01* SYNTAX:                                                           01500053
+.*        SIMSVC                      OR                                01550053
+.*        SIMSVC WR=(RX)<,INST=NAME>  OR                                01600053
+.*        SIMSVC INST=NAME                                              01650053
+.*                                                                      01700053
+.*      WHERE 'RX'   CAN BE ANY REGISTER FROM 1 TO 15,                  01750053
+.*            'NAME' IS 4 BYTE OP CODE TO RESTORE THE WORK REGISTER     01800053
+.*                   WHEN NO WORK REGISTER IS AVAILABLE.                01850053
+.*                                                                      01900053
+.*      E.G. REGISTER 5 WAS LOADED WITH A VALUE FROM THE                01950053
+.*           THE PARAMETER LIST AT OFFSET X'10' WITH BASE               02000053
+.*           REGISTER 1. SO 'INST' HAS TO BE SPECIFIED AS               02050053
+.*           INST=58501010 AND REGISTER 5 CAN BE USED AS                02100053
+.*           WORK REGISTER. SIMSVC HAS TO BE CODED AS FOLLOWS:          02150053
+.*                SIMSVC WR=(5),INST=58501010                           02200053
+.*           AND EXPANDS TO:                                            02250053
+.*                         L     5,16(0,0)                              02300053
+.*                         TM    X'74'(5),X'A8'                         02350053
+.*                         BNO   *+10                                   02400053
+.*                         DC    X'58501010'                            02450053
+.*                         SVC   131                                    02500053
+.*                         DC    X'58501010'                            02550053
+.*                                                                      02600053
+.* >>>>> NOTE: INST WILL NOT BE SUPPORTED FOR PL/X VERSION              02650053
+.*                                                                      02700053
+.**** END OF SPECIFICATIONS ***************************                 02750053
+.*                                                                      03150053
+.*-------------------------------------------------------------         03200053
+.*       SET UP WORK VARIABLES                                          03250053
+.*-------------------------------------------------------------         03300053
+.*                                                                      03350053
+&WREG    SETC  '15'                                                     03400053
+&WINST   SETC '47000000'   USE NOP INSTRUCTION AS DEFAULT               03450053
+.*                                                                      03500053
+.*-------------------------------------------------------------         03550053
+.*       VALIDATE KEY WORDS                                             03600053
+.*-------------------------------------------------------------         03650053
+.*                                                                      03700053
+         AIF   (T'&WR EQ 'O').NOWORK  IF OMITTED, TAKE R15              03750053
+         AIF   ('&WR'(1,1) NE '(').ERR01  PUT OUT ERROR MESSAGE         03800053
+         AIF   ('&WR(1)' EQ '0').ERR02    PUT OUT ERROR MESSAGE         03850053
+&WREG    SETC  '&WR(1)'               EXTRACT THE REGISTER NAME         03900053
+.NOWORK  ANOP                                                           03950053
+         AIF   (T'&INST EQ 'O').GOON  IF OMITTED, USE NOPR INSTRUCTION  04000053
+         AIF   (K'&INST NE 8).ERR03   ERROR, IF NOT 4 BYTE FIELD        04050053
+&WINST   SETC '&INST'                 USE INPUT INSTRUCTION             04100053
+.********************************************************************** 04150053
+.GOON    ANOP                                                           04200053
+         L     &WREG,16(0,0)          GET CVT ADDRESS                   04250053
+         TM    X'74'(&WREG),X'A8'     EXECUTING ON VSE/ESA ?            04300053
+         BNO   *+10                   NO, SKIP SIMULATION               04350053
+         DC    X'&WINST.'             RESTORE REGISTER, IF NECESSARY    04400053
+         SVC   131                    ENTER MVS SVC SIMULATION          04450053
+         DC    X'&WINST.'             RESTORE REGISTER, IF NECESSARY    04500053
+         MEXIT                                                          04550053
+.********************************************************************** 04600053
+.ERR01   ANOP                                                           04650053
+         MNOTE 12,'INVALID WORK REGISTER SPECIFICATION'                 04700053
+         MEXIT                                                          04750053
+.ERR02   ANOP                                                           04800053
+         MNOTE 12,'REGISTER 0 CANNOT BE USED AS WORK REGISTER'          04850053
+         MEXIT                                                          04900053
+.ERR03   ANOP                                                           04950053
+         MNOTE 12,'INVALID INSTRUCTION LENGTH - 4 BYTE REQUIRED'        05000053
+         MEXIT                                                          05050053
+         MEND                                                           05100053
+* END OF PLX COMMENT */ %SIMSVC1 : ;                                    05150053
+*%SIMSVC:                                                               05200053
+* MACRO KEYS(WR) TRACE;                                                 05250053
+*                                                                       05300053
+* /* LIST INVOCATION IN SOURCE                                      */  05350053
+* ANS('/*'||MACLABEL||' '||MACNAME||' '||MACLIST||' '||MACKEYS||        05400053
+*     '*/') COL(MACLMAR);                                               05450053
+*                                                                       05500053
+* ANS('/*                                            */') COL(MACLMAR); 05550053
+* ANS('/* SUPERVISOR - SIMSVC - 5686-032             */') COL(MACLMAR); 05600053
+* ANS('/*                                            */') COL(MACLMAR); 05650053
+*                                                                       05700053
+* DCL REGNUM CHARACTER;                                                 05750053
+*                                                                       05800053
+* IF NUMBER(WR)=0                                                       05850053
+*    THEN                                                               05900053
+*        REGNUM='15';                                                   05950053
+*    ELSE                                                               06000053
+*        REGNUM=WR(1,1);                                                06050053
+*                                                                       06100053
+* DEFAULT:                                                              06150053
+* ANSWER('GENERATE;                          ')COL(3);                  06200053
+* ANSWER('L     '||REGNUM||',16(0,0)         ')COL(11);                 06250053
+* ANSWER('TM    X''78''('||REGNUM||'),X''A8''')COL(11);                 06300053
+* ANSWER('BNO   *+10                         ')COL(11);                 06350053
+* ANSWER('NOP   0                            ')COL(11);                 06400053
+* ANSWER('SVC   131                          ')COL(11);                 06450053
+* ANSWER('NOP   0                            ')COL(11);                 06500053
+* ANSWER('@ENDGEN;                           ')COL(3);                  06550053
+*                                                                       06600053
+*%END SIMSVC;                                                           06650053

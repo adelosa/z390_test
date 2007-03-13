@@ -1,0 +1,131 @@
+         MACRO                                                          00050000
+&NAME    IDUMP &START,&END,&PARAM,&MFG=                        @D14CDJO 00100000
+         LCLC  &IMF                                                     00150000
+         LCLA  &A1,&A2,&A3                                              00200000
+.* IBM  DISK OPERATING SYSTEM                                           00250000
+* SUPERVISOR - IDUMP - 5686-007-06-C44                         @D14CDJO 00300000
+.*AGO    .ZZ                                                            00350000
+*        THIS MACRO CONTAINS "RESTRICTED MATERIALS OF IBM"     @D31EDJO 00400000
+*        ALL RIGHTS RESERVED                                */ @D31EDJO 00450000
+*        5686-007 COPYRIGHT IBM CORP 1979,1988                 @D31EDJO 00500000
+*        LICENSED MATERIALS-PROPERTY OF IBM                             00550000
+.*       SEE COPYRIGHT      INSTRUCTIONS                                00600000
+.*                FORM NUMBER G120-2083                                 00650000
+.ZZ      ANOP                                                           00700000
+.*                                                                      00750000
+         SPACE 1                                                        00800000
+.*                                                                      00850000
+.* /* START OF SPECIFICATIONS ***************************************** 00900000
+.*                                                                      00950000
+.*01* MODULE-TYPE = INTERNAL MACRO                                      01000000
+.*                                                                      01050000
+.*01* DESCRIPTIVE NAME = PARTIAL DUMP MACRO                             01100000
+.*                                                                      01150000
+.*01* NOTES = CHANGE ACTIVITY                                           01200000
+.*    NEW MACRO IN RELEASE 35.0                                @D369DHH 01250000
+.*    PARAMETER LIST CHANGED FOR INFO/ANALYSIS                 @D14CDJO 01300000
+.**** END OF SPECIFICATIONS ******************************************* 01350000
+.*                                                                      01400000
+.*  &START, &END, &PARAM EACH HAS TO BE SPECIFIED EITHER       @D14CDJO 01450000
+.*  AS ADDRESS OR AS A REGISTER IN PARENTHESIS WHICH CONATAINS @D369DHH 01500000
+.*  THE ADDRESS.                                               @D369DHH 01550000
+.*  &PARAM SPECIFIES THE ADDRESS OF A PARAMETER LIST WHICH     @D14CDJO 01600000
+.*  CONTAINS THE FOLLOWING INFORMATION                         @D369DHH 01650000
+.*     BYTES 0-3   TYPE OF IDUMP (ONLY)                        @D31EDJO 01700000
+.*     BYTE  4     FLAG BYTE                                   @D369DHH 01750000
+.*                 X'80' FLOATING POINT REGS ARE TO DUMPED     @D14CDJO 01800000
+.*                 X'40' RETURN CODE IS TO BE PASSED IN R15    @D14CDJO 01850000
+.*     BYTES 5-7   ADDR.OF SAVEAREA TO BE USED FOR DUMPING     @D369DHH 01900000
+.*                 PSW AND REGISTERS. IF THIS FIELD IS ZERO    @D369DHH 01950000
+.*                 PSW AND REGS ARE TAKEN FROM THE TASK'S      @D369DHH 02000000
+.*                 SAVEAREA.                                   @D369DHH 02050000
+.*     BYTES 8-9   LENGTH OF PARAMETER LIST (=40)              @D14CDJO 02100000
+.*     BYTE  10    FLAG BYTE 2                                 @D14CDJO 02150000
+.*                 X'80'  DO NOT ADD SUPERVISOR DATA           @D14CDJO 02200000
+.*     BYTE  11    FLAG BYTE 3                                 @D14CDJO 02250000
+.*     BYTES 12-15 RESERVED                                    @D14CDJO 02300000
+.*     BYTES 16-23 NAME OF THIS IDUMP                          @D14CDJO 02350000
+.*     BYTES 24-31 RESERVED                                    @D31EDJO 02400000
+.*     BYTES 32-33 RESERVED                                    @D14CDJO 02450000
+.*     BYTES 34-35 LENGTH OF SYMPTOM RECORD                    @D14CDJO 02500000
+.*     BYTES 36-39 ADDRESS OF SYMPTOM RECORD                   @D14CDJO 02550000
+.*                                                             @D369DHH 02600000
+.*     &MFG= AREA OR (S,AREA) OR (REG)                         @D369DHH 02650000
+.*        THE MFG OPERAND IS REQUIRED IF THE PROGRAM WHICH     @D369DHH 02700000
+.*        ISSUES THE IDUMP IS TO BE REENTERABLE. IT SPECIFIES  @D369DHH 02750000
+.*        THE ADDRESS OF A DYNAMIC STORAGE AREA (OBTAINED BY   @D369DHH 02800000
+.*        A GETVIS MACRO). THIS AREA IS NEEDED TO STORE THE 3  @D369DHH 02850000
+.*        ADDRESSES &START,&END, AND &PARAM.                   @D14CDJO 02900000
+.*                                                             @D369DHH 02950000
+.*                                                             @D369DHH 03000000
+         AIF   (T'&START EQ 'O' OR T'&END EQ 'O').NOLMT                 03050000
+         AIF   (T'&PARAM EQ 'O').NOLMT                         @D14CDJO 03100000
+&NAME    DS    0H                      FOR LABEL                        03150000
+         AIF   ('&START'(1,1) NE '(').TEND                              03200000
+&A1      SETA  4                                                        03250000
+.TEND    AIF   ('&END'(1,1) NE '(').TCAN                                03300000
+&A2      SETA  4                                                        03350000
+.TCAN    AIF   ('&PARAM'(1,1) NE '(').TALL                     @D14CDJO 03400000
+&A3      SETA  4                                                        03450000
+.TALL    AIF   (&A1+&A2+&A3 NE 0).TMFG                                  03500000
+         LA    1,=CL8'$$BPDUMP'        POINT TO PHASE NAME              03550000
+         LA    0,=A(&START,&END,&PARAM) POINT TO ADDRESSES     @D14CDJO 03600000
+         DC    X'4707413B'             SPECIAL NOOP                     03650000
+         SVC   2                                                        03700000
+         MEXIT                                                          03750000
+.TMFG    AIF   (T'&MFG NE 'O').DYNAMIC                                  03800000
+         CNOP  0,4                     ALIGN                            03850000
+         AIF   (&A1 EQ 0).GEND                                          03900000
+         ST    &START(1),*+12+&A2+&A3  PASS START ADR                   03950000
+.GEND    AIF   (&A2 EQ 0).GCAN                                          04000000
+         ST    &END(1),*+16+&A3        PASS END ADR                     04050000
+.GCAN    AIF   (&A3 EQ 0).MCGB                                          04100000
+         ST    &PARAM(1),*+20          PARAMETER LIST ADDRESS  @D14CDJO 04150000
+.MCGB    LA    1,=CL8'$$BPDUMP'        POINT TO PHASE NAME              04200000
+         BAL   0,*+16                  SKIP ADDRESSES                   04250000
+         DC    A(&START(1))            BEGIN ADDRESS                    04300000
+         DC    A(&END(1))              END ADDRESS                      04350000
+         DC    A(&PARAM(1))            PARAMETER LIST ADDRESS  @D14CDJO 04400000
+         DC    X'4707413B'             SPECIAL NOOP                     04450000
+         SVC   2                                                        04500000
+         MEXIT                                                          04550000
+.NOLMT   MNOTE 5,'ADDRESS NOT GIVEN. MACRO IGNORED.'                    04600000
+         MEXIT                                                          04650000
+.DYNAMIC ANOP                 ARGUMENT LIST TO BE BUILD IN              04700000
+.*                            DYNAMIC STORAGE SPECIFIED VIA             04750000
+.*                            MFG OPERAND                               04800000
+         AIF   ('&MFG'(1,1) EQ '(').MFDYN                               04850000
+&IMF     SETC  '&MFG'                                                   04900000
+.*                            1= A-TYPE                                 04950000
+         AGO   .MF1                                                     05000000
+.MFDYN   AIF   ('&MFG'(1,3) EQ '(S,').MFSTYP                            05050000
+&IMF     SETC  '0'.'&MFG'                                               05100000
+.*                            2= REGISTER                               05150000
+         AGO   .MF1                                                     05200000
+.MFSTYP  ANOP                                                           05250000
+&IMF     SETC  '&MFG'(4,K'&MFG-4)                                       05300000
+.*                            4= S-TYPE                                 05350000
+.MF1     AIF   ('&START'(1,1) EQ '(').STDYN                             05400000
+         L     0,=A(&START)            PUT START ADDRESS                05450000
+         ST    0,&IMF                  IN PARAMETER AREA                05500000
+         AGO   .EN                                                      05550000
+.STDYN   ANOP                                                           05600000
+         ST    &START(1),&IMF          PUT START ADR IN PARAM  AREA     05650000
+.EN      AIF   ('&END'(1,1) EQ '(').ENDYN                               05700000
+         L     0,=A(&END)              STORE END ADDRESS       @D14CDJO 05750000
+         ST    0,4+&IMF                PARAMETER AREA                   05800000
+         AGO   .CAN                                                     05850000
+.ENDYN   ANOP                                                           05900000
+         ST    &END(1),4+&IMF          PUT END ADR IN PARAM AREA        05950000
+.CAN     AIF   ('&PARAM'(1,1) EQ '(').CANYN                    @D14CDJO 06000000
+         L     0,=A(&PARAM)           STORE PARAMETER LIST     @D14CDJO 06050000
+         ST    0,8+&IMF                ADDRESS                          06100000
+         AGO   .PTRS                                                    06150000
+.CANYN   ANOP                                                           06200000
+         ST    &PARAM(1),8+&IMF        PARAMETER LIST ADDRESS  @D14CDJO 06250000
+.PTRS    ANOP                                                           06300000
+         LA    0,&IMF                  POINT TO PARAM AREA              06350000
+         LA    1,=CL8'$$BPDUMP'        POINT TO PHASE NAME              06400000
+         DC    X'4707413B'             SPECIAL NOOP                     06450000
+         SVC   2                                                        06500000
+         MEND                                                           06550000

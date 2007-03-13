@@ -1,0 +1,136 @@
+STAP     TITLE 'IJJTSEC - VOLUME/FILE ACCESS ROUTINE FOR ANSI LEVEL 3'  00050000
+* IBM  DISK OPERATING SYSTEM                                            00100000
+* MAGNETIC TAPE IOCS - 5686-007-02-C440                        @U31TUJS 00150000
+         PUNCH '         PHASE $IJJTSEC,S,NOAUTO,SVA'                   00200000
+IJJTSEC  START 0                                                        00250000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 00300000
+*                                                                     * 00350000
+*   MACRO:   IJJT$SEC                                                 * 00400000
+*           THIS MACRO IS AVAILABLE IN THE SYSTEM SOURCE STATEMENT    * 00450000
+*           LIBRARY.                                                  * 00500000
+*           THE CUSTOMER MAY CHANGE THIS PHASE TO ADAPT THE ACCESS    * 00550000
+*           CHECK TO HIS OWN INSTALLATION. HE THEN MUST ASSEMBLE      * 00600000
+*           AND LINKEDT IT.                                           * 00650000
+*                                                                     * 00700000
+*   DESCRIPTIVE NAME=                                                 * 00750000
+*           INSTALLATION ROUTINE TO CHECK THE ACCESSIBILITY           * 00800000
+*           FOR THE VOLUME/FILE FOR ANSI LEVEL 3 TAPE FILES.          * 00850000
+*                                                                     * 00900000
+*   COPYRIGHT =                                                       * 00950000
+*           5686-007 (C) COPYRIGHT IBM CORP. 1983,1989         @U31TUJS 01000000
+*           LICENSED MATERIAL - PROGRAM PROPERTY OF IBM               * 01050000
+*           REFER TO COPYRIGHT INSTRUCTIONS                           * 01100000
+*           FORM NUMBER G120-2083                                     * 01150000
+*                                                                     * 01200000
+*   STATUS = DOS/VSE VERSION 2 RELEASE 1                              * 01250000
+*                                                                     * 01300000
+*   FUNCTION: THIS ROUTINE IS USED FOR CHECKING THE ACCESS            * 01350000
+*             TO THE VOLUME/FILE FOR ANSI LEVEL 3 TAPE FILES.         * 01400000
+*                                                                     * 01450000
+*   ATTRIBUTES:  REENTRANT                                            * 01500000
+*                                                                     * 01550000
+*   ENTRY:    THIS PHASE GETS CONTROL WHEN EITHER A VOL1 OR A         * 01600000
+*             HDR1 LABEL HAS BEEN READ                                * 01650000
+*             AND THE SECURITY BYTE INDICATES THAT THE VOLUME/FILE    * 01700000
+*             IS AN ANSI FILE AND THE VOLUME/FILE IS ACCESS PROTECTED * 01750000
+*                                                                     * 01800000
+*   EXITS:    RETURN BY REGISTER 14 WITH A CODE IN REGISTER 15:       * 01850000
+*                REGISTER 15  = 0: ACCESS TO VOLUME/FILE ALLOWED      * 01900000
+*                REGISTER 15  = 4: ACCESS TO VOLUME/FILE NOT ALLOWED  * 01950000
+*                                                                     * 02000000
+*   INPUT:    ALL REGISTERS HAVE BEEN SAVED BY LIOCS BEFORE CALLING   * 02050000
+*               THIS MODULE AND MUST NOT BE RESTORED ON RETURN.       * 02100000
+*             REGISTER 1 POINTS TO A PARAMETER LIST AS FOLLOWS:       * 02150000
+*                4 BYTES ADDRESS OF DTF                               * 02200000
+*                4 BYTES ADDRESS OF VOL1/HDR1 LABEL                   * 02250000
+*                                OR EOF1 LABEL FOR READING BACKWARDS  * 02300000
+*             REGISTER 13 DOES NOT POINT TO A SAVE AREA !             * 02350000
+*             REGISTER 15 DOES NOT CONTAIN THE ADDRESS OF THE         * 02400000
+*               ENTRY POINT.                                          * 02450000
+*             REGISTER 14 CONTAINS THE RETURN ADDRESS AND MUST NOT BE * 02500000
+*               CHANGED.                                              * 02550000
+*                                                                     * 02600000
+*   OUTPUT:   NONE                                                    * 02650000
+*                                                                     * 02700000
+*   MESSAGE:  NONE                                                    * 02750000
+*                                                                     * 02800000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 02850000
+         SPACE 5                                                        02900000
+REG1     EQU   1                                                        02950000
+REG2     EQU   2                                                        03000000
+REG3     EQU   3                                                        03050000
+BASERG   EQU   12                  BASE REGISTER.                       03100000
+REG14    EQU   14                                                       03150000
+REG15    EQU   15                                                       03200000
+         BALR  BASERG,0                                                 03250000
+         USING *,BASERG            ESTABLISH ADDRESSABILITY.            03300000
+         B     AROUND              SKIP                                 03350000
+         DC    C'$IJJTSEC'         PHASE ID                             03400000
+         DC    C'C440'  /*@@LVLID*/    VERSION AND MOD LEVEL   @U31TUJS 03450000
+         DC    CL8' '                  LAST APAR FIXED         @U31TUJS 03500000
+AROUND   DS    0H                                                       03550000
+*---------------------------------------------------------------------  03600000
+*        CHECK FOR RETURN FROM REWIND/UNLOAD                            03650000
+*---------------------------------------------------------------------  03700000
+         SR    REG15,REG15         BE AN OPTIMIST AND ALLOW ACCESS      03750000
+         L     REG2,0(,REG1)       GET ADDRESS OF DTF                   03800000
+         L     REG3,4(,REG1)       GET ADDRESS OF LABEL                 03850000
+         CLC   0(4,REG3),VOL1      IS THE ACTUAL LABEL A VOL1 LABEL ?   03900000
+         BNE   HDRCHK              NO, BRANCH. HDR1 IS ASSUMED          03950000
+*---------------------------------------------------------------------  04000000
+*        VOLUME ACCESS CHECKING                                         04050000
+*---------------------------------------------------------------------  04100000
+*                                                                       04150000
+*        THE FOLLOWING PIECE OF CODE IS AN EXAMPLE                      04200000
+*        HOW TO EXTENT THE CHECK FOR THE VOLUME ACCESSIBILITY.          04250000
+*                                                                       04300000
+*        CLC   VSYSCODE(L'VSESYS,REG3),VSESYS   LABEL BUILD BY VSE ?    04350000
+*        BNE   ALLOWNOT            NO, BRANCH                           04400000
+*        CLI   VACCBYTE(REG3),C'5' VOLUME ACCESS CODE = '5' ?           04450000
+*        BE    ALLOW               YES, ALLOW ACCESS TO VOLUME          04500000
+*                                                                       04550000
+         B     ALLOWNOT            ACCESS TO VOLUME NOT ALLOWED         04600000
+         SPACE                                                          04650000
+*---------------------------------------------------------------------  04700000
+*        FILE ACCESS CHECKING                                           04750000
+*---------------------------------------------------------------------  04800000
+HDRCHK   CLC   HSYSCODE(L'VSESYS,REG3),VSESYS   LABEL BUILD BY VSE ?    04850000
+         BE    HDRCHK1             YES, CHECK ACCESS CODE               04900000
+         CLC   HSYSCODE(L'VSEACT,REG3),VSEACT   LABEL BUILD BY VSE ?    04950000
+         BE    HDRCHK1             YES, CHECK ACCESS CODE               05000000
+         CLC   HSYSCODE(L'VSEOLD,REG3),VSEOLD   LABEL BUILD BY VSE ?    05050000
+         BE    HDRCHK1             NO, BRANCH                           05100000
+         CLC   HSYSCODE(L'ALLZERO,REG3),ALLZERO  LABEL BUILD BY VSE ?   05150000
+         BNE   ALLOWNOT            NO, BRANCH                           05200000
+HDRCHK1  CLI   HACCBYTE(REG3),C'0' FILE ACCESS CODE = '0' ?             05250000
+         BE    ALLOW               YES, ALLOW ACCESS TO FILE            05300000
+         CLI   HACCBYTE(REG3),X'00' FILE ACCESS CODE = HEX 00 ?         05350000
+         BE    ALLOW               YES, ALLOW ACCESS TO FILE            05400000
+*                                                                       05450000
+*        THE FOLLOWING PIECE OF CODE IS AN EXAMPLE                      05500000
+*        HOW TO EXTENT THE CHECK FOR THE FILE ACCESSIBILITY.            05550000
+*                                                                       05600000
+*        CLI   HACCBYTE(REG3),C'5' VOLUME ACCESS CODE = '5' ?           05650000
+*        BE    ALLOW               YES, ALLOW ACCESS TO FILE            05700000
+*                                                                       05750000
+         B     ALLOWNOT            ACCESS TO FILE NOT ALLOWED           05800000
+         SPACE                                                          05850000
+*---------------------------------------------------------------------  05900000
+*        RETURN TO CALLING PHASE                                        05950000
+*---------------------------------------------------------------------  06000000
+ALLOWNOT LA    REG15,4             DON'T ALLOW ACCESS                   06050000
+ALLOW    BR    REG14               RETURN TO LIOCS                      06100000
+         EJECT                                                          06150000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 06200000
+*        CONSTANTS AND WORK AREA                                      * 06250000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 06300000
+VSYSCODE EQU   24                  OFFSET TO SYSTEM CODE IN VOL1 LABEL  06350000
+HSYSCODE EQU   60                  OFFSET TO SYSTEM CODE IN HDR1 LABEL  06400000
+VACCBYTE EQU   10                  OFFSET TO ACCESS BYTE IN VOL1 LABEL  06450000
+HACCBYTE EQU   53                  OFFSET TO ACCESS BYTE IN HDR1 LABEL  06500000
+VOL1     DC    C'VOL1'                                                  06550000
+VSESYS   DC    C'IBMZLB '          SYSTEM CODE FOR LABEL VERSION 3      06600000
+VSEACT   DC    C'IBMDOSVS  '       SYSTEM CODE FOR DOS/VSE              06650000
+VSEOLD   DC    C'DOS VER 5 '       SYSTEM CODE FOR DOS/VSE              06700000
+ALLZERO  DC    X'00000000000000000000'  ZERO SYSTEM CODE                06750000
+* END OF COPY BOOK                                                      06800000

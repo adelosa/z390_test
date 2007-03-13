@@ -1,0 +1,171 @@
+         MACRO                                                          00050000
+         SGVSEPT   &PROBE=,&SAVE=YES,&COMMON=NO                         00100000
+.*##################################################################### 00150000
+.*###############               ####################################### 00200000
+.*###############  DECLARATION  ####################################### 00250000
+.*###############               ####################################### 00300000
+.*##################################################################### 00350000
+         LCLA  &ERRFLAG      ERROR FLAG, SET "1" IF ERROR OCCURED       00400000
+         LCLA  &HIGBOUN      HIGH BOUNDERY OF PROBE POINT RANGE         00450000
+         LCLA  &LOWBOUN      LOW BOUNDERY OF PROBE POINT RANGE          00500000
+.************************************************************           00550000
+.*                                                          *           00600000
+.*       IBM DISK OPERATING SYSTEM                          *           00650000
+.*       SUPERVISOR - SGVSEPT - 5686-032                    *           00700000
+         AGO   .NOCOPY                                      *           00750000
+*        LICENSED MATERIALS - PROPERTY OF IBM               *           00800000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"        *           00850000
+*        5686-066 (C) COPYRIGHT IBM CORP. 1990, 1997        *           00900003
+*        SEE COPYRIGHT INSTRUCTIONS                         *           00950000
+*                                                           *           01000000
+*************************************************************           01050000
+*                                                                       01100000
+* MACRO NAME:             ***********************                       01150000
+*                         * ################### *                       01200000
+*                         * #                 # *                       01250000
+*                         * #  S G V S E P T  # *                       01300000
+*                         * #                 # *                       01350000
+*                         * ################### *                       01400000
+*                         ***********************                       01450000
+*                                                                       01500000
+*                                                                       01550000
+* FUNCTION:   HANDLE THE BALR INTERFACE TO PERFORMANCE MONITOR          01600000
+*                                                                       01650000
+* SYNTAX:                                                               01700000
+*                                                                       01750000
+*             SGVSEPT    MANDATORY      (MACRO-NAME)                    01800000
+*             PROBE      MANDATORY      (IDENTIFY THE CALLING FUNCTION) 01850000
+*             SAVE       OPTIONAL       (IF REGS 14,15 TO BE SAVED)     01900000
+*             COMMON     OPTIONAL       (CREATES INTERFACE CODE ONCE    01950000
+*                                       WHICH IS COMMON TO ALL CALLERS) 02000000
+*                                                                       02050000
+* VARIABLES:  ARITHMETIC                                                02100000
+*             &ERRFLAG      ERROR FLAG, SET "1" IF ERROR OCCURED        02150000
+*             &HIGBOUN      HIGH BOUNDERY OF PROBE POINT RANGE          02200000
+*             &LOWBOUN      LOW BOUNDERY OF PROBE POINT RANGE           02250000
+*                                                                       02300000
+* OPERATION: 1- DECLARATION                                             02350000
+*            2- INITIALISATION                                          02400000
+*            3- CHECK IF PARAMETER ARE OMITTED                          02450000
+*            4- BUILD INTERFACE                                         02500000
+*                                                                       02550000
+* SPECIAL HINTS:                                                        02600000
+*         THIS CODE MUST BE EXECUTABLE IN AMODE(24) AS WELL             02616601
+*         AS IN AMODE(31)                                               02633201
+*                                                                       02649801
+* CHANGE ACTIVITIES                                                     02666401
+*        ALLOW MONITOR TO BE CALLED IN AMODE(31)                D52VDKH 02683001
+*        NEW PROBE POINT 18 WHEN PHASE NOT FOUND                DY44545 02684003
+*        SAVE RETURN CODE PASSED BY VENDOR CODE                 DY44545 02685003
+*                                                                       02700000
+*********************************************************************** 02750000
+.*                                                                      02800000
+.*                                                                      02850000
+.NOCOPY  ANOP                                                           02900000
+.*##################################################################### 02950000
+.*################ INITIALISATION  #################################### 03000000
+.*##################################################################### 03050000
+&HIGBOUN SETA  18             HIGH BOUNDERY OF PROBE POINT RANGE        03100003
+&LOWBOUN SETA  1              LOW BOUNDERY OF PROBE POINT RANGE         03150000
+&ERRFLAG SETA  0              ERROR FLAG, SET "1" IF ERROR OCCURED      03200000
+.*##################################################################### 03250000
+.*###############  CHECK IF PARAMETERS ARE OMITTED           ########## 03300000
+.*##################################################################### 03350000
+.*--------------------------- CHECK IF COMMON CODE TO BE GENERATED ---- 03400000
+         AIF   ('&COMMON' EQ 'NO').CHKNOCO                              03450000
+         AIF   ('&COMMON' EQ 'YES').GENCOMM                             03500000
+&ERRFLAG SETA  1                                                        03550000
+         MNOTE 16,'ERROR - ILLEGAL COMMON PARAMETER SPECIFIED'          03600000
+         AGO   .ENDE                                                    03650000
+.*--------------------------- CHECK IF PROBE POINTS ARE OMMITTED ------ 03700000
+.CHKNOCO AIF   (T'&SAVE EQ 'O').CHKPROB                                 03750000
+         AIF   ('&SAVE' EQ 'NO').CHKPROB                                03800000
+         AIF   ('&SAVE' EQ 'YES').CHKPROB                               03850000
+&ERRFLAG SETA  1                                                        03900000
+         MNOTE 16,'ERROR - ILLEGAL SAVE PARAMETER SPECIFIED'            03950000
+         AGO   .ENDE                                                    04000000
+.*--------------------------- CHECK IF PROBE POINTS ARE OMMITTED ------ 04050000
+.CHKPROB AIF   (T'&PROBE NE 'O').CHKRANG                                04100000
+&ERRFLAG SETA  1                                                        04150000
+         MNOTE 16,'ERROR - NO PROBE POINT SPECIFED'                     04200000
+         AGO   .ENDE                                                    04250000
+.*--------------------------- CHECK IF PROBE POINT IS POSSIBLE -------- 04300000
+.CHKRANG AIF   ( (&PROBE GE &LOWBOUN)                                  X04350000
+                 AND                                                   X04400000
+                 (&PROBE LE &HIGBOUN)    ).CHKERR                       04450000
+&ERRFLAG SETA  1                                                        04500000
+         MNOTE 16,'ERROR - PROBE POINT HAS NO VALID VALUE'              04550000
+.CHKERR  ANOP                                                           04600000
+         AIF   (&ERRFLAG EQ 1).ENDE                                     04650000
+.*##################################################################### 04700000
+.*###############  GENERATE CODE FOR PROBE POINTS  #################### 04750002
+.*##################################################################### 04800000
+.ALLOK   ANOP                                                           04850000
+         AIF   ('&SAVE' EQ 'NO').NOSAVE                                 04900000
+         STM   RE,RF,VSEPTSA            * SAVE REGS IN LOW CORE         04950000
+.NOSAVE  ANOP                                                           05000000
+         L     RF,AVSEPTCC              * ADDR OF COMMON CODE           05050000
+         BALR  RE,RF                    * GO THERE                      05100000
+         DC    AL2(PRB&PROBE)           * MACRO FUNCTION CODE           05150000
+         AIF   ('&SAVE' EQ 'NO').ENDE                                   05200000
+         LM    RE,RF,VSEPTSA            * RESTORE REGISTERS             05250000
+         AGO   .ENDE                                                    05300000
+.*##################################################################### 05310002
+.*############### BUILD INTERFACE TO PERFORMANCE MONITOR ############## 05320002
+.*##################################################################### 05330002
+.GENCOMM ANOP                                                           05350000
+         USING *,RF                                                     05400000
+VSEPTCMB DS    0H                                                       05450000
+         MVC   VSEPTRID,RID             * SAVE CURRENT RID              05500000
+         MVC   COMMFC(2),0(RE)          * CALLER'S FUNCTION CODE        05600004
+         ST    R1,COMMSAV                                      @D52VDKH 05612401
+         AMODESW QRY                                           @D52VDKH 05618601
+         LA    RE,0(RE)                 * CLEAR BIT-0          @D52VDKH 05624801
+         OR    RE,R1                    * SET BIT-0 TO AMODE   @D52VDKH 05631001
+         L     R1,COMMSAV                                      @D52VDKH 05637201
+         ST    RE,COMMSAV               * SAVE RETURN ADDRESS           05650000
+         DROP  RF                                                       05660002
+         MVI   RID+1,SYSTEMID           * DO NOT ALLOW INTERRUPTS       05675001
+         L     RF,IJBPTCOM              *                               05700000
+         L     RF,PTAIFCOD-VSEPTCOM(,RF) * GET MONITOR ADDRESS          05750000
+         OI    IJBFLG08,IJBPTACT        * CONTROL GIVEN TO MONITOR      05800000
+         BASSM RE,RF                    * CALL VSE/PT          @D64ADOW 05820002
+COMMFC   DC    H'0'                     * FUNCTION CODE OF CALLER       05900002
+         NI    IJBFLG08,X'FF'-IJBPTACT  * CONTROL RETURNED FROM MONITOR 05950001
+         LR    RE,RF                    * SAVE RETURN CODE     @D64ADOW 05960001
+         BASR  RF,0                     * SETUP BASE REG       @D64ADOW 06000001
+         USING *,RF                                                     06008301
+         MVC   RID,VSEPTRID             * RESTORE CURRENT RID           06150000
+         ST    RE,COMMSAVR              * SAVE RETURN CODE     @D64ADOW 06160004
+         L     RE,COMMSAV               * GET RETURN ADDRESS            06161001
+         ST    R1,COMMSAV               *SAVE WORK REG         @D52VDKH 06183201
+         AMODESW SET,AMODE=(RE),WR=(R1) *                      @D52VDKH 06205202
+         L     R1,COMMSAV               *RESTORE REGISTER      @D52VDKH 06216401
+         L     RF,COMMSAVR              *RESTORE RETURN CODE   @D64ADOW 06216501
+         DROP  RF                                                       06260001
+VSEPTRET DS    0H                                                       06270001
+         B     2(,RE)                   * RETURN                        06300000
+*                                                                       06350002
+COMMSAV  DC    A(0)                                                     06400002
+COMMSAVR DC    A(0)                                            @D64ADOW 06410002
+VSEPTRID DC    H'0'                                                     06450000
+PRB1     EQU   1                                                        06550000
+PRB2     EQU   2                                                        06600000
+PRB3     EQU   3                                                        06650000
+PRB4     EQU   4                                                        06700000
+PRB5     EQU   5                                                        06750000
+PRB6     EQU   6                                                        06800000
+PRB7     EQU   7                                                        06850000
+PRB8     EQU   8                                                        06900000
+PRB9     EQU   9                                                        06950000
+PRB10    EQU   10                                                       07000000
+PRB11    EQU   11                                                       07050000
+PRB12    EQU   12                                                       07100000
+PRB13    EQU   13                                                       07150000
+PRB14    EQU   14                                                       07200000
+PRB15    EQU   15                                                       07250000
+PRB16    EQU   16                                                       07300000
+PRB17    EQU   17                                                       07350000
+PRB18    EQU   18                                              @DY44545 07360003
+.ENDE    ANOP                                                           07400000
+         MEND                                                           07450000

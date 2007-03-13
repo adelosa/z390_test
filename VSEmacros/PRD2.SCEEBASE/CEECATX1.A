@@ -1,0 +1,158 @@
+*ASM CICS(NOPROLOG NOEPILOG NOEDF SYSEIB)                               00001000
+         TITLE 'LE-CICS abnormal termination exit - Predump'            00002000
+**********************************************************************  00003000
+*                                                                    *  00004000
+*     LICENSED MATERIALS - PROPERTY OF IBM                           *  00005000
+*                                                                    *  00006000
+*     5686-066-32-75K  (C) COPYRIGHT IBM CORP. 1998, 2002            *  00007000
+*     ALL RIGHTS RESERVED.                                           *  00008000
+*                                                                    *  00009000
+*      US Government Users Restricted Rights - Use, duplication or   *  00010000
+*      disclosure restricted by GSA ADP Schedule Contract with IBM   *  00011000
+*      Corp.                                                         *  00012000
+*                                                                    *  00013000
+**********************************************************************  00013080
+*                                                                    *  00013160
+* :History                                                           *  00013240
+*                                                                    *  00013320
+* APAR     Author    Date          Comments                          *  00013400
+*                                                                    *  00013480
+* PQ72056   GWH     17/03/2003     Add ATNI abend code to default    *  00013560
+*                                   list of supressed abend codes.   *  00013640
+*                                                                    *  00013720
+* :eHistory                                                          *  00013800
+*                                                                    *  00013880
+**********************************************************************  00014000
+CEECATX1 CEEENTRY PPA=ASMPPA,MAIN=NO,AUTO=STORLEN                       00015000
+         USING DFHEISTG,DFHEIPLR                                        00016000
+         USING CEECAA,R12                                               00017000
+**********************************************************************  00018000
+* Get CIB address into register 2                                    *  00019000
+**********************************************************************  00020000
+         L     R2,0(,R1)                                                00021000
+         L     R2,0(,R2)                                                00022000
+         USING CEECIB,R2                                                00023000
+**********************************************************************  00024000
+* Address the EIB (via register 10)                                  *  00025000
+**********************************************************************  00026000
+         EXEC CICS ADDRESS EIB(DFHEIBR)                                 00027000
+         USING DFHEIBLK,DFHEIBR                                         00028000
+**********************************************************************  00029000
+* Initialize our return code in Register 9                           *  00030000
+**********************************************************************  00031000
+         LA    R9,0                                                     00032000
+**********************************************************************  00033000
+* Extract the abend code from the CIB                                *  00034000
+**********************************************************************  00035000
+         L     R5,CIB_ABCD                                              00036000
+         LTR   R5,R5                                                    00037000
+         BZ    ENDIT              No abend code, return to LE           00038000
+         ST    R5,AB_CODE                                               00039000
+**********************************************************************  00040000
+* Check if the abend code is one for which the dump should be        *  00041000
+* suppressed.                                                        *  00042000
+**********************************************************************  00043000
+         LA    R3,ABEND_CODES                                           00044000
+         L     R4,0(,R3)          Get count of abend codes in R4        00045000
+         LA    R5,0               Initialize R5 as the loop counter     00046000
+LOOP     DS    0H                                                       00047000
+         LA    R6,1                                                     00048000
+         ALR   R5,R6              Increment the loop counter            00049000
+         CR    R5,R4              Check if at the end of the table      00050000
+         BH    ENDLOOP            ...Yes, leave the loop                00051000
+         LA    R6,4                                                     00052000
+         ALR   R3,R6              Bump R3 to the next table entry       00053000
+         CLC   0(4,R3),AB_CODE    Is this table entry the abend code?   00054000
+         BNE   LOOP               ...No, keep looking.                  00055000
+         LA    R9,8               ...Yes, set return code to 8          00056000
+**********************************************************************  00057000
+* Check the return code to see if the abend code was found in the    *  00058000
+* table. If so, call CEEMOUT to write a message showing the terminal,*  00059000
+* transaction, abend code and indicating the dump has been           *  00060000
+* suppressed.                                                        *  00061000
+**********************************************************************  00062000
+ENDLOOP  DS    0H                                                       00063000
+         LTR   R9,R9                                                    00064000
+         BZ    ENDIT                                                    00065000
+* Write a message to the LE message file                                00066000
+         MVC   MOUTMSG(AB_LEN),AB_MSG                                   00067000
+         MVC   MOUTMSG+12(4),EIBTRMID                                   00068000
+         MVC   MOUTMSG+30(4),EIBTRNID                                   00069000
+         MVC   MOUTMSG+42(4),AB_CODE                                    00070000
+*   Setup the parameter list to CEEMOUT. Do not omit the feedback code. 00071000
+         LA    R4,MOUTMSG                                               00072000
+         LA    R5,DEST                                                  00073000
+         LA    R6,FBCODE                                                00074000
+         STM   R4,R6,PLIST                                              00075000
+*   Point to the parameter list and call CEEMOUT                        00076000
+         LA    R1,PLIST                                                 00077000
+         L     R15,MOUT                                                 00078000
+         BALR  R14,R15                                                  00079000
+ENDIT    DS 0H                                                          00080000
+         CEETERM RC=(9)                   All done, return to LE/VSE    00081000
+         DS 0F                                                          00082000
+CEE000   DS    3F'0'              Success feedback code                 00083000
+*                                                                       00084000
+AB_MSG   DS     0F                                                      00085000
+         DC     AL2(AB_END-AB_ST)                                       00086000
+AB_ST    DC     C'Terminal: XXXX Transaction: XXXX Abend: XXXX - dump sX00087000
+               uppressed'                                               00088000
+AB_END   EQU    *                                                       00089000
+AB_LEN   EQU    *-AB_MSG                                                00090000
+*                                                                       00091000
+*                                                                       00092000
+**********************************************************************  00093000
+* Table of abend codes for which dumps should be supressed.          *  00094000
+**********************************************************************  00095000
+ABEND_CODES DS 0F                                                       00096000
+         DC     A(((ABEND_CODES_END-ABEND_CODES)/4)-1)                  00097000
+         DC     C'AKCP'                                                 00098000
+         DC     C'AKCS'                                                 00099000
+         DC     C'AKCT'                                                 00100000
+         DC     C'ATCI'                                                 00101000
+         DC     C'ATCH'                                                 00102000
+         DC     C'ATNI'                                       @PQ72056  00102500
+         DC     C'AZTS'                                                 00103000
+ABEND_CODES_END DS 0H                                                   00104000
+*                                                                       00105000
+         DS 0F                                                          00106000
+DEST     DC     F'2'              The destination is the MSGFILE        00107000
+         DS 0F                                                          00108000
+MOUT     DC     V(CEEMOUT)        The CEL Message service               00109000
+ASMPPA   CEEPPA                                                         00110000
+         CEEDSA                                                         00111000
+         CEECAA                                                         00112000
+         CEECIB                                                         00113000
+         DFHEISTG                 Extended save area for CICS           00114000
+         DS 0F                                                          00115000
+AB_CODE  DS CL4                                                         00116000
+         DS 0F                                                          00117000
+MOUTMSG  DS    XL(AB_LEN)                                               00118000
+         DS 0F                                                          00119000
+FBCODE   DS 3F                    Space for a 12-byte feedback code     00120000
+PLIST    DS 0D                                                          00121000
+PARM1    DS A                                                           00122000
+PARM2    DS A                                                           00123000
+PARM3    DS A                                                           00124000
+PARM4    DS A                                                           00125000
+PARM5    DS A                                                           00126000
+STORLEN  EQU   *-DFHEISTG                                               00127000
+         COPY  DFHEIBLK                                                 00128000
+         EXTRN DFHEAI                                                   00129000
+R1       EQU   1                                                        00130000
+R2       EQU   2                                                        00131000
+R3       EQU   3                                                        00132000
+R4       EQU   4                                                        00133000
+R5       EQU   5                                                        00134000
+R6       EQU   6                                                        00135000
+R7       EQU   7                                                        00136000
+R8       EQU   8                                                        00137000
+R9       EQU   9                                                        00138000
+R10      EQU   10                                                       00139000
+R11      EQU   11                                                       00140000
+R12      EQU   12                                                       00141000
+R14      EQU   14                                                       00142000
+R15      EQU   15                                                       00143000
+DFHEIBR  EQU   10                                                       00144000
+DFHEIPLR EQU   13                                                       00145000
+         END CEECATX1                                                   00146000

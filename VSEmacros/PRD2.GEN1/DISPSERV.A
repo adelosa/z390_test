@@ -1,0 +1,949 @@
+         MACRO                                                          00001016
+         DISPSERV                                                       00002016
+***************************************************************         00003016
+*                                                             *         00004016
+.*       IBM DISK OPERATING SYSTEM                            *         00005016
+*        SUPERVISOR - DISPSERV - 5686-066-06                  *         00006016
+.*                                                            *         00007016
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00008016
+*        "RESTRICTED MATERIALS OF IBM"                        *         00009016
+*        5686-066                                             *         00010016
+*        (C) COPYRIGHT IBM CORP. 1994, 2001                   *         00011016
+*                                                             *         00012016
+***************************************************************         00013016
+.* /* START OF SPECIFICATIONS                                           00014016
+.*01  MODULE-TYPE      = SUPERVISOR GENERATION MACRO                    00015016
+.*01  DESCRIPTIVE NAME = DISPATCHER SERVICES                            00016016
+.*01  NOTES            = CHANGE ACTIVITY                                00017016
+.*    DISPATCHER SERVICES SEPARATED FROM DISP MACRO            @D61PDIS 00018016
+.*    VSE/TRACE: SUBTASKING NOT CONSIDERED                     @KXA0065 00019016
+.*    PC-SS SUPPORT                                            @D64XDMZ 00020016
+.*    MORE THAN 255 TASKS                                      @D66ODOW 00020116
+.*    PROVIDE FOR REASON CODE TO BE RETURNED WITH CANC.CODE FE @DY45849 00020217
+.*02  PROCESSOR        = ASSEMBLER                                      00020317
+.**** END OF SPECIFICATIONS ******************************************/ 00020417
+         GBLB  &DISPSER           PRINT REQUIRED                        00020517
+         AIF   (NOT &DISPSER).NOPRT10                                   00020617
+         PRINT GEN                                                      00020717
+.NOPRT10 ANOP                                                           00020817
+         TITLE 'VSE/AF SUPERVISOR    DISPSERV   DISPATCHER SERVICES'    00020917
+***************************************************************         00021017
+* DISPSERV - DISPATCHER SERVICES                                        00021117
+***************************************************************         00022016
+*          - REGISTER USAGE                                             00023016
+*            INPUT:                                                     00024016
+*              R0 - FUNCTION CODE                                       00025016
+*              R6 - DISPSERV ADDRESS                                    00026016
+*              R7 - RETURN ADDRESS (LINK REGISTER)                      00027016
+*              REGISTERS DEFINED BY SERVICE                             00028016
+*            OUTPUT:                                                    00029016
+*              DEFINED BY SERVICE                                       00030016
+*            WORK:                                                      00031016
+*              R0, R2                                                   00032016
+*              DEPENDENT ON SERVICE                                     00033016
+*  >>>>>> MUST BE CALLED WITH 'AMODESW CALL,REGS=(R7,R6)' <<<<<<<       00034016
+*            AMODE: 31                                                  00035016
+*            DISABLED (EXCEPT FUNCTION CODE 8)                          00036016
+***************************************************************         00037016
+         DC    CL8'DISPSERV'       MACRO NAME                  @D61NDIS 00038016
+         DC    CL8'        '       LAST APAR FIX               @D61NDIS 00039016
+         DC    CL10'02/26/2001'    LAST DEVELOPMENT            @D66ODOW 00040016
+         SPACE 1                                               @D14BDIS 00041016
+         USING DISPSERV,R6                                     @D52HDIS 00042016
+DISPSERV DS    0H                                              @D52HDIS 00043016
+         CH    R0,DISPSELF        FUNCTION CODE SUPPORTED ?    @D52HDIS 00044016
+         BH    DISPSEHW           NO, SYSTEM ERROR             @D61NDIS 00045016
+         LR    R2,R0              GET FUNCTION CODE     .      @D52GDIS 00046016
+         C     R2,F8              FUNCTION CODE 8 ?     .      @D61NDIS 00047016
+         BNE   DISPSERD           NO, CALLER ALREADY DISABLED  @D61NDIS 00048016
+         STNSM PSWMASK,DISABLE    DISABLE INTERRUPTS           @D61NDIS 00049016
+DISPSERD DS    0H                                              @D61NDIS 00050016
+         L     R0,DISPSERS    GET DEBUG INDICATION             @D61NDIS 00051016
+*        DEBUG ALLREGS,XXDBGMC                                 @D61NDIS 00052016
+         DEBUG ALLREGS,XXDBGMC                                 @D61NDIS 00053016
+         L     R2,DISPSERT(R2)    GET ROUTINE ADDRESS          @D52GDIS 00054016
+         SLR   R0,R0              RESET REGISTER               @D61NDIS 00055016
+         BR    R2                 BRANCH TO ROUTINE            @D52GDIS 00056016
+         EJECT ,                                               @D61NDIS 00057016
+*--------------------------------------------------------------         00058016
+* DISPSERT - SERVICE ROUTINE ADDRESS TABLE                              00059016
+*          - ALL ROUTINES HAVE TO BE ENTERED IN DISABLED STATE          00060016
+*--------------------------------------------------------------         00061016
+DISPSERT DS    0F                                              @D52GDIS 00062016
+         DC    A(DISPSER0)        GET RESOURCE OWNER           @D52GDIS 00063016
+         DC    A(DISPSER4)        PROCESS CANCEL WITH ADD. MSG.@D52GDIS 00064016
+         DC    A(DISPSER8)        GET 'SVC-LIKE' STATE         @D61PDOW 00065016
+         DC    A(DISPSE12)        RETURN 'SVC-LIKE' STATE      @D61PDOW 00066016
+         DC    A(DISPSE16)        ESTABLISH SYSTEM DU-AL       @D61PDIS 00067016
+         DC    A(DISPSE20)        RE-ESTABLISH TASK'S DU-AL    @D61PDIS 00068016
+         DC    A(DISPSE24)        MOVE CANCEL INFORMATION      @D61PDIS 00069016
+         DC    A(DISPSE28)        RESET CANCEL INFORMATION     @D61PDIS 00070016
+         DC    A(DISPSE32)        RESET ESA STRUCTURE          @D61PDIS 00071016
+         DC    A(DISPSE36)        INITIALIZE ASTE              @D61CDIS 00072016
+DISPSERL EQU   *-DISPSERT         CURRENT LENGTH OF TABLE      @D52GDIS 00073016
+DISPSERS DC    CL4'DSRS'          DISPSERV DEBUG IND. - START  @D61NDIS 00074016
+DISPSELF DC    AL2(DISPSERL-4)    MAX. FUNCTION CODE SUPPORTED @D52GDIS 00075016
+         SPACE 2                                                        00076016
+*--------------------------------------------------------------         00077016
+* DISPSEHW - SYSTEM ERROR (HARDWAIT)                                    00078016
+*--------------------------------------------------------------         00079016
+DISPSEHW DS    0H                                              @D61PDOW 00080016
+         MVI   IJBHWORG,HWORG232  UNIQUE HARD WAIT ORIGINATOR  @D61PDOW 00081016
+         ST    R5,DS0809S                                      @D61PDOW 00082016
+         BAL   R5,SYSERROR        HARD WAIT OTHERWISE          @D61PDOW 00083016
+         SPACE 2                                               @D61NDIS 00084016
+DS0809S  DC    A(0)               REG 5 SAVE AREA              @D61PDOW 00085016
+         EJECT ,                                               @D61NDIS 00086016
+*--------------------------------------------------------------         00087016
+* DISPSRE4 - GENERAL DISPSERV EXIT RETURN ADDRESS + 4                   00088016
+*--------------------------------------------------------------         00089016
+DISPSRE4 DS    0H                                              @D61NDIS 00090016
+         A     R7,F4              ADJUST RETURN ADDRESS        @D61NDIS 00091016
+*--------------------------------------------------------------         00092016
+* DISPSRET - GENERAL DISPSERV EXIT                                      00093016
+*            - NO DEBUG ENTRY GIVEN, BECAUSE FUNCTION CODE 12  @DTEMPIS 00094016
+*              ENABLES FOR INTERRUPTS                          @DTEMPIS 00095016
+*--------------------------------------------------------------         00096016
+DISPSRET DS    0H                                              @D61NDIS 00097016
+*        AMODESW RETURN,REG=(R7)  RETURN TO CALLER             @D61PDIS 00098016
+         AMODESW RETURN,REG=(R7)  RETURN TO CALLER             @D61PDIS 00099016
+         EJECT ,                                               @D52GDIS 00100016
+*--------------------------------------------------------------         00101016
+* DISPSER0 - FUNCTION CODE 0                                            00102016
+*            RETURN THE TASK ID OF A TASK THAT OWNS                     00103016
+*            A RESOURCE OF A GIVEN BOUND CONDITION, IF ANY.             00104016
+*            INPUT:                                                     00105016
+*              R1 - TIB ADDRESS                                         00106016
+*              R6 - DISPSERV ADDRESS                                    00107016
+*              R7 - RETURN ADDRESS (LINK REGISTER)                      00108016
+*            OUTPUT:                                                    00109016
+*              R0 - TASK ID, IF UNIQUE RESOURCE OWNER                   00110016
+*                   0 OTHERWISE                                         00111016
+*            WORK: R2                                                   00112016
+*            AMODE: 31                                                  00113016
+*--------------------------------------------------------------         00114016
+DISPSER0 DS    0H                                              @D52HDIS 00115016
+         USING TIBADR,R1                                       @D52HDIS 00116016
+         SLR   R0,R0              CLEAR REGISTER FOR INSERT    @D61NDIS 00117016
+         SLR   R2,R2              CLEAR REGISTER FOR INSERT    @D52HDIS 00118016
+         IC    R2,TIBRQID         GET BOUND CONDITION          @D52HDIS 00119016
+         SLL   R2,3                                            @D52HDIS 00120016
+         CLI   TIBRQID,PARTGATE   IS IT A PARTITION RESOURCE   @D52HDIS 00121016
+         BNL   DISPSERP           YES, GOTO ADDR.IT IN PCB     @D52HDIS 00122016
+         A     R2,ASRQTAB         ADDRESS OF RESOURCE DESCRIPT.@D61MPIS 00123016
+DISPSERA DS    0H                                              @D52HDIS 00124016
+         USING RQADR,R2                                        @D52HDIS 00125016
+         TM    RQFLAG,SYSTQ+PARTQ CHAINED RESOURCE ?           @D52HDIS 00126016
+         BZ    DISPSRET           NO, RETURN TO CALLER         @D61NDIS 00127016
+         LH    R0,RSCDESC         GET RESOURCE OWNER           @D66ODOW 00128016
+         N     R0,DISPSMSK        ENSURE VALID TID OR 0        @D66ODOW 00129016
+         B     DISPSRET           RETURN TO CALLER             @D61NDIS 00130016
+DISPSMSK DC    A(32767)                                        @D66ODOW 00131016
+         DROP  R2                                              @D52HDIS 00132016
+         SPACE 2                                               @D52HDIS 00133016
+*--------------------------------------------------------------         00134016
+*          - GET PARTITION'S RESOURCE QUEUE                             00135016
+*--------------------------------------------------------------         00136016
+DISPSERP DS    0H                                              @D52HDIS 00137016
+         S     R2,DPGATE          DETERMINE DISPL.IN PCB       @D52HDIS 00138016
+         A     R2,TIBPCB          POINT TO RESOURCE DESCRIPTOR @D52HDIS 00139016
+         B     DISPSERA           GOTO TEST RESOURCE           @D52HDIS 00140016
+         DROP  R1                                              @D52GDIS 00141016
+         DROP  R6                                              @D52HDIS 00142016
+         EJECT ,                                               @D52GDIS 00143016
+*--------------------------------------------------------------         00144016
+* DISPSER4 - FUNCTION CODE 4                                            00145016
+*            PROVIDE ADDITIONAL CANCEL INFORMATION AS                   00146016
+*            INPUT FOR THE DUMP ROUTINE FOR THE SERVICED TASK           00147016
+*            AND PROCESS THE CANCEL REQUEST FOR THE CURRENT TASK.       00148016
+*            THE ADDRESS OF THE ADDITIONAL MESSAGE INFORMATION          00149016
+*            IS LOCATED IN TCBDMPIP.                                    00150016
+*            THE LAYOUT OF THE MSG INFO. AREA IS DEFINED BY MAPDMPIF.   00151016
+*            IF TCBDMPIP IS ZERO, REGISTER 1 HAS TO HOLD                00152016
+*               THE ADDRESS OF THE MESSAGE INFO. ON INPUT.              00153016
+*            IF TCBDMPIP IS NOT ZERO, TCBDMPIP CONTAINS                 00154016
+*                 - THE POINTER TO ADDITIONAL MSG INFORMATION           00155016
+*                 - IF HIGH ORDER BIT SET,                              00156016
+*                       FREEVIS REQUESTED BY TERMINATOR                 00157016
+*                                                                       00158016
+*            TCBDMPIP WILL BE CLEARED AFTER MESSAGE INFO. IS MOVED.     00159016
+*                                                                       00160016
+*            INPUT:                                                     00161016
+*              R1 - ONLY NECESSARY, WHEN TCBDMPIP NOT SET               00162016
+*                   POINTER TO ADDITIONAL MSG INFORMATION               00163016
+*                   LAYOUT DEFINED BY MAPDMPIF                          00164016
+*                   IF HIGH ORDER BIT SET,                              00165016
+*                       FREEVIS REQUESTED BY TERMINATOR                 00166016
+*              R6 - DISPSERV ADDRESS                                    00167016
+*              RB - CANCEL CODE                                         00168016
+*            EXIT: ERRGO CANCEL ROUTINE                                 00169016
+*            AMODE: 31, DISABLED                                        00170016
+*--------------------------------------------------------------         00171016
+         USING DISPSERV,R6                                     @D52GDIS 00172016
+DISPSER4 DS    0H                                              @D52GDIS 00173016
+         L     R8,TIBPTR          GET CURRENT TIB ADDRESS      @D52GDIS 00174016
+         USING TIBADR,R8                                       @D52GDIS 00175016
+         LH    R8,TIBRTID         LOAD TIB POINTER             @D52GDIS 00176016
+         SLL   R8,2                 OF                         @D66ODOW 00177016
+         AL    R8,ATIBATAB          SERVICED                   @D66ODOW 00177116
+         L     R8,0(,R8)            TASK                       @D66ODOW 00177216
+         L     RA,TIBTCB          GET CURRENT TCB ADDRESS      @D52GDIS 00177316
+         USING TCBADR,RA                                       @D52GDIS 00177416
+         CLI   TIBCNCL,XFF        AB EXIT ACTIVE ?             @D64ADIS 00177516
+         BE    DISPSEA4           YES, SAVE PTR                @D64ADIS 00177616
+         ICM   RF,15,TCBDMPIP     ADDRESS OF INFO.AREA SET ?   @D52GDIS 00177716
+         BNZ   DISPSEW4           YES, SKIP PTR SETTING        @D52GDIS 00177816
+DISPSEA4 DS    0H                                              @D64ADIS 00177916
+         ST    R1,TCBDMPIP        SAVE ADDRESS OF INFO. AREA   @D52GDIS 00178016
+DISPSEW4 DS    0H                                              @D52GDIS 00179016
+         OI    TIBFLAG4,TIBDMPMI  INDICATE ADDITIONAL INFO.    @D52GDIS 00180016
+         DROP  R6                                              @D52GDIS 00181016
+         DROP  R8                                              @D52GDIS 00182016
+         DROP  RA                                              @D52GDIS 00183016
+         L     R6,DISPAD          GET DISPATCHER BASE ADDRESS  @D52GDIS 00184016
+         USING DISP,R6                                         @D52GDIS 00185016
+         LR    RF,R6              SET UP EXIT ADDRESS          @D52GDIS 00186016
+         B     ERRGO              PROCESS CANCEL REQUEST       @D52GDIS 00187016
+*SGLINK ERRGO,INPUT=(R6,RB,RF)                                          00188016
+         DROP  R6                                              @D52GDIS 00189016
+         EJECT ,                                               @D52GDIS 00190016
+*--------------------------------------------------------------         00191016
+* DISPSER8 - FUNCTION CODE 8                                            00192016
+*            DISABLE CALLER                                             00193016
+*            RID ¬= USERTID --> IGNORE REQUEST (IF DEBUG -> HW)         00194016
+*            COPY STATUS FROM LINKAGE STACK TO FIRST SAVE AREA          00195016
+*            SET UNSTACK SUPPRESSION BIT IN CURRENT LINK STACK ENTRY    00196016
+*            SET RID TO REENTRID                                        00197016
+*                                                                       00198016
+*            INPUT:                                                     00199016
+*              R6 - DISPSERV ADDRESS                                    00200016
+*              R7 - RETURN ADDR                                         00201016
+*            WORK :                                                     00202016
+*              R2, R3, R4                                               00203016
+*            EXIT: RETURN TO CALLER                                     00204016
+*            AMODE: 31                                                  00205016
+*--------------------------------------------------------------         00206016
+         USING DISPSERV,R6                                     @D61PDOW 00207016
+DISPSER8 DS    0H                                              @D61PDOW 00208016
+         CLI   RID+1,USERTID      ROUTINE CALLED IN USER STATE @D61PDOW 00209016
+         BNE   DISPSEHW           NO, HARDWAIT                 @D61PDOW 00210016
+         SR    R2,R2              RESET ...                    @D61TDIS 00211016
+         SPM   R2                   ... PROGRAM MASK           @D61TDIS 00212016
+         L     R4,TCBPTR                                       @D64XDIS 00213016
+         USING TCBADR,R4                                       @D64XDIS 00214016
+         STC   R2,TCBEXFLG        GET MODE OF CALLER           @D64XDIS 00215016
+*        DISPMAC FUNC=PCENTRY                                           00216016
+         DISPMAC FUNC=PCENTRY                                  @D64XDIS 00217016
+         MVI   RID+1,REENTRID    TYPE REENTRENT ROUTINE        @D61PDIS 00218016
+         L     R2,TIBPTR                                       @KXA0065 00219016
+         USING TIBADR,R2                                       @KXA0065 00220016
+         TM    TIBTFLAG,TIBTTACT  TRACE ACTIVE ?               @KXA0065 00221016
+         BZ    DS08005            NO, DO NOT SET PER BIT       @D61HDIS 00222016
+         STNSM PSWMASK,XFF-PERMASK STOP EVENT RECORDING        @D61HDIS 00223016
+         EJECT ,                                               @D64ADIS 00224016
+*--------------------------------------------------------------         00225016
+* DS08005  - SAVE CALLER'S STATE INTO FIRST SAVE AREAS                  00226016
+*--------------------------------------------------------------         00227016
+DS08005  DS    0H                                              @D61HDIS 00228016
+         L     R2,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D61PDIS 00229016
+         USING TCBXADR,R2                                      @D61PDIS 00230016
+         L     R3,TCBX1CRF        ... STACK ENTRY DESCRIPTOR   @D61PDOW 00231016
+         XC    TCBX2CRF(4),TCBX2CRF RESET 2ND ENTRY            @D61PDIS 00232016
+         ST    R3,TCBXLSAD        SAVE IT FOR FCT CODE 12 PROC.@D61PDOW 00233016
+         DROP  R2                                              @D61PDIS 00234016
+         USING LSTKEDSC,R3                                     @D61PDOW 00235016
+DS08005A DS    0H                                              @D64ADOW 00236016
+         TM    LSTKET,LSTKPENT    PROG-CALL STATE ENTRY        @D64ADOW 00237016
+         BO    DS08007            YES ---> OK                  @D64ADOW 00238016
+         TM    LSTKET,LSTKBENT    BRANCH ENTRY                 @D64ADOW 00239016
+         BO    DS08007            YES ---> OK                  @D64ADOW 00240016
+         TM    LSTKET,LSTKTENT    TRAILOR ENTRY                @D64ADOW 00241016
+         BO    DISPSEHW           YES, ---> HW                 @D64ADOW 00242016
+         LA    R2,L'LSTKTHDY      BACK TO HEADER ENTRY         @D64ADOW 00243016
+         SR    R3,R2              ... BEGIN                    @D64ADOW 00244016
+         USING LSTKHDR,R3                                      @D64ADOW 00245016
+         ICM   R3,B'1111',LSTKBSEA GET STATUS ENTRY IN PREVIOUS@D64ADOW 00246016
+         BNM   DISPSEHW           NOT AVAILABLE, ENTER HW      @D64ADIS 00247016
+         N     R3,DS12MASK        MAKE ADDRESS                 @D64ADIS 00248016
+         USING LSTKEDSC,R3                                     @D61PDOW 00249016
+         TM    LSTKET,LSTKPENT    PROG-CALL STATE ENTRY        @D64ADOW 00250016
+         BO    DS08007            YES ---> OK                  @D64ADOW 00251016
+         TM    LSTKET,LSTKBENT    BRANCH ENTRY                 @D64ADOW 00252016
+         BZ    DISPSEHW           NO  ---> HARDWAIT            @D64ADOW 00253016
+*--------------------------------------------------------------         00254016
+* DS08007  - SAVE STATUS OF STATE ENTRY                                 00255016
+*--------------------------------------------------------------         00256016
+DS08007  DS    0H                                              @D61HDIS 00257016
+*        OI    LSTKET,LSTKUSPB    SET UNSTACK SUPPRESSION BIT  @DTEMPIS 00258016
+         DROP  R3                                              @D61PDOW 00259016
+         LA    R2,LSTKSEND-LSTKSTAT-L'LSTKEDS3 GET ADDR. ...   @D61PDIS 00260016
+         SLR   R3,R2              ... STATUS ENTRY             @D61PDOW 00261016
+         USING LSTKSTAT,R3        ESTABLISH ADDRESSABILITY     @D61PDOW 00262016
+         MVC   TCBRID(1),USERTID  SAVE CALLERS RID             @D64ADOW 00263016
+         XC    INTINFO(4),INTINFO CLEAR INTERRUPT INFO         @D61PDOW 00264016
+         MVI   INTINFO,XFE        ...AND INDICATE BRANCH ENTRY @D61PDOW 00265016
+         TM    LSTKEDS3,LSTKPENT  IS IT A PC-ENTRY             @D64ADOW 00266016
+         BNO   DS08010            NO , --->                    @D61PDOW 00267016
+         MVC   INTINFO(4),LSTKPCN PROGRAM CALL NUMBER WITH     @D64ADOW 00268016
+         MVI   INTINFO,XFF        ... INDICATOR                @D61PDOW 00269016
+DS08010  DS    0H                                              @D61PDOW 00270016
+         L     R2,TCBARSAV        GET ACCESS REG SAVE AREA     @D61PDIS 00271016
+         MVC   0(64,R2),LSTKAR0   SAVE ACCESS REGISTER         @D61PDOW 00272016
+         L     R2,TCBSAVE         POINTER TO TASK SAVE AREA    @D61PDOW 00273016
+         USING SVEARA,R2                                       @D61PDOW 00274016
+         CLC   SVEARA(1),SVEEND-1 GET SAVE AREA INTO STORAGE   @D64XDIS 00275016
+*        SYSTEM TASK SAVE AREAS ARE SHORTER, BUT ALLOCATED IN  @D64XDIS 00276016
+*        FIXED SUPERVISOR STORAGE, THEREFORE CLC WILL NOT HURT.@D64XDIS 00277016
+         CLC   TID,ARTIDH         USER TASK INTERRUPTED        @D66ODOW 00278016
+         BNH   DS08020            NO, DON'T SAVE FL.POINT REGS @D61PDOW 00279016
+         STD   FPR0,SVEFP0                                     @D61PDOW 00280016
+         STD   FPR2,SVEFP2                                     @D61PDOW 00281016
+         STD   FPR4,SVEFP4                                     @D61PDOW 00282016
+         STD   FPR6,SVEFP6                                     @D61PDOW 00283016
+         EJECT ,                                               @D64ADIS 00284016
+*--------------------------------------------------------------         00285016
+* DS08020  - SAVE STATUS OF STATE ENTRY (CONT.)                         00286016
+*--------------------------------------------------------------         00287016
+DS08020  DS    0H                                              @D61PDOW 00288016
+         MVC   SVEPSW(8),LSTKPSW  MOVE PSW                     @D61PDOW 00289016
+         MVC   SVER09(28),LSTKGR9 ... REGISTER 9 - 15          @D61PDOW 00290016
+         MVC   SVER00(36),LSTKGR0 ... REGISTER 0 - 8           @D61PDOW 00291016
+         STM   RD,RF,TDSAVE       SAVE REGISTERS               @D61PDIS 00292016
+         L     RD,AFLIH           GET FLIH BASE                @D61PDIS 00293016
+         USING FLIH,RD                                         @D61PDIS 00294016
+         SLR   RE,RE              PREPARE INSERT               @D61PDIS 00295016
+         SLR   RF,RF              PREPARE INSERT               @D61PDIS 00296016
+         IC    RE,SVEPSW2         GET FIRST BYTE OF INSTR.ADDR.@D61PDIS 00297016
+         IC    RE,SVCEXTR(RE)     GET AMODE/RMODE INDICATION   @D61PDIS 00298016
+         TM    SVEPSW+2,X'80'     HOME SPACE/2NDARY SPACE MODE?@D64ADIS 00299016
+         BO    DS08ERR            CANCEL, IF VIOLATION         @D64ADIS 00300016
+         IC    RF,SVEPSW+2        AR MODE BIT                  @D61PDIS 00301016
+         N     RF,SVCARIND        AR MODE BIT                  @D61PDIS 00302016
+         OR    RE,RF              GET MODE OF CALLER           @D61PDIS 00303016
+         SR    RF,RF              INSERT ...                   @D64XDIS 00304016
+         IC    RF,TCBEXFLG               ... EXECUTION MODE    @D64XDIS 00305016
+         OR    RE,RF              GET MODE OF CALLER           @D64XDIS 00306016
+         STC   RE,TCBEXFLG        SET MODE OF CALLER           @D61PDIS 00307016
+         DROP  R2                                              @D61PDOW 00308016
+         DROP  RD                                              @D61PDIS 00309016
+         L     R2,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D61PDIS 00310016
+         USING TCBXADR,R2                                      @D61PDIS 00311016
+         L     RF,DISPAD                                       @D64XDIS 00312016
+         USING DISP,RF                                         @D64XDIS 00313016
+         TM    TCBXFLG3,TCBXSVCX  PC  GIVEN IN CROSS MEMORY MOD@D64XDIS 00314016
+         BO    DSCMERR            YES, ILLEGAL PC              @D64XDIS 00315016
+*SGLINK DSCMERR,INPUT=(R2,R6)                                           00316016
+         DROP  RF                                              @D64XDIS 00317016
+         LM    RD,RF,TDSAVE       RESTORE REGISTERS            @D61PDIS 00318016
+         B     DISPSRET           RETURN TO CALLER             @D61PDIS 00319016
+         EJECT ,                                               @D52GDIS 00320016
+*--------------------------------------------------------------         00321016
+* DSCMERR  - SVC-LIKE PC NOT ALLOWED IN CROSS-MEMORY MODE               00322016
+*--------------------------------------------------------------         00323016
+*SGLINK DSCMERR,S,INPUT=(R2,R6)                                         00324016
+DSCMERR  DS    0H                                              @D64XDIS 00325016
+         NI    TCBXFLG3,XFF-TCBXSVCX RESET INDICATION          @D64XDIS 00326016
+         L     R6,ADISPSER      ADDR OF DISP SERVICES          @D64XDIS 00327016
+         LA    RB,ERR47E        LOAD CANCEL CODE               @D64XDIS 00328016
+         LA    R1,DS08MSG       CANCEL INFO (ABEND CODE)       @D64XDIS 00329016
+         LA    R0,4             REQ CANCEL SERVICE             @D64XDIS 00330016
+*        AMODESW CALL,REGS=(R7,R6) CANCEL USER                          00331016
+         AMODESW CALL,REGS=(R7,R6)                             @D64XDIS 00332016
+         SPACE 2                                               @D64XDIS 00333016
+DS08MSG  DC    A(DS08MSGL)     DEFINE INPUT FOR CANCEL RTN     @D64XDIS 00334016
+         DC    A(NUCRSN20)      REASON CODE                    @D64ADOW 00335016
+         DC    CL8'NUCLEUS'                                    @D64XDIS 00336016
+         DC    C'CROSS MEMORY MODE NOT ALLOWED '               @D64XDIS 00337016
+DS08MSGL EQU   *-4-DS08MSG                                     @D64XDIS 00338016
+         DROP  R2                                              @D61PDOW 00339016
+         DROP  R4                                              @D61PDOW 00340016
+         DROP  R6                                              @D61PDOW 00341016
+         SPACE 2                                               @D64ADIS 00342016
+*--------------------------------------------------------------         00343016
+* DSC08ERR - MODE VIOLATION                                             00344016
+*--------------------------------------------------------------         00345016
+DS08ERR  DS    0H                                              @D64XDIS 00346016
+         L     R6,DISPAD       PROCESS MODE VIOLATION          @D64XDIS 00347016
+         USING DISP,R6                                         @D64XDIS 00348016
+         B     ERR45                                           @D64XDIS 00349016
+         DROP  R6                                              @D64XDIS 00350016
+         EJECT ,                                               @D52GDIS 00351016
+*--------------------------------------------------------------         00352016
+* DISPSE12 - FUNCTION CODE 12                                           00353016
+*            ROUTINE WILL BE CALLED FROM PC ROUTINES                    00354016
+*            DISPSE12 WILL RETURN TO THE PC CALLER VIA                  00355016
+*            A PR INSTRUCTION AND NOT TO THE DISPSE12 CALLER.           00356016
+*            --------------------------------------------------         00357016
+*            LOAD DUAL/PASNAL INTO APPROPRIATE CR DEPENDING ON R1       00358016
+*            UPDATE LINKAGE STACK DEPENDING ON R1                       00359016
+*            RESET UNSTACK SUPPRESSION BIT IN CURRENT LINK STACK ENTRY  00360016
+*            SET RID TO USERTID                                         00361016
+*                                                                       00362016
+*            INPUT:                                                     00363016
+*              R1 - 0 - NO SPECIAL PROCESSING REQUIRED                  00364016
+*                   1 - LOAD DUAL INTO CR2     CALLED BY IJBALE ONLY    00365016
+*                   2 - LOAD PASNAL INTO CR 5  CALLED BY IJBALE ONLY    00366016
+*                   3 - LOAD DUAL AND PASNAL   CALLED BY IJBALE ONLY    00367016
+*              R6 - DISPSERV ADDRESS                                    00368016
+*              R7 - RETURN ADDR                                         00369016
+*             ERA - HOLDS REGISTERS IN ERARF, ERAR0, ERAR1              00370016
+*            EXIT: RETURN TO CALLER                                     00371016
+*            AMODE: 31, DISABLED                                        00372016
+*--------------------------------------------------------------         00373016
+         USING DISPSERV,R6                                     @D61PDOW 00374016
+DISPSE12 DS    0H                                              @D61PDOW 00375016
+         LTR   R5,R1             FUNCTION CODE NEGATIVE ?      @D61PDOW 00376016
+         BM    DISPSEHW          YES, SYSTEM ERROR             @D61PDIS 00377016
+         CLI   RID+1,REENTRID    PAGE FAULTS ALLOWED ?         @D61PDIS 00378016
+         BNE   DISPSEHW          NO,  SYSTEM ERROR             @D61PDIS 00379016
+         LM    RF,R1,ERARF       GET SAVED REGISTERS           @D61PDIS 00380016
+         C     R5,F3             FUNCTION CODE LARGER THAN 3 ? @D64XDMZ 00381016
+         BH    DISPSEHW          YES, SYSTEM ERROR             @D61PDOW 00382016
+         L     R3,TCBPTR          GET ADDR OF TASKS TCB        @D61PDOW 00383016
+         USING TCBADR,R3                                       @D61PDOW 00384016
+         L     R3,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D61PDIS 00385016
+         USING TCBXADR,R3                                      @D61PDIS 00386016
+         STCTL CRF,CRF,TCBX2CRF   GET ADDR OF CURRENT LINKAGE  @D61PDOW 00387016
+         L     R4,TCBX2CRF        ... STACK ENTRY DESCRIPTOR   @D64XDMZ 00388016
+         USING LSTKEDSC,R4                                     @D64XDMZ 00389016
+*        NI    LSTKET,XFF-LSTKUSPB RESET UNSTACK SUPPRESSION BI@DTEMPIS 00390016
+         CL    R4,TCBXLSAD       SAME ENTRY AS FOR FCT 8 ?     @D64XDMZ 00391016
+         BE    DS12XXX            YES, --->                    @D64XDIS 00392016
+         TM    LSTKET,LSTKHTST    IS THIS A HEADER ENTRY       @D64XDIS 00393016
+         BNZ   DISPSEHW           NO, SYSTEM ERROR             @D64XDIS 00394016
+         LA    R2,LSTKEDS1-LSTKHDR BACK TO                     @D64XDIS 00395016
+         SR    R4,R2              ... BEGIN OF HEADER ENTRY    @D64XDIS 00396016
+         USING LSTKHDR,R4                                      @D64XDIS 00397016
+         ICM   R4,B'1111',LSTKBSEA GET PREVIOUS LS SECTION     @D64XDIS 00398016
+         BNM   DISPSEHW           NOT AVAILABLE ---> SYSTEM ERR@D64XDIS 00399016
+         N     R4,DS12MASK        MAKE ADDRESS                 @D64XDIS 00400016
+         USING LSTKEDSC,R4                                     @D64XDIS 00401016
+         CL    R4,TCBXLSAD       SAME ENTRY AS FOR FCT 8 ?     @D64XDIS 00402016
+         BNE   DISPSEHW           NO, SYSTEM ERROR             @D64XDIS 00403016
+DS12XXX  DS    0H                                              @D64XDIS 00404016
+         L     R2,TIBPTR          GET CURRENT TIB              @D61CDOW 00405016
+         USING TIBADR,R2                                       @D61CDOW 00406016
+         EJECT ,                                               @D64ADIS 00407016
+*--------------------------------------------------------------         00408016
+*        - SET UP CONTROL REGISTERS IF NECESSARY                        00409016
+*--------------------------------------------------------------         00410016
+         C     R5,F2              LOAD OF PASN-AL REQUIRED ?   @D61PDIS 00411016
+         BL    DS12010            NO, SKIP                     @D61PDIS 00412016
+         L     R4,PCBPTR          GET TASKS PCB ADDR           @D61PDOW 00413016
+         USING PCBADR,R4                                       @D61PDOW 00414016
+         LCTL  CR5,CR5,PCBASTER   INSTALL NEW PASNAL           @D61PDOW 00415016
+         DROP  R4                                              @D61PDOW 00416016
+DS12010  DS    0H                                              @D61PDIS 00417016
+         TM    TCBXFLG1,TCBXSALA  SYSTEM ENVIRONMENT ACTIVE    @D61CDOW 00418016
+         BO    DS12093            YES, RESTORE USER ENVIRONMENT@D61CDIS 00419016
+         C     R5,F2              LOAD OF PASNAL ONLY REQUIRED @D64XDOW 00420016
+         BE    DS12091            YES                          @D61PDOW 00421016
+         LTR   R5,R5              CONTROL REG. 2 TO BE LOADED  @D61PDOW 00422016
+         BZ    DS12091            NO,                          @D61PDIS 00423016
+DS12020  DS    0H                                              @D61PDIS 00424016
+         LCTL  CR2,CR2,TCBX1CR2   INSTALL NEW DU-AL            @D64XDMZ 00425016
+         DROP  R3                 RELEASE TCBX                 @D64XDMZ 00426016
+         EJECT ,                                               @D64XDIS 00427016
+*--------------------------------------------------------------         00428016
+* DS12091  - RESTORE USER ENVIRONMENT AND RETURN                        00429016
+*--------------------------------------------------------------         00430016
+DS12091  DS    0H                                              @D61PDOW 00431016
+         TM    TIBTFLAG,TIBTTACT  TRACE ACTIVE ?               @KXA0065 00432016
+         BZ    DS12092            NO, DO NOT SET PER BIT       @D61HDIS 00433016
+         DROP  R2                                              @KXA0065 00434016
+         STOSM PSWMASK,PERMASK    RESTART PROGRAM EVENT RECORD.@D61HDIS 00435016
+DS12092  DS    0H                                              @D61HDIS 00436016
+         L     R3,TCBPTR          GET ADDR OF TASKS TCB        @D61PDIS 00437016
+         USING TCBADR,R3                                       @D61PDIS 00438016
+         L     R3,TCBSAVE         GET SAVE AREA ADDRESS        @D61PDIS 00439016
+         USING SVEARA,R3                                       @D61PDIS 00440016
+         CLC   SVEARA(1),SVEEND-1 GET SAVE AREA INTO STORAGE   @D61PDIS 00441016
+*>>>> SYSTEM TASKS HAVE A SHORTER SAVE AREA !!! THEY ARE ALLOCATED      00442016
+*>>>> WITHIN THE VSE SUPERVISOR FIXED STORAGE, THEREFORE THE            00443016
+*>>>> ABOVE 'CLC' INSTRUCTION CAN BE USED.                              00444016
+         CLC   TID,ARTIDH         USER TASK INTERRUPTED        @D66ODOW 00445016
+         BNH   DS12094            NO, DON'T SAVE FL.POINT REGS @D64ADIS 00446016
+         LD    FPR0,SVEFP0        RESTORE FLPT REGISTER 0      @D64ADIS 00447016
+         LD    FPR2,SVEFP2        RESTORE FLPT REGISTER 2      @D64ADIS 00448016
+         LD    FPR4,SVEFP4        RESTORE FLPT REGISTER 4      @D64ADIS 00449016
+         LD    FPR6,SVEFP6        RESTORE FLPT REGISTER 6      @D64ADIS 00450016
+DS12094  DS    0H                                              @D61HDIS 00451016
+         LA    RC,SVEPSW          GET PSW LOCATION FOR TDLOCK  @D61RDIS 00452016
+*        DISPMAC FUNC=PCRETURN,INP1=RC                                  00453016
+         DISPMAC FUNC=PCRETURN,INP1=RC                         @D64XDIS 00454016
+         MVI   RID+1,USERTID      SET UP USER STATE            @D61PDOW 00455016
+*DEL     SLR   R2,R2              CLEAR FOR INSERT             @DY45849 00456017
+*DEL     IC    R2,SVEPSW          GET PSW STATUS BYTE          @DY45849 00457017
+*DEL     LA    R4,ENABLE          GET ENABLE MASK              @DY45849 00458017
+*DEL     NR    R2,R4              GET PSW ENABLE BITS ALONE    @DY45849 00459017
+*DEL     EX    R2,DISPSTOS        ENABLE PSW, IF REQUIRED      @DY45849 00460017
+         PR                       RETURN                       @D61NDIS 00461016
+         DROP  R3                                              @D61PDIS 00462016
+         SPACE 2                                               @D61PDIS 00463016
+*ISPSTOS STOSM PSWMASK,0          ENABLE ...                   @DY45849 00464017
+***                               ... TEMPORARILY BECAUSE PR DOES NOT   00465016
+***                               ... WORK PROPERLY ON VM/3090          00466016
+         EJECT ,                                               @D61NDIS 00467016
+*--------------------------------------------------------------         00468016
+* DS12093  - RESTORE USER ENVIRONMENT                                   00469016
+*--------------------------------------------------------------         00470016
+         USING TIBADR,R2                                       @D61CDIS 00471016
+         USING TCBXADR,R3                                      @D61PDIS 00472016
+DS12093  DS    0H                                              @D61PDIS 00473016
+         TM    TCBXFLG1,TCBXDRSA SPECIAL ENVIRONMENT ACTIVE ?  @D64XDIS 00474016
+         BO    DS12020            YES, USE CURRENT             @D64XDIS 00475016
+         NI    TCBXFLG1,X'FF'-TCBXSALA USER'S DUAL IS ACTIVE   @D61CDIS 00476016
+         MVC   TCBX1CR8(2),TCBXSEAX      RESTORE TASKS EAX     @D61NDMZ 00477016
+         MVC   TCBX1CR2(4),TCBXSDUC RESTORE TASK'S DU-AL       @D64XDMZ 00478016
+         L     R4,TCBX2CRF        ... STACK ENTRY DESCRIPTOR   @D64XDMZ 00479016
+         LA    R4,LSTATLN1        LENGTH OF STATE ENTRY W/O DES@D64XDMZ 00480016
+         SR    R4,R5              BEGIN OF CURRENT STATE ENTRY @D64XDMZ 00481016
+         USING LSTKSTAT,R4        ADDR STATE ENTRY             @D64XDMZ 00482016
+         MVC   LSTKEAX(2),TCBX1CR8 ORIGINAL EAX WILL BE LOADED IN CR8  *00483016
+                                                               @D64XDMZ 00484016
+         DROP  R4                 RELEASE STATE ENTRY          @D64XDMZ 00485016
+         B     DS12020            RESTORE CONTROL REGISTER 2   @D61PDIS 00486016
+         DROP  R2                                              @D61PDOW 00487016
+         DROP  R3                                              @D61PDIS 00488016
+         DROP  R6                                              @D61PDOW 00489016
+         SPACE 2                                               @D64XDIS 00490016
+DS12MASK DC    A(LSTKMASK)                                     @D64XDIS 00491016
+         EJECT ,                                               @D52GDIS 00492016
+*--------------------------------------------------------------         00493016
+* DISPSE16 - FUNCTION CODE 16                                           00494016
+*            RID ¬= REENTRID | TID >= ARTID --> RETURN CODE             00495016
+*            SAVE TASKS AL ENVIRONMENT                                  00496016
+*            ESTABLISH SYSTEM DU-AL                                     00497016
+*            RETURN ALET                                                00498016
+*                                                                       00499016
+*            INPUT:                                                     00500016
+*              R1 - PARTITION ID                                        00501016
+*              R6 - DISPSERV ADDRESS                                    00502016
+*              R7 - RETURN ADDR                                         00503016
+*            WORK :                                                     00504016
+*              R2, R3, R4                                               00505016
+*            OUTPUT:                                                    00506016
+*              R1  - ALET                                               00507016
+*              R15 - RETURN CODE                                        00508016
+*            EXIT: RETURN TO CALLER                                     00509016
+*            AMODE: 31, DISABLED                                        00510016
+*--------------------------------------------------------------         00511016
+         USING DISPSERV,R6                                     @D61CDOW 00512016
+DISPSE16 DS    0H                                              @D61CDOW 00513016
+         LA    RF,8              PREPARE BAD RETURN CODE       @D61CDOW 00514016
+         CLI   RID+1,USERTID     CALLED BY SYSTEM SERVICE      @D61CDOW 00515016
+         BNE   DS16010                                         @D61CDOW 00516016
+         CLC   TID,ARTIDH        CALLER A SYSTEM TASK          @D66ODOW 00517016
+         BNL   DISPSRET          NO, ---> ERROR                @D61CDOW 00518016
+DS16010  DS    0H                                              @D61CDOW 00519016
+         LTR   R2,R1             ADDRESSABILITY TO SYSTEM      @D61CDOW 00520016
+***                              PARTITION REQUIRED                     00521016
+         BZ    DS160A0           YES, ALET = 0 IS SUFFICIENT   @D61CDOW 00522016
+         LA    R3,15                                           @D61CDOW 00523016
+         NR    R3,R1             CHECK REALLY  A PIK           @D61CDOW 00524016
+         BNZ   DISPSRET          NO, -> ERROR                  @D61CDOW 00525016
+         CH    R1,IJBHPIK        VALID PIK ?                   @D61CDIS 00526016
+         BH    DISPSRET          NO, -> ERROR                  @D61CDOW 00527016
+         SRL   R2,2              GET SLOT IN PCBATAB           @D61CDOW 00528016
+         A     R2,APCBATAB       ...                           @D61CDOW 00529016
+         ICM   R2,15,0(R2)       GET PCB POINTER               @D61CDOW 00530016
+         BZ    DISPSRET          INVALID PIK -> ERROR          @D61CDOW 00531016
+         USING PCBADR,R2         ADDRESSABILITY TO PCB         @D61CDOW 00532016
+         EJECT ,                                               @D61NDIS 00533016
+*--------------------------------------------------------------         00534016
+*          - CHECK, IF PARTITION IS INACTIVE                            00535016
+*--------------------------------------------------------------         00536016
+         L     R4,PCEPIB         GET PIB ADDRESS               @D61CDIS 00537016
+         USING PIBADR,R4                                       @D61CDIS 00538016
+         CLI   PIBFLG,INACT      PARTITION IS INACTIVE ?       @D61CDIS 00539016
+         BE    DISPSRET          NO, -> ERROR                  @D61CDOW 00540016
+         DROP  R4                                              @D61CDIS 00541016
+         LR    R4,R1             SAVE PIK                      @D61CDIS 00542016
+         ICM   R1,15,PCBASCB     SHARED PARTITION ?            @D61CDIS 00543016
+         BZ    DS160A0           YES, ALET = 0 IS SUFFICIENT   @D61CDOW 00544016
+         LR    R1,R4             RESTORE PIK                   @D61CDIS 00545016
+*--------------------------------------------------------------         00546016
+*          - SET SYSTEM AL AND RETRIEVE REQUESTED ALET                  00547016
+*--------------------------------------------------------------         00548016
+         L     R3,TCBPTR          GET ADDR. OF TCB             @D61PDIS 00549016
+         USING TCBADR,R3                                       @D61PDIS 00550016
+         L     R3,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D61PDIS 00551016
+         USING TCBXADR,R3                                      @D61PDIS 00552016
+         TM    TCBXFLG1,TCBXSALA SYSTEM ENVIRONMENT ACTIVE     @D61CDIS 00553016
+         BO    DS16030           YES, CR'S ALREADY CORRECT     @D61CDOW 00554016
+         MVC   TCBXSEAX,TCBX1CR8  SAVE TASK'S EAX (PASNAL NOT  @D64XDMZ 00555016
+***                              ACCESSIBLE ANYMORE)                    00556016
+         MVC   TCBXSDUC(4),TCBX1CR2 SAVE TASK'S DUCT           @D64XDMZ 00557016
+         MVC   TCBX1CR8(2),CSYSEAX   SYSTEM VALUES TO TIB      @D64XDMZ 00558016
+         MVC   TCBX1CR2(4),ASYSDUCT ...                        @D61CDIS 00559016
+         L     RF,DISPAD          GET DISPATCHER BASE ADDRESS  @D61PDIS 00560016
+         USING DISP,RF                                         @D61PDIS 00561016
+         STCTL CR8,CR8,DISPSCR8                                @D61CDOW 00562016
+         MVC   DISPSCR8(2),TCBX1CR8  EST. ACCESS AUTHORITY     @D64XDMZ 00563016
+         LCTL  CR8,CR8,DISPSCR8                                @D61CDOW 00564016
+         LCTL  CR2,CR2,TCBX1CR2  ADDRESSABILITY TO SYSTEM AL   @D64XDMZ 00565016
+         OI    TCBXFLG1,TCBXSALA  SYSTEM ENVIRONMENT IS ACTIVE @D61CDIS 00566016
+         DROP  R3                                              @D61CDOW 00567016
+         DROP  RF                                              @D61CDIS 00568016
+         EJECT ,                                               @D61CDIS 00569016
+*--------------------------------------------------------------         00570016
+* DS16030  - ESTABLISH SYSTEM ACCESS LIST ENTRY FOR PARTITION           00571016
+*--------------------------------------------------------------         00572016
+DS16030  DS    0H                                              @D61CDOW 00573016
+         L     R3,ASYSALST       ADDR OF SYSTEM AL             @D61CDOW 00574016
+         LA    R4,3*16(R1,R3)    ADDR OF OUR ALE               @D61CDOW 00575016
+         USING ALE,R4                                          @D61CDOW 00576016
+         TM    ALE,ALEI          IS THE ALE INVALID            @D61CDOW 00577016
+         BNO   DS16050           NO, ALE IS VALID ->           @D61CDOW 00578016
+         L     R3,PCBASTER       GET REAL ADDR OF RELATED ASTE @D61CDOW 00579016
+         ST    R3,ALEASTE        ... TO ALE                    @D61CDOW 00580016
+         L     R3,PCBASTE        GET ADDR OF RELATED ASTE      @D61CDOW 00581016
+         ST    R3,ALEASTSN       ... TO ALE (SEQUENCE #)       @D61CDOW 00582016
+         NI    ALE,X'FF'-ALEI    MAKE ALE VALID                @D61CDOW 00583016
+         DROP  R2                                              @D61CDOW 00584016
+DS16050  DS    0H                BUILD ALET                    @D61CDOW 00585016
+         SRL   R1,4              INDEX INTO SYSTEM AL          @D61CDOW 00586016
+         LA    R1,3(,R1)         ... SKIP RESERVED ENTRIES     @D61CDOW 00587016
+         ICM   R1,4,ALESN        COPY ALE-SEQUENCE-NUMBER      @D61CDOW 00588016
+DS160A0  DS    0H                                              @D61CDOW 00589016
+         SLR   RF,RF             GOOD RETURN CODE              @D61CDIS 00590016
+         B     DISPSRET           RETURN TO CALLER             @D61NDIS 00591016
+         DROP  R4                                              @D61CDOW 00592016
+         SPACE 2                                                        00593016
+*--------------------------------------------------------------         00594016
+*          - SYSTEM ACCESS LIST ADDRESSES                               00595016
+*--------------------------------------------------------------         00596016
+ASYSALST DC    A(SYSALIST)       ADDR OF SYSTEM ACCESS LIST    @D61CDOW 00597016
+ASYSDUCT DC    A(SYSDUCT)        REAL/VIRT SYSTEM DU-AL ADDR.  @D61CDOW 00598016
+*                                                                       00599016
+         DROP  R6                                              @D61CDOW 00600016
+         EJECT ,                                                        00601016
+*--------------------------------------------------------------         00602016
+* DISPSE20 - FUNCTION CODE 20                                           00603016
+*            RE-ESTABLISH CURRENT TASKS AL ENVIRONMENT                  00604016
+*                                                                       00605016
+*            INPUT:                                                     00606016
+*              R6 - DISPSERV ADDRESS                                    00607016
+*              R7 - RETURN ADDR                                         00608016
+*            WORK :                                                     00609016
+*              R0, R2, R3                                               00610016
+*            EXIT: RETURN TO CALLER                                     00611016
+*            AMODE: 31, DISABLED                                        00612016
+*--------------------------------------------------------------         00613016
+         USING DISPSERV,R6                                     @D61CDOW 00614016
+DISPSE20 DS    0H                                              @D61CDOW 00615016
+         L     R3,TCBPTR          GET ADDR. OF TCB             @D61PDIS 00616016
+         USING TCBADR,R3                                       @D61PDIS 00617016
+         L     R3,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D61PDIS 00618016
+         USING TCBXADR,R3                                      @D61PDIS 00619016
+         TM    TCBXFLG1,TCBXDRSA SPECIAL ENVIRONMENT ACTIVE ?  @D64XDIS 00620016
+         BO    DISPSRET           YES, DO NOTHING              @D64XDIS 00621016
+         TM    TCBXFLG1,TCBXSALA SYSTEM ENVIRONMENT ACTIVE     @D61CDOW 00622016
+         BZ    DISPSRET          NO, DO NOTHING                @D61CDIS 00623016
+         NI    TCBXFLG1,X'FF'-TCBXSALA USER'S DUAL IS ACTIVE   @D61CDIS 00624016
+         MVC   TCBX1CR8(2),TCBXSEAX    RESTORE TASKS EAX       @D64XDMZ 00625016
+         MVC   TCBX1CR2(4),TCBXSDUC RESTORE TASK'S DU-AL       @D61CDIS 00626016
+         L     R2,DISPAD          GET DISPATCHER BASE ADDRESS  @D61PDIS 00627016
+         USING DISP,R2                                         @D61PDIS 00628016
+         STCTL CR8,CR8,DISPSCR8                                @D61CDOW 00629016
+         MVC   DISPSCR8(2),TCBX1CR8 ESTABLISH ACCESS AUTHORITY @D64XDMZ 00630016
+         LCTL  CR8,CR8,DISPSCR8                                @D61CDOW 00631016
+         LCTL  CR2,CR2,TCBX1CR2  ADDRESSABILITY TO USER AL     @D64XDMZ 00632016
+         B     DISPSRET           RETURN TO CALLER             @D61NDIS 00633016
+         DROP  R2                RELEASE DISP                  @D61CDIS 00634016
+         DROP  R3                RELEASE TCB EXTENSION         @D61CDIS 00635016
+         DROP  R6                                              @D61CDIS 00636016
+         EJECT ,                                               @D52HDIS 00637016
+*--------------------------------------------------------------         00638016
+* DISPSE24 - MOVE ADDITIONAL CANCEL INFORMATION TO                      00639016
+*            TARGET AREA, IF INFORMATION IS AVAILABLE.                  00640016
+*            RESET TCBDMPIP AND FREE AREA, IF REQUESTED                 00641016
+*            (TCBDMPIP NEGATIVE)                                        00642016
+*            INPUT:                                                     00643016
+*              R0 - FUNCTION CODE (ON DISPSERV ENTRY)                   00644016
+*              R5 - ADDRESS OF TARGET AREA                              00645016
+*              R6 - DISPSERV BASE ADDRESS                               00646016
+*              R7 - RETURN ADDRESS (LINK REGISTER)                      00647016
+*              R8 - TIB ADDRESS                                         00648016
+*              RA - TCB ADDRESS                                         00649016
+*            WORK:  R0, R2, RF                                          00650016
+*            RETURN:                                                    00651016
+*              R7 + 0 - ADDITIONAL MESSAGE INFORMATION MOVED            00652016
+*              R7 + 4 - NO ADDITIONAL MESSAGE INFORMATION               00653016
+*            AMODE: 31, DISABLED                                        00654016
+*--------------------------------------------------------------         00655016
+         USING DISPSERV,R6                                     @D52GDIS 00656016
+         USING TIBADR,R8                                       @D52GDIS 00657016
+         USING TCBADR,RA                                       @D52GDIS 00658016
+*SGLINK DISPSE24,INPUT=(R0,R5,R6,R7,R8,RA),WORK=(R0,R2,RF)              00659016
+DISPSE24 DS    0H                                              @D52GDIS 00660016
+         TM    TIBFLAG4,TIBDMPMI  ADDITIONAL MESSAGE INFO. ?   @D52GDIS 00661016
+         BZ    DISPSRE4           NO, RETURN TO CALLER         @D61NDIS 00662016
+         NI    TIBFLAG4,XFF-TIBDMPMI RESET MSG INFO. INDICATOR @D52GDIS 00663016
+         ICM   RF,15,TCBDMPIP     GET ADDRESS OF INFO. AREA    @D52GDIS 00664016
+         BZ    DISPSRE4           NOT AVAIL., RETURN TO CALLER @D61NDIS 00665016
+         OI    TIBFLAG4,TIBDMPMI  INDICATE ADDITIONAL MSG INFO.@D64ADIS 00666016
+*DEL     LA    R0,CANCLEN         GET TOTAL LENGTH OF MSG AREA @D61PDIS 00667016
+         USING MAPDMPIF,RF                                     @D61PDIS 00668016
+         L     R2,CANCAILN        GET DATA LENGTH              @D61PDIS 00669016
+         LA    R2,L'CANCAILN(,R2) MOVE INCLUDING LENGTH        @D61PDIS 00670016
+         C     R2,DISPSEMX        PROVIDED LENGTH LARGER ?     @D64ADOW 00671016
+         BNH   DISPS024           NO, USE THIS LENGTH          @D61PDIS 00672016
+         L     R2,DISPSEMX        USE MAX. LENGTH              @D64ADOW 00673016
+DISPS024 DS    0H                                              @D61PDIS 00674016
+         BCTR  R2,0               ADJUST FOR EXECUTE           @D61PDIS 00675016
+         EX    R2,DISPSEMV        MOVE DATA                    @D61PDIS 00676016
+         B     DISPSRET           RETURN TO CALLER             @D61NDIS 00677016
+         DROP  RF                                              @D61PDIS 00678016
+         SPACE 2                                               @D52GDIS 00679016
+DISPSEMV MVC   0(0,R5),0(RF)      MOVE DATA FOR EXECUTE        @D61NDIS 00680016
+DISPSEMX DC    A(CANCLEN)         MAX LENGHT ALLOWED           @D64ADOW 00681016
+         EJECT ,                                               @D52GDIS 00682016
+*--------------------------------------------------------------         00683016
+* DISPSE28 - RESET MSG INFORMATION AND FREE AREA IF REQUESTED           00684016
+*            (HIGH ORDER BIT IN TCBDMPIP SET).                          00685016
+*            (BIT 0 OF LENGTH ON INDICATES AREA IN TCBX                 00686016
+*                             OFF INDICATES AREA SYSTEM GETVIS AREA)    00687016
+*            INPUT:                                                     00688016
+*              R0 - FUNCTION CODE (ON DISPSERV ENTRY)                   00689016
+*              R6 - DISPSERV ADDRESS                                    00690016
+*              R7 - RETURN ADDRESS (LINK REGISTER)                      00691016
+*              R8 - TIB ADDRESS                                         00692016
+*              RA - TCB ADDRESS                                         00693016
+*            WORK:  R0, R2, RF                                          00694016
+*            AMODE: ANY, DISABLED                                       00695016
+*--------------------------------------------------------------         00696016
+*SGLINK DISPSE28,S,INPUT=(R6,R7,R8,RA),WORK=(R0,R2,RF)                  00697016
+DISPSE28 DS    0H                                              @D52GDIS 00698016
+         TM    TIBFLAG4,TIBDMPMI  ADDITIONAL MESSAGE INFO. ?   @D52GDIS 00699016
+         BZ    DISPSRET           NO, RETURN TO CALLER         @D61NDIS 00700016
+         NI    TIBFLAG4,XFF-TIBDMPMI RESET MSG INFO. INDICATOR @D52GDIS 00701016
+         SLR   R0,R0              PREPARE R0 FOR CLEAR         @KD40187 00702016
+         ICM   RF,15,TCBDMPIP     GET ADDRESS OF INFO. AREA    @D52GDIS 00703016
+         BZ    DISPSRET           NOT AVAIL., RETURN TO CALLER @D61NDIS 00704016
+         ST    R0,TCBDMPIP        CLEAR ADDRESS IN TCB         @D52GDIS 00705016
+         BP    DISPSRET           FREEVIS BY OWNER -> RETURN   @D52GDIS 00706016
+         N     RF,BIT0OFF         RESET FREEVIS INDICATOR      @KD40187 00707016
+*--------------------------------------------------------------         00708016
+* DISPSMIX - FREE MESSAGE INFORMATION AREA,                             00709016
+*            IF WITHIN TCBX: USED INDICATOR IS RESET                    00710016
+*            IF IN SYSTEM GETVIS AREA:                                  00711016
+*            ALWAYS THE MAX. MESSAGE AREA INCLUDING                     00712016
+*            THE LENGTH WILL BE FREED (SEE LABEL CANCLEN)               00713016
+*--------------------------------------------------------------         00714016
+         USING MAPDMPIF,RF                                     @D64ADIS 00715016
+         ICM   R2,15,CANCAILN     IS TCBXXSA USED              @D64ADOW 00716016
+         BNM   DS28L10                                         @D64ADOW 00717016
+         L     R2,TCBATCBE        GET TCBX ADDR                @D64ADOW 00718016
+         USING TCBXADR,R2                                      @D64ADOW 00719016
+         NI    TCBXSAUS,XFF-TCBXXSAU RESET USED INDICATOR      @D64ADOW 00720016
+         DROP  R2                                              @D64ADOW 00721016
+         B     DISPSRET           RETURN                       @D64ADOW 00722016
+DS28L10  DS    0H                                              @D64ADOW 00723016
+         LA    R0,L'CANCAILN(,R2) MOVE INCLUDING LENGTH        @D64ADIS 00724016
+         LR    R2,R1              SAVE REGISTER 1              @D64ADIS 00725016
+         DROP  RF                                              @D64ADIS 00726016
+*        SFREEVIS ADDRESS=(15),LENGTH=(0)                      @D52GDIS 00727016
+         SFREEVIS ADDRESS=(15),LENGTH=(0)                      @D52GDIS 00728016
+         LR    R1,R2              RESTORE REGISTER 1           @D52GDIS 00729016
+         B     DISPSRET           RETURN TO CALLER             @D61NDIS 00730016
+         DROP  R6                                              @D52GDIS 00731016
+         DROP  R8                                              @D52GDIS 00732016
+         DROP  RA                                              @D52GDIS 00733016
+         EJECT ,                                               @D61PDIS 00734016
+*--------------------------------------------------------------         00735016
+* DISPSE32 - RESET LINKAGE STACK AND DATA SPACE CONTROL                 00736016
+*            BLOCKS AND FREE WORK AREAS                                 00737016
+*            INPUT:                                                     00738016
+*              R0 - FUNCTION CODE (ON DISPSERV ENTRY)                   00739016
+*              R6 - DISPSERV BASE ADDRESS                               00740016
+*              R7 - RETURN ADDRESS (LINK REGISTER)                      00741016
+*              R8 - TIB ADDRESS                                         00742016
+*              RA - TCB ADDRESS                                         00743016
+*            WORK:  R0, R2, RF                                          00744016
+*            AMODE: 31, DISABLED                                        00745016
+*--------------------------------------------------------------         00746016
+         USING DISPSERV,R6                                     @D61PDIS 00747016
+         USING TIBADR,R8                                       @D61PDIS 00748016
+         USING TCBADR,RA                                       @D61PDIS 00749016
+*SGLINK DISPSE32,INPUT=(R0,R6,R7,R8,RA),WORK=(R0,R2,RF)                 00750016
+DISPSE32 DS    0H                                              @D61PDIS 00751016
+*--------------------------------------------------------------         00752016
+*           - RESET ACCESS REGISTER DEPENDENT INFORMATION               00753016
+*--------------------------------------------------------------         00754016
+         L     RF,TCBARSAV        GET AR SAVE AREA ADDRESS     @D61PDIS 00755016
+         XC    0(TCBARSLN,RF),0(RF) CLEAR ACCESS REGISTERS     @D61PDIS 00756016
+         L     R2,ASVASVDL        PTR.TO SVA ROUT.ADDR.TABLE   @D61PDIS 00757016
+         OI    TIBFLAG4,TIBDSAPA  SET DATA SPACE APPENDAGE ACT.@D61PDOW 00758016
+         STM   R0,RF,SVCWORK      SAVE REGISTERS               @D61PDOW 00759016
+*--------------------------------------------------------------         00760016
+* $IJBDSPD  - DEALLOCATE DATA SPACE TABLES                              00761016
+*             INPUT:  R8 - TIB ADDRESS OF CURRENT TASK                  00762016
+*                     RE - RETURN ADDRESS                               00763016
+*                     RF - $IJBDSPD BASE ADDRESS                        00764016
+*             WORK:   R0 - R7, RD, RF                                   00765016
+*             DON'T MODIFY RA                                           00766016
+*             AMODE:  ANY                                               00767016
+*             $IJBDSPD HAS TO RETURN WITH THE AMODE OF THE CALLER       00768016
+*                      AND USES SVCSV3 SAVE AREA                        00769016
+*--------------------------------------------------------------         00770016
+         L     RF,AIJBDSPD-SVASVDL(,R2) GET DS ROUTINE ADDRESS @D61PDIS 00771016
+*        AMODESW CALL             CALL ROUTINE                 @D61PDIS 00772016
+         AMODESW CALL             CALL ROUTINE                 @D61PDIS 00773016
+         LM    R0,RF,SVCWORK      RESTORE REGISTERS            @D61PDIS 00774016
+         EJECT ,                                                        00775016
+*--------------------------------------------------------------         00776016
+* $IJBLSTK  - GIVE TASK DUMMY LINKAGE STACK                             00777016
+*             (REMOVE EXISING LINKAGE STACK)                            00778016
+*             INPUT:  R8 - TIB ADDRESS                                  00779016
+*                     RA - TCB ADDRESS                                  00780016
+*                     RE - RETURN ADDRESS                               00781016
+*                     RC - $IJBLSTK BASE ADDRESS                        00782016
+*                     RF - FUNCTION CODE (=16)                          00783016
+*             AMODE:  31                                                00784016
+*             $IJBLSTK WILL LOAD A NEW LINKAGE STACK ADDRESS            00785016
+*             INTO CONTROL REGISTER 15 AND HAS TO                       00786016
+*             RETURN WITH THE AMODE OF THE CALLER                       00787016
+*--------------------------------------------------------------         00788016
+         L     RC,AIJBLSTK-SVASVDL(,R2) GET ROUTINE ADDRESS    @D61PDOW 00789016
+         LA    RF,12              SET UP FUNCTION CODE         @D64XDMZ 00790016
+***      AMODESW CALL,REGS=(RE,RC) CALL ROUTINE                         00791016
+         AMODESW CALL,REGS=(RE,RC) CALL ROUTINE                @D61PDOW 00792016
+         LM    R0,RF,SVCWORK      RESTORE REGISTER             @D61PDOW 00793016
+         NI    TIBFLAG4,XFF-TIBDSAPA  RESET ACTIVE INDICATION  @D61PDIS 00794016
+         B     DISPSRET           RETURN TO CALLER             @D61PDIS 00795016
+         DROP  R6                                              @D52GDIS 00796016
+         DROP  R8                                              @D52GDIS 00797016
+         DROP  RA                                              @D52GDIS 00798016
+         EJECT ,                                               @D61PDIS 00799016
+*--------------------------------------------------------------         00800016
+* DISPSE36 - INITIALIZE ASTE                                            00801016
+*            INPUT:                                                     00802016
+*              R0 - FUNCTION CODE (ON DISPSERV ENTRY)                   00803016
+*              R5 - PCB ADDRESS                                         00804016
+*              R6 - DISPSERV BASE ADDRESS                               00805016
+*              R7 - RETURN ADDRESS (LINK REGISTER)                      00806016
+*            WORK:  R0, R2, RF                                          00807016
+*            AMODE: 31, DISABLED                                        00808016
+*--------------------------------------------------------------         00809016
+         USING DISPSERV,R6                                     @D61CDIS 00810016
+         USING PCBADR,R5                                       @D61CDIS 00811016
+*SGLINK DISPSE36,INPUT=(R0,R5,R6,R7),WORK=(R0,R2,RF)                    00812016
+DISPSE36 DS    0H                                              @D61CDIS 00813016
+         ICM   R2,15,PCBASTE      ASTE ADDRESS AVAILABLE ?     @D61CDIS 00814016
+         BZ    DISPSEHW           NO, SYSTEM ERROR             @D61NDIS 00815016
+         USING ASTE,R2                                         @D61CDIS 00816016
+         TM    ASTE,ASTEI         ASTE INVALID ?               @D61CDIS 00817016
+         BZ    DISPSRET           NO, RETURN TO CALLER         @D61CDIS 00818016
+         NI    ASTE,XFF-ASTEI     SET ASTE VALID               @D61CDIS 00819016
+         ICM   RF,15,PCBASCB      SHARED PARTITION ?           @D61CDIS 00820016
+         BNZ   DISPS036           NO, USE PARTITION'S SCB      @D61CDIS 00821016
+         L     RF,ASCBATAB        GET SCBATAB ADDRESS          @D61CDIS 00822016
+         USING SCBATAB,RF                                      @D61CDIS 00823016
+         L     RF,ASCBS           GET SHARED SCB               @D61CDIS 00824016
+         DROP  RF                                              @D61CDIS 00825016
+DISPS036 DS    0H                                              @D61CDIS 00826016
+         USING SCBADR,RF                                       @D61CDIS 00827016
+         ST    RF,ASTESCB         STORE SCB ADDRESS INTO ASTE  @D61CDIS 00828016
+         ST    R2,ASTESN            ... ASTE SEQ NUMBER        @D61CDIS 00829016
+         MVC   ASTESTD(4),SCBRSTO   ... SEGM TAB ORIGIN        @D61CDIS 00830016
+         DROP  RF                        *                     @D61CDIS 00831016
+         XC    ASTEAT,ASTEAT      CLEAR AUTH.TABLE             @D64XDMZ 00832016
+         LA    RF,ASTEAT          VIRT. ADDR OF AUTH. TABLE    @D64XDMZ 00833016
+         MVI   0(RF),X'30'        INITIALIZE AUTH. TABLE       @D64XDMZ 00834016
+         LRA   RF,0(RF)           GET REAL ADDR OF AUTH. TABLE @D64XDMZ 00835016
+         ST    RF,ASTEATO         AND STORE IT IN ASTE         @D64XDMZ 00836016
+         LA    RF,L'ASTEAT/4-1    MULT. BY 16 TO BRING LENGTH  @D64XDMZ 00837016
+         SLL   RF,4               IN CORRECT POSITION          @D64XDMZ 00838016
+         STH   RF,ASTEATL         LENGHT OF AUTH. TABLE        @D64XDMZ 00839016
+         L     RF,IJBDSICB               * ... MODEL PASN-AL   @D61CDIS 00840016
+         USING DSINFOTB,RF               *                     @D61CDIS 00841016
+         MVC   ASTELTD,DSLNKLTD          * ... SYSTEM LINK TAB.@D61CDIS 00842016
+         MVC   PCBVRTAL,DSSGVMAL         *                     @D61CDIS 00843016
+         MVC   ASTEALD(4),DSSGMALD       *                     @D61CDIS 00844016
+         B     DISPSRET           RETURN TO CALLER             @D61CDIS 00845016
+         DROP  R2                        *                     @D61CDIS 00846016
+         DROP  R5                                              @D61CDIS 00847016
+         DROP  R6                                              @D61CDIS 00848016
+         DROP  RF                        *                     @D61CDIS 00849016
+         TITLE 'VSE/AF SUPERVISOR    DISPSERV   IJBDISP INTERFACES'     00850016
+*--------------------------------------------------------------         00851016
+* DISPULOW   MOVE THE CONTROL BLOCK INFORMATION IN LOW CORE             00852016
+*            INTO THE DIFFERENT PREFIXED LOW CORES OF ALL OTHER         00853016
+*            CPUS OF THE TD ENVIRONMENT.                                00854016
+*            INPUT:  R6 - DISPULOW ADDRESS                              00855016
+*                    R7 - RETURN ADDRESS                                00856016
+*            WORK:   R1, R2                                             00857016
+*            AMODE: 31, DISABLED                                        00858016
+*--------------------------------------------------------------         00859016
+         USING DISPULOW,R6                                     @D61RDIS 00860016
+DISPULOW DS    0H                                              @D61RDIS 00861016
+         CLC   SCNPSW+4(4),DISPSEPV   SVC NEW PSW EXCHANGED ?  @D61RDIS 00862016
+         BE    DISPSEXX               NO, OK                   @D61RDIS 00863016
+         L     R2,DISPSEPF            GET ENTSVC ADDRESS       @D61RDIS 00864016
+         C     R2,SCNPSW+4            VSE'S NEW PSW ?          @D61RDIS 00865016
+         BE    DISPSEX0               YES, RESTORE NPSW LOCAT. @D61RDIS 00866016
+         MVC   DISPSEPW(8),SCNPSW     SAVE NEW PSW             @D61RDIS 00867016
+         LA    R2,DISPSEPR            GET LOCK ROUTINE         @D61RDIS 00868016
+         ST    R2,SCNPSW+4            UPDATE SVC NEW PSW       @D61RDIS 00869016
+DISPSEX0 DS    0H                                              @D61RDGL 00870016
+         ST    R2,DISPSEPV            UPDATE FLIH ADDRESS      @D61RDIS 00871016
+DISPSEXX DS    0H                                              @D61RDIS 00872016
+         L     R2,IJBTDATB        GET MCPU ADDR. TABLE ADDRESS @D61RDIS 00873016
+         L     R1,0(,R2)          GET MP COMREG ADDRESS        @D61RDIS 00874016
+         USING TDCOMREG,R1                                     @D61RDIS 00875016
+         CLI   TDCPUCNT,X'01'     UNIPROCESSOR MODE ?          @D61RDIS 00876016
+         BER   R7                 YES, RETURN                  @D61RDIS 00877016
+         DROP  R1                                              @D61RDIS 00878016
+DISPSL40 LA    R2,4(,R2)          POINT TO FIRST/NEXT MCPU     @D61RDIS 00879016
+         ICM   R1,15,0(R2)        GET MCPU ADDRESS             @D61RDIS 00880016
+         BMR   R7                 ALL MCPUS SCANNED -> RETURN  @D61RDIS 00881016
+         C     R1,TDCPUPTR        CURRENT MCPU ?               @D61RDIS 00882016
+         BE    DISPSL40           YES, SCAN NEXT MCPU          @D61RDIS 00883016
+         USING TCPUADR,R1                                      @D61RDIS 00884016
+         TM    TCPFLG2,TCPUACT+TCPUPFX CPU ACTIVE ?            @D61RDIS 00885016
+         BNO   DISPSL40           NO, SKIP UPDATE              @D61RDIS 00886016
+         L     R1,TCPPREV         GET PREFIX PAGE ADDESS       @D61RDIS 00887016
+         DROP  R1                                              @D61RDIS 00888016
+         MVC   IJBPAT01-SYSS00(IJBPAT02-IJBPAT01,R1),IJBPAT01  @D61RDOW 00889016
+         MVC   SUPFLAG-SYSS00(RID-SUPFLAG,R1),SUPFLAG          @D61RDOW 00890016
+*        MVC   XXARPTR-SYSS00(AFLIH-XXARPTR,R1),XXARPTR        @D61RDOW 00891016
+         MVC   NPSQE-SYSS00(L'NPSQE,R1),NPSQE                  @D61RDOW 00892016
+         MVC   AATCVT-SYSS00(L'AATCVT,R1),AATCVT               @D61RDOW 00893016
+         MVC   SYSCOM-SYSS00(TID-SYSCOM,R1),SYSCOM             @D61RDOW 00894016
+         MVC   APOWTB-SYSS00(IJBCLIM-APOWTB,R1),APOWTB         @D61RDOW 00895016
+         MVC   IJBCLIM-SYSS00(IJBFINSC-IJBCLIM,R1),IJBCLIM     @D61RDOW 00896016
+         MVC   BGCOMREG-SYSS00(PID-COMREG,R1),BGCOMREG         @D61RDOW 00897016
+         MVC   EOVSADR-SYSS00(256,R1),EOVSADR                  @D61RDIS 00898016
+         MVC   EOVSADR+256-SYSS00(COMREND-EOCADR-256,R1),EOVSADR+256    00899016
+         MVC   AFCB-SYSS00(GMTDATEN-AFCB,R1),AFCB              @D61RDOW 00900016
+         B     DISPSL40           UPDATE NEXT CPU'S PREFIX PAGE@D61RDIS 00901016
+         DROP  R6                                              @D61RDIS 00902016
+         EJECT ,                                               @D61PDIS 00903016
+*--------------------------------------------------------------         00904016
+*            SAVED SVC NEW PSW                                          00905016
+*--------------------------------------------------------------         00906016
+         DS    0D                                              @D61RDIS 00907016
+DISPSEPW DC    D'0'               SAVED NEW PSW                @D61RDIS 00908016
+DISPSEPV DC    A(ENTSVC+X'80000000') FORMER NEW PSW            @D64ADIS 00909016
+DISPSEPF DC    A(ENTSVC+X'80000000') VSE'S NEW PSW             @D64ADIS 00910016
+         SPACE 2                                               @D61RDIS 00911016
+*--------------------------------------------------------------         00912016
+* DISPSEPR - NEW PSW POINTS TO FOLLOWING ROUTINE                        00913016
+*--------------------------------------------------------------         00914016
+DISPSEPR DS    0F                                              @D61RDIS 00915016
+         STM   R9,RD,ERA          SAVE WORK REGISTERS          @D61RDIS 00916016
+*        TDLOCK FUNC=OBTAIN,TYPE=NP,WR1=R9                     @D61RDIS 00917016
+         TDLOCK FUNC=OBTAIN,TYPE=NP,WR1=R9                     @D61RDIS 00918016
+         L     R9,ADISPSER        GET DISP. SERVICE BASE ADDR. @D61RDIS 00919016
+         USING DISPSERV,R9                                     @D61RDIS 00920016
+         MVC   ERA+24(8),DISPSEPW MOVE NEW PSW INTO LOW CORE   @D61RDIS 00921016
+         DROP  R9                                              @D61RDIS 00922016
+         LM    R9,RD,ERA          RESTORE WORK REGISTERS       @D61RDIS 00923016
+         LPSW  ERA+24             RELOAD PSW                   @D61RDIS 00924016
+         SPACE 2                                                        00925016
+*----------------- END OF DISPATCHER SERVICES -----------------         00926016
+         AIF   (NOT &DISPSER).NOPRT20                                   00927016
+         PRINT NOGEN                                                    00928016
+.NOPRT20 ANOP                                                           00929016
+         MEND                                                           00930016

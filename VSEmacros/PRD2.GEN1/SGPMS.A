@@ -1,0 +1,503 @@
+         MACRO                                                          00050001
+         SGPMS                                                          00100001
+         GBLB  &BGDEBUG                                                 00150001
+         GBLB  &SGPMSI                                                  00200001
+***************************************************************         00250001
+*                                                             *         00300001
+.*       IBM DISK OPERATING SYSTEM                            *         00350001
+*        SUPERVISOR - SGPMS - 5686-066-06                     *         00400001
+.*                                                            *         00450001
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00550001
+*        "RESTRICTED MATERIALS OF IBM"                        *         00600003
+*        5686-066                                             *         00650003
+*        (C) COPYRIGHT IBM CORP. 1992, 2001                   *         00660003
+*                                                             *         00750001
+.* A000000-999999                                             *         00816603
+***************************************************************         00850001
+.* /* START OF SPECIFICATIONS *********************************         00900001
+.*                                                                      00950001
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         01000001
+.*                                                                      01050001
+.*01* DESCRIPTIVE NAME = PAGE MANAGER INTERACE ROUTINES                 01100001
+.*                       INVOKES PAGE MANAGER SERVICES TO DO PMR        01150001
+.*                       ADDRESS SPACE HANDLING                         01200001
+.*                                                                      01250001
+.*01* NOTES = NEW MACRO FIRST RELEASE AF 5.2.0                 @D52VDMZ 01300001
+.*                                                                      01350001
+.*  CHANGE ACTIVITY                                                     01400001
+.*   MORE THAN 255 TASKS                                       @D66ODOW 01410003
+.**** END OF SPECIFICATIONS ***************************************** / 01450001
+         SPACE 2                                                        01500001
+         AIF   (NOT &BGDEBUG OR NOT &SGPMSI).NSGPMSI                    01550001
+         PRINT GEN                                                      01600001
+.NSGPMSI ANOP                                                           01650001
+         DC    CL8'SGPMS   '     MACRO NAME                             01700001
+         DC    CL10'02/28/2001'  MACRO DATE                             01750002
+         SPACE 2                                                        01850001
+         TITLE 'VSE SUPERVISOR  SGPMS PMR SERVICES'                     01900001
+**************************************************************          01943701
+*                                                            *          01987401
+* SGPMS  - PAGE MANAGER INTERFACE ROUTINES                   *          02031101
+*          CALLED TO INVOKE PAGE MANAGER SERVICES TO         *          02074801
+*            ALLOCATE/EXTEND PAGE MANAGER TABLES WITHIN AN   *          02118501
+*            EXISTING PMR ADDRESS SPACE                      *          02162201
+*            FREE PAGE MANAGER TABLES                        *          02205901
+*            CREATE A PAGE MANAGER ADDRESS SPACE(INTERNALLY) *          02249601
+*         EXECUTES IN AMODE=31                               *          02293301
+*         CALLER'S AMODE/RMODE=ANY                           *          02337001
+*         INPUT:                                             *          02380701
+*           R1  - SCB POINTER                                *          02424401
+*           R7  - RETURN ADDRESS                             *          02468101
+*           R9  - SGPMS ADDRESS                              *          02511801
+*           RD  - SAVE AREA ADDRESS                          *          02555501
+*           RF  - FUNCTION CODE                              *          02599201
+*                      FC=0 - ALLOCATE PAGE MANAGER TABLES   *          02642901
+*                      FC=4 - FREE PAGE MANAGER TABLES       *          02686601
+*         OUTPUT:                                            *          02730301
+*           RF  - RETURN CODE                                *          02774001
+*           UPDATED SCB                                      *          02817701
+*            FC = 0                                          *          02861401
+*               RC= 0 - PMR TABLES ALLOCATED                 *          02905101
+*                       SCB.SCBVSTO    -                     *          02916001
+*                       SCB.SCBRSTO    |                     *          02926901
+*                       SCB.SCBAPTAS   |   SET BY PMR        *          02937801
+*                       SCB.SCBAPT     |                     *          02948701
+*                       SCB.SCBAPMRA   |                     *          02959601
+*                       SCB.SCBPFIX    |                     *          02970501
+*                       SCB.SCBPFIX3   -                     *          02981401
+*                       SCB.SCBCUSZ                          *          02992501
+*                       SCB.SCBEXSZ = 0                      *          03042501
+*               RC= 4 - NO VIRTUAL STORAGE AVAI. (IJBVSIZE)  *          03123601
+*               RC= 8 - NO REAL STORAGE AVAILABLE            *          03167301
+*               RC=12 - NO SYSTEM GETVIS AVAILABLE           *          03189101
+*            FC = 4                                          *          03211001
+*               RC= 0                                        *          03254701
+*               SCB.SCBVSTO = 0        -                     *          03265601
+*               SCB.SCBRSTO = 0        |                     *          03276501
+*               SCB.APTAS   = 0        |                     *          03287401
+*               SCB.APT     = 0        |  SET BY PMR         *          03298301
+*               SCB.APMRA   = 0        |                     *          03309201
+*               SCB.PFIX    = 0        |                     *          03320101
+*               SCB.PFIX3   = 0        -                     *          03331001
+*         REGISTER CONVENTIONS:                              *          03342101
+*           R9       : BASE REGISTER                         *          03385801
+*           RA,RB,RC : LINK REGISTER FOR SUBROUTINES         *          03429501
+*           R7       : LINK REGISTER FOR PAGE MANAGER        *          03473201
+*         WORK REGISTER                                      *          03516901
+*           R0,R1,R2,R3,R4,R5,R6,R8,RA,RE                    *          03560601
+*                                                            *          03604301
+**************************************************************          03648001
+         USING SGPMS,R9          ESTABLISH BASE                         03691701
+         USING SVEARA,RD         ESTABLISH SAVE AREA                    03735401
+SGPMS    DS    0F                                                       03779101
+SGPMS10  L     R5,ASRQTAB        ADDRESS RESOURCE DESC. TABLE  @D61NDMZ 03822801
+         LA    R5,SRQPMS-SRQTAB(,R5)                           @D61NDMZ 03866501
+         USING RQADR,R5                                                 03910201
+         TM    RSCDESC,FREEBIT   GATE OPEN                     @D66ODOW 03953903
+         BO    SGPMS20           YES                           @D66ODOW 03997603
+         BAL   RC,RWAIT                                                 04041301
+*SGLINK  RWAIT,INPUT(R5,RC)                                             04085001
+         B     SGPMS10           TRY AGAIN                              04128701
+SGPMS20  DS    0H                                                       04172401
+         MVC   RSCDESC,TID       CLOSE GATE AND IDENT OWNER    @D66ODOW 04216103
+         DROP  R5                                                       04303501
+         ST    R7,PMSSRETA       SAVE RETURN ADDR OF CALLER             04347201
+         L     RF,PMSBRTAB(RF)   LOAD ADDRESS OF SERVICE ROUTINE        04390901
+         BALR  RA,RF             CALL SERVICE ROUTINE                   04434601
+         ST    RF,SVER0F         STORE RETURN CODE                      04478301
+         DROP  RD                                                       04522001
+         L     R7,PMSSRETA       RESTORE RETURN ADDR OF CALLER          04565701
+         L     R5,ASRQTAB        ADDRESS RESOURCE DESC. TABLE  @D61NDMZ 04594801
+         LA    R5,SRQPMS-SRQTAB(,R5)                           @D61NDMZ 04623901
+         L     R6,DISPAD                                                04653101
+         USING DISP,R6                                                  04696801
+         BAL   RF,RPOST          POST ALL WAITERS                       04740501
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            04784201
+         DROP  R6                                                       04827901
+*        AMODESW RETURN,REG=(R7) RETURN TO CALLER IN ITS MODE           04871601
+         AMODESW RETURN,REG=(R7)                                        04915301
+         SPACE 4                                                        04959001
+*------------------------------------------------------------*          05002701
+* PMSBRTAB - PAGE MANAGER SERVICE I/F ROUTINE TABLE          *          05046401
+*------------------------------------------------------------*          05090101
+PMSBRTAB DS    0F                                                       05133801
+         DC    A(PMSALLOC)  - ALLOCATE PMR TABLES                       05177501
+         DC    A(PMSFREE)   - FREE PAGE MANAGER TABLES                  05221201
+PMSBRTBE EQU   *-PMSBRTAB      GET LENGTH OF TABLE                      05264901
+         EJECT ,                                                        05308601
+*------------------------------------------------------------*          05352301
+* PMSALLOC - ALLOCATE PAGE MANAGER TABLES                               05396001
+*            INPUT:                                                     05439701
+*              R1  - SCB POINTER                                        05483401
+*                    SCB.SCBFLG (TYPE OF SPACE (ADDRESS/DATA)*          05527101
+*                    SCB.SCBPASZ                             *          05570801
+*                    SCB.SCBEXSZ                             *          05614501
+*                    SCB.SCBCUSZ                             *          05658201
+*                    SCB.SCBSIZE                             *          05672701
+*                    SCB.SCBID                               *          05687201
+*              RA  - RETURN ADDRESS                                     05701901
+*            OUTPUT:                                                    05789301
+*              RF  - RETURN CODE                                        05833001
+*                    RC= 0 - PMR TABLES ALLOCATED                       05876701
+*                    RC= 4 - NO VIRTUAL STORAGE AVAILABLE               05920401
+*                    RC= 8 - NO REAL STORAGE AVAILABLE                  05964101
+*              UPDATED SCB (RC=0)                                       06007801
+*             REG. CONVENTIONS                                          06022301
+*              R9  - SGPMS ADDRESS                                      06036801
+*            WORK:                                                      06051501
+*              R7,R8,RB,RC                                              06095201
+*              IN CALLED ROUTINES (R2,R3,R4,R5,RC)                      06138901
+*------------------------------------------------------------*          06182601
+PMSALLOC DS    0F                                                       06226301
+         L     R8,APMGMDAT       ADDR OF PMR DATA AREA                  06313701
+         L     R7,AGETPMT        GET ADDRESS OF PMR SERVICES            06357401
+*        AMODESW CALL,REGS=(R7,R7)                                      06401101
+         AMODESW CALL,REGS=(R7,R7)                                      06444801
+*SGLINK GETPMT,INPUT=(R1,R7,R8),OUTPUT=(RF),WORK=(NONE)                 06488501
+         LTR   RF,RF             PMR TABLES ALLOCATED                   06532201
+         BNZ   PMSALLF           NO, ALLOC FAILED                       06575901
+         USING SCBADR,R1         ADDRESS SCB                            06619601
+         L     R7,SCBCUSZ        STORE NEW VALUE FOR RESERVED           06707001
+         A     R7,SCBEXSZ        REAL PAGE TABLES: SCBCUSZ:=            06750701
+         ST    R7,SCBCUSZ         SCBCUSZ + SCBEXSZ                     06794401
+         ST    RF,SCBEXSZ        RESET EXTENT SIZE                      06838101
+* SPECIAL ADDRESS SPACE HANDLING: IF THE SEGMENT TABLE WAS CREATED BY   06842201
+* THIS REQUEST, THE ACTUAL SHARED SEGMENTS WERE COPIED. IN CASE         06846301
+* THEY CHANGE,THE SEGMENT TABLES OF ALL SPACES THAT ARE ENQUEUED        06850401
+* IN THE SCB CHAIN ARE UPDATED. THEREFORE NO PAGE FAULT MAY OCCUR       06854501
+* BETWEEN COPYING THE SEGMENT TABLE AND ENQUEUING THE SCB.              06858601
+* NOTE, THAT THE SCB OF A SPACE MUST NOT BE ENQUEUED BEFORE THE PMR     06862701
+* TABLES FOR THE SPACE EXIST.                                           06866801
+         TM    SCBFLG,SCBDSP     DATA SPACE SCB                         06870901
+         BOR   RA                YES, NO NEED TO ENQEUE SCB NOW         06875001
+         ICM   R7,15,SCBSIZE     SPACE ALREADY ENQUEUED                 06879101
+         BNZR  RA                YES                                    06883201
+         L     R8,ASCBATAB       ADDRESS QUEUE HEADER                   06887301
+         USING SCBATAB,R8                                               06891401
+         L     R7,ASCBFDYN       ASSUME DYN. PARTITION QUEUE            06895501
+         CLI   SCBID+1,BLANK     DYN. PARTITION                         06899601
+         BNE   PMSALL0           YES                                    06903701
+         L     R7,ASCBFSTA       USE STATIC PARTITION QUEUE             06907801
+PMSALL0  DS    0H                                                       06911901
+         BAL   RC,PMSESCB        ENQUEUE SCB                            06916001
+         DROP  R8                RELEASE SCBATAB                        06920101
+         BR    RA                RETURN                                 06925501
+PMSALLF  DS    0H                ALLOCATION FAILURE                     06969201
+         CH    RF,H8             NO REAL STORAGE                        07056601
+         BE    PMSALLR           YES,RETURN                             07100301
+PMSCPMAS DS    0H                NO VIRTUAL STORAGE                     07187701
+         BAL   RB,PMSCREAT       CREATE PMR ADDRESS SPACE               07231401
+         LTR   RF,RF             PMRAS CREATED                          07275101
+         BZ    PMSALLOC          YES,TRY AGAIN TO ALLOC TABLES          07318801
+PMSALLR  DS    0H                RETURN TO CALLER                       07371201
+         LA    R8,0              RESET ..                               07379901
+         ST    R8,SCBEXSZ          ..  EXTENT SIZE                      07388601
+         DROP  R1                RELEASE SCB                            07397301
+         BR    RA                NO, RETURN TO CALLER                   07406201
+         SPACE 2                                                        07449901
+*------------------------------------------------------------*          07493601
+* PMSFREE  - FREE PAGE MANAGER TABLES                                   07537301
+*            (THE FUNCTION IS ONLY CALLED TO FREE ALL PMR               07570001
+*             SPACE OCCUPIED FOR AN ADDRESS/DATA SPACE. IT IS NOT       07602701
+*             CALLED IF AN ADDRESS/DS IS REDUCED.)                      07635401
+*            INPUT:                                                     07668401
+*              R1  - SCB POINTER                                        07712101
+*              RA  - RETURN ADDRESS                                     07755801
+*            OUTPUT:                                                    07843201
+*              RF  - 0                                                  07886901
+*              UPDATED SCB                                              07919601
+*            REG. CONVENTIONS                                           07952301
+*              R9  - SGPMS ADDRESS                                      07985001
+*            WORK:                                                      08018001
+*              R7,R8                                                    08061701
+*------------------------------------------------------------*          08105401
+PMSFREE  DS    0F                                                       08149101
+         L     R8,APMGMDAT       ADDR OF PMR DATA AREA                  08236501
+         L     R7,AFREEPMT       GET ADDRESS OF PMR SERVICES            08280201
+*        AMODESW CALL,REGS=(R7,R7)                                      08323901
+         AMODESW CALL,REGS=(R7,R7)                                      08367601
+*SGLINK FREEPMT,INPUT=(R1,R7,R8),OUTPUT=(NONE),WORK=(NONE)              08411301
+         SR    RF,RF             CLEAR RETURN CODE                      08455001
+         USING SCBADR,R1                                                08498701
+         ST    RF,SCBCUSZ        RESET CURRENT SIZE                     08542401
+         DROP  R1                                                       08586101
+         BR    RA                YES, RETURN                            08629801
+         SPACE 2                                                        08673501
+*------------------------------------------------------------*          08717201
+* PMSCREAT - CREATE PAGE MANAGER ADDRESS SPACE                          08760901
+*            INPUT:                                                     08804601
+*              RB  - RETURN ADDRESS                                     08848301
+*            OUTPUT:                                                    08935701
+*              RF  - RETURN CODE                                        08979401
+*                    RC= 0 - PMR ADDRESS SPACE CREATED                  09023101
+*                    RC= 4 - NO VIRTUAL STORAGE AVAILABLE               09066801
+*                    RC= 8 - NO REAL STORAGE AVAILABLE                  09110501
+*            NOMOD:                                                     09154201
+*              RA,RB,R1(FOR RF=0),RD                                    09197901
+*            REGISTER CONVENTIONS                                       09212401
+*              R9  - SGPMS ADDRESS                                      09226901
+*            WORK:                                                      09241601
+*              R0, R3, R5                                               09263401
+*              R2 : SAVED RD (SAVE AREA POINTER)                        09285301
+*              R4 : SIZE OF PMR ADDRESS SPACE (IN K)                    09329001
+*              RC : LINK REGISTER                                       09372701
+*  WHEN CALLING THE PAGE MANGER THE FOLLOWING FIELDS MUST BE            09460101
+*  SET IN SCB                                                           09503801
+*   SCBFLG=SCBPMRSP                                                     09547501
+*   SCBPASZ=SCBEXSZ=PMPASZ                                              09591201
+*   SCBCUSZ=0                                                           09634901
+*   SCBSPGVB,SCBSPGVE                                                   09678601
+*------------------------------------------------------------*          09722301
+PMSCREAT DS    0F                                                       09766001
+         LR    R2,RD          SAVE SAVE AREA POINTER                    09809701
+         L     RF,IJBPMCOM    ADDRESS OF PMCOM                          09853401
+         USING PMCOM,RF       ADDRESS SMCOM                             09897101
+         L     R3,PMPASZ      SIZE OF PMR ADDRESS SPACE                 09940801
+         DROP  RF             RELEASE PMCOM                             09984501
+         LR    R4,R3          SAVE PMPASZ FOR LATER USE                 10028201
+         L     RF,IJBSMCOM    ADDRESS OF SMCOM                          10071901
+         USING SMCOM,RF       ADDRESS SMCOM                             10115601
+         A     R3,SMALCVSZ    R3=ALLOC. STOR+ STOR. NEEDED FOR PMR SP   10135001
+*  SMALCVSZ MUST BE RESET IN CASE OF ERROR                              10154401
+         ST    R3,SMALCVSZ    SMALCVSZ:=SMALCVSZ+PMPASZ                 10173801
+         DROP  RF             RELEASE SMCOM                             10193201
+         L     RF,IJBDSICB    ADDRESS DATA SPACE CONTROL BLOCK          10212601
+         LTR   RF,RF          DATA SPACE SUPPORT AVAILABLE ?            10232001
+         BZ    PMSCRE00       NO                                        10251401
+         USING DSINFOTB,RF                                              10290201
+         L     RF,DSSAVSIZ    GET ACTUAL SIZE OF ALLOCATED DATA SPACES  10309601
+         DROP  RF             RELEASE DATA SPACE CONTROL BLOCK          10329001
+         LNR   RF,RF                                                    10348401
+PMSCRE00 DS    0H                                                       10367801
+         A     RF,IJBVSIZE    RF:= IJBVSIZE-DSSAVSIZ                    10387201
+         CLR   R3,RF          NEEDED SIZE > AVAILABLE SIZE ?            10406601
+         BH    PMSCREX3       ERROR EXIT 3 (RESET SMALCVCSZ)            10426001
+         BAL   RC,PMSCRAIC    ALLOCATE AND INIT CNTRL BLOCKS            10465201
+*SGLINK PMSCRAIC,INPUT=(R4,RC),OUTPUT=(R0,R1,RF),WORK=(R3,R5,RD)        10508901
+         LTR   RF,RF          CNTR. BLOCKS ALLOCATED                    10552601
+         BNZ   PMSCREX4       NO, ERROR EXIT 4 (RESET SMALCVSZ)         10602601
+         L     R8,ASCBATAB    ADDRESS QUEUE HEADER                      10610901
+         USING SCBATAB,R8                                               10619201
+         L     R7,ASCBFPMR    FIRST PMR SCB                             10627501
+         DROP  R8             RELEASE SCBATAB                           10635801
+* THE PMR SCB MUST BE ENQUEUED BEFORE THE PMR IS CALLED FOR INTITIAL.   10644101
+         BAL   RC,PMSESCB     ENQUEUE PRM SCB                           10652601
+         L     R8,APMGMDAT    ADDR OF PMR DATA AREA                     10814801
+         L     R7,AGETPMT     GET ADDRESS OF PMR SERVICES               10858501
+*        AMODESW CALL,REGS=(R7,R7)  CREATE PMR ADDRESS SPACE            10902201
+         AMODESW CALL,REGS=(R7,R7)                                      10945901
+         LTR   RF,RF          PMR SPACE CREATED                         10989601
+         BNZ   PMSCREX1       NO, DO ERROR PROCESSING                   11039601
+         USING SCBADR,R1         ADDRESS SCB                            11339201
+         MVC   SCBCUSZ,SCBEXSZ   CURRENT SIZE = SIZE OF PMRAS           11382901
+         ST    RF,SCBEXSZ        RESET EXTENT SIZE                      11426601
+         DROP  R1                RELEASE SCB                            11470301
+PMSCREX  LR    RD,R2             RELOAD SAVE AREA POINTER               11557701
+         USING SVEARA,RD                                                11601401
+         L     R1,SVER01         RELOAD SCBPTR PROVIDED BY CALLER       11645101
+         BR    RB             RETURN                                    11688801
+*------------------------------------------------------------*          11732501
+*  ERROR HANDLING ROUTINES FOR PMSCREAT                      *          11776201
+*------------------------------------------------------------*          11819901
+PMSCREX1 DS    0H             ERROR EXIT ENTRY 1                        11822601
+         BAL   RC,PMSDSCB     DEQUEUE PMR SCB                           11828001
+PMSCREX2 DS    0H             ERROR EXIT ENTRY 2                        11830701
+         BAL   RC,PMSCRER2    FREE CONTROL BLOCKS                       11836101
+         B     PMSCREX4       SKIP RETURN CODE SETTING (ALREADY SET)    11838801
+PMSCREX3 DS    0H             ERROR EXIT ENTRY 2                        11841501
+         LA    RF,4           NO VIRTUAL STORAGE AVAILABLE              11846901
+PMSCREX4 DS    0H             ERROR EXIT ENTRY 2                        11849601
+         BAL   RC,PMSCRER1    RESET SMALCVSZ                            11855001
+         B     PMSCREX        EXIT, RF(NO REAL ST.) SET BY GETPMT       11857701
+         SPACE 1                                                        11860401
+PMSCRER0 DS    0H             ERROR EXIT                                11863601
+         LA    RF,4           IND. NO VIRTUAL STORAGE AVAIL.            11951001
+         BR    RB             RETURN TO CALLLER                         11994701
+PMSCRER1 DS    0H             ERROR EXIT                                12038401
+         L     R3,IJBSMCOM    ADDRESS SMCOM                             12125801
+         USING SMCOM,R3                                                 12169501
+         L     R0,SMALCVSZ    SUBTRACT SIZE OF PMRAS FROM..             12213201
+         SR    R0,R4          .. ALLOCATE STORAGE ..                    12256901
+         ST    R0,SMALCVSZ    .. AND SET TO ORIGINAL VALUE              12300601
+         DROP  R3             RELEASE SMCB                              12344301
+         BR    RC             RETURN TO CALLLER                         12388001
+PMSCRER2 DS    0H             ERROR EXIT                                12431701
+         LR    R5,RF          SAVE RETURN CODE                          12519101
+         BAL   RD,PMSCRFCB    NO, FREE CONTROL BLOCKS                   12562801
+         LR    RF,R5          RESTORE RETURN CODE                       12606501
+         BR    RC             RETURN TO CALLER                          12650201
+PMSCRFCB DS    0H             FREE CONTROL BLOCKS                       12693901
+         LA    R3,PMSSAVA-16                                            12737601
+*        SFREEVIS ADDRESS=(1),LENGTH=(0),SAVE=(3)                       12781301
+         SFREEVIS ADDRESS=(1),LENGTH=(0),SAVE=(3)                       12825001
+         BR    RD                                                       12868701
+*------------------------------------------------------------*          12912401
+* PMSCRAIC - ALLOCATE AND INITIALIZE CONTROL BLOCKS                     12956101
+*            NOTE, THAT PFIX MUST BE DONE SEPARATELY, SINCE PFIX GATE   12999801
+*            IS ALREADY CLOSED                                          13043501
+*            INPUT:                                                     13087201
+*              RC  - RETURN ADDRESS                                     13130901
+*              R4  - SIZE OF PRIVATE AREA OF PMRAS                      13218301
+*            OUTPUT:                                                    13262001
+*              R0  - LENGTH OF REQUIRED CONTROL BLOCKS                  13305701
+*              R1  - ADDR OF SCB POINTER OF PMRAS (BEGIN OF GETVIS)     13349401
+*              RF  - RETURN CODE                                        13393101
+*                    RC= 0 - CBS ALLOCATED AND INTIALIZED               13436801
+*                    RC= 4 - NO VIRTUAL STORAGE AVAILABLE               13480501
+*                    RC= 8 - NO REAL STORAGE AVAILABLE                  13524201
+*            REG. CONVENTION                                            13567901
+*              R9  - SGPMS ADDRESS                                      13611601
+*            WORK:                                                      13655301
+*              R3,R5,RD                                                 13699001
+*------------------------------------------------------------*          13742701
+PMSCRAIC DS    0H                                                       13786401
+         LA    RF,0            NO PAGE BOUNDARY REQUIRED                13873801
+         BAL   RD,PMSCRGCB     GET GETVIS STORAGE                       13917501
+*SGLINK PMSCRAIC,INPUT=(RD),OUTPUT=(R0,R1,RF),WORK=(R3)                 13939301
+         LTR   RF,RF           GETVIS SUCCESSFUL                        13961201
+         BNZ   PMSCAIE0        NO, SET RF FOR CALLING ROUTINE           14004901
+* IF GETVIS AREA IS WITHIN ONE PAGE THEN                                14092301
+*   INITIALIZE CONTROL BLOCKS AND RETURN                                14136001
+* ELSE                                                                  14179701
+*  DO                                                                   14223401
+*   SFREEVIS AREA                                                       14267101
+*   SGETVIS AREA WITH PAGE=YES                                          14310801
+*   IF REQUEST IS SUCCESSFUL THEN                                       14354501
+*     INITIALIZE CONTROL BLOCKS AND RETURN                              14398201
+*   ELSE                                                                14441901
+*     SET RETURN CODES AND RETURN                                       14485601
+*  END                                                                  14529301
+         LR    R5,R1           CALCULATE ..                             14573001
+         AR    R5,R0           .. END ..                                14616701
+         BCTR  R5,0            .. ADDRESS                               14660401
+         N     R5,PADDRMSK     ALIGN ON PAGE BOUNDARY                   14704101
+         CR    R5,R1           TOTAL REQUEST WITHIN ONE PAGE            14747801
+         BNH   PMSCICB         YES, INITIALIZE CONTROL BLOCKS           14791501
+         BAL   RD,PMSCRFCB     FREE CONTROL BLOCKS                      14878901
+         LA    RF,4            PAGE=YES REQUIRED                        14922601
+         BAL   RD,PMSCRGCB     GET GETVIS STORAGE                       14966301
+         LTR   RF,RF                                                    15010001
+         BNZ   PMSCAIE0        NO, SET RC FOR CALLING ROUTINE           15053701
+PMSCICB  DS    0H              INITIALIZE CONTROL BLOCKS                15097401
+         USING SCBADR,R1                                                15184801
+         OI    SCBFLG,SCBPMRSP                                          15228501
+         ST    R4,SCBPASZ      SCBPASZ = PMPASZ                         15272201
+         ST    R4,SCBEXSZ      SCBEXSZ = PMPASZ                         15315901
+         ST    R4,SCBSIZE      SCBSIZE = PMPASZ                         15365901
+         L     R3,IJBPMCOM     ADDRESS PMCOM                            15578101
+         USING PMCOM,R3                                                 15621801
+         MVC   SCBSPGVB,PMPRPBEG  BEGIN OF GETVIS AREA                  15665501
+         MVC   SCBSPGVE,PMPRPEND  END OF GETVIS AREA                    15709201
+         DROP  R3              RELEASE PMCOM                            15752901
+         DROP  R1              RELEASE SCB                              15796601
+         BR    RC              RETURN                                   15840301
+*---  RETURN CODE SETTING FOR GETVIS FAILURE ----------------*          15884001
+PMSCAIE0 DS    0H              ERROR HANDLING                           15927701
+         CH    RF,H32          PFIX ERROR                               16015101
+         BE    PMSCAIR8        YES, SET RETURN CODE 8                   16058801
+PMSCAIE4 DS    0H              ERROR HANDLING                           16102501
+         LA    RF,12           NO SYSTEM GETVIS AVAILABLE               16189901
+         BR    RC                                                       16233601
+PMSCAIR8 DS    0H                                                       16277301
+         LA    RF,8            NO REAL STORAGE AVAILABLE                16364701
+         BR    RC              RETURN                                   16408401
+         SPACE 1                                                        16452101
+PMSCRGCB DS    0H                                                       16495801
+* GET STORAGE FOR CONTROL BLOCKS (RF=0=> NO PAGE BOUNDARY REQ.)         16583201
+         LA    R0,SCBLNG       LENGTH OF SCB                            16626901
+         LA    R3,PMSSAVA-16   ADDRESS OF SAVE AREA                     16670601
+         L     R1,IJBSMCOM     ADDRESS SMCOM                            16714301
+         USING SMCOM,R1                                                 16758001
+         LA    R1,SMCSSPID     ADDRESS SUBPOOL                          16801701
+         DROP  R1                                                       16845401
+         LTR   RF,RF           PAGE=YES REQUIRED                        16889101
+         BNZ   PMSCRGC0        YES                                      16932801
+*        SGETVIS SPID=(1),LENGTH=(0),SAVE=(R3),PFIX=YES                 17020201
+         SGETVIS SPID=(1),LENGTH=(0),SAVE=(R3),PFIX=YES                 17063901
+         BR    RD              RETURN TO CALLER                         17107601
+PMSCRGC0 DS    0H                                                       17151301
+*        SGETVIS SPID=(1),LENGTH=(0),SAVE=(R3),PFIX=YES,PAGE=YES        17250001
+         SGETVIS SPID=(1),LENGTH=(0),SAVE=(R3),PFIX=YES,PAGE=YES        17300001
+         BR    RD              RETURN TO CALLER                         17350001
+*------------------------------------------------------------*          17350801
+* PMSESCB  - ENQUEUE PMR/ADDRESS SPACE SCB                              17351801
+*             IF IT IS A PMR SCB, IT MUST BE THE LAST SCB IN THE        17352801
+*             QUEUE (PMR DEPENDENCY).                                   17353801
+*            INPUT:                                                     17354801
+*              RC  - RETURN ADDRESS                                     17355601
+*              R1  - SCBPNT OF PMR SCB TO BE ENQUEUED                   17356401
+*              R7  - POINTER TO FIRST SCB IN QUEUE                      17356601
+*              R8  - POINTER TO QUEUE HEADER (ASCBATAB)                 17356801
+*            OUTPUT:                                                    17357201
+*                    UPDATED AND ENQUEUED SCB                           17358001
+*            REG. CONVENTION                                            17358801
+*              R9  - SGPMS ADDRESS                                      17359601
+*            WORK:                                                      17360401
+*              R7,R8                                                    17361201
+*------------------------------------------------------------*          17362001
+PMSESCB  DS    0H                                                       17362801
+         USING SCBATAB,R8      ADDRESS QUEUE HEADER                     17364801
+         USING SCBADR,R1       ADDRESS ENQUEUE SCB                      17366801
+         LTR   R7,R7           QUEUE EMPTY? (DYN. SPACE OR DURING IPL)  17367001
+         BZ    PMSESC10        YES                                      17367201
+         MVC   SCBBWPT,SCBBWPT-SCBADR(R7)   SCBBWPT=ASCBFPMR.SCBBWPT    17367601
+         ST    R7,SCBFWPT            SCBFWPT=ASCBFPMR                   17368401
+         L     R8,SCBBWPT-SCBADR(,R7) ASCBFPMR.SCBBWPT.SCBFWPT = ..     17369201
+         ST    R1,SCBFWPT-SCBADR(,R8)        .. SCBPNT                  17370001
+         ST    R1,SCBBWPT-SCBADR(,R7) ASCBFPMR.SCBBWPT = SCBPNT         17370801
+         TM    SCBFLG,SCBPMRSP       PMR SPACE ?                        17371001
+         BZR   RC                    NO, ADDRESS SPACE ALL DONE         17371201
+         MVC   SCBEYEC,SCBEYEC-SCBADR(R7)  SET EYECATCHER               17371601
+         PACK  SCBID,SCBID-SCBADR(,R8)    GET SCBID OF LAST PMR SPACE   17372201
+         AP    SCBID,PMSP1           ADD 1                              17372801
+         UNPK  SCBID,SCBID           STORE IT IN ENQUEUED SCB           17373401
+         OI    SCBID+1,X'F0'                                            17374001
+         BR    RC                    RETURN                             17374101
+PMSESC10 DS    0H                    DYN. SPACE HANDLING                17374201
+         ST    R1,SCBBWPT            SCB POINTS TO ITSELF IT IS ..      17374301
+         ST    R1,SCBFWPT            .. THE ONLY SCB IN QUEUE           17374401
+         CLI   SCBID+1,BLANK         STATIC PARTITION                   17374501
+         BE    PMSESC20              YES                                17374601
+         ST    R1,ASCBFDYN           SET BEGIN OF DYN. SPACE QUEUE      17374701
+         BR    RC                    RETURN                             17374801
+PMSESC20 DS    0H                    DYN. SPACE HANDLING                17374901
+         ST    R1,ASCBFSTA           SET BEGIN OF STATIC SPACE QUEUE    17375001
+         BR    RC                    RETURN                             17375101
+         DROP  R1              RELEASE ENQUEUE SCB                      17375201
+         DROP  R8              RELEASE SCBATAB                          17375301
+*------------------------------------------------------------*          17376401
+* PMSDSCB  - DEQUEUE PMR SPACE SCB                                      17377201
+*             THIS IS DONE IF ALLOCATION OF PMR SPACE FAILS.            17378001
+*            INPUT:                                                     17378801
+*              RC  - RETURN ADDRESS                                     17379601
+*              R1  - SCBPNT OF PMR SCB TO BE DEQUEUED                   17380401
+*            OUTPUT:                                                    17381201
+*                    DEQUEUED SCB                                       17382001
+*            REG. CONVENTION                                            17382801
+*              R9  - SGPMS ADDRESS                                      17383601
+*            WORK:                                                      17384401
+*              R7,R8                                                    17385201
+*------------------------------------------------------------*          17386001
+PMSDSCB  DS    0H                                                       17386801
+         L     R7,ASCBATAB     GET POINTER ..                           17387601
+         USING SCBATAB,R7                                               17388401
+         L     R7,ASCBFPMR     .. TO FIRST PMR SCB                      17389201
+         DROP  R7                                                       17390001
+         USING SCBADR,R1       ADDRESS DEQUEUE SCB                      17390801
+         MVC   SCBBWPT-SCBADR(,R7),SCBBWPT  ASCBFPMR.SCBBWPT=SCBBWPT    17391601
+         L     R8,SCBBWPT      SCBPNT.SCBBWPT.SCBFWPT:=...              17392401
+         ST    R7,SCBFWPT-SCBADR(,R8) ...               ASCBFPMR        17393201
+         DROP  R1              DROP PMR SCB                             17394001
+         BR    RC                                                       17394801
+*---------------------------------------------------------------------- 17400001
+* WORK FIELDS                                                           17450001
+*---------------------------------------------------------------------- 17500001
+PMSSRETA DS    F               RETURN ADDRESS OF CALLER                 17550001
+PMSSAVA  DS    16F             REGISTER SAVE AREA                       17600001
+PMSP1    DC    X'001C'         PACKED 1                                 17650001
+         DROP  R9              RELEASE SGPMS BASE                       17700001
+         EJECT ,                                                        17750001
+         AIF   (NOT &BGDEBUG OR NOT &SGPMSI).NSGPMSP                    17800001
+         PRINT NOGEN                                                    17850001
+.NSGPMSP ANOP                                                           17900001
+         MEND                                                           18700001

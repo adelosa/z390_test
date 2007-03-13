@@ -1,0 +1,262 @@
+         MACRO                                                          00050000
+&LABEL   GENDTL &ADDR=,&NAME=,&CONTROL=E,&LOCKOPT=1,&KEEP=NO,          *00100000
+               &OWNER=TASK,&LENGTH=NO,&VOLID=,&SCOPE=                   00150000
+         LCLA   &LS               LENGTH OF STATIC DTL PART             00200000
+         LCLA   &LN               LENGTH OF RESOURCE NAME               00250000
+         LCLA   &LV               LENGTH OF VOLID                       00300000
+         LCLA   &LE               LENGTH OF ECB+LOCKPARM       @D51UDMK 00325052
+         LCLA   &L                TOTAL LENGTH OF DTL                   00350000
+         LCLA   &REG              WORK REGISTER                         00400000
+         LCLA   &FLAG1,&FLAG2     CONTROL FLAGS                         00450000
+         LCLA   &EXCFLG           EXCLUSIVE FLAG                        00500000
+         LCLA   &KEEPFLG          KEEP FLAG                             00550000
+         LCLA   &PARTFLG          PARTITION FLAG                        00600000
+         LCLA   &SHRFLG1          LOCKOPT FLAG 1                        00650000
+         LCLA   &SHRFLG2          LOCKOPT FLAG 2                        00700000
+         LCLA   &SHRFLG4          LOCKOPT FLAG 4                        00750000
+         LCLA   &EXTFLG           EXTERNAL FLAG                         00800000
+         LCLA   &VOLFLG           VOLID SPECIFIED                       00850000
+         LCLB   &B1,&B2           WORK VARIABLES                        00900000
+         LCLC   &ADD              ADDRESS CODED                         00950000
+         LCLC   &NAM              NAME CODED                            01000000
+         LCLC   &VOL              VOLID CODED                           01050000
+         LCLC   &TARGET1          TARGET FOR DTL CODED                  01100000
+         LCLC   &TARGET2          TARGET FOR NAME CODED                 01150000
+         LCLC   &TARGET3          TARGET FOR VOLID CODED                01200000
+         LCLC   &IND              SYSTEM INDEX                          01250000
+.*                                                                      01300000
+         AGO   .ZZZ                                                     01350000
+*********************************************************************** 01400000
+*                                                                     * 01450000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 01500000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1979,1992                   * 01550052
+*        ALL RIGHTS RESERVED                                          * 01600000
+*        LICENSED MATERIALS - PROGRAM PROPERTY OF IBM                 * 01650000
+.*       SEE COPYRIGHT INSTRUCTIONS, G120-2083                        * 01700000
+*                                                                     * 01750000
+*********************************************************************** 01800000
+.ZZZ ANOP                                                               01850000
+.*-------------------------------------------------------------------   01900000
+.*                                                                      01950000
+.* /* START OF SPECIFICATIONS ***************************************** 02000000
+.*                                                                      02050000
+.*01* MODULE-TYPE = SUPERVISOR - USER INTERFACE MACRO                   02100000
+.*                                                                      02150000
+.*01* DESCRIPTIVE NAME = GENERATE LOCK CONTROL BLOCK (DTL)              02200000
+.*                                                                      02250000
+.*01* NOTES = CHANGE ACTIVITY                                           02300000
+.*    NEW CODE FOR RELEASE 35D TO SUPPORT RESOURCE MANAGEMENT           02350000
+.* A000000-999999                                              @D356DDK 02400000
+.*    NEW DTL LENGTH FOR ESA 1.2.0                             @D51UDMK 02425052
+.**** END OF SPECIFICATIONS ******************************************* 02450000
+.*                                                                      02500000
+.*                                                                      02550000
+.*   PURPOSE:                                                           02600000
+.*                                                                      02650000
+.*            THIS MACRO BUILDS A DTL CONTROL BLOCK IN AN USER          02700000
+.*            SPECIFIED STORAGE AREA OR IN DYNAMICALLY OBTAINED         02750000
+.*            STORAGE IF THE 'ADDR' PARAMETER IS OMITTED.               02800000
+.*                                                                      02850000
+.*                                                                      02900000
+.*   REGISTER USAGE:                                                    02950000
+.*                                                                      03000000
+.*            REGISTERS 0, 1 AND 15 MIGHT BE AFFECTED.                  03050000
+.*            IF 'ADDR' IS OMITTED REGISTER 1 WILL CONTAIN THE          03100000
+.*            ADDRESS OF THE DTL IN CASE OF A SUCCESSFUL GETVIS.        03150000
+.*            THE RETURN CODE OF THE GETVIS REQUEST WILL BE             03200000
+.*            IN REGISTER 15.                                           03250000
+.*            IF 'ADDR' IS OMITTED OR 'LENGTH=YES' IS SPECIFIED         03300000
+.*            REGISTER 0 WILL CONTAIN THE DTL LENGTH.                   03350000
+.*                                                                      03400000
+.*                                                                      03450000
+.********************************************************************** 03500000
+.*                                                                      03550000
+.*                                                                      03600000
+.*                                                                      03650000
+.*** SETTING OF LOCAL VARIABLES ***                                     03700000
+.*                                                                      03750000
+.*                                                                      03800000
+&LS      SETA   4                 SET LENGTH OF STATIC DTL PART         03850000
+&LN      SETA   12                SET LENGTH OF RESOURCE NAME           03900000
+&LV      SETA   6                 SET LENGTH OF VOLID                   03950000
+&LE      SETA   8                 SET LENGTH OF ECB+LOCKPARM   @D51UDMK 03975052
+&EXCFLG  SETA   X'10'       FLG1  SET EXCLUSIVE FLAG                    04000000
+&SHRFLG1 SETA   X'01'       FLG1  SET LOCKOPT=1 FLAG                    04050000
+&SHRFLG2 SETA   X'02'       FLG1  SET LOCKOPT=2 FLAG                    04100000
+&SHRFLG4 SETA   X'04'       FLG1  SET LOCKOPT=4 FLAG                    04150000
+&KEEPFLG SETA   X'80'       FLG2  SET KEEP FLAG                         04200000
+&PARTFLG SETA   X'40'       FLG2  SET PARTITION FLAG                    04250000
+&EXTFLG  SETA   X'10'       FLG2  SET EXTERNAL FLAG                     04300000
+&VOLFLG  SETA   X'08'       FLG2  SET VOLID FLAG                        04350000
+.*                                                                      04400000
+.*                                                                      04450000
+&L       SETA   &LS+&LN+&LV+&LE   SET TOTAL DTL LENGTH         @D51UDMK 04500052
+&IND     SETC  '&SYSNDX'          SET SYSTEM INDEX                      04550000
+.*                                                                      04600000
+.*                                                                      04650000
+         AIF   ('&LABEL' EQ '').NOLAB GO IF NO LABEL                    04700000
+&LABEL   DC    0H'0'                                                    04750000
+.NOLAB   ANOP                                                           04800000
+.*                                                                      04850000
+.* -------------- CHECK IF SECOND WORK REGISTER NECESSARY ----          04900000
+.*                                                                      04950000
+&REG     SETA  1                                                        05000000
+         AIF   (T'&ADDR EQ 'O').CHK1                                    05050000
+         AIF   ('&ADDR'(1,1) EQ '(').CHK5                               05100000
+.CHK1    ANOP                                                           05150000
+&B1      SETB  1                                                        05200000
+         AIF   (T'&NAME NE 'O').CHK2                                    05250000
+         MNOTE 1,'RESOURCE NAME NOT SPECIFIED.'                         05300000
+         AGO   .CHK3                                                    05350000
+.CHK2    AIF   ('&NAME'(1,1) EQ '(').CHK3                               05400000
+&B2      SETB  1                                                        05450000
+         AGO   .CHK4                                                    05500000
+.CHK3    AIF   (T'&VOLID EQ 'O').CHK4                                   05550000
+         AIF   ('&VOLID'(1,1) EQ '(').CHK4                              05600000
+&B2      SETB  1                                                        05650000
+.CHK4    AIF   (NOT &B1 OR NOT &B2).CHK5                                05700000
+&REG     SETA  15                                              @D36ZDOW 05750000
+.CHK5    ANOP                                                           05800000
+.*                                                                      05850000
+.* ----------------- CHECK CONTROL PARAMETER -----------------          05900000
+.*                                                                      05950000
+         AIF   ('&CONTROL' EQ 'E').CONXCL GO IF EXCLUSIVE               06000000
+         AIF   ('&CONTROL' EQ 'S').CONEND GO IF SHARED                  06050000
+  MNOTE 1,'CONTROL SPECIFICATION INCORRECT. CONTROL=E ASSUMED.'         06100000
+.CONXCL  ANOP                                                           06150000
+&FLAG1   SETA  &EXCFLG INDICATE EXCLUSIVE CONTROL                       06200000
+.CONEND  ANOP                                                           06250000
+.*                                                                      06300000
+.* ------------------ CHECK KEEP PARAMETER -------------------          06350000
+.*                                                                      06400000
+         AIF   ('&KEEP' NE 'YES').KEEPNY GO IF KEEP NE YES              06450000
+&FLAG2   SETA  &FLAG2+&KEEPFLG INDICATE KEEP                            06500000
+         AGO   .KEEPEND                                                 06550000
+.KEEPNY  AIF   ('&KEEP' EQ 'NO').KEEPEND GO IF KEEP EQ NO               06600000
+    MNOTE 1,'KEEP SPECIFICATION INCORRECT. KEEP=NO ASSUMED.'            06650000
+.KEEPEND ANOP                                                           06700000
+.*                                                                      06750000
+.* ------------------ CHECK OWNER PARAMETER ------------------          06800000
+.*                                                                      06850000
+         AIF   ('&OWNER' NE 'PARTITION').OWNNOTP GO IF NOT PAR          06900000
+&FLAG2   SETA  &FLAG2+&PARTFLG INDICATE PARTITION                       06950000
+         AGO   .OWNEND                                                  07000000
+.OWNNOTP AIF   ('&OWNER' EQ 'TASK').OWNEND GO IF TASK                   07050000
+  MNOTE 1,'OWNER SPECIFICATION INCORRECT. OWNER=TASK ASSUMED.'          07100000
+.OWNEND  ANOP                                                           07150000
+.*                                                                      07200000
+.* ----------------- CHECK LOCKOPT PARAMETER -----------------          07250000
+.*                                                                      07300000
+         AIF   ('&LOCKOPT' NE '4').SHRNOT4 GO IF OPTION NE 4            07350000
+&FLAG1   SETA  &FLAG1+&SHRFLG4 INDICATE OPTION 4                        07400000
+         AGO   .SHREND                                                  07450000
+.SHRNOT4 AIF   ('&LOCKOPT' NE '2').SHRNOT2 GO IF OPTION NE 2            07500000
+&FLAG1   SETA  &FLAG1+&SHRFLG2 INDICATE OPTION 2                        07550000
+         AGO   .SHREND                                                  07600000
+.SHRNOT2 AIF   ('&LOCKOPT' EQ '1').SHROPT1 GO IF OPTION EQ 1            07650000
+  MNOTE 1,'LOCKOPT SPECIFICATION INCORRECT. LOCKOPT=1 ASSUMED.'         07700000
+.SHROPT1 ANOP                                                           07750000
+&FLAG1   SETA &FLAG1+&SHRFLG1 INDICATE OPTION 1                         07800000
+.SHREND  ANOP                                                           07850000
+.*                                                                      07900000
+.* ------------------ CHECK SCOPE PARAMETER ------------------          07950000
+.*                                                                      08000000
+         AIF   (T'&SCOPE EQ 'O').SCOPEND GO IF SCOPE OMITTED            08050000
+         AIF   (T'&VOLID EQ 'O').SCOPCHK GO IF VOLID OMITTED            08100000
+  MNOTE 1,'VOLID SPECIFIED.SCOPE SPECIFICATION IGNORED.'                08150000
+         AGO   .SCOPEND                                                 08200000
+.SCOPCHK AIF   ('&SCOPE' NE 'EXT').SCOPINT                              08250000
+&FLAG2   SETA  &FLAG2+&EXTFLG                                           08300000
+         AGO   .SCOPEND                                                 08350000
+.SCOPINT AIF   ('&SCOPE' EQ 'INT').SCOPEND                              08400000
+  MNOTE 1,'SCOPE SPECIFICATION INCORRECT.SCOPE=INT ASSUMED.'            08450000
+.SCOPEND ANOP                                                           08500000
+.*                                                                      08550000
+.* ------------------ CHECK ADDR PARAMETER -------------------          08600000
+.*                                                                      08650000
+         AIF   (T'&ADDR NE 'O').ADDDEF GO IF ADDR DEFINED               08700000
+.*                                                                      08750000
+.*           *** ADDR OMITTED - GETVIS REQUIRED ***                     08800000
+.*                                                                      08850000
+         LA    0,&L.(,0)          SET REQUIRED LENGTH                   08900000
+         SLR   15,15              CLEAR RETURN CODE REGISTER            08950000
+         SVC   61                 GETVIS SVC                            09000000
+         LTR   15,15              WAS GETVIS SUCCESSFUL?                09050000
+         BNZ   IJBZ&IND+&LS       NO: SKIP                              09100000
+         AGO   .GOTVIS                                                  09150000
+.ADDDEF  AIF   ('&ADDR'(1,1) EQ '(').ADDDYN GO IF DYNAMIC               09200000
+         L     1,=A(&ADDR)        LOAD TARGET ADDRESS                   09250000
+.GOTVIS  ANOP                                                           09300000
+&TARGET1 SETC  '0('.'&LS'.',1)'                                         09350000
+&TARGET2 SETC  '&LS'.'('.'&LN'.',1)'                                    09400000
+&TARGET3 SETC  '&LS'.'+'.'&LN'.'('.'&LV'.',1)'                          09450000
+         AGO   .MOVE1                                                   09500000
+.ADDDYN  AIF   ('&ADDR'(1,3) EQ '(S,').ADDSTYP                          09550000
+&ADD     SETC  '&ADDR'(2,K'&ADDR-2)                                     09600000
+&TARGET1 SETC  '0('.'&LS'.','.'&ADD'.')'                                09650000
+&TARGET2 SETC  '&LS'.'('.'&LN'.','.'&ADD'.')'                           09700000
+&TARGET3 SETC  '&LS'.'+'.'&LN'.'('.'&LV'.','.'&ADD'.')'                 09750000
+         AGO   .MOVE1                                                   09800000
+.ADDSTYP ANOP                                                           09850000
+&ADD     SETC  '&ADDR'(4,K'&ADDR-4)                                     09900000
+&TARGET1 SETC  '&ADD'.'('.'&LS'.')'                                     09950000
+&TARGET2 SETC  '&ADD'.'+'.'&LS'.'('.'&LN'.')'                           10000000
+&TARGET3 SETC  '&ADD'.'+'.'&LS'.'+'.'&LN'.'('.'&LV'.')'                 10050000
+.*                                                                      10100000
+.MOVE1   MVC   &TARGET1,IJBZ&IND  MOVE DTL                              10150000
+.*                                                                      10200000
+.* ------------------ CHECK NAME PARAMETER -------------------          10250000
+.*                                                                      10300000
+         AIF   (T'&NAME EQ 'O').NAMEND                                  10350000
+         AIF   ('&NAME'(1,1) EQ '(').NAMDYN GO IF DYNAMIC               10400000
+         L     &REG,=A(&NAME)     LOAD NAME ADDRESS                     10450000
+&NAM     SETC  '0(&REG)'                                                10500000
+         AGO   .MOVE2                                                   10550000
+.NAMDYN  AIF   ('&NAME'(1,3) EQ '(S,').NAMSTYP                          10600000
+&NAM     SETC  '&NAME'(2,K'&NAME-2)                                     10650000
+&NAM     SETC  '0('.'&NAM'.')'                                          10700000
+         AGO   .MOVE2                                                   10750000
+.NAMSTYP ANOP                                                           10800000
+&NAM     SETC  '&NAME'(4,K'&NAME-4)                                     10850000
+.*                                                                      10900000
+.MOVE2   MVC   &TARGET2,&NAM      MOVE NAME                             10950000
+.NAMEND  ANOP                                                           11000000
+.*                                                                      11050000
+.* ----------------- CHECK VOLID PARAMETER -------------------          11100000
+.*                                                                      11150000
+         AIF   (T'&VOLID EQ 'O').VOLEND                                 11200000
+         AIF   ('&VOLID'(1,1) EQ '(').VOLDYN                            11250000
+         L     &REG,=A(&VOLID)    LOAD VOLID ADDRESS                    11300000
+&VOL     SETC  '0(&REG)'                                                11350000
+         AGO   .MOVE3                                                   11400000
+.VOLDYN  AIF   ('&VOLID'(1,3) EQ '(S,').VOLSTYP                         11450000
+&VOL     SETC  '&VOLID'(2,K'&VOLID-2)                                   11500000
+&VOL     SETC  '0('.'&VOL'.')'                                          11550000
+         AGO   .MOVE3                                                   11600000
+.VOLSTYP ANOP                                                           11650000
+&VOL     SETC  '&VOLID'(4,K'&VOLID-4)                                   11700000
+.*                                                                      11750000
+.MOVE3   ANOP                                                  @D36SDJO 11800000
+&FLAG2   SETA  &FLAG2+&VOLFLG                                           11850000
+         MVC   &TARGET3,&VOL      MOVE VOLID                            11900000
+.*                                                                      11950000
+.VOLEND  AIF   (T'&ADDR NE 'O').NORST2                         @D36ZDOW 12000000
+         SLR   15,15              RESTORE GETVIS RETURN CODE   @D36ZDOW 12050000
+.NORST2  ANOP                                                           12100000
+.*                                                                      12150000
+.* ----------------- CHECK LENGTH PARAMETER ------------------          12200000
+.*                                                                      12250000
+         AIF   ('&LENGTH' NE 'YES').LENNY GO IF LENGTH NOT YES          12300000
+         AIF   (T'&ADDR EQ 'O').LENEND DTL LENGTH ALREADY IN R0         12350000
+         LA    0,&L.(,0)          LOAD DTL LENGTH                       12400000
+         AGO   .LENEND                                                  12450000
+.LENNY   AIF   ('&LENGTH' EQ 'NO').LENEND GO IF LENGTH NO               12500000
+  MNOTE 1,'LENGTH SPECIFICATION INCORRECT. LENGTH=NO ASSUMED.'          12550000
+.LENEND  B     IJBZ&IND+&LS       SKIP DTL WORK AREA                    12600000
+.*                                                                      12650000
+.* ----------------- GENERATE DTL WORK AREA ------------------          12700000
+.*                                                                      12750000
+IJBZ&IND DC    H'&L'              DTL LENGTH                            12800000
+         DC    AL1(&FLAG1)        FLAG BYTE 1                           12850000
+         DC    AL1(&FLAG2)        FLAG BYTE 2                           12900000
+         MEND                                                           12950000

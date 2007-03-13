@@ -1,0 +1,290 @@
+.********************************************************************** 00001000
+.*                                                                    * 00002000
+.*  CEELOAD - BAL macro to dynamically load an LE/VSE routine text    * 00003000
+.*            file                                                    * 00004000
+.*                                                                    * 00005000
+.*  Licensed Materials - Property of IBM                              * 00006000
+.*                                                                    * 00007000
+.*  5686-094  (C) Copyright IBM Corp. 1991,  1996                     * 00008000
+.*  All rights reserved.                                              * 00009000
+.*                                                                    * 00010000
+.*      US Government Users Restricted Rights - Use, duplication or   * 00011000
+.*      disclosure restricted by GSA ADP Schedule Contract with IBM   * 00012000
+.*      Corp.                                                         * 00013000
+.*                                                                    * 00014000
+.*  STATUS - Release level of this macro                              * 00015000
+.*           LE/VSE Version 1 Release 4 Modification 0                * 00016000
+.*                                                                    * 00017000
+.*  FUNCTION:                                                         * 00018000
+.*       This macro is used to dynamically load an LE/VSE-conforming  * 00019000
+.*       routine.                                                     * 00020000
+.*                                                                    * 00021000
+.*  DEPENDENCIES - When the macro is expanded and executed, the       * 00022000
+.*                 following assumptions are made:                    * 00023000
+.*                 - R12 must point to the CAA                        * 00024000
+.*                 - R13 has a standard LE/VSE DSA available          * 00025000
+.*                                                                    * 00026000
+.*  RESTRICTIONS - The following registers are destroyed by the       * 00027000
+.*                 macro invocation:                                  * 00028000
+.*                 - R00                                              * 00029000
+.*                 - R01                                              * 00030000
+.*                 - R14                                              * 00031000
+.*                 - R15 - upon return, this contains the target      * 00032000
+.*                         address                                    * 00033000
+.*                                                                    * 00034000
+.*                 Unless MF=(E,...),                         @NX0180A* 00035000
+.*                 One of the parameters NAME and NAMEADDR must       * 00036000
+.*                 be provided, but not both.                         * 00037000
+.*                                                                    * 00038000
+.*    REGISTER CONVENTIONS:                                           * 00039000
+.*                                                                    * 00040000
+.*       R0     - Used as parameter to LOAD service, not restored     * 00041000
+.*       R1     - Used as parameter to LOAD service, not restored     * 00042000
+.*       R2-R11 - unused                                              * 00043000
+.*       R12    - Addr of CAA                                         * 00044000
+.*       R13    - Addr of DSA                                         * 00045000
+.*       R14    - Standard call register                              * 00046000
+.*       R15    - Contains target address upon return                 * 00047000
+.*                                                                    * 00048000
+.*    LINKAGE: CEELOAD <&NAME=name |        Name of routine   @NX0180C* 00049000
+.*                      &NAMEADDR=nameaddr> Addr of the name  @NX0180C* 00050000
+.*                    <,&SCOPE=ENCLAVE |    Load at enclave level     * 00051000
+.*                      &SCOPE=THREAD>      Load at thread level      * 00052000
+.*                    <,&FEEDBACK=fbcode>   Feedback token,   @NX0180C* 00053000
+.*                    <,MF=I |              Inline form       @NX0180A* 00054000
+.*                     ,MF=L |              List form         @NX0180C* 00055000
+.*                     ,MF=(E,ctrl addr)>   Execute form      @NX0180C* 00056000
+.*                                                                    * 00057000
+.*    MESSAGES:                                                       * 00058000
+.*       CEE3DC Not enough storage was available to load <phase-name>.* 00059000
+.*       CEE3DD The phase <phase-name> was not found.                 * 00060000
+.*       CEE3DE The phase name <phase-name> was too long.             * 00061000
+.*       CEE3DF The load request for phase <phase-name> was           * 00062000
+.*              unsuccessful.                                         * 00063000
+.*       CEE39K The target phase was not recognized by LE.            * 00064000
+.*       CEE39M A member event handler was not found.                 * 00065000
+.*       CEE39N An event handler was unable to initial properly.      * 00066000
+.*                                                                    * 00067000
+.* History of changes:                                        @NX0180A* 00068000
+.*       10/04/94(jen) Add SCOPE=THREAD support, & other fixes@NX0180A* 00069000
+.*       05/12/96(SPM) Change BAL to BAS to provide correct   @PN92733* 00070000
+.*                 parm address when called in 24-bit mode    @PN92733* 00071000
+.*       97/02/19(MAH) Fixed list and execute form of the      @PQ00424 00072000
+.*                 macro and tightened up validation. Includes @PQ00424 00073000
+.*                 sysroute of PN82427 and PN89309.            @PQ00424 00074000
+.*                                                                    * 00075000
+.********************************************************************** 00076000
+         MACRO                                                          00077000
+&LABEL   CEELOAD &NAME=,                                               X00078000
+               &NAMEADDR=,                                             X00079000
+               &SCOPE=ENCLAVE,                                 @NX0180AX00080000
+               &FEEDBACK=,                                             X00081000
+               &MF=I                                                    00082000
+.*                                                                      00083000
+         LCLC  &SCP                        Hold scope bit      @NX0180A 00084000
+         LCLC  &SRCREG                     Hold source reg     @NX0180A 00085000
+         LCLC  &WKCHR                      Work char field              00086000
+&IDX     SETC  '&SYSNDX'                                                00087000
+.*                                                                      00088000
+         AIF    (T'&NAME NE 'O').CHKBOTH                                00089000
+         AIF    (T'&NAMEADDR NE 'O').GOTPARM                            00090000
+         AIF    ('&MF(1)' NE 'I').GOTPARM                      @PQ00424 00091000
+         MNOTE  12,'No NAME or NAMEADDR parameter passed to CEELOAD'    00092000
+         MEXIT                                                          00093000
+.CHKBOTH ANOP                                                           00094000
+         AIF    (T'&NAMEADDR EQ 'O').GOTPARM                            00095000
+         MNOTE  12,'Both NAME and NAMEADDR parameter passed to CEELOAD' 00096000
+         MEXIT                                                          00097000
+.GOTPARM ANOP                                                           00098000
+&WKCHR   SETC   '&MF(1)'                   Set wkchar to first value    00099000
+.*  Tighten up validation.                                     @PQ00424 00100000
+         AIF    ('&MF' EQ 'L').LSTFORM  List form              @PQ00424 00101000
+         AIF    ('&WKCHR' EQ 'E').EXCFORM  Execute form                 00102000
+         AIF    ('&MF' EQ 'I').INLFORM  Inline form            @PQ00424 00103000
+.*      Error in MF operand. Tell and exit.                    @PQ00424 00104000
+  MNOTE 12,'CEELOAD MF operand must be (E,ctrl_addr), L or I.' @PQ00424 00105000
+         MEXIT                                                 @NX0180C 00106000
+.*                                                                      00107000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00108000
+.*                                                                   *  00109000
+.* List form of the MACRO                                            *  00110000
+.*                                                                   *  00111000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00112000
+.LSTFORM ANOP                                                           00113000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00114000
+.*       First check that a label has been specified. No default     *  00115000
+.*       is provided. Fatal error if label left off.                 *  00116000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00117000
+         AIF    (N'&LABEL NE 0).GOTLABL                                 00118000
+         MNOTE  12,'CEELOAD Label required.'                   @PQ00424 00119000
+         MEXIT                                                 @NX0180C 00120000
+.GOTLABL ANOP                              Generate label               00121000
+         CNOP   0,4                        Align Parm list              00122000
+&LABEL   DS     0F                                             @NX0180C 00123000
+         AGO    .PRMGEN                                                 00124000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00125000
+.*                                                                   *  00126000
+.*   INLINE version of the MACRO. Parameter list generation used for *  00127000
+.*   LIST form.                                                      *  00128000
+.*                                                                   *  00129000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00130000
+.INLFORM ANOP                                                           00131000
+         CNOP   0,4                                                     00132000
+         AIF    (N'&LABEL EQ 0).NOLABL                         @NX0180A 00133000
+&LABEL   DS     0F                                             @NX0180A 00134000
+.NOLABL  ANOP                                                  @NX0180A 00135000
+         BAS    1,CEE3&IDX                 Save Addr(parmlist) @PN92733 00136000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00137000
+.*                                                                   *  00138000
+.*   LIST version of the MACRO. Parameter list generation used for   *  00139000
+.*   LIST form.                                                      *  00140000
+.*                                                                   *  00141000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00142000
+.PRMGEN  ANOP                              Generate parm list for call  00143000
+         AIF    (T'&NAME EQ 'O').PRMADDR                                00144000
+         DC     A(CEE0&IDX)                Rtn name address    @PQ00424 00145000
+         AGO    .PRMCONT                                                00146000
+.PRMADDR ANOP                                                           00147000
+.*  For the list form, if an A-type address has been specified @PQ00424 00148000
+.*  for the NAMEADDR parameter include it in the data constant.@PQ00424 00149000
+         AIF    (T'&NAMEADDR EQ 'O').ADCON0                    @PQ00424 00150000
+         AIF    ('&NAMEADDR'(1,1) EQ '(').ADCON0               @PQ00424 00151000
+         DC     A(&NAMEADDR)                                   @PQ00424 00152000
+         AGO    .PRMCONT                                       @PQ00424 00153000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00154000
+.*                                                                   *  00155000
+.*   Generated executable code will fill in this adcon at    @NX0180C*  00156000
+.*   execution time, from address field or register.         @NX0180C*  00157000
+.*                                                                   *  00158000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00159000
+.ADCON0  ANOP                                                  @PQ00424 00160000
+         DC     A(0)                       Rtn name address    @PQ00424 00161000
+.PRMCONT ANOP                                                           00162000
+         AIF    ('&SCOPE' EQ 'ENCLAVE').SCPE                   @NX0180A 00163000
+         AIF    ('&SCOPE' EQ 'THREAD').SCPT                    @NX0180A 00164000
+   MNOTE 12,'CEELOAD SCOPE operand must be THREAD or ENCLAVE.' @PQ00424 00165000
+         MEXIT                                                 @NX0180A 00166000
+.SCPE    ANOP                                                  @NX0180A 00167000
+&SCP     SETC   '0'                        Enclave scope       @PQ00424 00168000
+         AGO    .GOTSCP                                        @NX0180A 00169000
+.SCPT    ANOP                                                  @NX0180A 00170000
+&SCP     SETC   '1'                        Thread scope        @PQ00424 00171000
+.GOTSCP  ANOP                                                  @NX0180A 00172000
+         DC     A(CEE2&IDX)                Address of Scope    @PQ00424 00173000
+         AIF    (T'&FEEDBACK EQ 'O').OMITFB1                            00174000
+         DC     A(&FEEDBACK)               Address of FB code  @PQ00424 00175000
+         AGO    .GOTFB1                                                 00176000
+.OMITFB1 ANOP                                                           00177000
+         DC     A(0)                       Address of FB code  @PQ00424 00178000
+.GOTFB1  ANOP                                                           00179000
+.*  Put scope before the halfword prefixed routine name.       @PQ00424 00180000
+CEE2&IDX DC     B'&SCP.0000000'            Scope               @PQ00424 00181000
+         AIF    (T'&NAME EQ 'O').NONAME                        @PQ00424 00182000
+CEE0&IDX DC     AL2(L'CEE1&IDX)            Rtn name length     @PQ00424 00183000
+CEE1&IDX DC     C'&NAME'                   Rtn name            @PQ00424 00184000
+         AIF    (K'&NAME EQ 8).ENDPARM                         @PQ00424 00185000
+&NLEN    SETA   8-K'&NAME                                      @PQ00424 00186000
+         DC     CL&NLEN' '                                     @PQ00424 00187000
+         AGO    .ENDPARM                                       @PQ00424 00188000
+.*  Generate data constants for rtn name length and rtn name,  @PQ00424 00189000
+.*  even when the name parameter has not been specified.       @PQ00424 00190000
+.NONAME  ANOP                                                  @PQ00424 00191000
+         DC     AL2(0)                     Rtn name length     @PQ00424 00192000
+         DC     CL8' '                     Rtn name            @PQ00424 00193000
+.ENDPARM ANOP                                                  @PQ00424 00194000
+    AIF ('&WKCHR' EQ 'L').DONE     If List form then done, else         00195000
+.*                                                next line is @NX0180C 00196000
+CEE3&IDX DS     0H                         Start of code after parmlist 00197000
+.*                                                                      00198000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00199000
+.*                                                                   *  00200000
+.*   Execute form of macro. Will fill in the parm operands.          *  00201000
+.*   Standard pointers assumed to be in the LIST form of macro.      *  00202000
+.*                                                                   *  00203000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00204000
+.EXCFORM ANOP                                                           00205000
+.*  If inline form, we can skip the following processing.      @PQ00424 00206000
+         AIF    ('&WKCHR' NE 'E').EXCF3                        @PQ00424 00207000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00208000
+.*       Check for a second operand for address of the list          *  00209000
+.*       form of macro.                                              *  00210000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00211000
+.*  Tighten up validation.                                     @PQ00424 00212000
+         AIF    (N'&MF EQ 2).EXCF1                             @PQ00424 00213000
+  MNOTE 12,'CEELOAD MF operand must be (E,ctrl_addr), L or I.' @PQ00424 00214000
+         MEXIT                                                 @PQ00424 00215000
+.*  If a label has been specified, include it.                 @PQ00424 00216000
+.EXCF1   ANOP                                                  @PQ00424 00217000
+         AIF    (N'&LABEL EQ 0).NOLABL1                        @PQ00424 00218000
+&LABEL   DS     0H                                             @NX0180A 00219000
+         AGO    .NOLABL2                                       @PQ00424 00220000
+.NOLABL1 ANOP                                                  @PQ00424 00221000
+         DS     0H                                             @PQ00424 00222000
+.NOLABL2 ANOP                                                  @PQ00424 00223000
+         AIF    ('&MF(2)'(1,1) EQ '(').EXCF2                            00224000
+         LA     1,&MF(2)                   Parmlist addr -> R1 @PQ00424 00225000
+         AGO    .EXCF3                                         @PQ00424 00226000
+.EXCF2   ANOP                                                           00227000
+&SRCREG  SETC   '&MF(2)'(2,K'&MF(2)-2)                         @PQ00424 00228000
+         LR     1,&SRCREG                  Parmlist addr -> R1 @PQ00424 00229000
+.EXCF3   ANOP                                                  @PQ00424 00230000
+         AIF    (T'&NAMEADDR EQ 'O').CHECKN                    @PQ00424 00231000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00232000
+.*       Set up the NAMEADDR.                                        *  00233000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00234000
+         AIF    ('&NAMEADDR'(1,1) EQ '(').GOTNAM3                       00235000
+         AIF    ('&WKCHR' EQ 'I').GENCALL                      @PQ00424 00236000
+&SRCREG  SETC   '15'                                           @NX0180A 00237000
+         LA     &SRCREG.,&NAMEADDR         Rtn name addr -> R15@PQ00424 00238000
+         AGO    .GOTNAM4                                                00239000
+.GOTNAM3 ANOP                                                           00240000
+&SRCREG  SETC   '&NAMEADDR'(2,K'&NAMEADDR-2)                   @NX0180A 00241000
+.GOTNAM4 ANOP                                                           00242000
+         ST     &SRCREG.,0(,1)          Rtn name addr -> parm 1@PQ00424 00243000
+         AIF    ('&WKCHR' EQ 'I').GENCALL                      @PQ00424 00244000
+         AGO    .CHKSCP                                        @PQ00424 00245000
+.*  If name has been specified, put it in parameter list.      @PQ00424 00246000
+.CHECKN  ANOP                                                  @PQ00424 00247000
+.*  If inline form we already have the values in the parameter @PQ00424 00248000
+.*  list so bypass.                                            @PQ00424 00249000
+         AIF    ('&WKCHR' EQ 'I').GENCALL                      @PQ00424 00250000
+         AIF    (T'&NAME EQ 'O').CHKSCP                        @PQ00424 00251000
+&NLEN    SETA   K'&NAME                                        @PQ00424 00252000
+         LA     15,&NLEN                   Rtn name length     @PQ00424 00253000
+         STH    15,13(,1)                  -> parm 5           @PQ00424 00254000
+         MVC    15(&NLEN,1),=C'&NAME'      Rtn name -> parm 6  @PQ00424 00255000
+         LA     15,13(,1)                  Rtn name address    @PQ00424 00256000
+         ST     15,0(,1)                   -> parm 1           @PQ00424 00257000
+.*  Validate scope parameter. If valid, put it in parameter    @PQ00424 00258000
+.*  list.                                                      @PQ00424 00259000
+.CHKSCP  ANOP                                                  @PQ00424 00260000
+         AIF    ('&SCOPE' EQ 'ENCLAVE').SCPE1                  @PQ00424 00261000
+         AIF    ('&SCOPE' EQ 'THREAD').SCPT1                   @PQ00424 00262000
+   MNOTE 12,'CEELOAD SCOPE operand must be THREAD or ENCLAVE.' @PQ00424 00263000
+         MEXIT                                                 @PQ00424 00264000
+.SCPE1   ANOP                                                  @PQ00424 00265000
+&SCP     SETC   '0'                        Enclave scope       @PQ00424 00266000
+         AGO    .GOTSCP1                                       @PQ00424 00267000
+.SCPT1   ANOP                                                  @PQ00424 00268000
+&SCP     SETC   '1'                        Thread scope        @PQ00424 00269000
+.GOTSCP1 ANOP                                                  @PQ00424 00270000
+         LA     15,B'&SCP.0000000'         Scope               @PQ00424 00271000
+         STC    15,12(,1)                  -> parm 4           @PQ00424 00272000
+         LA     15,12(,1)                  Scope address       @PQ00424 00273000
+         ST     15,4(,1)                   -> parm 2           @PQ00424 00274000
+.*  If feedback address has been specified, put it in          @PQ00424 00275000
+.*  parameter list.                                            @PQ00424 00276000
+.MOVEFB  ANOP                                                  @PQ00424 00277000
+         AIF    (T'&FEEDBACK EQ 'O').GENCALL                   @PQ00424 00278000
+         LA     15,&FEEDBACK               Address of FB code  @PQ00424 00279000
+         ST     15,8(,1)                   -> parm 3           @PQ00424 00280000
+.GENCALL ANOP                                                  @PQ00424 00281000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00282000
+.*       Call the CEL Routine to load the routine                    *  00283000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00284000
+         L      15,CEECAACELV-CEECAA(,12)                               00285000
+         L      15,X'DAC'(,15)                                 @NX0180C 00286000
+         BALR   14,15                                                   00287000
+         MVC    CEEDSALWS-CEEDSA(4,13),CEECAALWS-CEECAA(12)             00288000
+.DONE    ANOP                                                           00289000
+         MEND                                                           00290000

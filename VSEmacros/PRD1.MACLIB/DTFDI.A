@@ -1,0 +1,329 @@
+         MACRO                                                          00050000
+&NAME    DTFDI &DEVADDR=,&IOAREA1=,&IOAREA2=,&RECSIZE=,&EOFADDR=,&IOREG-00100000
+               =,&MODNAME=,&SEPASMB=,&WLRERR=,&ERROPT=,             3-3*00150000
+               &RDONLY=,&FBA=,&CISIZE=,                        @D35DE98-00200000
+               &TRC=                                           @D34YSRJ 00250000
+.********************************************************************** 00300000
+.*                                                                    * 00350000
+.* MODULE NAME = DTFDI (IBM DISK OPERATING SYSTEM)             @DL30SMT 00400000
+.*                                                                    * 00450000
+.* DESCRIPTIVE NAME = DEVICE INDEPENDENT I/O                   @DL30SMT 00500000
+.*                                                                    * 00550000
+.* COPYRIGHT = 5686-007 (C) COPYRIGHT IBM CORP. 1979,1989      @U31TUJS 00600000
+.*             LICENSED MATERIAL - PROGRAM PROPERTY OF IBM     @D36KE97 00650000
+.*             REFER TO COPYRIGHT INSTRUCTIONS                 @D36KE97 00700000
+.*             FORM NUMBER G120-2083                           @D36KE97 00750000
+.*                                                                    * 00800000
+.* FUNCTION    DEFINE THE FILE FOR DEVICE INDEPENDENT SYSTEM UNITS    * 00850000
+.*             IS AN IOCS FILE DEFINITION MACRO WHICH PROVIDES DEVICE * 00900000
+.*             INDEPENDENT SEQUENTIAL FILE PROCESSING FOR THE         * 00950000
+.*             FOLLOWING SYSTEM UNITS - SYSRDR, SYSIPT, SYSPCH, SYSLST* 01000000
+.*                                                                    * 01050000
+.* CHANGE ACTIVITY = AS FOLLOWS                                @DL30SMT 01100000
+.*    @DL30SMT  RPS SUPPORT ADDED                              @DL30SMT 01150000
+.*    @DA05659  LABEL &FIRST CHANGED TO &IJJFRST               @DA05659 01200000
+.*    @DA10245  OS04 WHEN I/O ERROR AND NO ERROPT SPECIFIED    @DA10245 01250000
+.*    @D35DE98  FBA SUPPORT ADDED                              @D35DE98 01300000
+.*    @D356EE3  SPACE MANAGEMENT SUPPORT                       @D356EE3 01350000
+.*    @D350EE3  DATA SECURITY SUPPORT                          @D350EE3 01400000
+.*    @DA14181  MSG IPK078 IF IOREG NOT NUMERIC                @DA14181 01450000
+.*    @D36KE97  DASD DEVICE INDEPENDENCE                       @D36KE97 01500000
+.*    @D37ZDHK  READ 81 BYTES SUPPORT                          @D37ZDHK 01550000
+.*    @D14CDHK  VERSION 3 AREA EXTENSION                       @D14CDHK 01600000
+.*    @D14CDIS  TO FORCE ALIGNMENT OF VERSION 3 DTF AREA       @D14CDIS 01650000
+.*    @DA26175  NRF CONDITION ON RECORD 0 IGNORED.             @DA26175 01700000
+.*                                                                    * 01750000
+.********************************************************************** 01800000
+         GBLB  &IJJFRST                                        @DA05659 01850000
+         GBLC  &RDONLYO,&RDONLYY                                    3-8 01900000
+         LCLA  &SW,&MODSW,&BYTREC,&RECTK,&REG,&REC                      01950000
+         LCLA  &VER3FLG,&CISZ                                  @D35DE98 02000000
+         LCLA  &B4                                             @D34YSRC 02050000
+         LCLC  &PRN                                                 3-8 02100000
+.*          LOCAL DECLARATIONS                                 @D35DE98 02150000
+.*     &VER3FLG - FLAG BYTE IN VERSION 3 PORTION OF THIS DTF   @D35DE98 02200000
+.*     &CISZ - AN A-TYPE VARIABLE FOR CISIZE                   @D35DE98 02250000
+* DEVICE INDEPENDENT I/O - DTFDI - 5686-007-02-C440            @U31TUJS 02300000
+         SPACE 2                                                        02350000
+         AIF   (K'&NAME LT 8 AND K'&NAME GT 0).NAMOK                    02400000
+         MNOTE 9,'MISSING OR IMPROPER FILENAME. GENERATION TERMINATED.' 02450000
+         MEXIT                                                          02500000
+.NAMOK   AIF   (&IJJFRST).SECOND                               @DA05659 02550000
+&IJJFRST SETB  1                                               @DA05659 02600000
+&RDONLYO SETC  'IZD'                                                3-8 02650000
+&RDONLYY SETC  'IZC'                                                3-8 02700000
+.SECOND  AIF   ('&SEPASMB' NE 'YES').GENCCB                         3-8 02750000
+         PUNCH ' CATALOG &NAME..OBJ   REPLACE=YES'             @D14CDHK 02800000
+&NAME.C  CSECT                                                          02850000
+         ENTRY &NAME                                                    02900000
+.GENCCB  DS    0D                                                       02950000
+         AIF   (T'&CISIZE EQ 'O').NOCISZ                       @D35DE98 03000000
+         AIF   (T'&CISIZE EQ 'N').CISDT                        @D35DE98 03050000
+         MNOTE 0,'CISIZE NOT SELF DEFINING TERM. SET TO 0.'    @D35DE98 03100000
+         AGO   .CINSDT                                         @D35DE98 03150000
+.CISDT   ANOP                                                  @D35DE98 03200000
+&CISZ    SETA  &CISIZE                                         @D35DE98 03250000
+.CINSDT  ANOP                                                  @D35DE98 03300000
+         AIF   (&CISZ LE 32768).CIOK                           @D35DE98 03350000
+&CISZ    SETA  32768                                           @D35DE98 03400000
+         MNOTE 0,'CISIZE GREATER THAN 32K. SET TO 32K.'        @D35DE98 03450000
+.CIOK    ANOP                                                  @D35DE98 03500000
+.NOCISZ  ANOP                                                  @D35DE98 03550000
+&VER3FLG SETA  &VER3FLG+128+8+4+2 INDICATE CISIZE,CI EXTENDED, @D14CDHK 03600000
+.*                    DATA SECURITY AND EXIT ADDR FIELDS EXIST @D14CDHK 03650000
+         DC    AL2(IJJQ&SYSNDX-IJJZ&SYSNDX) VERSION 3 LENGTH   @D14CDHK 03700000
+         DC    H'0'             RESERVED FOR FUTURE USE        @D14CDHK 03750000
+         DC    A(IJJZ&SYSNDX)   VERSION 3 POINTER              @D35DE98 03800000
+&NAME    DC    H'0'      RESIDUAL COUNT                                 03850000
+         AIF   (T'&ERROPT EQ 'O').CMBT2                        @DA10245 03900000
+         AIF   ('&DEVADDR' EQ 'SYSRDR' OR '&DEVADDR' EQ 'SYSIPT').CMBT  03950000
+.CMBT2   DC    X'8004'   COMMUNICATION BYTES                   @DA26175 04000000
+         AGO   .CMBT1                                                   04050000
+.CMBT    DC    X'8204'   COMMUNICATION BYTES                   @DA26175 04100000
+.CMBT1   DC    X'0800'   CSW STATUS BYTES                               04150000
+         AIF   ('&DEVADDR' NE 'SYSRDR').CHIPT                           04200000
+         DC    X'0000'   LOGICAL UNIT                                   04250000
+&SW      SETA  1                                                        04300000
+         AGO   .CONT1                                                   04350000
+.CHIPT   AIF   ('&DEVADDR' NE 'SYSIPT').CHPCH                           04400000
+         DC    X'0001'   LOGICAL UNIT                                   04450000
+&SW      SETA  1                                                        04500000
+         AGO   .CONT1                                                   04550000
+.CHPCH   AIF   ('&DEVADDR' NE 'SYSPCH').CHLST                           04600000
+         DC    X'0002'   LOGICAL UNIT                                   04650000
+         AGO   .CONT1                                                   04700000
+.CHLST   AIF   ('&DEVADDR' EQ 'SYSLST').LOGUTOK                         04750000
+         MNOTE 9,'INVALID OR MISSING DEVADDR. GENERATION TERMINATED.'   04800000
+         MEXIT                                                          04850000
+.LOGUTOK DC    X'0003'   LOGICAL UNIT                                   04900000
+.CONT1   DC    X'00'                                                    04950000
+         DC    AL3(IJJD&SYSNDX)    CCW ADDRESS                          05000000
+         DC    X'00'     STATUS BYTE                                    05050000
+         DC    XL3'0'    CSW CCW ADDRESS                                05100000
+         AIF   (T'&TRC EQ 'O').CONT1C                          @D34YSRC 05150000
+         AIF   ('&DEVADDR' EQ 'SYSLST').CONT1A                 @D34YSRJ 05200000
+         MNOTE 0,'''TRC'' INVALID FOR &DEVADDR.  IGNORED.'     @D34YSRJ 05250000
+         AGO   .CONT1C                                         @D34YSRJ 05300000
+.CONT1A  ANOP                                                  @D34YSRJ 05350000
+         AIF   ('&TRC' EQ 'NO').CONT1C                         @D34YSRJ 05400000
+         AIF   ('&TRC' EQ 'YES').CONT1B                        @D34YSRJ 05450000
+         MNOTE 0,'IMPROPER ''TRC''.  ''NO'' ASSUMED.'          @D34YSRJ 05500000
+         AGO   .CONT1C                                         @D34YSRJ 05550000
+.CONT1B  ANOP                                                  @D34YSRJ 05600000
+&B4      SETA  4                       X'04' TRC=YES SPECIFIED @D34YSRC 05650000
+.CONT1C  ANOP                                                  @D34YSRJ 05700000
+         DC    X'00'                                                    05750000
+         AIF   (T'&MODNAME EQ 'O').GENAM                                05800000
+         AIF   ('&MODNAME' NE '&NAME').GENAM1                  @D147DRR 05850000
+         DC    AL3(&MODNAME)       ADDRESS OF LOGIC MODULE     @D147DRR 05900000
+         AGO   .CONT2                                          @D147DRR 05950000
+.GENAM1  ANOP                                                  @D147DRR 06000000
+         DC    VL3(&MODNAME)       ADDRESS OF LOGIC MODULE              06050000
+         AGO   .CONT2                                                   06100000
+.GENAM   AIF   ('&SW' EQ '1').GENAM3                                3-8 06150000
+         AIF   ('&RDONLY' EQ 'YES').RDONLY2                         3-8 06200000
+&RDONLYO SETC  'B'.'&RDONLYO'(2,2)                                  3-8 06250000
+         AGO   .GENAM3                                              3-8 06300000
+.RDONLY2 ANOP                                                       3-8 06350000
+&RDONLYY SETC  'B'.'&RDONLYY'(2,2)                                  3-8 06400000
+.GENAM3  AIF   (T'&IOAREA2 EQ 'O').GENAM5                           3-8 06450000
+         AIF   ('&RDONLY' EQ 'YES').RDONLY4                         3-8 06500000
+&RDONLYO SETC  '&RDONLYO'(1,1).'I'.'&RDONLYO'(3,1)                  3-8 06550000
+         AGO   .GENAM5                                              3-8 06600000
+.RDONLY4 ANOP                                                       3-8 06650000
+&RDONLYY SETC  '&RDONLYY'(1,1).'I'.'&RDONLYY'(3,1)                  3-8 06700000
+.GENAM5  AIF   (T'&RDONLY EQ 'O').GENAM5A                           3-3 06750000
+         AIF   ('&RDONLY' EQ 'YES').RD1                             3-3 06800000
+         MNOTE 0,'IMPROPER RDONLY. ''YES'' ASSUMED.'                3-3 06850000
+.RD1     DC    VL3(IJJFC&RDONLYY)                                   3-8 06900000
+         AGO   .CONT2                                               3-3 06950000
+.GENAM5A DC    VL3(IJJFC&RDONLYO)                                   3-8 07000000
+.CONT2   DC    X'33'                DTF FILE TYPE                       07050000
+         AIF   ('&SW' EQ '1').OPIND                                     07100000
+         DC    X'80'               OPEN/CLOSE INDICATORS       @DA02695 07150000
+         AGO   .CONT3                                                   07200000
+.OPIND   DC    X'82'                                           @DA02695 07250000
+.CONT3   DC    CL7'&NAME'          FILE NAME                            07300000
+         DC    X'00'               DASD INDICATOR                       07350000
+         DC    6X'00'              FMT 1 DSCB DISK ADDRESS              07400000
+         DC    2X'00'              DISK VOLUME SEQUENCE NUMBER          07450000
+         DC    X'08'               OPEN SWITCH BYTE                     07500000
+         DC    X'00'               XTENT SEQ. NO. OF CURRENT XTENT      07550000
+         DC    X'00'               SEQ NO OF LAST XTENT OR PUNCH CNSTNT 07600000
+         DC    X'20'               OPEN INDICATORS                      07650000
+         DC    X'20'               DEV INDCTR & RPS SWITCH     @DL30SMT 07700000
+         DC    X'F3'               LOGIC MODULE DEVICE INDICATORS       07750000
+&MODSW   SETA  0                                                        07800000
+         AIF   ('&SW' EQ '1').SETSW1                                    07850000
+&MODSW   SETA  36                                                       07900000
+         AGO   .SETSW2                                                  07950000
+.SETSW1  ANOP                                                           08000000
+&MODSW   SETA  128                                                      08050000
+.SETSW2  AIF   (T'&IOAREA2 EQ 'O').SETSW                                08100000
+&MODSW   SETA  &MODSW+16                                                08150000
+.SETSW   DC    AL1(&MODSW)         LOGIC MODULE OPTION SWITCHES         08200000
+         AIF   (T'&IOAREA1 EQ 'O').ALTAR1                               08250000
+         AIF   (T'&IOAREA2 EQ 'O' OR '&SW' NE '1').ALTAR2               08300000
+.ALTAR3  DC    AL3(&IOAREA2)       ALTERNATE I/O AREA ADDRESS           08350000
+         AGO   .OPCLIND                                                 08400000
+.ALTAR2  DC    AL3(&IOAREA1)       ALTERNATE I/O AREA ADDRESS           08450000
+         AGO   .OPCLIND                                                 08500000
+.ALTAR1  AIF   (T'&IOAREA2 NE 'O' AND '&SW' EQ '1').ALTAR3              08550000
+         MNOTE 0,'NO IOAREA1 ADDRESS SPECIFIED. SET TO *.'              08600000
+         DC    AL3(*)                                                   08650000
+         MNOTE *,'PATCH I/O AREA1 ADDRESS HERE'                         08700000
+.OPCLIND ANOP                                                  @D35DE98 08750000
+&B4      SETA  &B4+2                OPEN CLOSE INDICATORS      @D35DE98 08800000
+         DC    X'8&B4.000000'      OPEN/CLOSE INDICATORS       @D34YSRC 08850000
+         DC    2X'00'              LOWER XTENT HEAD LIMIT               08900000
+         DC    4X'00'              XTENT UPPER LIMIT                    08950000
+IJJA&SYSNDX    DC  H'0'            BB                                   09000000
+         DC    X'0000FF00'         CYLINDER AND HEAD                    09050000
+         DC    X'00'               RECORD FOR DISK, CONSTANT FOR PUNCH  09100000
+         AIF   ('&SW' NE '1').DIEOF1                                    09150000
+         AIF   (T'&EOFADDR EQ 'O').DIEOF2                               09200000
+         DC    AL3(&EOFADDR)       EOF ADDRESS                          09250000
+         AGO   .CNTBKT                                                  09300000
+.DIEOF2  MNOTE 0,'NO EOFADDR SPECIFIED FOR AN INPUT FILE. SET TO *.'    09350000
+         DC    AL3(*)              EOF ADDRESS                          09400000
+         MNOTE *,'PATCH EOF ADDRESS HERE.'                              09450000
+         AGO   .CNTBKT                                                  09500000
+.DIEOF1  DC    3X'00'              RESERVED FOR EOF ADDRESS - INPUT     09550000
+.CNTBKT  DC    4X'00'              CCHH.CONTROL BUCKET                  09600000
+         AIF   (T'&RECSIZE EQ 'O').GENRS                                09650000
+&REC     SETA  &RECSIZE                                                 09700000
+.GENRS   AIF   ('&DEVADDR' EQ 'SYSLST').RCSIZE1                         09750000
+         AIF   ('&DEVADDR' EQ 'SYSPCH').GENRS1                          09800000
+         AIF   ('&RECSIZE' GT '0' AND '&RECSIZE' LT '82').CALC @D37ZDHK 09850000
+         MNOTE   0,'IMPROPER OR MISSING RECSIZE FOR SYSIPT/SYSRDR FILE.X09900000
+                80 IS ASSUMED'                                          09950000
+&REC     SETA  80                                                       10000000
+         AGO   .CALC                                                    10050000
+.GENRS1  AIF   ('&RECSIZE' GT '0' AND '&RECSIZE' LT '82').CALC          10100000
+         MNOTE   0,'IMPROPER OR MISSING RECSIZE FOR SYSPCH FILE. 81 IS X10150000
+               ASSUMED.'                                                10200000
+&REC     SETA  81                                                       10250000
+         AGO   .CALC                                                    10300000
+.RCSIZE1 AIF   ('&RECSIZE' GT '0' AND '&RECSIZE' LT '122').CALC         10350000
+         AIF   (T'&TRC EQ 'O').RCSIZE2                         @D34YSRJ 10400000
+         AIF   ('&TRC' NE 'YES').RCSIZE2                       @D34YSRJ 10450000
+         AIF   ('&RECSIZE' EQ '122').CALC                      @D34YSRJ 10500000
+         MNOTE 0,'IMPROPER OR MISSING RECSIZE FOR SYSLST FILE WHEN ''TR*10550000
+               C'' IS SPECIFIED.  122 IS ASSUMED.'             @D34YSRJ 10600000
+&REC     SETA  122                                             @D34YSRJ 10650000
+         AGO   .CALC                                           @D34YSRJ 10700000
+.RCSIZE2 ANOP                                                  @D34YSRJ 10750000
+         MNOTE 0,'IMPROPER OR MISSING RECSIZE FOR SYSLST FILE.         X10800000
+                121 IS ASSUMED.'                                        10850000
+&REC     SETA  121                                                      10900000
+.CALC    ANOP                                                           10950000
+&BYTREC  SETA  537*&REC/512+61               BYTES/RECORD               11000000
+&RECTK   SETA  (3625-&REC)/&BYTREC+1         RECORDS/TRACK              11050000
+         AIF   ('&SW' EQ '1').INTBL                                     11100000
+         DC    AL1(&RECTK)         NO. OF RECORDS/TRACK                 11150000
+         DC    X'00'               FIRST RECORD                         11200000
+         DC    X'0020'             CONSTANT                             11250000
+IJJB&SYSNDX DC 5X'00'              CCHHR COUNT ID                       11300000
+         AGO   .KYLGTH                                                  11350000
+.INTBL   DC    AL1(&RECTK+1)       NO. OF RECORDS/TRACK + 1             11400000
+         DC    X'01'               FIRST RECORD                         11450000
+         DC    X'0018'             CONSTANT                             11500000
+IJJB&SYSNDX DC 4X'00'              CCHH COUNT ID                        11550000
+         DC    X'01'               COUNT FIELD RECORD                   11600000
+.KYLGTH  DC    X'00'               KEY LENGTH                           11650000
+         DC    H'&REC'             DATA LENGTH                          11700000
+         AIF   (T'&IOREG EQ 'O').CKIO2                                  11750000
+         AIF   (T'&IOAREA2 NE 'O').IOOK                        @DA00094 11800000
+         MNOTE 0,'IOREG SPECIFIED WITHOUT AN IOAREA2 ADDRESS'  @DA00094 11850000
+.IOOK    ANOP                                                  @DA00094 11900000
+&PRN     SETC  '&IOREG'(1,1)                                            11950000
+         AIF   ('&PRN' NE '(').NOPRN                                    12000000
+         AIF   (T'&IOREG(1) NE 'N').EREG                       @DA14181 12050000
+&REG     SETA  &IOREG(1)                                                12100000
+         AGO   .CKIO2                                                   12150000
+.NOPRN   ANOP                                                           12200000
+         AIF   (T'&IOREG NE 'N').EREG                          @DA14181 12250000
+&REG     SETA  &IOREG                                                   12300000
+.CKIO2   AIF   (T'&IOAREA2 NE 'O').CONT4                                12350000
+         NOP   0(0)                                                     12400000
+         AGO   .CCWSG                                                   12450000
+.CONT4   ANOP                                                  @DA14181 12500000
+         AIF   ('&REG' LT '2' OR '&REG' GT '13').EREG          @DA14181 12550000
+         LA    &REG,0(14)                                               12600000
+         AGO   .CCWSG                                                   12650000
+.EREG    MNOTE 0,'IMPROPER OR MISSING IOREG FOR 2 I/O AREA FILE.       X12700000
+                REGISTER #2 IS ASSUMED.'                                12750000
+         LA    2,0(14)                                                  12800000
+         MNOTE *,'PATCH LOAD INSTRUCTION WITH CORRECT I/O REG.'         12850000
+.CCWSG   ANOP                                                           12900000
+IJJD&SYSNDX   CCW  X'07',IJJA&SYSNDX,X'40',6 SEEK TRACK                 12950000
+         CCW   X'31',IJJA&SYSNDX+2,X'40',5   SEARCH                     13000000
+         CCW   X'08',IJJD&SYSNDX+8,X'20',1   TRANSFER                   13050000
+         AIF   ('&SW' EQ '1').CKCCW1                                    13100000
+         CCW   X'1D',IJJB&SYSNDX,X'A0',8     WRITE COUNT, KEY AND DATA  13150000
+         AIF   (T'&IOAREA2 EQ 'O').CKCCW2                               13200000
+         CCW   X'05',&IOAREA2,X'60',&REC     OUTPUT                     13250000
+         AGO   .VERIFY                                                  13300000
+.CKCCW2  AIF   (T'&IOAREA1 EQ 'O').CKCCW3                               13350000
+         CCW   X'05',&IOAREA1,X'60',&REC     OUTPUT                     13400000
+         AGO   .VERIFY                                                  13450000
+.CKCCW3  CCW   X'05',*,X'60',&REC            OUTPUT                     13500000
+         MNOTE *,'PATCH IOAREA1 ADDRESS HERE.'                          13550000
+.VERIFY  CCW   X'31',IJJA&SYSNDX+2,X'40',5   SEARCH                     13600000
+         CCW   X'08',IJJD&SYSNDX+40,X'20',1  TRANSFER                   13650000
+         CCW   X'1E',*,X'30',&REC+8          VERIFY                     13700000
+         AIF   ('&DEVADDR' NE 'SYSPCH').GENSTG1                         13750000
+         CCW   1,*,X'20',&REC-1              PUNCH ERROR CCW1           13800000
+         CCW   1,*,X'20',&REC-1              PUNCH ERROR CCW2           13850000
+         DC    64X'00'                                                  13900000
+         AGO   .INERR                                                   13950000
+.CKCCW1  AIF   (T'&IOAREA1 EQ 'O').CKCCW4                               14000000
+         CCW   X'06',&IOAREA1,X'20',&REC     INPUT                      14050000
+         AGO   .GENSTG2                                                 14100000
+.CKCCW4  MNOTE 0,'NO IOAREA1 ADDRESS SPECIFIED. SET TO *.'              14150000
+         CCW   X'06',*,X'20',&REC            INPUT                      14200000
+         MNOTE *,'PATCH IOAREA1 ADDRESS HERE.'                          14250000
+.GENSTG2 DC    112X'00'                                                 14300000
+         AGO   .INERR                                                   14350000
+.GENSTG1 DC    80X'00'                                                  14400000
+.INERR   AIF   ('&SW' NE '1').OTPT                                      14450000
+         AIF   (T'&WLRERR EQ 'O').INERR1                                14500000
+         DC    A(&WLRERR)                    WLR ADDRESS                14550000
+         AGO   .INERR2                                                  14600000
+.INERR1  AIF   (T'&ERROPT EQ 'O').INERR3                                14650000
+         AIF   ('&ERROPT' EQ 'SKIP').INERR4                             14700000
+         AIF   ('&ERROPT' EQ 'IGNORE').INERR5                           14750000
+         DC    A(&ERROPT)                    WLR ADDRESS                14800000
+         DC    A(&ERROPT)                    ERROR EXIT                 14850000
+         AGO   .FINISH                                                  14900000
+.INERR3  B     28(15)                        WLR OPTION                 14950000
+.E1      B     0(15)                         ERROR EXIT                 15000000
+         AGO   .FINISH                                                  15050000
+.INERR4  B     24(15)                        WLR OPTION                 15100000
+.E2      B     24(15)                        ERROR EXIT                 15150000
+         AGO   .FINISH                                                  15200000
+.INERR5  B     28(15)                        WLR OPTION                 15250000
+.E3      B     28(15)                        ERROR EXIT                 15300000
+         AGO   .FINISH                                                  15350000
+.INERR2  AIF   (T'&ERROPT EQ 'O').E1                                    15400000
+         AIF   ('&ERROPT' EQ 'SKIP').E2                                 15450000
+         AIF   ('&ERROPT' EQ 'IGNORE').E3                               15500000
+         DC    A(&ERROPT)                    ERROR EXIT                 15550000
+         AGO   .FINISH                                                  15600000
+.OTPT    B     28(15)                                               3-8 15650000
+         B     28(15)                                               3-8 15700000
+.FINISH  ANOP                                                  @D35DE98 15750000
+IJJZ&SYSNDX DS    0F               TO FORCE ALIGNMENT          @D14CDIS 15800000
+         DC    AL1(&VER3FLG)       VERSION 3 FLAGS             @D35DE98 15850000
+         DC    AL3(0)              RESERVED VERSION 3 FLAGS    @D35DE98 15900000
+         DC    AL4(&CISZ)          CISIZE IF PRESENT           @D35DE98 15950000
+         DC    AL4(0)              PHYSICAL BLOCK SIZE         @D356EE3 16000000
+         DC    AL2(0)              NUMBER OF PHYSICAL          @D356EE3 16050000
+*                                  BLOCKS/CI                   @D356EE3 16100000
+         DC    AL1(0)              NUMBER OF PHYSICAL          @D356EE3 16150000
+*                                  BLOCKS/TRACK                @D356EE3 16200000
+         DC    AL1(0)              UPPER LIMIT RECD NUMBER     @D356EE3 16250000
+         DC    AL4(0)              DATA SECURITY PLIST PTR     @D14CDIS 16300000
+         DC    AL4(0)              EOX EXIT ROUTINE PTR        @D14CDIS 16350000
+IJJQ&SYSNDX EQU   *                                            @D14CDHK 16400000
+         MEND                                                           16450000

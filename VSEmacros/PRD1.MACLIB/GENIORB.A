@@ -1,0 +1,418 @@
+         MACRO                                                          00050000
+&LABEL   GENIORB &ADDRESS=,&CCW=,                                      *00100000
+               &DEVICE=,&ECB=,&ERREXIT=,                               *00150000
+               &FIXFLAG=,&FIXLIST=,                                    *00200000
+               &IOFLAG=,&LENGTH=,&LOGUNIT=                              00250000
+         LCLA  &N,&FIXFL,&IOFL,&DEV,&TDE,&TUN,&DV                       00300000
+         LCLA  &TAR,&TCW,&TFL,&TEX,&L,&TEC                              00350000
+         LCLA  &OC,&OF,&OE              OFFSETS WITHIN IORB             00400000
+         LCLA  &CCBB3,&XIND             INDICATORS FOR EXTENSION        00450001
+         LCLB  &FIXERR,&IOERR,&FIX,&COM,&DE,&ERR               @D66ADAP 00500001
+         LCLB  &SKP,&CCW1,&CCW31                               @D66ADAP 00510001
+         LCLC  &IAR,&ICW,&IFL,&IEX,&IUN,&IEC                            00550000
+         LCLC  &TARGET,&CWORK,&LNG,&IND                                 00600000
+.*                                                                      00650000
+.*       IBM DISK OPERATING SYSTEM                             @D368DAP 00700000
+*        SUPERVISOR - GENIORB - 5686-032-06-56C                @D66ADAP 00750001
+         AGO   .NOCOPY                                         @D368DAP 00800000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"           @D31UDMZ 00850000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1979, 2000           @D31UDMZ 00900001
+*        ALL RIGHTS RESERVED                                   @D31UDMZ 00950000
+*        LICENSED MATERIALS-PROPERTY OF IBM                    @D368DAP 01000000
+*        SEE COPYRIGHT INSTRUCTIONS, G120-2083                 @D31UDMZ 01050000
+.NOCOPY  ANOP                                                  @D368DAP 01100000
+.* /* START OF SPECIFICATIONS ***************************************** 01150000
+.*                                                                      01200000
+.*01* MODULE-TYPE = SUPERVISOR - USER INTERFACE MACRO                   01250000
+.*                                                                      01300000
+.*01* DECRIPTIVE NAME = GENERATE INPUT/OUTPUT REQUEST BLOCK             01350000
+.*                                                                      01400000
+.*01* NOTES = CHANGE ACTIVITY                                           01450000
+.*    NEW CODE FOR RELEASE 35 TO SUPPORT RELOCATING CHANNELS            01500000
+.* A000000-999999                                              @D35EDAP 01550000
+.**** END OF SPECIFICATIONS ******************************************* 01600000
+.*                                                                      01650000
+&L       SETA  24             INITIALIZE IORB LENGTH                    01700000
+&DV      SETA  6              INITIALIZE DEVICE OFFSET (HALFWORD)       01750000
+&OC      SETA  8              INITIALIZE CCW OFFSET (FULLWORD)          01800000
+&OF      SETA  17             INITIALIZE FIXLIST OFFSET (3 BYTES)       01850000
+&OE      SETA  24             INITIALIZE EXTENSION OFFSET               01900000
+&IND     SETC  '&SYSNDX'      INITIALIZE SYSTEM INDEX                   01950000
+.*                                                                      02000000
+.*       ECB OPERAND EVALUATION --------------------------              02050000
+.*                                                                      02100000
+         AIF   (T'&ECB EQ 'O').ECBFIN                                   02150000
+&L       SETA  &L+4           CORRECT LENGTH TO EXTENDED IORB           02200000
+&XIND    SETA  X'80'          SET IDENTIFIER FOR ECB EXT.PRESENT        02250000
+.*                            AND BIT 0 ON TO INDICATE LAST ENTRY       02300000
+&CCBB3   SETA  X'20'          INDICATE: ANY EXTENSION PRESENT           02350001
+         AIF   ('&ECB'(1,1) EQ '(').ECDYN                               02400000
+&IEC     SETC  '&ECB'                                                   02450000
+&TEC     SETA  1              1= A-TYPE                                 02500000
+         AGO   .ECBFIN                                                  02550000
+.ECDYN   AIF   ('&ECB'(1,3) EQ '(S,').ECSTYP                            02600000
+&IEC     SETC  '&ECB'(2,K'&ECB-2)                                       02650000
+&TEC     SETA  2              2= REGISTER                               02700000
+         AGO   .ECBFIN                                                  02750000
+.ECSTYP  ANOP                                                           02800000
+&IEC     SETC  '&ECB'(4,K'&ECB-4)                                       02850000
+&TEC     SETA  4              4= S-TYPE                                 02900000
+.ECBFIN  ANOP                                                           02950000
+.*                                                                      03000000
+         AIF   (T'&ADDRESS EQ 'O').AR1                                  03050000
+.*                                                                      03100000
+.*       LENGTH OPERAND EVALUATION ----------------------------         03150000
+.*                                                                      03200000
+         AIF   (T'&LENGTH NE 'O').LNG1                                  03250000
+         MNOTE 4,'LENGTH OPERAND OMITTED, LENGTH=&L ASSUMED.'           03300000
+&LNG     SETC  '&L'                                                     03350000
+         AGO   .AR                                                      03400000
+.LNG1    ANOP                                                           03450000
+&LNG     SETC  '&LENGTH'                                                03500000
+.*                                                                      03550000
+.*       ADDRESS OPERAND EVALUATION ---------------------------         03600000
+.*                                                                      03650000
+.AR      AIF   ('&ADDRESS'(1,1) EQ '(').ARDYN                           03700000
+&IAR     SETC  '&ADDRESS'                                               03750000
+&TAR     SETA  1              1= A-TYPE                                 03800000
+         AGO   .AR1                                                     03850000
+.ARDYN   AIF   ('&ADDRESS'(1,3) EQ '(S,').ARSTYP                        03900000
+&IAR     SETC  '&ADDRESS(1)'                                            03950000
+&TAR     SETA  2              2= REGISTER                               04000000
+         AGO   .AR1                                                     04050000
+.ARSTYP  ANOP                                                           04100000
+&IAR     SETC  '&ADDRESS'(4,K'&ADDRESS-4)                               04150000
+&TAR     SETA  4              4= S-TYPE                                 04200000
+.AR1     ANOP                                                           04250000
+.*                                                                      04300000
+.*       DEVICE OPERAND EVALUATION -------------------------            04350000
+.*                                                                      04400000
+         AIF   (T'&DEVICE EQ 'O').LU                                    04450000
+&TDE     SETA  1              &TDE= 1 INDICATES DEVICE OPERAND          04500000
+         AIF   (K'&DEVICE NE 6).N51                                     04550000
+         AIF   ('&DEVICE'(1,3) NE 'SYS').N5                             04600000
+&CWORK   SETC  '&DEVICE'(4,3)                                           04650000
+         AIF   ('&CWORK' LT '000').DESYS                                04700000
+&DEV     SETA  &CWORK+256                                               04750000
+         AGO   .DEND                                                    04800000
+.DESYS   ANOP                                                           04850000
+&N       SETA  1                                                        04900000
+.ILOOP   AIF   ('RDRIPTPCHLSTLOGLNKRESSLBRLBUSERECCLBDMPCAT'(&N,3)     *04950000
+               EQ '&CWORK').DESYS1                                      05000000
+&N       SETA  &N+3                                                     05050000
+         AIF   (&N LT 41).ILOOP                                         05100000
+         AGO   .N52                                                     05150000
+.DESYS1  ANOP                                                           05200000
+&DEV     SETA  &N/3                                                     05250000
+.DEND    ANOP                                                           05300000
+&DEV     SETA  &DEV+4*256     SET IORB INDICATOR (X'04' IN BYTE 6)      05350000
+.*                                                                      05400000
+.*       LOGUNIT OPERAND EVALUATION ------------------------            05450000
+.*                                                                      05500000
+.LU      AIF   (T'&LOGUNIT EQ 'O').EDEV                                 05550000
+         AIF   (&TDE NE 0).DEVERR                                       05600000
+&TDE     SETA  2              &TDE= 2 INDICATES LOGICAL UNIT ADDRESS    05650000
+         AIF   ('&LOGUNIT'(1,1) EQ '(').LUDYN                           05700000
+&IUN     SETC  '&LOGUNIT'                                               05750000
+&TUN     SETA  1              1= A-TYPE                                 05800000
+         AGO   .LU1                                                     05850000
+.LUDYN   AIF   ('&LOGUNIT'(1,3) EQ '(S,').LUSTYP                        05900000
+&IUN     SETC  '&LOGUNIT'(2,K'&LOGUNIT-2)                               05950000
+&TUN     SETA  2              2= REGISTER                               06000000
+         AGO   .LU1                                                     06050000
+.LUSTYP  ANOP                                                           06100000
+&IUN     SETC  '&LOGUNIT'(4,K'&LOGUNIT-4)                               06150000
+&TUN     SETA  4              4= S-TYPE                                 06200000
+.LU1     ANOP                                                           06250000
+.EDEV    AIF   (&TDE EQ 0).N7                                           06300000
+.*                                                                      06350000
+.*       CCW OPERAND EVALUATION --------------------------              06400000
+.*                                                                      06450000
+         AIF   (T'&CCW EQ 'O').N6                                       06500000
+         AIF   ('&CCW'(1,1) EQ '(').CWDYN                               06550000
+&ICW     SETC  '&CCW'                                                   06600000
+&TCW     SETA  1              1= A-TYPE                                 06650000
+         AGO   .CW2                                                     06700000
+.CWDYN   AIF   ('&CCW'(1,3) EQ '(S,').CWSTYP                            06750000
+&ICW     SETC  '&CCW'(2,K'&CCW-2)                                       06800000
+&TCW     SETA  2              2= REGISTER                               06850000
+         AGO   .CW2                                                     06900000
+.CWSTYP  ANOP                                                           06950000
+&ICW     SETC  '&CCW'(4,K'&CCW-4)                                       07000000
+&TCW     SETA  4              4= S-TYPE                                 07050000
+.CW2     ANOP                                                           07100000
+.*                                                                      07150000
+.*       FIXFLAG AND IOFLAG OPERAND EVALUATION ---------------          07200000
+.*                                                                      07250000
+&IOFL    SETA  X'0000'        INITIALIZE BYTES 2 AND 3                  07300000
+.*                             TO USER ERROR ROUTINE REQUEST            07350000
+.*                            FIXFLAG EVALUATION:                       07400000
+&N       SETA  0                                                        07450000
+.LOOP1   ANOP                 FIXFLAG EVALUATION LOOP                   07500000
+&N       SETA  &N+1                                                     07550000
+         AIF   (&N GT N'&FIXFLAG).IOF                                   07600000
+         AIF   ('&FIXFLAG(&N)' EQ 'FIXED').FIXED                        07650000
+         AIF   ('&FIXFLAG(&N)' EQ 'COMPRESSED').COMPR                   07700000
+.FIXERR  ANOP                                                           07750000
+&FIXERR  SETB  1                                                        07800000
+         AGO   .LOOP1                                                   07850000
+.*                            IOFLAG EVALUATION:                        07900000
+.IOF     ANOP                                                           07950000
+&N       SETA  0                                                        08000000
+.LOOP2   ANOP                 IOFLAG EVALUATION LOOP                    08050000
+&N       SETA  &N+1                                                     08100000
+         AIF   (&N GT N'&IOFLAG).N0                                     08150000
+         AIF   ('&IOFLAG(&N)' EQ 'POSTDE').PDE                          08200000
+         AIF   ('&IOFLAG(&N)' EQ 'POSTERR').PERR                        08250000
+         AIF   ('&IOFLAG(&N)' EQ 'SKIPERP').PSKP                        08300000
+         AIF   ('&IOFLAG(&N)' EQ 'FORMAT1').PCCW1              @D52VDAP 08325001
+         AIF   ('&IOFLAG(&N)' EQ 'ABOVE').PCCWA                @D66ADAP 08326001
+.IOERR   ANOP                                                           08350000
+&IOERR   SETB  1                                                        08400000
+         AGO   .LOOP2                                                   08450000
+.*                            OPTION FLAGBIT CALCULATION:               08500000
+.FIXED   AIF   (&FIX EQ 1).FIXERR                                       08550000
+&FIX     SETB  1                                                        08600000
+&FIXFL   SETA  &FIXFL+X'40'                                             08650000
+         AGO   .LOOP1                                                   08700000
+.COMPR   AIF   (&COM EQ 1).FIXERR                                       08750000
+&COM     SETB  1                                                        08800000
+&FIXFL   SETA  &FIXFL+X'80'                                             08850000
+         AGO   .LOOP1                                                   08900000
+.PDE     AIF   (&DE EQ 1).IOERR                                         08950000
+&DE      SETB  1                                                        09000000
+&IOFL    SETA  &IOFL+X'0400'                                            09050000
+         AGO   .LOOP2                                                   09100000
+.PERR    AIF   (&ERR EQ 1).IOERR                                        09150000
+&ERR     SETB  1                                                        09200000
+&IOFL    SETA  &IOFL+X'1000'                                            09250000
+         AGO   .LOOP2                                                   09300000
+.PSKP    AIF   (&SKP EQ 1).IOERR                                        09350000
+&SKP     SETB  1                                                        09400000
+&IOFL    SETA  &IOFL+X'0100'                                            09450000
+         AGO   .LOOP2                                                   09500000
+.PCCWA   AIF   (&CCW1 EQ 1).IOERR                              @D66ADAP 09501001
+&CCW31   SETB  1              INDICATE 31-BIT CCW ADDRESS      @D66ADAP 09503002
+&CCBB3   SETA  &CCBB3+2       INDICATE 31-BIT ADDRESS          @D66ADAP 09504002
+.PCCW1   AIF   (&CCW1 EQ 1).IOERR                              @D52VDAP 09510001
+&CCBB3   SETA  &CCBB3+1       INDICATE FORMAT1 CCW             @D52VDAP 09520001
+&CCW1    SETB  1              INDICATE FORMAT1 CCW             @D52VDAP 09530001
+         AGO   .LOOP2                                          @D52VDAP 09540001
+.*                            OPTION ERROR MESSAGES:                    09550000
+.N0      AIF   (&FIXERR EQ 0).N1                                        09600000
+         MNOTE 4,'FIXFLAG OPTION(S) DUPLICATED OR IN ERROR HAVE BEEN IG*09650000
+               NORED.'                                                  09700000
+.N1      AIF   (&IOERR EQ 0).N2                                         09750000
+         MNOTE 4,'IOFLAG OPTION(S) DUPLICATED OR IN ERROR HAVE BEEN IGN*09800000
+               ORED.'                                                   09850000
+.N2      ANOP                                                           09900000
+.*                                                                      09950000
+.*       FIXLIST OPERAND EVALUATION ------------------------            10000000
+.*                                                                      10050000
+&TFL     SETA  0              0= NOT USED                               10100000
+         AIF   (T'&FIXLIST EQ 'O').FL1                                  10150000
+         AIF   (&FIX EQ 1).FL1                                          10200000
+         AIF   ('&FIXLIST'(1,1) EQ '(').FLDYN                           10250000
+&IFL     SETC  '&FIXLIST'                                               10300000
+&TFL     SETA  1              1= A-TYPE                                 10350000
+         AGO   .FL1                                                     10400000
+.FLDYN   AIF   ('&FIXLIST'(1,3) EQ '(S,').FLSTYP                        10450000
+&IFL     SETC  '&FIXLIST'(2,K'&FIXLIST-2)                               10500000
+&TFL     SETA  2              2= REGISTER                               10550000
+         AGO   .FL1                                                     10600000
+.FLSTYP  ANOP                                                           10650000
+&IFL     SETC  '&FIXLIST'(4,K'&FIXLIST-4)                               10700000
+&TFL     SETA  4              4= S-TYPE                                 10750000
+.FL1     ANOP                                                           10800000
+.*                                                                      10850000
+.*       ERREXIT OPERAND EVALUATION ------------------------            10900000
+.*                                                                      10950000
+&TEX     SETA  0              0= OMITTED                                11000000
+         AIF   (T'&ERREXIT NE 'O' OR T'&ADDRESS NE 'O').EX              11050000
+         MNOTE 1,'''ADDRESS'' AND ''ERREXIT'' PARAMETERS MISSING,GETVIS*11100000
+                ACTION WITH ERREXIT -> CANCEL ASSUMED.'                 11150000
+         AGO   .EX1                                                     11200000
+.EX      AIF   (T'&ERREXIT EQ 'O').EX1                                  11250000
+         AIF   (T'&ADDRESS EQ 'O').EX0                                  11300000
+         MNOTE 4,'''ADDRESS'' AND ''ERREXIT'' PARAMETERS SPECIFIED,''ER*11350000
+               REXIT'' HAS BEEN IGNORED.'                               11400000
+         AGO   .EX1                                                     11450000
+.EX0     AIF   ('&ERREXIT'(1,1) EQ '(').EXDYN                           11500000
+&IEX     SETC  '&ERREXIT'                                               11550000
+&TEX     SETA  1              1= A-TYPE                                 11600000
+         AGO   .EX1                                                     11650000
+.EXDYN   AIF   ('&ERREXIT'(1,3) EQ '(S,').EXSTYP                        11700000
+&IEX     SETC  '&ERREXIT'(2,K'&ERREXIT-2)                               11750000
+&TEX     SETA  2              2= REGISTER                               11800000
+         AGO   .EX1                                                     11850000
+.EXSTYP  ANOP                                                           11900000
+&IEX     SETC  '&ERREXIT'(4,K'&ERREXIT-4)                               11950000
+&TEX     SETA  4              4= S-TYPE                                 12000000
+.EX1     ANOP                                                           12050000
+.*                                                                      12100000
+.*       GENERATE MACRO EXPANSION --------------------------            12150000
+.*                                                                      12200000
+         AIF   ('&LABEL' EQ '').PARMLST                                 12250000
+&LABEL   DC    0H'0'                                                    12300000
+.*                                                                      12350000
+.*       GENERATE INSTRUCTIONS -----                                    12400000
+.*                                                                      12450000
+.**************                    OBTAIN SPACE AND MOVE IORB SKELETON  12500000
+.PARMLST AIF   (&TAR GT 0).N00                                          12550000
+         SR    15,15               CLEAR RETURN CODE REG                12600000
+         LA    0,&L                SET REQUIRED LENGTH                  12650000
+         SVC   61                  GETVIS SVC                           12700000
+         LTR   15,15               CHECK SUCCESS                        12750000
+         AIF   (&TEX NE 2).M1                                           12800000
+         BNZR  &IEX                NO -> ERREXIT                        12850000
+         AGO   .M10                                                     12900000
+.M1      AIF   (&TEX NE 4).M2                                           12950000
+         BNZ   &IEX                NO -> ERREXIT                        13000000
+         AGO   .M10                                                     13050000
+.M2      AIF   (&TEX NE 1).M3                                           13100000
+         LR    0,1                 SAVE REG 1 CONTENT                   13150000
+         L     1,=A(&IEX)          LOAD ERREXIT ADDR                    13200000
+         BNZR  1                   NO -> ERREXIT                        13250000
+         LR    1,0                 RESTORE REG 1                        13300000
+         AGO   .M10                                                     13350000
+.M3      ANOP                                                           13400000
+         BZ    *+6                 YES -> GENERATE                      13450000
+         SVC   6                   NO  -> CANCEL                        13500000
+         AGO   .M10                                                     13550000
+.N00     AIF   (&TAR NE 1).N01                                          13600000
+         L     1,=A(&IAR)          LOAD ADDRESS                         13650000
+.M10     ANOP                                                           13700000
+&TAR     SETA  2              NOW SIMULATE REGISTER                     13750000
+&IAR     SETC  '1'             NOTATION USING GR 1                      13800000
+.N01     AIF   (&TAR NE 2).N02                                          13850000
+&TARGET  SETC  '0('.'&IAR'.')'                                          13900000
+         MVC   0(&L,&IAR),IJBZ&IND MOVE IORB SKELETON                   13950000
+         AGO   .N03                                                     14000000
+.N02     ANOP                                                           14050000
+&TARGET  SETC  '&IAR'                                                   14100000
+&CWORK   SETC  '&IAR'.'(&L)'                                            14150000
+         MVC   &CWORK,IJBZ&IND     MOVE IORB SKELETON                   14200000
+.***************                   SET DEVICE TYPE                      14250000
+.N03     AIF   (&TDE NE 2).N07                                          14300000
+         AIF   (&TUN EQ 1).N05                                          14350000
+         AIF   (&TUN EQ 4).N04                                          14400000
+         LH    0,0(&IUN)           GET DEVICE TYPE CODE                 14450000
+         AGO   .N06                                                     14500000
+.N04     ANOP                                                           14550000
+         LH    0,&IUN              GET DEVICE TYPE CODE                 14600000
+         AGO   .N06                                                     14650000
+.N05     ANOP                                                           14700000
+         LR    0,1                 SAVE CONTENT OF GR 1                 14750000
+         L     1,=A(&IUN)          ADDRESS DEVICE TYPE CODE             14800000
+         LH    1,0(1)              GET DEVICE TYPE CODE                 14850000
+         XR    1,0                 EXCHANGE                             14900000
+         XR    0,1                  REGISTER                            14950000
+         XR    1,0                   CONTENTS                           15000000
+.N06     STH   0,&DV+&TARGET       INSERT CODE INTO IORB                15050000
+         NI    &DV+&TARGET,X'01'                                        15100000
+         OI    &DV+&TARGET,X'04'   SET IORB INDICATOR (X'04' BYTE 6)    15150000
+.**************                    SET ADDRESS OF CCW                   15200000
+.N07     AIF   (&TCW EQ 1).N073                                         15250000
+         AIF   (&TCW EQ 4).N072                                         15300000
+         STCM  &ICW,X'07',1+&OC+&TARGET STORE CCW POINTER               15350000
+         AGO   .N073                                                    15400000
+.N072    ANOP                                                           15450000
+         LA    0,&ICW              GET CCW ADDRESS                      15500002
+         ST    0,&OC+&TARGET       STORE CCW ADDRESS                    15550002
+.N073    ANOP                                                           15600000
+.**************                    SET ADDRESS OF ECB IF REQUIRED       15650000
+         AIF   (&TEC EQ 1 OR &TEC EQ 0).N083                            15700000
+         AIF   (&TEC EQ 4).N082                                         15750000
+         STCM  &IEC,7,1+&OE+&TARGET INSERT ECB ADDRESS                  15800000
+         AGO   .N083                                                    15850000
+.N082    ANOP                                                           15900000
+         LA    0,&IEC                                                   15950000
+         STCM  0,7,1+&OE+&TARGET   STORE ECB ADDRESS                    16000002
+.N083    ANOP                                                           16050000
+.**************                    SET ADDRESS OF FIXLIST               16100000
+         AIF   (&TFL LT 2 OR &FIX EQ 1).N20                             16150000
+         AIF   (&TFL EQ 4).N11                                          16200000
+         STCM  &IFL,7,&OF+&TARGET  STORE FIXLIST POINTER                16250000
+         AGO   .N20                                                     16300000
+.N11     ANOP                                                           16350000
+         LA    0,&IFL                                                   16400000
+         STCM  0,7,&OF+&TARGET     INSERT FIXLIST POINTER               16450000
+.**************                    LOAD ARGUMENT LIST                   16500000
+.N20     AIF   (&TAR NE 2).N202                                         16550000
+         AIF   ('&IAR' EQ '1').N203                                     16600000
+         LR    1,&IAR              LOAD ARGUMENT LIST POINTER           16650000
+         AGO   .N203                                                    16700000
+.N202    ANOP                                                           16750000
+         LA    1,&IAR              LOAD ARGUMENT LIST POINTER           16800000
+.N203    ANOP                                                           16850000
+         B     IJBZ&IND+&L                                              16900000
+.**************                    LENGTH CHECK AT COMPILE TIME         16950000
+         AIF   (T'&ADDRESS EQ 'O').N204                                 17000000
+         DC    0CL(&LNG-&L+1)' '   COMPILE TIME LENGTH CHECK,           17050000
+*                                   ERROR IF LENGTH TOO SHORT           17100000
+.N204    ANOP                                                           17150000
+.*                                                                      17200000
+.**************                    PREPARE CHARACTER VARIABLES          17250000
+.*                                                                      17300000
+         AIF   (&TCW LT 2).N205                                         17350000
+&ICW     SETC  '0'                                                      17400000
+.N205    ANOP                                                           17450000
+         AIF   (&TFL LT 2).N206                                         17500000
+&IFL     SETC  '0'                                                      17550000
+.N206    ANOP                                                           17600000
+.**************                    GENERATE IORB SKELETON               17650000
+IJBZ&IND DC    0H'0'               I O R B  SKELETON                    17700000
+         DC    AL2(0)              COUNT FIELD                          17750000
+         DC    AL2(&IOFL)          TRANSMISSION INF                     17800000
+         DC    AL2(0)              CSW STATUS BITS                      17850000
+         DC    AL2(&DEV)           TYPE CODE                            17900000
+         AIF   (NOT &CCW31).NCCW31 31-BIT CCW ADDRESS                   17910001
+         DC    AL4(&ICW)           CCW ADDRESS IN 31-BIT AREA           17920001
+         AGO   .YCCW31                                                  17921001
+.NCCW31  ANOP                                                           17930001
+         DC    AL1(0)              LIOCS FLAGS                          17950000
+         DC    AL3(&ICW)           CCW ADDRESS                          18000000
+.YCCW31  ANOP                                                           18010001
+         DC    AL1(&CCBB3)         PIOCS FLAGS                          18050001
+         DC    AL3(0)              FAILING CCW INFORMATION              18100001
+         DC    AL1(&FIXFL)         FIXFLAGS                             18150000
+         AIF   (&TFL EQ 0).N3                                           18200000
+         DC    AL3(&IFL)           FIXLIST ADDRESS                      18250000
+         AGO   .N31                                                     18300000
+.N3      ANOP                                                           18350000
+         DC    AL3(0)              FIXLIST NOT USED                     18400000
+.N31     ANOP                                                           18450000
+         DC    X'0000'             IORB IDENTIFICATION                  18500000
+         DC    X'0000'             REQUESTOR INFO                       18550000
+.*                                 GENERATE EXTENSION TO IORB           18600000
+         AIF   (T'&ECB EQ 'O').N33                                      18650000
+         AIF   (&TEC LT 2).N32                                          18700000
+&IEC     SETC  '0'                 NO A-TYPE ADDRESS                    18750000
+.N32     ANOP                                                           18800000
+         DC    AL1(&XIND)          IDENT.OF TYPE OF EXTENSION           18850000
+         DC    AL3(&IEC)           ECB ADDRESS                          18900000
+.N33     ANOP                      END OF VARIABLE EXTENSION            18950000
+.*************                     END OF EXTENSION FOR ECB             19000000
+         MEXIT                                                          19050000
+.*                                                                      19100000
+.*       SEVERE ERROR MESSAGES -------------------------------          19150000
+.*                                                                      19200000
+.N5      MNOTE 8,'DEVICE PARAMETER MISSING OR NOT STARTING WITH ''SYS''*19250000
+               ,GENERATION SUPPRESSED.'                                 19300000
+         AGO   .ERREXIT                                                 19350000
+.N51     MNOTE 8,'DEVICE OPERAND LENGTH ERROR,GENERATION SUPPRESSED.'   19400000
+         AGO   .ERREXIT                                                 19450000
+.N52     MNOTE 8,'DEVICE OPERAND SPECIFIES UNKNOWN SYSTEM UNIT,GENERATI*19500000
+               ON SUPPRESSED'                                           19550000
+         AGO   .ERREXIT                                                 19600000
+.N6      MNOTE 8,'CCW PARAMETER MISSING,GENERATION SUPPRESSED.'         19650000
+         AGO   .ERREXIT                                                 19700000
+.N7      MNOTE 8,'DEVICE SPECIFICATION MISSING,GENERATION SUPPRESSED'   19750000
+         AGO   .ERREXIT                                                 19800000
+.DEVERR  ANOP                                                           19850000
+         MNOTE 8,'MULTIPLE DEVICE SPECIFICATIONS,GENERATION SUPPRESSED' 19900000
+.*                                                                      19950000
+.ERREXIT AIF   ('&LABEL' EQ '').N8                                      20000000
+&LABEL   DC    0H'0'          LABEL OF SUPPRESSED GENIORB MACRO         20050000
+.N8      ANOP                                                           20100000
+         MEND                                                           20150000

@@ -1,0 +1,646 @@
+         MACRO                                                          00001000
+         SGVEND &DSECT=YES                                              00002000
+***************************************************************         00003000
+*                                                             *         00004000
+.*       IBM DISK OPERATING SYSTEM                            *         00005000
+*        SUPERVISOR - SGVEND - 5686-066-06                    *@D61EDHK 00006000
+.*                                                            *         00007000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00008000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *         00009000
+*        5686-066 (C) COPYRIGHT IBM CORP. 1993, 2001          *@D61EDHK 00010000
+*        SEE COPYRIGHT INSTRUCTIONS                           *         00011000
+*                                                             *         00012000
+***************************************************************         00013000
+         GBLB  &SGVEND                                                  00014000
+         GBLB  &IJBSGEN           SUPERVISOR GENERATION                 00015000
+.* /* START OF SPECIFICATIONS ***************************************** 00016000
+.*                                                                      00017000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00018000
+.*                                                                      00019000
+.*01* DESCRIPTIVE NAME = SUPERVISOR ROUTINES FOR VENDOR SERVICES        00020000
+.*                                                                      00021000
+.*01* NOTES = CHANGE ACTIVITY                                           00022000
+.*@D61EDHK  VENDOR EXIT SUPPORT                                @D61EDHK 00023000
+.*@DY43979  ENABLE RESVCX FROM SVC02 ROUTINE                   @DY43979 00024000
+.*@DY44069  SUPPORT NEW CLASS=DOCP                             @DY44069 00025000
+.*@D66ODOW  MORE THAN 255 TASKS                                @D66ODOW 00026000
+.*@DY46373  HARDWAIT  TASKACTP ENTRY FOR TASK 2D = RID0PROD    @DY46373 00026500
+.**** END OF SPECIFICATIONS ***************************************** / 00027000
+         SPACE 2                                                        00028000
+         AIF   ('&DSECT' EQ 'YES').DSECT                                00029000
+         AIF   (NOT &SGVEND).NPRT010                                    00030000
+         PRINT GEN                                                      00031000
+.NPRT010 ANOP                                                           00032000
+IJBSUP50 CSECT                  RESUME CSECT                   @D52YDIS 00033000
+         DC    CL8'SGVEND  '    MACRO NAME                     @D52YDIS 00034000
+         DC    CL8'DY46373 '    APAR LEVEL                     @DY46373 00034500
+         DC    CL10'11/13/2001' LAST DEVELOPMENT CHANGE        @D66ODOW 00035000
+*********************************************************************** 00036000
+*                                                                     * 00037000
+* VENDOR INTERFACE SVC ROUTINE (SVC 124)                              * 00038000
+*                                                                     * 00039000
+*********************************************************************** 00040000
+*                                                                     * 00041000
+*     FUNCTION      :    SERVICES FOR VENDOR PROGRAM                  * 00042000
+*                        AUTHORIZATION AND VENDOR EXIT SUPPORT @D61EDHK 00043000
+*     INPUT REGISTER: R0 - FAST PATH ONLY  (RF = 0)                   * 00044000
+*                          R0=0 => RESET AUTHORIZATION                * 00045000
+*                          R0=1 => SET AUTHORIZATION           @D61EDHK 00046000
+*                          R0=2 => PRODEXIT ENABLE             @D61EDHK 00047000
+*                          R0=3 => PRODEXIT DISABLE            @D61EDHK 00048000
+*                     R1 - INPUT PARAMETER                            * 00049000
+*                          RF  =  0 -> FIRST PART OF TOKEN            * 00050000
+*                          RF NOT 0 -> ADDRESS OF PARAMETER LIST      * 00051000
+*                     R2 - FAST PATH ONLY  (RF = 0)                   * 00052000
+*                                     SECOND PART OF TOKEN            * 00053000
+*                     RB - SAVE AREA ADDRESS (RF NOT 0)               * 00054000
+*                     RF - FUNCTION CODE                              * 00055000
+*                          0 = FAST PATH INDICATOR             @D61EDHK 00056000
+*                                                                     * 00057000
+*        AMODE = ANY, RMODE = ANY, ASC MODE = PRIMARY                 * 00058000
+*********************************************************************** 00059000
+         SPACE 2                                                        00060000
+         USING SVC124,RC                                       @D52YDIS 00061000
+SVC124   DS    0H                                              @D52YDIS 00062000
+         STC   RF,S124SFCT        SAVE FAST PATH FUNCTION CODE @D52YDIS 00063000
+         LTR   RF,RF              FAST PATH ?                  @D52YDIS 00064000
+         BZ    SVC124F            YES, TAKE FAST PATH          @D52YDIS 00065000
+         LA    R3,S124WORK        WORK AREA ADDR               @D52YDOW 00066000
+         SPACE 5                                                        00067000
+*--------------------------------------------------------------         00068000
+* SVC124M  - MAIN PATH ENTERED BY ALL SVC 124 FUNCTION CODES            00069000
+*             INPUT:   RB - SAVE AREA ADDRESS                           00070000
+*--------------------------------------------------------------         00071000
+*        AMODESW SET,AMODE=31,WR=(R4)                                   00072000
+         AMODESW SET,AMODE=31,WR=(R4)                          @D52YDOW 00073000
+SVC124M  DS    0H                 COMMON ENTRY POINT           @D52YDIS 00074000
+         LA    R4,16              SET RETURN CODE FOR ...      @D52YDIS 00075000
+*                              ... VENDOR INTERFACES NOT AVAIL.@D52YDIS 00076000
+         TM    SYSFLAG2,IPLBIT    IS IPL IN PROGRESS?          @DY46373 00076300
+         BO    SVC124ER           YES, -> RET.CODE             @DY46373 00076600
+         L     RD,ASVASVDL        PTR.TO SVA ROUT.ADDR.TABLE   @D52YDOW 00077000
+         ICM   RD,15,AIJBVEND-SVASVDL(RD)  GET ROUTINE ADDRESS @D52YDOW 00078000
+         BZ    SVC124ER           NOT AVAILABLE -> RET.CODE    @D52YDIS 00079000
+         LR    R4,RD              GET ENTRY POINT TO SVA RTN   @D52YDOW 00080000
+         A     R4,F4              ...                          @D52YDOW 00081000
+*--------------------------------------------------------------         00082000
+* $IJBVEND - SVC 124 ROUTINE                                            00083000
+*                                                                       00084000
+*      INPUT:   R0 - SET / RESET AUTHORIZATION INDICATOR (FAST PATH)    00085000
+*                    FOR PRODID FAST PATH ( 1 / 0 )            @D61EDHK 00086000
+*                  - ENABLE / DISABLE FCT CODE FOR PRODEXIT    @D61EDHK 00087000
+*                    SERVICE ( 2 / 3 )                         @D61EDHK 00088000
+*               R1 - PARAMETER ADDRESS                                  00089000
+*                    OR FIRST PART OF TOKEN (FAST PATH/DELETE) @D61EDHK 00090000
+*               R2 - SECOND PART OF TOKEN (FAST PATH/DELETE)   @D61EDHK 00091000
+*               R3 - WORK AREA ADDRESS                                  00092000
+*               R6 - DISPATCHER ADDR                                    00093000
+*               R8 - ADDR OF CURRENT TIB                                00094000
+*               RA - ADDR OF CURRENT TCB                                00095000
+*               RB - ADDR OF SAVE AREA                                  00096000
+*               RD - $IJBVEND BASE ADDRESS                              00097000
+*               RE - RETURN ADDRESS                                     00098000
+*               RF - FUNCTION CODE                                      00099000
+*      OUTPUT:  R4 - RETURN CODE                                        00100000
+*               RF - GETVIS RETURN CODE                                 00101000
+*      WORK:    R0 - RA                                                 00102000
+*      AMODE:  31                                                       00103000
+*      $IJBVEND HAS TO RETURN WITH THE AMODE OF THE CALLER              00104000
+*--------------------------------------------------------------         00105000
+*        AMODESW CALL,REGS=(RE,R4) CALL ROUTINE                         00106000
+         AMODESW CALL,REGS=(RE,R4) CALL ROUTINE                @D52YDOW 00107000
+SVC124ER DS    0H                                              @D52YDIS 00108000
+         L     R6,DISPAD          GET DISPATCHER BASE ADDRESS  @D52YDIS 00109000
+         USING DISP,R6                                         @D52YDIS 00110000
+         USING SVEARA,RB                                       @D52YDIS 00111000
+         CLI   S124SFCT,ZERO      FAST PATH REQUEST ?          @D52YDIS 00112000
+         BE    SVC124FR           YES, RETURN TO CALLER        @D52YDIS 00113000
+         LTR   R4,R4              RETURN CODE NEGATIVE ?       @D52YDIS 00114000
+         BM    SVC124ES           YES, CANCEL EXIT             @D52YDOW 00115000
+         ST    RF,SVER00          ADDITIONAL RETURN INFORMATION@D52YDIS 00116000
+         ST    R4,SVER0F          SET RETURN CODE              @D52YDIS 00117000
+         B     EXIT               RETURN TO DISPATCHER         @D52YDIS 00118000
+SVC124ES LA    R4,0(,R4)          MAKE VALUE POSITIV           @D52YDOW 00119000
+         SLL   R4,2                                            @D52YDOW 00120000
+         L     R4,SVC124TB(R4)    CANCEL EXIT ADDR             @D52YDOW 00121000
+         BR    R4                                              @D52YDOW 00122000
+         SPACE 2                                               @D52YDIS 00123000
+*--------------------------------------------------------------         00124000
+* SVC124FR  - FAST PATH SVC 124 RETURN ROUTINE                          00125000
+*             CANCEL EXIT                                               00126000
+*--------------------------------------------------------------         00127000
+SVC124FR DS    0H                                              @D52YDIS 00128000
+         MVI   S124SFCT,X'FF'     INITIALIZE                   @D52YDIS 00129000
+         MVC   RID,S124SRID       RESTORE CALLER'S RID         @D52YDIS 00130000
+         LTR   R4,R4              RETURN CODE NEGATIVE ?       @D52YDIS 00131000
+         BM    SVC124FS           YES                          @D52YDOW 00132000
+         ST    R4,SVER0F          SET RETURN CODE              @D52YDIS 00133000
+         LM    R9,R8,SVER09       RESTORE REGISTERS            @D52YDIS 00134000
+         DEBUG ALLREGS,XXDBGMC    DISPLAY ALL REGISTERS        @D61EDHK 00135000
+         LPSW  SVOLDP                 RETURN TO REQUESTOR      @D52YDIS 00136000
+         SPACE 2                                                        00137000
+SVC124FS DS    0H                                              @D52YDIS 00138000
+         LA    R4,0(,R4)          CLEAR FIRST BYTE             @D52YDOW 00139000
+         L     R9,SVC124TB(R4)    EXIT ADDR FOR GENENT         @D52YDOW 00140000
+         LM    RE,R8,SVER0E       RESTORE INPUT REG            @D52YDOW 00141000
+SVC124FT DS    0H                                              @D61EDHK 00142000
+         LA    RC,SVCOPSW         IDENTIFY OLD PSW             @D52YDOW 00143000
+         L     RA,SVCINF          GET SVC INTERRUPTION CODE    @D52YDOW 00144000
+         L     RD,AFLIH           BASE OF GENENT               @D52YDOW 00145000
+         CLI   RID+1,USERTID      IS IT RID=8                  @D61EDHK 00146000
+         USING FLIH,RD            SET UP BASE                  @D61EDHK 00147000
+         BNE   TIGENENT           NO, PSW + REGS IN SPEC.SAVEA.@D61EDHK 00148000
+*SGLINK  TIGENENT INPUT=(R9,RA,RC,RD),OUTPUT=R6,WORK=(RA,RB)            00149000
+         LR    RB,RA              SVC INTERR. CODE FOR GENENT  @D61EDHK 00150000
+         B     GENENT             SAVE TASKS PSW AND REGISTER  @D61EDHK 00151000
+*SGLINK  GENENT INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)          @D61EDHK 00152000
+         DROP  RD                                              @D52VDOW 00153000
+         DROP  R6                                              @D52YDIS 00154000
+         DROP  RB                                              @D52YDIS 00155000
+         SPACE 2                                                        00156000
+SVC124TB DC    A(ERR21)           ILLEGAL SVC                  @D52YDOW 00157000
+         DC    A(ERR25)           ILLEGAL ADDRESS              @D52YDOW 00158000
+         DC    A(ERR0B)           SECURITY VIOLATION           @D52YDOW 00159000
+         EJECT                                                 @D52YDIS 00160000
+*--------------------------------------------------------------         00161000
+* SVC124F   - FAST PATH SVC 124 ROUTINE                                 00162000
+*                                                                       00163000
+*      INPUT:                                                           00164000
+*                                                                       00165000
+*        R0 - INPUT PARAMETER                                           00166000
+*             RF  =  0 -> R0=0 => RESET AUTHORIZATION          @D61EDHK 00167000
+*                         R0=1 => SET AUTHORIZATION            @D61EDHK 00168000
+*                         R0=2 => PRODEXIT ENABLE              @D61EDHK 00169000
+*                         R0=3 => PRODEXIT DISABLE             @D61EDHK 00170000
+*                                                                       00171000
+*--------------------------------------------------------------         00172000
+         SPACE 1                                               @D61EDHK 00173000
+SVC124F  DS    0H                                              @D52YDIS 00174000
+         L     R9,SVC124TB        GET ADDR OF ERR21            @D61EDHK 00175000
+         ICM   RB,15,S124VTAB     ANY VENDOR PRODUCT INSTALLED @D52YDOW 00176000
+         BZ    SVC124FT           NO CANCEL REQUESTOR          @D61EDHK 00177000
+*        AMODESW SET,AMODE=31,WR=(RB)                                   00178000
+         AMODESW SET,AMODE=31,WR=(RB)                          @D52YDOW 00179000
+         LA    RB,S124FSAV        GET FAST PATH SAVE AREA ADDR.@D52YDIS 00180000
+         USING SVEARA,RB                                       @D52YDIS 00181000
+         STM   RE,R8,SVER0E       SAVE CALLERS REGS,           @D52YDIS 00182000
+         MVC   SVER09(20),ERA     *  ...                       @D52YDIS 00183000
+         MVC   SVEPSW(8),SVOLDP   *  HIS PSW AND               @D52YDIS 00184000
+         MVC   S124SRID,RID       *  HIS RID VALUE             @D52YDIS 00185000
+         MVI   RID+1,SYSTEMID     SET UP RID FOR NO SAVE AREA  @D52YDIS 00186000
+         LA    R3,S124WORK        WORK AREA ADDR               @D52YDOW 00187000
+         B     SVC124M            CONTINUE WITH MAIN PATH      @D52YDIS 00188000
+         DROP  RB                                              @D52YDIS 00189000
+         EJECT                                                 @D52YDIS 00190000
+************************************************************** @D61EDHK 00191000
+*                                                              @D61EDHK 00192000
+*        EXIT FROM PC HANDLER                                  @D61EDHK 00193000
+*                                                              @D61EDHK 00194000
+*  DURING EXECUTION OF THE PRODEXIT CHECK/ACTIVATE SERVICE     @D61EDHK 00195000
+*  A PROGRAM CHECK CAN OCCUR ON THE INSTRUCTIONS DIRECTLY      @D61EDHK 00196000
+*  PRECEEDING THE LABELS CHKPCK1 - CHKPCK5. IF A               @D61EDHK 00197000
+*  PROGRAM CHECK OCCURS, THE PC-HANDLER RECOGNIZES THE         @D61EDHK 00198000
+*  ADDRESSES AND GIVES CONTROL TO THIS ROUTINE, WHICH WILL     @D61EDHK 00199000
+*  DIRECTLY CANCEL THE ISSUER WITH 'ILLEGAL ADDRESS'           @D61EDHK 00200000
+*                                                              @D61EDHK 00201000
+************************************************************** @D61EDHK 00202000
+         DROP  RC                                              @D61EDHK 00203000
+S124PCK  DS    0H                                              @D61EDHK 00204000
+         BALR  R2,0                SET UP ADDRESSIBILITY       @D61EDHK 00205000
+         USING *,R2                                            @D61EDHK 00206000
+         L     RC,ADSVC124         BASE OF SVC 124             @D61EDHK 00207000
+         DROP  R2                                              @D61EDHK 00208000
+         USING SVC124,RC                                       @D61EDHK 00209000
+         LA    R4,1                SET ERR25 FLAG              @D61EDHK 00210000
+         L     R6,DISPAD           GET DISPATCHER ADDR         @D61EDHK 00211000
+         B     SVC124ES            GO TO INVOKE 'ERR25'        @D61EDHK 00212000
+         DROP  RC                                              @D52YDIS 00213000
+ADSVC124 DC    A(SVC124)                                       @D61EDHK 00214000
+         EJECT                                                 @D61EDHK 00215000
+*--------------------------------------------------------------         00216000
+*           - SVC 124 WORK AREA                                         00217000
+*--------------------------------------------------------------         00218000
+S124WORK DS    0D                                              @D52YDOW 00219000
+         AGO .DSECT10                                                   00220000
+.DSECT   ANOP                                                           00221000
+*********************************************************************** 00222000
+* WARNING: THE FOLLOWING MAPPING REFERS TO AN INTERNAL SUPERVISOR     * 00223000
+*          CONTROL BLOCK. IT MAY CHANGE ANY TIME AND IS NOT COMMITTED * 00224000
+*          AS AN INTERFACE OF ANY LEVEL.                              * 00225000
+*********************************************************************** 00226000
+*                                                                       00227000
+*--------------------------------------------------------------         00228000
+* S124WORK  - DSECT SVC 124 WORK AREA                                   00229000
+*--------------------------------------------------------------         00230000
+S124WORK DSECT                                                 @D52YDIS 00231000
+SVC124   EQU   *                                               @D61EDHK 00232000
+SCYVEND  EQU   *                                                        00233000
+PCKVEND  EQU   *     EQUATES                                   @D61EDHK 00234000
+SRQWAIT  EQU   *                                               @D61EDHK 00235000
+FREELTA  EQU   *          FOR                                  @D61EDHK 00236000
+RWAIT    EQU   *                                               @D61EDHK 00237000
+RPOSTALL EQU   *             ADDRESSES                         @D61EDHK 00238000
+PREXTTAB EQU   *                                               @D61EDHK 00239000
+GETLTA   EQU   *                  AND FIELDS                   @D61EDHK 00240000
+SGPGM    EQU   *                                               @D61EDHK 00241000
+SVC02    EQU   *                        IN THE SUPERVISOR      @D61EDHK 00242000
+PRODACT  EQU   *                                               @D61EDHK 00243000
+PRODRET  EQU   *                                               @D61EDHK 00244000
+S124BSV2 EQU   *                                               @DY43979 00245000
+*                                                                       00246000
+.DSECT10 ANOP                                                           00247000
+.*-------------------------------------------------------------@D61EDHK 00248000
+.*  VSE ACCESS CONTROL FUNCTION INVOCATION                     @D61EDHK 00249000
+.*       NOTE,  CODE MUST BE ON  DOUBLE WORD BOUNDARY!         @D61EDHK 00250000
+.*-------------------------------------------------------------@D61EDHK 00251000
+S124APL  DTSAPL DSECT=NO          APL                          @D52YDOW 00252000
+         ORG   *-APLEN+APTYP-APLID LOCATE OBJECT TYPE          @D52YDOW 00253000
+         DC    AL1(APPGM)         OBJECT IS MEMBER             @D52YDOW 00254000
+         ORG   ,                                               @D52YDOW 00255000
+         ORG   *-APLEN+APAUT-APLID LOCATE ACCESS RIGHTS        @D52YDOW 00256000
+         DC    AL1(APUPD)         WRITE IS REQUIRED            @D52YDOW 00257000
+         ORG   ,                                               @D52YDOW 00258000
+         ORG   *-APLEN+APOBJ-APLID LOCATE POINTER ADDRESS      @D52YDOW 00259000
+         DC    A(S124OBJ)                                      @D52YDOW 00260000
+         ORG   ,                                               @D52YDOW 00261000
+S124OBJ  DC    CL7'IJSYSRS'                                    @D52YDOW 00262000
+         DC    CL8'SYSLIB  '                                   @D52YDOW 00263000
+         DC    CL8'$IJBVEND'                                   @D52YDOW 00264000
+*                                                              @D61EDHK 00265000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - SGVEND + IJBVEND X00266000
+               ADDRESSES OF SUP-RTNS AND FIELDS'               @D61EDHK 00267000
+************************************************************** @D61EDHK 00268000
+*                                                              @D61EDHK 00269000
+*         ADDRESSES OF SUPERVISOR ROUTINES OR FIELDS           @D61EDHK 00270000
+*                                                              @D61EDHK 00271000
+************************************************************** @D61EDHK 00272000
+         SPACE 2                                               @D61EDHK 00273000
+S124PC   DC    A(PCKVEND)         POINTER TO PCKVEND AREA IN   @D61EDHK 00274000
+*                                 PROGRAM CHECK HANDLER        @D61EDHK 00275000
+S124LLTA DC    A(FREELTA)         FREELTA RTN ADDRESS          @D61EDHK 00276000
+S124GLTA DC    A(GETLTA)          GETLTA RTN ADDRESS           @D61EDHK 00277000
+S124PRAC DC    A(PRODACT)         PRODACT RTN ADDRESS          @D61EDHK 00278000
+S124PRET DC    A(PRODRET)         PRODRET RTN ADDRESS          @D61EDHK 00279000
+S124SRQW DC    A(SRQWAIT)         SRQWAIT RTN ADDRESS          @D61EDHK 00280000
+S124RWAI DC    A(RWAIT)           RWAIT RTN ADDRESS            @D61EDHK 00281000
+S124RPOS DC    A(RPOSTALL)        RPOSTALL RTN ADDRESS         @D61EDHK 00282000
+S124PREX DC    A(PREXTTAB)        ADDR OF DISPATCHER TRT-TABLE @D61EDHK 00283000
+S124PGM  DC    A(SGPGM)           SVC02 RTN BASE ADDR          @D61EDHK 00284000
+S124SVC2 DC    A(S124BSV2)        ADDRESS OF BRANCH TO SVC02   @DY43979 00285000
+S124VTAB DC    A(0)               ADDR OF ANCHOR TABLE         @D52YDOW 00286000
+S124FPTR DC    A(0)               SPACE FOR VEND PROD TAB ENTRY@D52YDOW 00287000
+S124CPTR DC    A(0)               ADDR OF COUNTER AREA         @D52YDOW 00288000
+*                                 TIB IS INDEX INTO COUNTER AREA        00289000
+S124BASE DC    A(SVC124)          SGVEND BASE ADDRESS          @D61EDHK 00290000
+S124SCYV DC    A(SCYVEND)         ENTRY TO SECURITY CHECK RTN  @D52YDOW 00291000
+S124EXTA DC    A(EXTACCQ)         ADDR OF SYSTEM WIDE VALID    @D61EDHK 00292000
+*     PRODEXIT ACTIVATE ACCELERATION QUEUE FOR ID=EXT SUBCLASS @D61EDHK 00293000
+***********  END OF SUPERVISOR ADDRESS CONSTANTS  ************ @D61EDHK 00294000
+         SPACE 2                                               @D61EDHK 00295000
+S124FSAV DS    (SVEJOBD-SVEARA)C  FAST PATH SAVE AREA          @D52YDOW 00296000
+         DS    0F                                              @D61EDHK 00297000
+S124SPID CRSPID  NAME=IPVEN       NAME OF GETVIS SUBPOOL       @D52YDIS 00298000
+S124PPID CRSPID  NAME=PEXITP      PRODEXIT GETVIS SUBPOOL FOR  @D61EDHK 00299000
+*                                 ALL PFIXED AREAS             @D61EDHK 00300000
+S124MPID CRSPID  NAME=PEXITM      PRODEXIT GETVIS SUBPOOL FOR  @D61EDHK 00301000
+*                                 MAINTASKS                    @D61EDHK 00302000
+S124TPID CRSPID  NAME=PEXITS      PRODEXIT GETVIS SUBPOOL FOR  @D61EDHK 00303000
+*                                 SUBTASKS                     @D61EDHK 00304000
+S124LTAP DC    CL8' '             SAVE AREA FOR LTA PHASE NAME @D61EDHK 00305000
+S124EYE  DC    CL8'TASKACTP'      EYECATCHER FOR ANCHOR TABLE  @D61EDHK 00306000
+S124ACTP DC    A(0)               ADDR OF TASK ANCHOR TABLE    @D61EDHK 00307000
+*                                 FOR PRODEXIT SERVICES        @D61EDHK 00308000
+S124EYE2 DC    CL8'FSVCACTF'      EYECATCHER FOR ANCHOR TABLE  @D61EDHK 00309000
+S124ACTF DC    A(0)               ADDR OF FSVC ANCHOR TABLE    @D61EDHK 00310000
+S124EXIT DC    F'0'               COUNTER FOR DEFINE'S         @D61EDHK 00311000
+S124CRIT DC    F'0'               COUNTER FOR 'CRIT' DEFINE'S  @D61EDHK 00312000
+S124SRID DC    H'0'               SAVED RID VALUE FOR FAST PATH@D52YDIS 00313000
+S124SFCT DC    X'FF'              SAVED FUNCTION CODE ON ENTRY @D52YDOW 00314000
+S124FLAG DC    X'00'              FLAG BYTE                    @D61EDHK 00315000
+SGVISPRT EQU   X'80'              POST GETVIS PROBLEMS OCCURED @D61EDHK 00316000
+*                                 ==> ON TASKPRODS <==         @D61EDHK 00317000
+SGVISPRA EQU   X'40'              POST GETVIS PROBLEMS OCCURED @D61EDHK 00318000
+*                                 ==> ON ...ACCQ'S <==         @D61EDHK 00319000
+QUEUINVL EQU   X'20'              POST QUEUE INVALID. OCCURED  @D61EDHK 00320000
+*                                 ==> ON ...ACCQ'S <==         @D61EDHK 00321000
+*                                                              @D61EDHK 00322000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - SGVEND + IJBVEND X00323000
+               CLASS GROUP ANCHOR TABLE'                       @D61EDHK 00324000
+************************************************************** @D61EDHK 00325000
+*                                                              @D61EDHK 00326000
+*                   CLASS GROUP ANCHOR TABLE                   @D61EDHK 00327000
+*                                                              @D61EDHK 00328000
+************************************************************** @D61EDHK 00329000
+*                                                              @D61EDHK 00330000
+*     WITHIN THIS TABLE, ALL SUPPORTED EXIT CLASSES ARE        @D61EDHK 00331000
+*     DEFINED. THE ANCHOR TABLE ENTRIES HAVE THE FOLLOWING     @D61EDHK 00332000
+*     LAYOUT:                                                  @D61EDHK 00333000
+*         1ST ENTRY:                                           @D61EDHK 00334000
+*           4 BYTES EYECATCHER 'CLAS'                          @D61EDHK 00335000
+*           2 BYTES LENGTH OF ANCHOR TABLE                     @D61EDHK 00336000
+*           2 BYTES NUMBER OF DEFINED CLASSES                  @D61EDHK 00337000
+*         ALL FOLLOWING ENTRIES ( 8 BYTES )                    @D61EDHK 00338000
+*           POINTER TO FIRST PRODEXCB OF THE ACCORDING CLASS   @D61EDHK 00339000
+*             CONTAINING THE SPECIFICATIONS OF AN 'ENABLED'    @D61EDHK 00340000
+*             EXIT THIS POINTER IS ZERO, IF THERE ARE NO       @D61EDHK 00341000
+*             ENABLED EXITS OF THAT CLASS.                     @D61EDHK 00342000
+*           2 BYTES NUMBER OF DEFINED SUBCLASSES               @D61EDHK 00343000
+*           2 FLAG BYTES                                       @D61EDHK 00344000
+*                                                              @D61EDHK 00345000
+************************************************************** @D61EDHK 00346000
+         SPACE 2                                               @D61EDHK 00347000
+         DS    0F                                              @D61EDHK 00348000
+         DC    CL4'S124'          EYECATCHER                   @D61EDHK 00349000
+S124CLAS DC    CL4'CLAS'          EYECATCHER                   @D61EDHK 00350000
+S124CLEN DC    AL2(S124CEND-S124CLAS)                          @D61EDHK 00351000
+*                                 LENGTH OF S124CLAS TABLE     @D61EDHK 00352000
+S124ENTR DC    AL2((S124LAST-S124CLAS-8)/8)                    @D61EDHK 00353000
+*                                 # OF VALID CLASS ENTRIES     @D61EDHK 00354000
+S124SUP  DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00355000
+         DC    H'7'               # OF SUBCLASSES              @D61EDHK 00356000
+         DC    AL1(C124SUP)       CLASSFLAG                    @D61EDHK 00357000
+         DC    AL1(S124SST)       SSTATE EXIT CLASS            @D61EDHK 00358000
+S124PSUP DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00359000
+         DC    H'1'               # OF SUBCLASSES              @D61EDHK 00360000
+         DC    AL1(C124PSUP)      CLASSFLAG                    @D61EDHK 00361000
+         DC    AL1(S124PST)       PSTATE EXIT CLASS            @D61EDHK 00362000
+S124SVC  DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00363000
+         DC    H'255'             # OF SUBCLASSES              @D61EDHK 00364000
+         DC    AL1(C124SVC)       CLASSFLAG                    @D61EDHK 00365000
+         DC    AL1(S124SST+S124NOSC) SSTATE + NO SUBCLASS ALLOW@D61EDHK 00366000
+S124FSVC DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00367000
+         DC    H'1'               # OF SUBCLASSES              @D61EDHK 00368000
+         DC    AL1(C124FSVC)      CLASSFLAG                    @D61EDHK 00369000
+         DC    AL1(S124SST+S124NOSC) SSTATE + NO SUBCLASS ALLOW@D61EDHK 00370000
+S124BAM  DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00371000
+         DC    H'6'               # OF SUBCLASSES              @D61EDHK 00372000
+         DC    AL1(C124BAM)       CLASSFLAG                    @D61EDHK 00373000
+         DC    AL1(S124PST)       PSTATE EXIT CLASS            @D61EDHK 00374000
+S124AIT  DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00375000
+         DC    H'2'               # OF SUBCLASSES              @D61EDHK 00376000
+         DC    AL1(C124AIT)       CLASSFLAG                    @D61EDHK 00377000
+         DC    AL1(S124PST)       PSTATE EXIT CLASS            @D61EDHK 00378000
+S124DOC  DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00379000
+         DC    H'2'               # OF SUBCLASSES              @D61EDHK 00380000
+         DC    AL1(C124DOC)       CLASSFLAG                    @D61EDHK 00381000
+         DC    AL1(S124SST)       SSTATE EXIT CLASS            @D61EDHK 00382000
+S124LNG  DC    F'0'               POINTER TO ACTIVE PRODEXCB   @D61EDHK 00383000
+         DC    H'1'               # OF SUBCLASSES              @D61EDHK 00384000
+         DC    AL1(C124LNG)       CLASSFLAG                    @D61EDHK 00385000
+         DC    AL1(S124PST)       PSTATE EXIT CLASS            @D61EDHK 00386000
+S124DOCP DC    F'0'               POINTER TO ACTIVE PRODEXCB   @DY44069 00387000
+         DC    H'1'               # OF SUBCLASSES              @DY44069 00388000
+         DC    AL1(C124DOCP)      CLASSFLAG                    @DY44069 00389000
+         DC    AL1(S124PST)       PSTATE EXIT CLASS            @DY44069 00390000
+S124LAST EQU   *                  END OF DEFINED CLASSES       @D61EDHK 00391000
+         DC    4F'0'              2 ENTRIES RESERVE            @D61EDHK 00392000
+S124CEND EQU   *                  END OF CLASS ANCHOR TABLE    @D61EDHK 00393000
+S124CLEL EQU   8                  ENTRY LENGTH                 @D61EDHK 00394000
+*                                                              @D61EDHK 00395000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - SGVEND + IJBVEND X00396000
+               CLASS GROUP SNAPSHOT TABLE'                     @D61EDHK 00397000
+************************************************************** @D61EDHK 00398000
+*                                                              @D61EDHK 00399000
+*               CLASS GROUP SNAPSHOT TABLE                     @D61EDHK 00400000
+*                                                              @D61EDHK 00401000
+************************************************************** @D61EDHK 00402000
+*                                                              @D61EDHK 00403000
+*     WITHIN THIS TABLE, ALL SUPPORTED EXIT CLASSES DO HAVE    @D61EDHK 00404000
+*     AN 32 BYTE ENTRY WHICH WILL BE MAINTAINED DURING         @D61EDHK 00405000
+*     PRODEXIT 'ENABLE' AND 'DISABLE' PROCESSING.              @D61EDHK 00406000
+*                                                              @D61EDHK 00407000
+*     THESE ENTRIES DO REPRESENT AT ANY TIME THE ACTUAL        @D61EDHK 00408000
+*     STATUS OF ALL ENABLED SUBCLASSES FOR EVERY CLASS.        @D61EDHK 00409000
+*     THIS TABLE WILL BE USED IN THE PRODEXIT 'CHECK' AND      @D61EDHK 00410000
+*     'ACTIVATE' MACRO EXPANSION TO FIND OUT QUICKLY WHETHER   @D61EDHK 00411000
+*     THE ACCORDING SUBCLASS IS ENABLED, WITHOUT THE           @D61EDHK 00412000
+*     OVERHEAD TO ENTER THE $IJBVEND PHASE.                    @D61EDHK 00413000
+*                                                              @D61EDHK 00414000
+*     THE TABLE HAS AS MANY ENTRIES AS THERE ARE CLASSES       @D61EDHK 00415000
+*     DEFINED ( S124ENTR ).                                    @D61EDHK 00416000
+*                                                              @D61EDHK 00417000
+*       - ONE ENTRY IS 32 BYTES LONG                           @D61EDHK 00418000
+*         (COVERING 255 POSSIBLE SUBCLASSES PER CLASS)         @D61EDHK 00419000
+*       - THE LAST BIT (256) IS TURNED ON WHEN THE             @D61EDHK 00420000
+*         ACCORDING CLASS HAS NO ENABLED EXITS                 @D61EDHK 00421000
+*                                                              @D61EDHK 00422000
+************************************************************** @D61EDHK 00423000
+         SPACE 2                                               @D61EDHK 00424000
+         DC    CL8'S124SNAP'      EYECATCHER                   @D61EDHK 00425000
+S124SNAP DC    ((S124LAST-S124CLAS-8)/8)XL32'01'               @D61EDHK 00426000
+*    GENERATES AS MANY 32 BYTE ENTRIES AS THERE ARE CLASSES    @D61EDHK 00427000
+*    DEFINED ( S124ENTR ). EVERY ENTRY IS INITIALIZED          @D61EDHK 00428000
+*    WITH 31 BYTES X'00' AND THE LAST BYTE WITH X'01'          @D61EDHK 00429000
+*    INDICATING 'NO ENABLED EXITS FOR THAT CLASS'              @D61EDHK 00430000
+SNAPENT  EQU   32                 ENTRY LENGTH                 @D61EDHK 00431000
+SNAPENTS EQU   5                  SHIFT MODIFIER FOR SNAPENT   @D61EDMZ 00432000
+*                                                              @D61EDHK 00433000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - SGVEND + IJBVEND X00434000
+               ACCEL. QUEUE FOR EXTINT EXIT SUBCLASS'          @D61EDHK 00435000
+************************************************************** @D61EDHK 00436000
+*                                                              @D61EDHK 00437000
+*                       EXTACCQ                                @D61EDHK 00438000
+*                                                              @D61EDHK 00439000
+*  ACCELERATOR QUEUE FOR EXTERNAL INTERRUPT EXIT SUBCLASS      @D61EDHK 00440000
+*                                                              @D61EDHK 00441000
+************************************************************** @D61EDHK 00442000
+*                                                              @D61EDHK 00443000
+*   EXTERNAL INTERRUPT EXITS ARE ONLY SUPPORTED WITH           @D61EDHK 00444000
+*   SCOPE = SYSTEM. THEREFORE THE ACCELERATOR ACTIVATION       @D61EDHK 00445000
+*   QUEUE HAS TO BE ONLY ONES IN THE SYSTEM.                   @D61EDHK 00446000
+*                                                              @D61EDHK 00447000
+*   EXTACCQ KEEPS UP TO 'S124MAX' ENTRIES OF DIFFERENT         @D61EDHK 00448000
+*   EXITS WHICH CAN BE INVOKED ONE AFTER THE OTHER             @D61EDHK 00449000
+*   DUE TO AN EXTERNAL INTERRUPT.                              @D61EDHK 00450000
+*   THE CURRENT VALUE OF S124MAX HAS BEEN SET TO 15.           @D61EDHK 00451000
+*                                                              @D61EDHK 00452000
+*   THE EXIT ADDRESSES WILL BE MAINTAINED IN THE CORRECT       @D61EDHK 00453000
+*   PRIORITY ORDER.                                            @D61EDHK 00454000
+*                                                              @D61EDHK 00455000
+*   LAYOUT OF THE QUEUE:       ( DSECT: 'SSTAACCQ' )           @D61EDHK 00456000
+*                                                              @D61EDHK 00457000
+*    - EYECATCHER: 'EXTACCQ '                                  @D61EDHK 00458000
+*    - TASKPROD PTR  ( 1 FULLWORD )                            @D61EDHK 00459000
+*    - FIRST QUEUE ENTRY DISPLACEMENT ( 1 HALFWORD )           @D61EDHK 00460000
+*    - ENTRY DSPLMT. OF NEXT EXIT TO BE INVOKED                @D61EDHK 00461000
+*    - LAST QUEUE ENTRY DISPLACEMENT ( 1 HALFWORD )            @D61EDHK 00462000
+*    - QUEUE FLAG BYTES  ( 2 BYTES )                           @D61EDHK 00463000
+*    - WORK FIELD        ( 4 BYTES )                           @D61EDHK 00464000
+*    - S124MAX TIMES 12 BYTE ENTRIES                           @D61EDHK 00465000
+*                                                              @D61EDHK 00466000
+*   LAYOUT OF A QUEUE ENTRY:   ( DSECT:  'ACCELQE' )           @D61EDHK 00467000
+*                                                              @D61EDHK 00468000
+*    - EXIT ADDRESS 4 BYTES                                    @D61EDHK 00469000
+*    - PRODEXCB PTR 4 BYTES                                    @D61EDHK 00470000
+*    - PRIORITY     1 BYTE                                     @D61EDHK 00471000
+*    - FLAG BYTE    1 BYTE                                     @D61EDHK 00472000
+*    - SCOPE BYTE   1 BYTE                                     @D61EDHK 00473000
+*    - RESERVE      1 BYTE                                     @D61EDHK 00474000
+*                                                              @D61EDHK 00475000
+************************************************************** @D61EDHK 00476000
+         SPACE 2                                               @D61EDHK 00477000
+S124MAX  EQU   15            MAX VALUE OF CONSECUTIVE EXIT     @D61EDHK 00478000
+*                            INVOCATIONS                       @D61EDHK 00479000
+EXTACCQ  DS    0D                                              @D61EDHK 00480000
+EXTEYE   DC    CL8'EXTACCQ'  EYECATCHER                        @D61EDHK 00481000
+EXTEXCB  DC    F'0'          PRODEXCB PTR                      @D61EDHK 00482000
+EXT1ST   DC    AL2(EXTENTRS-EXTACCQ)  1ST ENTRY DSPLMT.        @D61EDHK 00483000
+EXTNEXT  DC    AL2(EXTENTRS-EXTACCQ)  NXT ENTRY TO BE INVOKED  @D61EDHK 00484000
+EXTLAST  DC    H'0'          DPLMT TO LAST ACTUAL ENTRY        @D61EDHK 00485000
+EXTFLGS  DC    H'0'          FLAGS                             @D61EDHK 00486000
+EXTWRKF  DC    F'0'          WORKFIELD                         @D61EDHK 00487000
+EXTENTRS DC    (S124MAX)XL12'00' S124MAX*12 BYTE ENTRIES       @D61EDHK 00488000
+EXTQLEN  EQU   *-EXTACCQ     QUEUE LENGTH                      @D61EDHK 00489000
+*                                                              @D61EDHK 00490000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - SGVEND + IJBVEND X00491000
+               CLASS GROUP ANCHOR TABLE ENTRY DSECT'           @D61EDHK 00492000
+************************************************************** @D61EDHK 00493000
+*                                                              @D61EDHK 00494000
+*                   CLASS GROUP ANCHOR TABLE                   @D61EDHK 00495000
+*                         ENTRY DSECT                          @D61EDHK 00496000
+*                                                              @D61EDHK 00497000
+************************************************************** @D61EDHK 00498000
+         SPACE 2                                               @D61EDHK 00499000
+S124CENT DSECT ,                  CLASS GROUP ENTRY DSECT      @D61EDHK 00500000
+S124APE  DS    F                  POINTER TO 1ST ACT. PRODEXIT @D61EDHK 00501000
+S124SCNR DS    H                  NUMBER OF SUBCLASSES         @D61EDHK 00502000
+S124CLID DS    X                  CLASS IDENTIFICATION         @D61EDHK 00503000
+C124SUP  EQU   X'01'              CLASS = SUP                  @D61EDHK 00504000
+C124PSUP EQU   X'02'              CLASS = PSUP                 @D61EDHK 00505000
+C124SVC  EQU   X'03'              CLASS = SVC                  @D61EDHK 00506000
+C124FSVC EQU   X'04'              CLASS = FSVC                 @D61EDHK 00507000
+C124BAM  EQU   X'05'              CLASS = BAM                  @D61EDHK 00508000
+C124AIT  EQU   X'06'              CLASS = AIT                  @D61EDHK 00509000
+C124DOC  EQU   X'07'              CLASS = DOC                  @D61EDHK 00510000
+C124LNG  EQU   X'08'              CLASS = LNG                  @D61EDHK 00511000
+C124DOCP EQU   X'09'              CLASS = DOCP                 @DY44069 00512000
+S124CGID DS    X                  CLASS GROUP IDENTIFICATION   @D61EDHK 00513000
+S124PST  EQU   X'80'              PSTATE                       @D61EDHK 00514000
+S124SST  EQU   X'40'              SSTATE                       @D61EDHK 00515000
+S124NOSC EQU   X'20'              NO SUBCLASS SPECIFIABLE      @D61EDHK 00516000
+*                                                              @D61EDHK 00517000
+S124CLES EQU   3                  SHIFT VALUE FOR ENTRY CALC.  @D61EDHK 00518000
+*                                                              @D61EDHK 00519000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - SGVEND + IJBVEND X00520000
+               SSTATE SUBCLASS EQUATES'                        @D61EDHK 00521000
+************************************************************** @D61EDHK 00522000
+*                                                              @D61EDHK 00523000
+*                   SSTATE SUBCLASS FUNCTION CODE              @D61EDHK 00524000
+*                         EQUATES                              @D61EDHK 00525000
+*                                                              @D61EDHK 00526000
+************************************************************** @D61EDHK 00527000
+         SPACE 2                                               @D61EDHK 00528000
+* 1ST PART  2 BYTES REPRESENT THE CLASS NUMBER                 @D61EDHK 00529000
+*           2 BYTES REPRESENT THE SUBCLASS NUMBER              @D61EDHK 00530000
+* 2ND PART  2 BYTES REPRESENT THE SUBCLASS NON-ZERO BYTE OFFSET@D61EDHK 00531000
+*             WITHIN THE 32 BYTE SUBCLASS FIELD OF PRODEXIT A. @D61EDHK 00532000
+*           1 BYTE REPRESENTS THE SUBCLASS 'MASK' BYTE USED    @D61EDHK 00533000
+*             IN THE PRODEXIT AREA SPECIFICATION               @D61EDHK 00534000
+         SPACE 1                                               @D61EDHK 00535000
+POSTSIO  EQU   X'00010001'        POST SIO/SSCH EXIT SUBCLASS  @D61EDHK 00536000
+POSTSIOC EQU   X'000080'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00537000
+IOINT    EQU   X'00010002'        I/O INTERRUPT EXIT SUBCLASS  @D61EDHK 00538000
+IOINTC   EQU   X'000040'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00539000
+PCKEX    EQU   X'00010003'        PROGRAM CHECK EXIT SUBCLASS  @D61EDHK 00540000
+PCKEXC   EQU   X'000020'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00541000
+EXT      EQU   X'00010004'        EXTERNAL INTERRUPTS EXIT SCL @D61EDHK 00542000
+EXTC     EQU   X'000010'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00543000
+EXPHASE  EQU   X'00010005'        PROG.RETRIEVAL EXCH.PHASE EX @D61EDHK 00544000
+EXPHASEC EQU   X'000008'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00545000
+PREFCH   EQU   X'00010006'        PROG.RETRIEVAL PRE FETCH EX  @D61EDHK 00546000
+PREFCHC  EQU   X'000004'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00547000
+POSTFCH  EQU   X'00010007'        PROG.RETRIEVAL POST FETCH EX @D61EDHK 00548000
+POSTFCHC EQU   X'000002'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00549000
+MSG      EQU   X'00070001'        MESSAGE PROCESSING EXIT SCL  @D61EDHK 00550000
+MSGC     EQU   X'000080'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00551000
+CMDREP   EQU   X'00070002'        CMD/REPLY PROCESSING EXIT    @D61EDHK 00552000
+CMDREPC  EQU   X'000040'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00553000
+SVC      EQU   X'00030001'        SVC CLASS EXITS              @D61EDHK 00554000
+SVCC     EQU   X'000080'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00555000
+FSVC     EQU   X'00040001'        FAST PATH SVC CLASS EXITS    @D61EDHK 00556000
+FSVCC    EQU   X'000080'          NON ZERO BYTE OFFSET + MASK  @D61EDHK 00557000
+         AIF   ('&DSECT' NE 'YES').DSECT30                              00558000
+*                                                              @D61EDHK 00559000
+         TITLE 'VSE/ESA - VENDOR INTERFACE ROUTINES - MACRO: PRODEXIT AX00560000
+               ND PRODID  DSECTS: VENDOR PRODUCT TABLE'        @D61EDHK 00561000
+**************************************************************          00562000
+*        VENDOR PRODUCT TABLE                                *          00563000
+**************************************************************          00564000
+*                                                                       00565000
+VNDTABLE DSECT ,                   TABLE OF INSTALLED VENDOR PRODUCTS   00566000
+VNDTOKEN DS    CL8                 TOKEN                                00567000
+           ORG   *-2                                                    00568000
+VNDTKIND   DS    CL2               INDEX INTO TABLE (PART OF TOKEN)     00569000
+VNDCNAME DS    CL14                COMPANY NAME                         00570000
+VNDPNAME DS    CL16                PROGRAM NAME                         00571000
+VNDVNAME DS    CL6                 VERSION/RELEASE OF PROGRAM           00572000
+VNDTID   DS    CL2                 TIK OF TASK FIRST ISSUED DEFINE      00573000
+VNDPIK   DS    CL2                 PIK OF TASK FIRST ISSUED DEFINE      00574000
+VNDPIKE    EQU   *                 END OF PIK FIELD                     00575000
+VNDFEXIT DS    F                   PTR TO 1ST PRODEXCB         @D61EDHK 00576000
+VNDFLAG1 DS    CL1                 FLAG BYTE                   @D61EDHK 00577000
+VNDEXDEL   EQU   X'80'             'PRODEXIT DELETED' FLAG     @D61EDHK 00578000
+         DS    CL1                 RESERVED                    @D61EDHK 00579000
+VNDCNTRB EQU   (CMAXTSK#+1+7)/8                                @D66ODOW 00580000
+.**  ONLY 2048 TASKS AT MAX SUPPORTED WITH CURRENT LOGIC                00581000
+VNDCNTRL EQU   8*VNDCNTRB                                      @D66ODOW 00582000
+VNDCNTR  DS    XL(VNDCNTRL)        CNTR PER TID (INCL FOR TID0)@D66ODOW 00583000
+VNDTABLN   EQU   *-VNDTABLE        LENGTH OF ONE TABLE ENTRY            00584000
+VNDLNALL   EQU   VNDPIKE-VNDCNAME  ENTRY MOVED WITH CHECK               00585000
+VNDLNCPV   EQU   VNDTID-VNDCNAME   COMPANY + PROGRAM + VERSION          00586000
+VNDLNCP    EQU   VNDVNAME-VNDCNAME COMPANY + PROGRAM                    00587000
+VNDLNC     EQU   VNDPNAME-VNDCNAME COMPANY                              00588000
+*                                                                       00589000
+VNDSUMLN   EQU VNDCNTRL*4          LENGTH OF SUM AREA          @D66ODOW 00590000
+VNDANCLN   EQU 256*4               LENGTH OF ANCHOR TABLE, CURRENTLY    00591000
+*                                  ...256 VENDORS SUPPORTED    @D61EDHK 00592000
+         MEXIT                                                          00593000
+.DSECT30 ANOP                                                           00594000
+&SYSECT  CSECT ,                                               @D61EDHK 00595000
+         SPACE 5                                                        00596000
+*************************************************************  @D61EDHK 00597000
+* THE FOLLOWING CODE CONSISTS OF 2 PARTS:                      @D61EDHK 00598000
+*                                                              @D61EDHK 00599000
+*  1. PRODACT WILL BE INVOKED ON EVERY PRODEXIT ACTIVATE FOR   @D61EDHK 00600000
+*     SSTATE EXIT INVOCATION                                   @D61EDHK 00601000
+*      AS LONG AS THERE ARE NO SSTATE EXITS ENABLED, THIS      @D61EDHK 00602000
+*      WILL RESULT IN AN IMMEDIATE BRANCH BACK TO THE ACTIVATE @D61EDHK 00603000
+*      ROUTINE.                                                @D61EDHK 00604000
+*      IF THERE IS AT LEAST ONE SSTATE EXIT ENABLED, THE       @D61EDHK 00605000
+*      ROUTINE WILL GIVE CONTROLL TO $IJBVEND FOR EXECUTION    @D61EDHK 00606000
+*      OF THE ACTIVATE SERVICE.                                @D61EDHK 00607000
+*                                                              @D61EDHK 00608000
+*  2. PRODRET WILL BE INVOKED VIA R14 FOR RETURNING FROM       @D61EDHK 00609000
+*     AN PSTATE EXIT. ON EXIT INVOCATION, THE R14 WILL BE      @D61EDHK 00610000
+*     SETUP ACCORDINGLY BY $IJBVEND                            @D61EDHK 00611000
+*                                                              @D61EDHK 00612000
+*************************************************************  @D61EDHK 00613000
+         SPACE 2                                               @D61EDHK 00614000
+PRODACT  DS    0H                                              @D61NDOW 00615000
+         AH    RE,H10             ADJUST RETURN ADDR           @D61NDOW 00616000
+*** NEXT INSTRUCTION WILL BE MODIFIED BY VENDOR HOOK ACTIVATION         00617000
+         BSM   0,RE               RETURN TO PROD ACT PROC      @D61NDOW 00618000
+*** PREVIOUS INSTRUCTION WILL BE MODIFIED BY VENDOR HOOK ACTIVATION     00619000
+         L     RD,ASVASVDL        GET ADDRESS OF VENDOR ..     @D61NDOW 00620000
+         ICM   RD,15,AIJBVEND-SVASVDL(RD) .. HOOK ACT ROUTINE  @D61NDOW 00621000
+         B     8(,RD)             PASS CNTRL TO SSTATE ENTRY   @D61NDOW 00622000
+*** PRODEXIT RETURN RETURNS VIA REGISTER R14. IN CASE OF PSTATE EXITS   00623000
+*** R14 POINTS TO PRODRET ROUTINE                                       00624000
+PRODRET  DS    0H                                              @D61NDOW 00625000
+         LA    RF,9               PRODEXIT RETURN FUNCTION     @D61NDOW 00626000
+         SVC   124                PRODEXIT RETURN SVC          @D61NDOW 00627000
+         SPACE 2                                                        00628000
+*************************************************************  @DY43979 00629000
+* THE FOLLOWING CODE PROVIDES A BRANCH ENTRY TO THE SVC02      @DY43979 00630000
+* ROUTINE AND ENABLES RESVCX FROM THAT ROUTINE BY INSERTING    @DY43979 00631000
+* THE ADDRESS OF THE BRANCH INSTRUCTION IN THE SAVED PSW.      @DY43979 00632000
+* SAVE AREA AND ENTRY REGISTERS ARE SET UP BY IJBVEND.         @DY43979 00633000
+*************************************************************  @DY43979 00634000
+         SVC   2                                               @DY43979 00635000
+         USING SGPGM,RD                                        @DY43979 00636000
+S124BSV2 B     SVC02                                           @DY43979 00637000
+         DROP RD                                               @DY43979 00638000
+         AIF   (NOT &SGVEND).NPRT020                                    00639000
+         PRINT NOGEN                                                    00640000
+.NPRT020 ANOP                                                           00641000
+         MEND                                                           00642000

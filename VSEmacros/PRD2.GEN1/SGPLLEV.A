@@ -1,0 +1,1325 @@
+         MACRO                                                          00001000
+         SGPLLEV                                                        00002000
+         GBLA  &NCLASS            NUMBER OF CLASSES            @D51IDRP 00003000
+         GBLA  &NPART             NUMBER OF STATIC PARTITIONS  @D51IDRP 00004000
+         GBLB  &LOLEV             TEMP.LOAD LEVELER OPTION              00005000
+         GBLA  &AG1               NUMBER OF PUBS               @D51ODGL 00006000
+.*************************************************************          00007000
+*                                                            *          00008000
+.*       IBM DISK OPERATING SYSTEM                           *          00009000
+*        SUPERVISOR - SGPLLEV - 5686-066-06                  *          00010000
+*                                                            *          00011000
+*        LICENSED MATERIALS - PROPERTY OF IBM                *          00012000
+*        "RESTRICTED MATERIALS OF IBM"                       *          00013000
+*        5686-066                                            *          00014000
+*        (C) COPYRIGHT IBM CORP. 1977, 2001                  *          00015000
+*                                                            *          00016000
+**************************************************************          00017000
+         TITLE 'VSE/AF SUPERVISOR     SGPLLEV     LOAD LEVELER (DEACTIV*00018000
+               ATION ROUTINES)'                                @D14ZDRP 00019000
+* /*  START OF SPECIFICATIONS ***************************************** 00020000
+*                                                                       00021000
+*01* MODULE NAME = SGPLLEV                                              00022000
+*                                                                       00023000
+*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                          00024000
+*                                                                       00025000
+*01* PROCESSOR = ASSEMBLER                                              00026000
+*                                                                       00027000
+*01* DESCRIPTIVE NAME = LOAD LEVELER ROUTINES                           00028000
+*                                                                       00029000
+*01* STATUS = VSE/AF 6.1.0                                              00030000
+*                                                                       00031000
+*01* NOTES = CHANGE ACTIVITIES                                          00032000
+*                                                                       00033000
+*            NEW MACRO -- FIRST RELEASE 35                              00034000
+*                                                                       00035000
+*            E - SUPPORT                                       @D35EDGA 00036000
+*                                                              @D35EDRP 00037000
+*            S/370 - SUPPORT                                   @D35CDRP 00038000
+*            MULTIPLE PAGE I/O                                 @D14BDRP 00039000
+*            APAR DA26818                                      @DA26818 00040000
+*            VAE SUPPORT (MULTIPLE VIRTUAL MEMORIES)           @D14NDFG 00041000
+*            WAITFFF AFTER TPBAL CMD, DUE TO WRONG WORKREG USED@DA34439 00042000
+*            MORE THAN 16MB REAL                               @D51GDTP 00043000
+*            MORE PARTITION SUPPORT                            @D51IDIS 00044000
+*            MORE DEVICES SUPPORT                              @D51ODGL 00045000
+*            31-BIT VIRTUAL ENABLING                           @D52VDRP 00046000
+*            MAINTAIN BLOCKING FACTOR FOR PAGE I/O             @KD40089 00047000
+*            SKIP LOAD-LEVELLING IN NON PDS SYSTEM             @D61BDRP 00048000
+*            PMR ERRONEOUSLY POSTED IF CHANNEL QUEUE BOUND     @DA42992 00049000
+*            TURBO DISPATCHER SUPPORT                          @D61RDVB 00050000
+*            INDICATION FOR TBAL-ED PARTITIONS                 @DY43684 00051000
+*            REMOVE FAST-CCW-TRANSLATION SUPPORT               @D64YDOW 00052000
+*            MORE THAN 255 TASKS                               @D66ODOW 00053000
+*            HARDWAIT FFF IN DSP TASK                          @DY46347 00053500
+*                                                                       00054000
+**** END OF SPECIFICATIONS *******************************************/ 00055000
+         SPACE 2                                                        00056000
+LOLEV    DS    0D                                              @D14ZDVB 00057000
+         DC    CL8'SGPLLEV '      CODE IDENTIFICATION IN DUMP  @D35EDGA 00058000
+         DC    CL10'DY46347   '   LAST CHANGE (MM/DD/YY OR APAR#)       00059490
+         USING LOLEV,RF           SET BASE FOR CODE AREA       @D35EDRP 00060000
+         USING PMGMDATA,RE        SET BASE FOR DATA AREA       @D35EDRP 00061000
+         SPACE 1                                               @D14ZDVB 00062000
+*-------------------------------------------------------------*@D149DVB 00063000
+*   THIS ROUTINE IS CALLED WHENEVER N PAGE-INS  ARE MEASURED   @D149DVB 00064000
+*   BY THE PAGE MAMAGER                                        @D149DVB 00065000
+*   IF PAGING-ACTIVITY IS TOO HIGH, THE DEACTP_ROUTINE IS      @D149DVB 00066000
+*   CALLED IN ORDER TO DEACTIVATE THE PARTITION WITH THE       @D149DVB 00067000
+*   LOWEST PRIORITY.                                           @D149DVB 00068000
+*   CALLED BY: CPGIN WITH AMODE(24),DATON                      @D529DRP 00069000
+*   CALLED ROUTINES: DEACTP WITH AMODE(24),DATON               @D529DRP 00070000
+*   RETURN:    CALLER WITH AMODE(CALLER),DATON                 @D529DRP 00071000
+*                                                              @D529DRP 00072000
+*   INPUT:                                                     @D35EDRP 00073000
+*        RA - RETURN ADDR                                      @D35EDRP 00074000
+*        RE - ADDR OF DATA AREA                                @D35EDRP 00075000
+*        RF - ADDR OF CODE AREA                                @D35EDRP 00076000
+*-------------------------------------------------------------*@D149DVB 00077000
+         SPACE 1                                                        00078000
+DEACT    DS    0H                                              @D35EDRP 00079000
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 00080000
+         BZ    DEACT01            NO, O.K.                     @D61BDRP 00081000
+         BAL   R5,PMRHWERR        YES, ERROR                   @D61BDRP 00082000
+DEACT01  DS    0H                                              @D61BDRP 00083000
+         STM   R1,RC,SAVELL                                    @D35EDRP 00084000
+         STCK  TIMEB              READ TOD-CLOCK                        00085000
+         BE    DEACT1             BRANCH, TOD VALID            @D52VDRP 00086000
+*        AMODESW RETURN,REG=(RA)  ==========> TOD INVALID      @D52VDRP 00087000
+         AMODESW RETURN,REG=(RA)  ==========> TOD INVALID      @D52VDRP 00088000
+DEACT1   DS    0H                                              @D52VDRP 00089000
+         AIF   (NOT &LOLEV).NOSTA15                            @DF02306 00090000
+         L     R4,TIME            S    STORE TIME-INTERVAL SINCE LAST   00091000
+         LTR   R5,R4              S    DEACTIVATION OR REACTIVATION     00092000
+         BZ    DEACTA             S    MEASUREMENT INTO LLTAB-ENTRY     00093000
+         L     R5,TIMEB           S                                     00094000
+         SR    R5,R4              S                                     00095000
+DEACTA   STH   R5,LTTA            S                                     00096000
+         MVC   TIME(4),TIMEB      S                                     00097000
+.NOSTA15 ANOP                                                  @DF02306 00098000
+         LM    R4,R5,TIMEA                                              00099000
+         ST    R5,TIMEA           SET START-TIME FOR NEXT INTERV.       00100000
+         SR    R5,R4              CALCULATE TIME-INTERVAL               00101000
+         BNZ   DEACT2             SINCE LAST DEACTIVATION-              00102000
+         LA    R5,1               MEASUREMENT                           00103000
+DEACT2   EQU   *                                                        00104000
+         AIF   (NOT &LOLEV).NOSTA16                            @DF02306 00105000
+         STH   R5,LTTR            S    STORE TIME-INTERVAL AND WAIT-    00106000
+         L     R2,WTD             S    TIME INTO LLTAB-ENTRY            00107000
+         SRL   R2,6               S                                     00108000
+         STH   R2,LTWT            S                                     00109000
+         XC    WTD(4),WTD         S    SET WTD=0                        00110000
+.NOSTA16 ANOP                                                  @DF02306 00111000
+         AGO   .LLFT010                                        @D64YDOW 00112000
+         STH   R5,TIMEDEF         SAVE TIME INTERVALL          @D32XDRP 00113000
+.LLFT010 ANOP                                                  @D64YDOW 00114000
+         L     R3,NPI             CALCULATE N/(TIMEB-TIMEA)    @D35EDRP 00115000
+         SLR   R2,R2                                           @D35EDRP 00116000
+         DR    R2,R5                                                    00117000
+         AL    R3,EXPAVD          CALCULATE EXP.AVERAGE        @DA33314 00118000
+         SRL   R3,1               .. OF                        @DA33314 00119000
+         ST    R3,EXPAVD          .. PAGE_INS                  @DA33314 00120000
+         AIF   (NOT &LOLEV).NOSTA17                            @DF02306 00121000
+         STH   R3,LTDE            S    STORE INTO LLTAB-ENTRY           00122000
+.NOSTA17 ANOP                                                  @DF02306 00123000
+         L     R1,RRCTR           SAVE  REENTRY-RATE           @DA33314 00124000
+         SLR   R0,R0                                           @DA33314 00125000
+         DR    R0,R5                                           @DA33314 00126000
+         AL    R1,EXPAVR          CALCULATE..                  @DA33314 00127000
+         LR    R2,R1              ....( SAVE 2*REENTRY RATE )  @DA33314 00128000
+         SRL   R1,1               .. EXP. AVERAGE OF           @DA33314 00129000
+         ST    R1,EXPAVR          .. REENTRY RATE              FDY33314 00130000
+         AIF   (NOT &LOLEV).NOSTA18                            @DF02306 00131000
+         STH   R1,LTRP            S    STORE INTO LLTAB-ENTRY           00132000
+.NOSTA18 ANOP                                                  @DF02306 00133000
+         SPACE 1                                               @D52VDVB 00134000
+*SGLINK  PGOTUNIG,INPUT=(R5,R9,RE,RF),NOMODR=(R1,R5-RF),               *00135000
+               AMODE=ANY  ANY                                  @D52VDVB 00136000
+         BAL   R9,PGOTUNIG        TUNING FOR BLOCKED PAGE OUT  @D52VDVB 00137000
+         SPACE 1                                               @D52VDVB 00138000
+         L     R4,ARTAB           INITIALIZE FOR NEXT INTERVAL          00139000
+         LR    R6,R4              SET ALL RTAB-BITS TO ZERO             00140000
+         L     R5,LRTAB                                                 00141000
+         SR    R7,R7                                                    00142000
+         L     R1,RRCTR           SAVE REENTRY RATE            @DA33314 00143000
+         ST    R7,RRCTR           RESET REENTRY CTR            @DA33314 00144000
+         ST    R7,PIDCTR          ...PAGE-IN CTR (DEACTIVATION)@DA33314 00145000
+*        AMODESW SET,AMODE=31,WR=(RA) SET 31 BIT ADDRESSING MOD@D52VDRP 00146000
+         AMODESW SET,AMODE=31,WR=(RA)                          @D52VDRP 00147000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 00148000
+         AMODESW SET,DAT=OFF                                   @D52VDRP 00149000
+         MVCL  R4,R6                                                    00150000
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 00151000
+         AMODESW SET,DAT=ON                                    @D52VDRP 00152000
+*        AMODESW SET,AMODE=24,WR=(RA)                          @D52VDRP 00153000
+         AMODESW SET,AMODE=24,WR=(RA) SET 24 BIT ADDRESSING MOD@D52VDRP 00154000
+         AGO   .LLFT020                                        @D64YDOW 00155000
+         CL    R3,DCONST          IS DEFIXING NECESSARY ?      @D32XDRP 00156000
+         BNL   DEACT4             YES, BRANCH                  @D52VDRP 00157000
+         SPACE 2                                                        00158000
+         CLC   TIMEDEF(L2),MINTIME+D2  DEFIX TO BE SET OFF     @DM12789 00159000
+         BNH   DEACT6                  NO, BRANCH              @DM12789 00160000
+         NI    DEFIXCNT,X'FF'-LLDEFIX RESET DEFIX SWITCH FROM  @D35EDRP 00161000
+*                                     LOAD LEVELER             @DM12789 00162000
+         B     DEACT6                                                   00163000
+DEACT4   DS    0H                                              @D52VDRP 00164000
+.LLFT020 ANOP                                                  @D64YDOW 00165000
+         AIF   (NOT &LOLEV).NOSTA19                            @DF02306 00166000
+         L     R6,PFCTR           S                                     00167000
+         S     R6,PFCTRO          S                                     00168000
+         BNZ   DEACTB0            S                                     00169000
+         LA    R6,1               S                                     00170000
+DEACTB0  L     R5,RECLAIM         S                                     00171000
+         S     R5,RECLAIMO        S                                     00172000
+         MVC   PFCTRO,PFCTR       S                                     00173000
+         MVC   RECLAIMO,RECLAIM   S                                     00174000
+         LA    R4,100             S                                     00175000
+         MR    R4,R4              S                                     00176000
+         DR    R4,R6              S                                     00177000
+         STH   R5,LTRECL          S    STORE RECLAIMING PERCENTAGES     00178000
+         MVC   LTS(4),NPSQE       S    STORE                            00179000
+         XC    LTI(2),LTI         S    SET ID OF LLTAB-ENTRY TO ZERO    00180000
+         MVI   LLTABE,X'FF'       S    SET DEACT.INDICATION             00181000
+*                                 S    HANDLE THE COUNTERS              00182000
+*                                 S    DCTR,RCTR,AND DRCTR              00183000
+         CL    R3,ACONST          S    D GE A ?                         00184000
+         BL    DEACTB             S    NO                               00185000
+*        GENSERV INC,FIELD=DCTR,REG=(R4)                       @D52VDVB 00186000
+         GENSERV INC,FIELD=DCTR,REG=(R4)                       @D52VDVB 00187000
+DEACTB   CL    R1,BCONST          S   R GE B ?                 @DA33314 00188000
+         BL    DEACTC             S   NO                                00189000
+         BL    DEACTB             S    NO                               00190000
+*        GENSERV INC,FIELD=RCTR,REG=(R4)                       @D52VDVB 00191000
+         GENSERV INC,FIELD=RCTR,REG=(R4)                       @D52VDVB 00192000
+         CL    R3,ACONST          S   D GE A ?                          00193000
+         BL    DEACTC             S   NO                                00194000
+*        GENSERV INC,FIELD=DRCTR,REG=(R4)                      @D52VDVB 00195000
+         GENSERV INC,FIELD=DRCTR,REG=(R4)                      @D52VDVB 00196000
+         B     DEACTD             S                                     00197000
+DEACTC   EQU   *                  S                                     00198000
+         ST    R9,STSAVE          S                                     00199000
+         BAL   R9,LLTABR          S    STORE LLTAB-ENTRY INTO LLTAB     00200000
+         L     R9,STSAVE          S                                     00201000
+DEACTD   EQU   *                  S                                     00202000
+.NOSTA19 ANOP                                                  @DF02306 00203000
+         AGO   .LLFT030                                        @D64YDOW 00204000
+         SGCOV SGPLLEV,MC=0                                    @D52VDRP 00205000
+         OI    DEFIXCNT,LLDEFIX  REQUEST DEFIX-ING FROM        @D35EDRP 00206000
+*                                LOAD LEVELER                  @DM12789 00207000
+*     GENSERV  TEST,FIELD=LOWFXPTR,REG=(R0),BC=BZ,LAB=DEACT6   @D52VDVB 00208000
+      GENSERV  TEST,FIELD=LOWFXPTR,REG=(R0),BC=BZ,LAB=DEACT6   @D52VDVB 00209000
+         L     R9,ACCWT          LOAD BASE FOR CCW-TRANSL.     @DM12789 00210000
+         USING CCWTADR,R9                                      @D52VDRP 00211000
+*        AMODESW CALL,AMODE=24,ADDRESS=DEFIXALL,REGS=(RA,RA)   @D52VDRP 00212000
+         AMODESW CALL,AMODE=24,ADDRESS=DEFIXALL,REGS=(RA,RA)   @D52VDRP 00213000
+*SGLINK  DEFIXALL,INPUT=(R9,RA)                                @D52VDRP 00214000
+         DROP  R9                                              @D52VDRP 00215000
+DEACT6   DS    0H                                              @DA33314 00216000
+.LLFT030 ANOP                                                  @D64YDOW 00217000
+         CL    R3,ACONST          PAGE-IN RATE ALREADY CRITICAL@DA33314 00218000
+         BL    DEACT5             NO ---->                     @DA33314 00219000
+         CLR   R2,R3              REENTRY-RATE TOO HIGH IN RELATION    *00220000
+                                  .... TO PAGE-IN RATE         @DA33314 00221000
+         BNH   DEACT5             NO ----->                    @DA33314 00222000
+         BAL   R9,DEACTP          TRY TO DEACTIVATE A PARTITION         00223000
+         SGCOV SGPLLEVS,MC=0                                   @D52VDRP 00224000
+DEACT5   LM    R1,RC,SAVELL                                    @D35EDRP 00225000
+         AMODESW RETURN,REG=(RA)  ==========> RETURN           @D52VDRP 00226000
+         EJECT                                                          00227000
+         AIF   (NOT &LOLEV).NOSTA22                            @DF02306 00228000
+*   THIS ROUTINE STORES ONE LLTAB-ENTRY INTO LLTAB                      00229000
+         SPACE 3                                                        00230000
+LLTABR   ST    R2,SAVELT          S                                     00231000
+         L     R2,NLLTABE         S    R2=# OF FREE ENTRIES             00232000
+         LTR   R2,R2              S    LLTAB FULL ?                     00233000
+         BNZ   LLTABR1            S    NO                               00234000
+LLTABR2  L     R2,LLTABCTR        S                                     00235000
+         LA    R2,1(R2)           S    INCREASE LLTABCTR                00236000
+         ST    R2,LLTABCTR        S                                     00237000
+         L     R2,SAVELT          S                                     00238000
+         BR    R9                 S    RETURN                           00239000
+LLTABR1  BCTR  R2,0               S    DECREASE # OF FREE ENTRIES       00240000
+         ST    R2,NLLTABE         S                                     00241000
+         L     R2,LLTABPTR        S    SET LLTAB-POINTER TO             00242000
+         LA    R2,LLTABELN(R2)    S    NEXT FREE ENTRY                  00243000
+         ST    R2,LLTABPTR        S                                     00244000
+         MVC   0(LLTABELN,R2),LLTABE  S    MOVE LLTAB-ENTRY TO LLTAB    00245000
+         B     LLTABR2            S                                     00246000
+         EJECT                                                          00247000
+.NOSTA22 ANOP                                                  @DF02306 00248000
+*-------------------------------------------------------------*@D52VDVB 00249000
+*   TUNING OF PRE-PAGE-OUT:                                   *@D52VDVB 00250000
+*     IF 2*EXP-AVERAGE(UNC-PAGEOUT) > DEVCBNUM                 @D52VDVB 00251000
+*        THEN INCREASE PRE-PAGE-OUT                            @D52VDVB 00252000
+*     ELSE IF                                                  @D52VDVB 00253000
+*        EXP-AVERAGE(UNC-PAGEOUT) < EXP-AVERAGE(PRE-PAGEOUT)   @D52VDVB 00254000
+*           AND 2*EXP AVERAGE(PRE-PAGEOUT) > DEVCBNUM          @D52VDVB 00255000
+*        THEN DECREASE PRE-PAGE-OUT                            @D52VDVB 00256000
+*-------------------------------------------------------------*@D52VDVB 00257000
+         SPACE 1                                               @D52VDVB 00258000
+*SGLINK  PGOTUNIG,S,INPUT=(R5,R9,RE,RF),NOMODR=(R1,R5-RF),             *00259000
+               AMODE=ANY   ANY                                 @D52VDVB 00260000
+PGOTUNIG DS    0H                                              @D52VDVB 00261000
+         SPACE 1                                               @D52VDVB 00262000
+*   CALCULATE EXPONTIAL AVERAGES                               @D52VDVB 00263000
+         SPACE 1                                               @D52VDVB 00264000
+*   GENSERV  GETF,FIELD=CPGOTUNC,REG=(R3)                      @D52VDVB 00265000
+    GENSERV  GETF,FIELD=CPGOTUNC,REG=(R3)                      @D52VDVB 00266000
+         SLR   R2,R2              CALCULATE                    @D52VDVB 00267000
+         DR    R2,R5              ... CPGOTUNC/(TIMEB-TIMEA)   @D52VDVB 00268000
+         AL    R3,EXPOUNC         CALCULATE EXP.AVERAGE        @D52VDVB 00269000
+         LR    R4,R3              2* EXP.AVERAGE (CPGOTUNC)    @D52VDVB 00270000
+         SRL   R3,1                                            @D52VDVB 00271000
+         ST    R3,EXPOUNC                                      @D52VDVB 00272000
+*   GENSERV  GETF,FIELD=CPGOTPRE,REG=(R3)                      @D52VDVB 00273000
+    GENSERV  GETF,FIELD=CPGOTPRE,REG=(R3)                      @D52VDVB 00274000
+         SLR   R2,R2                                           @D52VDVB 00275000
+         DR    R2,R5              ... CPGOTPRE/(TIMEB-TIMEA)   @D52VDVB 00276000
+         AL    R3,EXPOPRE         CALCULATE EXP.AVERAGE        @D52VDVB 00277000
+         LR    R2,R3                                           @D52VDVB 00278000
+         SRL   R2,1                                            @D52VDVB 00279000
+         ST    R2,EXPOPRE                                      @D52VDVB 00280000
+.*    R2 =   EXP. AVERAGE PRE-PAGE-OUT                         @D52VDVB 00281000
+.*    R3 = 2*EXP. AVERAGE PRE-PAGE-OUT                         @D52VDVB 00282000
+.*    R4 = 2*EXP. AVERAGE UNC-PAGE-OUT                         @D52VDVB 00283000
+         SPACE 1                                               @D52VDVB 00284000
+.* IF UNC.PAGE-OUT = O, DECREASE PREPAGE-OUT                   @D52VDVB 00285000
+.*DEL    LTR   R4,R4            EXP AVERAGE UNC-PAGE-OUT = 0   @KD40089 00286000
+.*DEL    BZ    PGOTUN40         YES, ---------->               @KD40089 00287000
+*  IF UNC.PAGE-OUT TOO HIGH, INCREASE PREPAGE-OUT              @D52VDVB 00288000
+         CH    R4,DEVCBNUM      LESS THAN NBR OF PDS DEVICES   @KD40089 00289000
+         BNH   PGOTUN20         YES, ---------->               @KD40089 00290000
+*  GENSERV  GETF,FIELD=SCANMAX,REG=(R4)                        @D52VDVB 00291000
+   GENSERV  GETF,FIELD=SCANMAX,REG=(R4)                        @D52VDVB 00292000
+*  GENSERV  COMPINC,FIELD=SCANCUR,BC=BE,LAB=PGOTUN10,COMPF=(R4),       -00293000
+               REG=(R2)                                        @D52VDVB 00294000
+   GENSERV  COMPINC,FIELD=SCANCUR,BC=BE,LAB=PGOTUN10,COMPF=(R4),       -00295000
+               REG=(R2)                                        @D52VDVB 00296000
+PGOTUN10 DS    0H                                              @D52VDVB 00297000
+*  GENSERV  GETF,FIELD=PPOBLMIN,REG=(R3)                       @D52VDVB 00298000
+   GENSERV  GETF,FIELD=PPOBLMIN,REG=(R3)                       @D52VDVB 00299000
+*  GENSERV  COMPDEC,FIELD=PPOBLCUR,BC=BNH,LAB=PGOTUNEX,COMPF=(R3)       00300000
+   GENSERV  COMPDEC,FIELD=PPOBLCUR,BC=BNH,LAB=PGOTUNEX,COMPF=(R3)       00301000
+         B     PGOTUNEX           ---------->                  @D52VDVB 00302000
+         SPACE 1                                               @D52VDVB 00303000
+PGOTUN20 DS    0H                                              @D52VDVB 00304000
+         CR    R2,R4            PRE-PAGE-OUT LOWER THAN UNC-   @D64ADVB 00305000
+         BL    PGOTUN10         YES, ---------->               @KD40089 00306000
+*     IF PRE-PAGE-OUT LESS THEN NBR OF PDS -> DECREASE BLF     @KD40089 00307000
+         CH    R3,DEVCBNUM      LESS THAN NBR OF PDS DEVICES   @D64ADVB 00308000
+         BNH   PGOTUNEX         YES, ---------->               @KD40089 00309000
+PGOTUN30 DS    0H                                              @D52VDVB 00310000
+*  GENSERV  GETF,FIELD=SCANMIN,REG=(R4)                        @D52VDVB 00311000
+   GENSERV  GETF,FIELD=SCANMIN,REG=(R4)                        @D52VDVB 00312000
+*  GENSERV  COMPDEC,FIELD=SCANCUR,BC=BE,LAB=PGOTUN40,COMPF=(R4)         00313000
+   GENSERV  COMPDEC,FIELD=SCANCUR,BC=BE,LAB=PGOTUN40,COMPF=(R4)         00314000
+PGOTUN40 DS    0H                                              @D52VDVB 00315000
+*  GENSERV  GETF,FIELD=PPOBLMAX,REG=(R4)                       @D52VDVB 00316000
+   GENSERV  GETF,FIELD=PPOBLMAX,REG=(R4)                       @D52VDVB 00317000
+*  GENSERV  COMPINC,FIELD=PPOBLCUR,BC=BE,LAB=PGOTUNEX,COMPF=(R4)        00318000
+   GENSERV  COMPINC,FIELD=PPOBLCUR,BC=BE,LAB=PGOTUNEX,COMPF=(R4)        00319000
+         SPACE 1                                               @D52VDVB 00320000
+PGOTUNEX DS    0H                                              @D52VDVB 00321000
+*        GENSERV  SET0,FIELD=CPGOTUNC                          @D52VDVB 00322000
+         GENSERV  SET0,FIELD=CPGOTUNC                          @D52VDVB 00323000
+*        GENSERV  SET0,FIELD=CPGOTPRE                          @D52VDVB 00324000
+         GENSERV  SET0,FIELD=CPGOTPRE                          @D52VDVB 00325000
+         BR    R9                 ============>                @D52VDVB 00326000
+         EJECT                                                          00327000
+*-------------------------------------------------------------*@D149DVB 00328000
+*        FUNCTION:                                             @D149DVB 00329000
+*        THE DEACTIVATION RTN TRIES TO DEACTIVATE THE VIRTUAL  @D359DRP 00330000
+*        PARTITION WHICH CURRENTLY HAS THE LOWEST DISPATCHING  @D359DRP 00331000
+*        PRIORITY AND IS NOT YET DEACTIVATED.                  @D359DRP 00332000
+*        IF ONLY ONE VIRTUAL PARTITION IS ACTIVE THE DEACTIV.  @D359DRP 00333000
+*        REQUEST IS IGNORED.                                   @D359DRP 00334000
+*        DEACTIVATION MEANS THAT NO USER-PAGE-FAULT IS HANDLED @D359DRP 00335000
+*        ANY MORE.                                             @D359DRP 00336000
+*        INPUT:                                                @D359DRP 00337000
+*         R9 - RETURN ADDRESS                                  @D359DRP 00338000
+*        REGISTER USAGE:                                       @D369DRP 00339000
+*         R1 - ADDR OF STATPOWN TABLE                          @D519DRP 00340000
+*         R2 - ADDR OF PCB                                     @D369DRP 00341000
+*         R3 - LOOP COUNTER THRU STATPOWN ENTRIES              @D519DRP 00342000
+*         R4 - WORK REGISTER                                   @D519DRP 00343000
+*         R5 - WORK REGISTER                                   @D519DRP 00344000
+*         R6 - BASE ADDR OF DISPATCHER                         @D369DRP 00345000
+*         R7 - WORK REGISTER                                   @D369DRP 00346000
+*         R8 - WORK REGISTER                                   @D52VDRP 00347000
+*         R9 - WORK REGISTER                                   @D52VDRP 00348000
+*         RA - WORK REGISTER                                   @D52VDRP 00349000
+*-------------------------------------------------------------*@D149DRP 00350000
+         SPACE 1                                                        00351000
+DEACTR   DS    0H                 DEACTIVATION OF REAL PARTITION ...   *00352000
+                                  ... NOT YET DONE             @D14ZDVB 00353000
+         AIF   (NOT &LOLEV).NOSTA57                            @DF02306 00354000
+         ST    R9,STSAVE          S                                     00355000
+         BAL   R9,LLTABR          S  WRITE STATISTIC TO LLTAB           00356000
+         L     R9,STSAVE          S                                     00357000
+.NOSTA57 ANOP                                                  @DF02306 00358000
+         BR    R9                 ==========>   CALLER         @D14ZDVB 00359000
+         SPACE 1                                               @D369DRP 00360000
+DEACTP   DS    0H                                              @D36IDRP 00361000
+         AIF   (&LOLEV).YESTA53                                @D14BDVB 00362000
+*     GENSERV  COMP,FIELD=IJBAPNO,COMPF=F1,REG=(RC),BC=BNH,LAB=(R9)     00363000
+      GENSERV  COMP,FIELD=IJBAPNO,COMPF=F1,REG=(RC),BC=BNH,LAB=(R9)    -00364000
+                                                               @D52VDVB 00365000
+         AGO   .NOSTA53                                        @D14BDVB 00366000
+.YESTA53 ANOP                                                  @DF02306 00367000
+*     GENSERV  TEST,FIELD=IJBAPNO,REG=(RC),BC=BZ,LAB=(R9)      @D52VDVB 00368000
+      GENSERV  TEST,FIELD=IJBAPNO,REG=(RC),BC=BZ,LAB=(R9)      @D52VDVB 00369000
+         BCT   RC,DEACTV          TRY TO DEACTIVATE VIRTUAL PARTITION   00370000
+*                                 IF MORE THAN ONE ACTIVE VITUAL        00371000
+*                                 PARTITION                             00372000
+         MVI   LTI,X'01'          S   ONLY 1 ACT. VIRT. PART.           00373000
+*        GENSERV INC,FIELD=DEACT1P,REG=(R1)                    @D52VDVB 00374000
+         GENSERV INC,FIELD=DEACT1P,REG=(R1)                    @D52VDVB 00375000
+         BR    R9                 S                            @D14ZDVB 00376000
+DEACTV   DS    0H                                              @D369DRP 00377000
+.NOSTA53 ANOP                                                  @DF02306 00378000
+         L     R6,DISPAD                                       @D36IDRP 00379000
+         USING DISP,R6                                         @D36IDRP 00380000
+         L     R1,ASTATPOW        GET ADDR OF STATIC PRIORITIES@D51IDRP 00381000
+         LA    R3,&NPART+&NCLASS  GET LOOP COUNTER             @D51IDRP 00382000
+         B     SCANPART                                        @D14BDVB 00383000
+         SPACE 1                                               @D14BDVB 00384000
+*     GET PCB OF PART., R3 IS INDEX TO ITS ADDR IN STATPOWN    @D519DRP 00385000
+         SPACE 1                                               @D14BDVB 00386000
+SCANPRT1 BCTR  R3,0               IS THERE ANY ...             @D14BDVB 00387000
+         LTR   R3,R3              ... PARTITION TO DEACTIVATE  @D14BDVB 00388000
+         AIF   (&LOLEV).YESTA54                                @D14BDVB 00389000
+         BZR   R9                 NO ==========>               @D14BDVB 00390000
+         AGO   .NOSTA55                                        @D14BDVB 00391000
+.YESTA54 ANOP                                                  @D14BDVB 00392000
+         BZ    DEACTR             NO ---------->               @D14BDVB 00393000
+.NOSTA55 ANOP                                                  @D14BDVB 00394000
+SCANPART LR    R4,R3              GET INDEX IN STATPOWN        @D51IDRP 00395000
+         SLL   R4,2               GET OFFSET IN STATPOWN       @D51IDRP 00396000
+         L     R2,0(R1,R4)        GET ADDR OF CLASS-PCB        @D51IDRP 00397000
+         LTR   R2,R2              PCB AVAILABLE                @D51IDRP 00398000
+         BZ    SCANPRT1           NO  ----->                   @D51IDRP 00399000
+         USING PCBADR,R2                                       @D36IDRP 00400000
+         TM    PCBFLAG,SUPPRPFH   PF ALREADY SUPPRESSED        @D36IDRP 00401000
+         BO    SCANPRT1           YES ----->                   @D14BDVB 00402000
+         TM    PCBFLAG,PCBCLFLG   IS THIS DYNAMIC CLASS PCB    @D51IDRP 00403000
+         BZ    SCANPRT2           NO, BRANCH                   @D51IDRP 00404000
+*     GENSERV  TEST,FIELD=PCBANPCB,REG=(R8),BC=BZ,LAB=SCANPRT1 @D52VDVB 00405000
+      GENSERV  TEST,FIELD=PCBANPCB,REG=(R8),BC=BZ,LAB=SCANPRT1 @D52VDVB 00406000
+         B     TESTSUB1           YES, SCAN PCB'S WITHIN CLASS @D51IDRP 00407000
+SCANPRT2 DS    0H                                              @D51IDRP 00408000
+         AIF   (NOT &LOLEV).NOSTA56                            @DF02306 00409000
+         OI    LTI,X'04'          S  CANCEL                    @DF00926 00410000
+.NOSTA56 ANOP                                                  @DF02306 00411000
+         L     R8,PCECOMRA        GET COMREG ADDRESS           @D51IDIS 00412000
+         USING COMREG,R8          ADDRESSABILITY COMREG        @DA01384 00413000
+         TM    POWFLG1,POWWPART   POWER CONTR. PARTITION WAITING FOR   *00414000
+                                     WORK                      @D35EDGA 00415000
+         BO    SCANPRT1           YES, CONTINUE SCAN           @D35EDGA 00416000
+         TM    POWFLG1,POWUPART   POWER CONTROLLED PARTITION   @D35EDGA 00417000
+         BNO   TSTSUBS            NO                           @D35EDGA 00418000
+         LH    R7,IJBAPNO         # OF ACTIVE VIRT PARTITIONS  @D35EDGA 00419000
+         SH    R7,MINDEACT        SUBTRACT # MIN ACTIVE PART   @D35EDGA 00420000
+         BNP   SCANPRT1           YES, DO NOT DEACTIVATE       @D35EDGA 00421000
+         DROP  R8                 FORGET BASE FOR COMREG       @D369DRP 00422000
+         DROP  R2                 FORGET BASE FOR CLASS-PCB    @D51IDRP 00423000
+TSTSUBS  EQU   *                                               @D35EDGA 00424000
+         LR    R8,R2              GET ADDR OF PCB              @D51IDRP 00425000
+.* LOOP THRU PCB'S BELONGING TO ONE CLASS                      @D519DRP 00426000
+.*  A CLASS WILL ONLY BE DEACTIVATED IF ALL ITS PARTITIONS CAN @D519DRP 00427000
+.*  BE DEACTIVATED.                                            @D519DRP 00428000
+         USING PCBADR,R8          SET BASE FOR PART. PCB       @D51IDRP 00429000
+TESTSUB1 DS    0H                                              @D51IDRP 00430000
+         CLI   PCBVTCNT,ZERO      HAS PARTITION OPEN ACB'S     @D36IDRP 00431000
+         BNE   SCANPRT1           YES, CONTINUE SCAN           @D36IDRP 00432000
+         TM    PCBSSFLG,PWR+VTAM+ICCF+OCCF+CICS  POWER, VTAM,          *00433000
+                                  ICCF ,OCCF OR CICS           @DA26818 00434000
+         BNZ   SCANPRT1           YES, CONT. SCAN ON 1 ST LEVEL@D36IDRP 00435000
+         L     RA,PCEPIB          GET ADDR OF PIB              @D51IDRP 00436000
+         USING PIBADR,RA                                       @D36IDRP 00437000
+         TM    PIBFLG,INACT       PARTITION STOPPED/UNBATCHED  @D51IDRP 00438000
+         BO    SCANPRT1           YES, CONT. SCAN ON 1ST LEVEL @D36IDRP 00439000
+         TM    PIBDATFL,PIBTRAM   PARTITION IN VIRTUAL MODE ?  @D51IDRP 00440000
+         BZ    SCANPRT1           NO,CONT. SCAN ON 1ST LEVEL            00441000
+         TM    PIBPUBAS,APPEN     TP PARTITION SELECTED        @D51IDRP 00442000
+         BNZ   SCANPRT1           YES,CONT. SCAN ON 1ST LEVEL  @D35EDGA 00443000
+         CLC   PCEPIK,TPPIK       IS IT TPIN PARTITION         @D51IDRP 00444000
+         BE    SCANPRT1           YES, CONT. SCAN ON 1ST LEVEL @D36IDRP 00445000
+*    GENSERV  TEST,FIELD=PCBANPCB,REG=(R8),BC=BNZ,LAB=TESTSUB1 @D52VDVB 00446000
+     GENSERV  TEST,FIELD=PCBANPCB,REG=(R8),BC=BNZ,LAB=TESTSUB1 @D52VDVB 00447000
+         DROP  RA                 FORGET BASE FOR PIB          @D36IDRP 00448000
+         DROP  R8                 FORGET BASE FOR CLASS-PCB    @D51IDRP 00449000
+         SPACE 1                                                        00450000
+*-------------------------------------------------------------*         00451000
+*        AN ACTIVE VIRTUAL PARTITION/CLASS HAS BEEN FOUND FOR *@D519DRP 00452000
+*        DEACTIVATION .                                       *         00453000
+*        RETURN IS NO MORE TO CALLER, BUT TO PMR              *         00454000
+*        INPUT:                                               *         00455000
+*          R2 - ADDR OF PCB OF SELECTED PARTITION/CLASS       *         00456000
+*          R6 - BASE ADDR OF DISPATCHER                       *         00457000
+*-------------------------------------------------------------*         00458000
+         SPACE 1                                                        00459000
+         SGCOV SGPLLEV,MC=1                                    @D52VDRP 00460000
+*        GENSERV DEC,FIELD=IJBAPNO,REG=(RC) SET NEW NUMBER OF          *00461000
+                                  DEACTIVATED PARTITIONS       @D52VDRP 00462000
+         GENSERV DEC,FIELD=IJBAPNO,REG=(RC)                    @D52VDRP 00463000
+*        GENSERV INC,FIELD=NDEACTP,REG=(R8)                    @D52VDVB 00464000
+         GENSERV INC,FIELD=NDEACTP,REG=(R8)                    @D52VDVB 00465000
+         LR    R8,RE              GET ADDR OF DATA AREA IN R8  @D35EDRP 00466000
+         L     R7,ATERMPGN        GET ENTRY ADDR               @D35EDRP 00467000
+         BALR  R7,R7              DEACTIVATE PAGEIN            @D35EDRP 00468000
+*SGLINK  TERMPGIN,INPUT=(R6,R7,R8)                             @D52VDRP 00469000
+         AIF   (NOT &LOLEV).NOSTA59                            @DF02306 00470000
+         LR    R7,R2              S  GET CLASS PCB             @D52VDRP 00471000
+         USING PCBADR,R7          S  SET BASE FOR CLASS-PCB    @D51IDRP 00472000
+         TM    PCBFLAG,PCBCLFLG   S  IS CLASS TO BE DEACTIVATED@D51IDRP 00473000
+         BZ    DEACTS1            S  NO, BRANCH                @D51IDRP 00474000
+         L     R7,PCBANPCB        S  GET 1ST PCB IN CLASS      @D52VDRP 00475000
+DEACTS1  DS    0H                                              @D51IDRP 00476000
+         MVC   LTI(2),PCELID      S  ID OF DEACTIVATED PART.   @D51IDRP 00477000
+         DROP  R7                 S                            @D51IDRP 00478000
+         ST    R9,STSAVE          S                                     00479000
+         BAL   R9,LLTABR          S  WRITE STATISTICS TO LLTAB          00480000
+*        GENSERV INC,FIELD=DEACTCTR,REG=(R9)                   @D52VDVB 00481000
+         GENSERV INC,FIELD=DEACTCTR,REG=(R9)                   @D52VDVB 00482000
+         L     R9,STSAVE          S                                     00483000
+.NOSTA59 ANOP                                                  @DF02306 00484000
+         AGO   .LLFT040                                        @D64YDOW 00485000
+         LR    R7,R2              GET CLASS-PCB                @D51IDRP 00486000
+         USING PCBADR,R7          SET BASE FOR CLASS-PCB       @D51IDRP 00487000
+         TM    PCBFLAG,PCBCLFLG   CLASS TO BE DEACTIVATED      @D51IDRP 00488000
+         BZ    DEACTP6            NO, BRANCH                   @D51IDRP 00489000
+DEACTP5  DS    0H                                              @D51IDRP 00490000
+*    GENSERV  TEST,FIELD=PCBANPCB,REG=(R7),BC=BZ,LAB=DEACTP7   @D52VDVB 00491000
+     GENSERV  TEST,FIELD=PCBANPCB,REG=(R7),BC=BZ,LAB=DEACTP7   @D52VDVB 00492000
+DEACTP6  LH    R5,PCEPIK          GET PIK OF PARTITION         @D51IDRP 00493000
+         L     RE,ADELREPA        DELREPA ADDRESS IN LOW CORE  @D14NDFG 00494000
+*        AMODESW CALL,REGS=(RE,RE) DELETE ALL REPL. OF PART.   @D52VDRP 00495000
+         AMODESW CALL,REGS=(RE,RE) DELETE ALL REPL. OF PART.   @D52VDRP 00496000
+*SGLINK  DELREPA,INPUT=(R5,RE),WORK=(R9)                       @D14NDFG 00497000
+         B     DEACTP5            LOOP THRU ALL PCBS IN ONE CL.@D51IDRP 00498000
+DEACTP7  DS    0H                                              @D51IDRP 00499000
+         L     RE,APMGMDAT        RESTORE ADDRESS OF DATA AREA @D14NDFG 00500000
+         DROP  R7                 FORGET BASE FOR PCB          @D51IDRP 00501000
+.LLFT040 ANOP                                                  @D64YDOW 00502000
+         USING PCBADR,R2          SET BASE FOR PART./CLASS PCB @D51IDRP 00503000
+         OI    PCBFLAG,SUPPRPFH   IND. PART./CLASS IS DEACT.   @D36IDRP 00504000
+         SPACE 1                                                        00505000
+* INDICATE NO PAGEFAULT TO BE HANDLED FOR THIS PARTITION/CLASS @D369DRP 00506000
+         SPACE 1                                                        00507000
+         LR    R5,R2              CURRENT PCB/CLASS-PCB        @D61RDVB 00508000
+         BAL   RA,DEACPCB         DEACTIVATE PART/CLASS        @D61RDRP 00509000
+*SGLINK DEACPCB,INPUT=(R5,RA,RE,RF),WORK=(R1,R3,R5)            @D61RDRP 00510000
+         DROP  R2                 DROP BASE FOR CLASS/PART PCB @D36IDRP 00511000
+DEACTPXT DS    0H                                              @D61RDVB 00512000
+         AIF   (NOT &LOLEV).NOLOL2                                      00513000
+         SPACE 3                                                        00514000
+*   THE REACTIVATION-COUNT IS DETERMINED AND STORED                     00515000
+*   INTO THE PCBRCNT ENTRY OF THE PCB                          @D369DRP 00516000
+*   INPUT-PARAMETER:                                                    00517000
+*                    R2 - ADDR OF PCB OF DEACTIVATED PARTITION @D369DRP 00518000
+         SPACE 3                                                        00519000
+*        AMODESW SET,AMODE=31,WR=(R7) SET 31 BIT ADDRESSING MOD@D52VDRP 00520000
+         AMODESW SET,AMODE=31,WR=(R7)                          @D52VDRP 00521000
+         USING PCBADR,R2                                       @D365DRP 00522000
+         TM    PCBFLAG,PCBCLFLG   CLASS TO BE DEACTIVATED      @D52VDRP 00523000
+         BZ    PGFR0              NO,  BRANCH                  @D52VDRP 00524000
+PGFRLP0  L     R2,PCBANPCB        GET 1ST/NEXT PCB IN CLASS    @D52VDRP 00525000
+         LTR   R2,R2              IS PCB STILL AVAILABLE       @D52VDRP 00526000
+         BZ    PGFREND            NO, ALL DONE                 @D52VDRP 00527000
+PGFR0    DS    0H                                              @D52VDRP 00528000
+         L     R3,SMVPEND         LOAD PARTITION-BOUNDARIES    @D36ZDRP 00529000
+         L     R1,SMVPBEG                                      @D35EDRP 00530000
+         SR    R3,R1                                           @D36ZDRP 00531000
+         SRL   R3,PNSHIFT         R3=# OF PAGES IN PARTITION   @D36ZDRP 00532000
+         L     R4,PCBPSCB         GET SCB FOR PART. SPACE      @D52VDRP 00533000
+         LR    RD,R1              GET PAGE ADDR IN CORRECT REG.@D52VDRP 00534000
+         LR    R8,RE              GET ADDR OF DATA AREA        @D52VDRP 00535000
+         BAL   RE,EPACNVR2        CONVERT PAGE ADDR TO EPA     @D52VDRP 00536000
+*SGLINK  EPACNVR2,INPUT=(R4,R8,RD,RE),WORK=(R5),OUTPUT=(RD),           *00537000
+               AMODE=31  DATON                                          00538000
+         LR    RE,R8              RESTORE ADDR OF DATA AREA    @D52VDRP 00539000
+         LR    R1,RD              GET EPA IN CORRECT REG.      @D52VDRP 00540000
+         SRL   R1,PTSHIFT         GET OFFSET IN PAGE-TABLE     @D36ZDRP 00541000
+         L     R7,PCBPSCB         GET SCB FOR PART. SPACE      @D52VDRP 00542000
+         USING SCBADR,R7                                       @D52VDRP 00543000
+         A     R1,SCBAPT          R1=@ OF FIRST PT-ENTRY       @DM12778 00544000
+         L     R7,SCBAPMRA        GET PMRAS FOR PAGE-TABLE     @D52VDRP 00545000
+         DROP  R7                 DROPBASE FOR SCBADR          @D52VDRP 00546000
+*        SGSETUP SETSCB,NEXTSCB=R7,OPTION=SAVE,WR1=R4,WR2=R5   @D52VDRP 00547000
+         SGSETUP SETSCB,NEXTSCB=R7,OPTION=SAVE,WR1=R4,WR2=R5   @D52VDRP 00548000
+         SR    R7,R7              R7 =REACT.-COUNT RC          @DF00888 00549000
+         USING PTE,R1                                          @D52VDRP 00550000
+         L     RD,APFT            RD=@ OF PFT                           00551000
+PGFRLP1  TM    PTESTAT,PTEIBIT PT-ENTRY INVALID ?              @D51GDTP 00552000
+         BO    PGFR1              YES                                   00553000
+         L     R8,PTEFRA          GET PAGE FRAME ADDRESS       @D52VDRP 00554000
+         N     R8,PMPTEMSK        *  IN REGISTER8              @D52VDRP 00555000
+         SRL   R8,PFSHIFT         R8=OFFSET TO PFT             @D52VDRP 00556000
+         LA    RC,0(R8,RD)        RC=@ OF PFT-ENTRY            @D35EDRP 00557000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDVB 00558000
+         AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDVB 00559000
+         USING PFTE,RC                                         @D35EDRP 00560000
+         CLC   FIXC,F0            PAGE IN PSQ                  @D35CDRP 00561000
+         BNE   PGFR1              NO, BRANCH                   @D35CDRP 00562000
+         TM    S370FLG,NFVP       PFIX REQUEST PENDING         @D35EDRP 00563000
+         BO    PGFR1              YES, NOT IN PSQ              @D35CDRP 00564000
+         LA    R7,1(,R7)          INCREASE RC                  @D14ZDVB 00565000
+         SLL   R8,PFSHIFT         R8=@ OF PAGE-FRAME           @D35CDRP 00566000
+         RRBE  0,R8               RESET REFERENCE-BIT          @D51GDTP 00567000
+         DROP  RC                 DROP PFTE BASE               @D35EDRP 00568000
+PGFR1    AMODESW SET,DAT=ON       ENTER VIRTUAL AGAIN          @D52VDRP 00569000
+         LA    R1,LPTE(,R1)       GET NEXT PTE                 @D14ADVB 00570000
+         BCT   R3,PGFRLP1                                               00571000
+         DROP  R1                 DROP BASE FOR PTE            @D52VDRP 00572000
+*        SGSETUP RESETSCB,WR1=R4,WR2=R5                        @D52VDRP 00573000
+         SGSETUP RESETSCB,WR1=R4,WR2=R5                        @D52VDRP 00574000
+         ST    R7,PCBRCNT         STORE RC INTO PCB            @D36ZDRP 00575000
+         DROP  R2                 FORGET BASE FOR PCB          @D36IDRP 00576000
+         MVI   LLTABE,X'FE'       S  INDICATE 2ND ENTRY FOR DEACTIV.    00577000
+         STH   R7,LTTA            S  SAVE REACTIVATION-COUNT            00578000
+         ST    R9,STSAVE          S                                     00579000
+*        AMODESW SET,AMODE=24,WR=(R9) SET 24 BIT ADDRESSING MOD@D52VDRP 00580000
+         AMODESW SET,AMODE=24,WR=(R9)                          @D52VDRP 00581000
+         BAL   R9,LLTABR          S  WRITE STATISTICS TO LLTAB          00582000
+         L     R9,STSAVE          S                                     00583000
+         B     PGFRLP0            S  CHECK NEXT PCB            @D52VDRP 00584000
+PGFREND  DS    0H                                              @D52VDRP 00585000
+.NOLOL2  ANOP                                                           00586000
+         DROP  R6                 FORGET BASE FOR DISP         @D36IDRP 00587000
+REACTRET CLI   NDEACTP,0          # (DEACTIVATED PARTS) > 0    @DA26818 00588000
+         BE    LLPMRRET           YES --->                     @DA26818 00589000
+         L     RA,TCBPTR                                       @DA26818 00590000
+         USING TCBADR,RA                                       @DA26818 00591000
+         L     R2,TCBSAVE         ADDR (TASK SAVE AREA)        @DA26818 00592000
+         USING SVEARA,R2                                       @DA26818 00593000
+         LM    R3,R4,SVEPSW       SAVE TASK ORIGINAL PSW       @DA26818 00594000
+         DROP  RA                                              @DA26818 00595000
+         LA    R1,300*4           SET TIMER INTERVALL...       @DA26818 00596000
+*                                 ... TO 4 SEC (4*300*2**8)    @DA26818 00597000
+         LA    R7,REACTECB                                     @DA26818 00598000
+*        SETIME (1),(7),PREC      SET TIMER                    @DA26818 00599000
+         SETIME (1),(7),PREC      SET TIMER                    @DA26818 00600000
+         DROP  R2                 DROP BASE FOR SAVE AREA      @DA26818 00601000
+         SPACE 1                                                        00602000
+*   ENTERED HERE FROM SVC 89 AND REACTIVATION                  @D369DRP 00603000
+         SPACE 1                                                        00604000
+LLPMRRET LR    R8,RE              GET ADDR OF DATA AREA IN R8  @D35EDRP 00605000
+         L     R9,APMRADR         GET ADDR OF PMR-CODE         @D35EDRP 00606000
+         L     R7,APMR            GET ADDR OF PMR              @D35EDRP 00607000
+*        AMODESW RETURN,REG=(R7)   HANDLE NEXT PAGE-FAULT      @D52VDRP 00608000
+         AMODESW RETURN,REG=(R7)   HANDLE NEXT PAGE-FAULT      @D52VDRP 00609000
+         TITLE 'VSE/AF SUPERVISOR     SGPLLEV     LOAD LEVELER (REACTIV*00610000
+               ATION ROUTINES)'                                @D14ZDRP 00611000
+*-------------------------------------------------------------*@D149DVB 00612000
+*   THIS ROUTINE IS CALLED WHENEVER THE SYSTEM IS GOING TO ENTER        00613000
+*   SYSTEM-WAIT - IF THE TIME-INTERVAL SINCE LAST MEASURING OF @DA08166 00614000
+*   PAGING-ACTIVITY IS GREATER THAN OR EQUAL M SECONDS,        @DA08166 00615000
+*   PAGING-ACTIVITY IS MEASURED AGAIN - IF THERE IS A LOW PAGING-       00616000
+*   ACTIVITY,IT IS TRIED TO REACTIVATE A PARTITION.           *@DA08166 00617000
+*   INPUT:                                                     @D149DVB 00618000
+*        R6 - ADDR OF DISPATCHER                               @D149DVB 00619000
+*        RE - ADDR OF PAGE-MANAGEMENT DATA AREA                @D149DVB 00620000
+*-------------------------------------------------------------*@D149DVB 00621000
+         SPACE 1                                               @D14ZDVB 00622000
+         USING DISP,R6                                         @D35EDGA 00623000
+ALBEXIT  L     RF,ALOLEV          GET BASE ADDR FOR CODE AREA  @D35EDGA 00624000
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 00625000
+         BO    ALBRTRN            YES, NO LOAD LEVELLING       @D61BDRP 00626000
+         STOSM PSWMASK,ENABLE     ENABLE INTERRUPTS            @D36IDRP 00627000
+         SLR   R7,R7              INDICATE NORMAL PROCESSING   @DA26818 00628000
+         TM    SUPFLAG,TPBIT      TPIN IN PROGRESS             @D36IDRP 00629000
+         BZ    BLTPOFF            NO,BRANCH                    @D36IDRP 00630000
+*        GENSERV TEST,FIELD=IJBTPBAL,BC=BZ,LAB=REACTY          @D52VDVB 00631000
+*    TPBAL RESET BY DYN. CLASS HANDLING, BRANCH IF YES         @D61NDRP 00632000
+         GENSERV TEST,FIELD=IJBTPBAL,BC=BZ,LAB=REACTY          @D52VDVB 00633000
+         LA    R5,ALBRTRN         WAIT ON INTERRUPTS           @D36IDRP 00634000
+         B     BLTPON             SKIP TEST FOR NDEACTP        @D36IDRP 00635000
+         SPACE 1                                               @D14ZDVB 00636000
+BLTPOFF  LA    R5,REACTC          CONDITIONAL REACTIVATION     @D14ZDVB 00637000
+         CLI   NDEACTP,ZERO .     ANY PARTITION DEACTIVATED ?  @DF00881 00638000
+         BE    REACTX .           NO                           @DF00881 00639000
+BLTPON   DS    0H                                              @D14ZDVB 00640000
+*        GENSERV TEST,FIELD=IJBAPNO,BC=BZ,LAB=BLSKIP           @D52VDVB 00641000
+         GENSERV TEST,FIELD=IJBAPNO,BC=BZ,LAB=BLSKIP           @D52VDVB 00642000
+         LH    R3,YPUBTAB .       GET ADDRESS OF PUB TABLE     @DF00881 00643000
+         USING PUBADR,R3                                       @D35EDEM 00644000
+         LA    R4,TRTDV                                        @D35EDGA 00645000
+NXTRPUB  CLI   PUBCHANN,XFF .     END OF PUB TABLE ?           @DF00881 00646000
+         BE    REACTY .           YES, UNCOND. REACTIVATION    @DF00881 00647000
+         CLI   PUBCHQPT,XFF .     I/O REQUEST PENDING ?        @DF00881 00648000
+         BE    CONTPUB            NO, BRANCH                   @D35IDAP 00649000
+         TM    PUBCSFLG,QEDERR+OPINTV  ERROR OR INTERV. REQ    @DA06980 00650000
+         BNZ   CONTPUB            YES, CONTINUE SCAN           @D35IDAP 00651000
+         CLI   PUBDEVTY,CONS .    REQU.FOR CONSOLE PENDING?    @DA06980 00652000
+         BE    CONTPUB .          YES, CONTINUE PUBSCAN        @DF02327 00653000
+         SR    R9,R9              CLEAR REGISTER               @D35EDGA 00654000
+         IC    R9,PUBCHQPT        GET CHANQ POINTER            @D35EDGA 00655000
+         AIF   (&AG1 LE 254).LOD0000                           @D51ODGL 00656000
+         ICM   R9,2,PUBCHQPH      INCLUDING HIGH ORDER BYTE    @D51ODGL 00657000
+.LOD0000 ANOP                                                  @D51ODGL 00658000
+         SLL   R9,CHQSLEN         GET DISPL IN CHANQ           @D35EDGA 00659000
+         A     R9,IJBCHANQ        GET ADDR OF CHANQ ENTRY      @D35EDGA 00660000
+         USING CHQADR,R9                                       @D35EDGA 00661000
+         ICM   RC,M7,CHQCCBAD+1   REQUESTOR STILL QUEUED       @DA26818 00662000
+         BZ    CONTPUB            NO, CONTINUE PUBSCAN         @D36IDRP 00663000
+         CLI   PUBDEVTY,LOWDVT .  TP-OR CRT-DEVICE POSSIBLE?   @DF02327 00664000
+         BNL   TPCRTCK            YES, SKIP CHECK FOR U/R DEV  @D35EDGA 00665000
+         CLI   PUBDEVTY,URDEV     U/R DEVICE?                  @D35EDGA 00666000
+         BNL   REACTX             NO, CONDITIONAL REACTIVATION @D35EDGA 00667000
+         LH    RC,CHQTID          GET TASK IDENTIFIER          @D66ODOW 00668000
+         DROP  R9                                              @D51IDIS 00669000
+         SLL   RC,2               MULTIPLY WITH 2              @DY46347 00670490
+         AL    RC,ATIBATAB        ... POINT INTO TIBATAB       @D66ODOW 00671000
+         L     RC,0(,RC)          GET ADDR. OF TIB             @D66ODOW 00672000
+         USING TIBADR,RC                                       @D51IDRP 00673000
+         L     RC,TIBPCB          GET ADDR OF PCB              @D51IDRP 00674000
+         USING PCBADR,RC                                       @DA26818 00675000
+         TM    PCBSSFLG,PWR       POWER PARTITION?             @D36ZDRP 00676000
+         BNO   REACTX             NO, CONDITIONAL REACTIVATION @D35EDGA 00677000
+         B     CONTPUB            ALLOW UNCOND. REACTIVATION   @D35EDGA 00678000
+         DROP  RC                                              @D35EDGA 00679000
+TPCRTCK  CLI   PUBDEVTY,HIGHDVT . TP-OR CRT-DEVICE POSSIBLE?   @D35EDGA 00680000
+         BNL   REACTX .           NO,COND.REACTIVATION         @DF02327 00681000
+         TRT   PUBDEVTY(ONE),D0(R4) TP-OR CRT-DEVICE?          @DF02327 00682000
+         BZ    REACTX .           NO,COND. REACTIVATION        @DF02327 00683000
+CONTPUB  LA    R3,NEXTPUB .       GET NEXT PUB ENTRY           @DF02327 00684000
+         B     NXTRPUB .                                       @DF00881 00685000
+         DROP  R3                                              @D35EDEM 00686000
+         SPACE                                                          00687000
+REACTY   STNSM PSWMASK,DISABLE    DISABLE INTERRUPTS           @DA26104 00688000
+         TM    SUPFLAG,TPBIT      TPIN IN PROGRESS             @D35EDGA 00689000
+         BZ    BLSKIP             NO, DO UNC. REACTIVATION     @DA42992 00690000
+*                                 YES, DO IMPLICITE TPOUT      @DA42992 00691000
+         LR    R8,RE              SET ADDR OF PMGMDATA IN R8   @DA42992 00692000
+         L     R7,ATPOUT         GET ADDRESS OF TPOUT ROUTINE  @DA42992 00693000
+*        AMODESW CALL,REGS=(R7,R7) PROCESS TPOUT REQUEST       @DA42992 00694000
+         AMODESW CALL,REGS=(R7,R7)                             @DA42992 00695000
+*SGLINK TPOUT,INPUT=(R7,R8)                                    @DA42992 00696000
+         BR    R6                 ========> EXIT TO DISPATCHER @DA42992 00697000
+BLSKIP   LA    R5,REACTUC         UNCONDITIONAL REACT.         @D35EDRP 00698000
+REACTX   STNSM PSWMASK,DISABLE    DISABLE INTERRUPTS           @D35EDGA 00699000
+         BALR  R9,R5              BRANCH TO REACTIV. RTN       @DM03306 00700000
+         AIF   (NOT &LOLEV).NOSTW1                             @DF02306 00701000
+         BAL   R9,WTIME1          S MEASUREM.OF SYSTEM WAITTIME@D35EDGA 00702000
+.NOSTW1  ANOP                                                        KR 00703000
+         B     ALBRTRN            ==========>  RETURN ALLBOUND @D14ZDVB 00704000
+         DROP  R6                 FORGET BASE FOR DISPATCHER   @D36IDFR 00705000
+         SPACE 2                                               @D35EDRP 00706000
+*-------------------------------------------------------------*@D149DVB 00707000
+*     INPUT:                                                   @D369DRP 00708000
+*            RE - ADDR OF PAGEMANAGEMENT DATA AREA             @D369DRP 00709000
+*                                                              @D149DVB 00710000
+*     REACTEX:  UNCONDITIONAL REACTIVATION                     @D149DVB 00711000
+*        ENTERED IF NUMBER OF ACTIVE VIRT. PARTITIONS HAS BEEN          00712000
+*        DECREASED TO ZERO, AND AT LEAST ONE PART. IS DEACTIV.          00713000
+*        CALLED BY SGTINF                                               00714000
+*                                                                       00715000
+*     REACTUC:  UNCONDITIONAL REACTIVATION                     @D149DVB 00716000
+*                                                              @D149DVB 00717000
+*     REACTC :  CONDITIONAL REACTIVATION                       @D149DVB 00718000
+*                                                              @DA26818 00719000
+*     REACTIME: TIMER CONTROLLED REACTIVATION                  @DA26818 00720000
+*        WHEN A PARTITION IS DEACTIVATED, A TIMER IS SET UP    @DA26818 00721000
+*        IN ORDER TO TRY AN REACTIVATION OF THE PARTITION      @DA26818 00722000
+*        EVEN IF ALLBOUND HAS NOT BEEN ENTERED.                @DA26818 00723000
+*-------------------------------------------------------------*@DA26818 00724000
+         SPACE 1                                               @D14ZDVB 00725000
+REACTEX  L     RF,ALOLEV          GET BASE ADDR OF CODE AREA   @D35EDRP 00726000
+         L     R6,DISPAD                                       @D61BDRP 00727000
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 00728000
+         BOR   R6                 YES, ====> NO LOAD LEVELLING @D61BDRP 00729000
+         SLR   R7,R7              INDICATE ...                 @DA26818 00730000
+         BCTR  R7,0               ...      RETURN TO DISP      @DA42992 00731000
+         B     REACTPUC           UNCOND.REACTIVATION          @DM03306 00732000
+         SPACE 2                                               @D14ZDVB 00733000
+REACTUC  SLR   R7,R7              INDICATE NORMAL PROCESSING   @DA26818 00734000
+         LA    R1,REACTPUC        SET CORRECT RETURN ADR       @DF00881 00735000
+         AIF   (NOT &LOLEV).NOSTA51                            @D35EDRP 00736000
+*        GENSERV INC,FIELD=NREACTUC,REG=(R3)                   @D52VDVB 00737000
+         GENSERV INC,FIELD=NREACTUC,REG=(R3)                   @D52VDVB 00738000
+.NOSTA51 ANOP                                                  @DF02306 00739000
+         B     REACT1                                          @D35EDRP 00740000
+         SPACE 2                                               @DA26818 00741000
+REACTIME DS    0H                                              @DA26818 00742000
+         LA    R7,REACTRET        RETURN REGISTER              @DA26818 00743000
+         LR    RE,R8              REGISTER ...                 @DA26818 00744000
+         LR    R9,R7              ....INITIATION               @DA26818 00745000
+         MVI   REACTECB+CCBCOM1-CCBADR,0 RESET TRAFIC BIT IN ...       *00746000
+                                  ... REACTIVATION TECB        @DA26818 00747000
+         SPACE 1                                               @DA26818 00748000
+*  R1 = R9 INDICATES CONDITIONAL REACTIVATION                  @D369DRP 00749000
+         SPACE 1                                               @DA26818 00750000
+REACTC   LR    R1,R9              SET CORRECT RETURN ADR       @D14ZDVB 00751000
+         SPACE 1                                               @DM11503 00752000
+REACT1   STCK  TIME2              READ TOD-CLOCK               @D14ZDVB 00753000
+         AIF   (NOT &LOLEV).NOSTA20                            @D14ZDVB 00754000
+         BC    12,REACT1V         TOD VALID --->               @DF01345 00755000
+         CLI   NDEACTP,0          ANY PARTITION DEACTIVATED    @D149DVB 00756000
+         BER   R9                 ==========>        NO        @D149DVB 00757000
+         B     REACTPUC           YES  ---->                   @D149DVB 00758000
+         AGO   .NOSTA25                                        @D14ZDVB 00759000
+.NOSTA20 ANOP                                                  @D14ZDVB 00760000
+         BC    3,REACT3           TOD INVALID ----->           @D14ZDVB 00761000
+.NOSTA25 ANOP                                                  @D14ZDVB 00762000
+REACT1V  LM    R4,R5,TIME1                                     @D14ZDVB 00763000
+         SR    R5,R4                                                    00764000
+         CL    R5,MINTIME         TIME-INTERVAL GE MINIMUM ?            00765000
+         BLR   R1                 =========> NO                @D14ZDVB 00766000
+         SPACE 1                                               @DM11503 00767000
+         MVC   TIME1(4),TIME2     SET START-TIME FOR NEXT INTERV.       00768000
+         AIF   (NOT &LOLEV).NOSTA3                             @DF02306 00769000
+         STH   R5,LTTR            S    STORE TIME-INTERVAL AND WAIT-    00770000
+         L     R4,WTR             S    TIME INTO LLTAB-ENTRY            00771000
+         SRL   R4,6               S                                     00772000
+         STH   R4,LTWT            S                                     00773000
+         XC    WTR(4),WTR         S    SET WTR=0                        00774000
+         L     R4,TIME            S    STORE TIME-INTERVAL SINCE LAST   00775000
+         LTR   R3,R4              S    DEACTIVATION OR REACTIVATION     00776000
+         BZ    REACTA             S    MEASUREMENT INTO LLTAB-ENTRY     00777000
+         L     R3,TIME2           S                                     00778000
+         SR    R3,R4              S                                     00779000
+REACTA   STH   R3,LTTA            S                                     00780000
+         MVC   TIME(4),TIME2      S                                     00781000
+.NOSTA3  ANOP                                                  @DF02306 00782000
+         L     RA,ARTABX          INITIALIZE FOR NEXT INTERVAL @DA33314 00783000
+         L     RB,LRTAB                                        @DA33314 00784000
+*        AMODESW SET,AMODE=31,WR=(R3) SET 31 BIT ADDRESSING MOD@D52VDRP 00785000
+         AMODESW SET,AMODE=31,WR=(R3)                          @D52VDRP 00786000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 00787000
+         AMODESW SET,DAT=OFF                                   @D52VDRP 00788000
+         SLR   R3,R3                                           @DA33314 00789000
+         LR    R2,R3              ZERO SOURCE REGISTER FOR MVCL@DA33314 00790000
+         MVCL  RA,R2              CLEAR RTABX FOR REACTIVATION @DA33314 00791000
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 00792000
+         AMODESW SET,DAT=ON                                    @D52VDRP 00793000
+*        AMODESW SET,AMODE=24,WR=(R3) SET 24 BIT ADDRESSING MOD@D52VDRP 00794000
+         AMODESW SET,AMODE=24,WR=(R3)                          @D52VDRP 00795000
+         L     R3,PIRCTR                                       @D35EDRP 00796000
+         AIF   (NOT &LOLEV).NOSTA4                             @DF02306 00797000
+         STH   R3,LTRP            S    STORE # OF PAGE-INS INTO LLTABE  00798000
+.NOSTA4  ANOP                                                  @DF02306 00799000
+         DR    R2,R5              PIRCTR/(TIME2-TIME1)                  00800000
+         A     R3,EXPAVE          CALCULATE EXP.AVERAGE                 00801000
+         SRL   R3,1                                                     00802000
+         ST    R3,EXPAVE                                                00803000
+         AIF   (NOT &LOLEV).NOSTA5                             @DF02306 00804000
+         STH   R3,LTDE            S    STORE INTO LLTAB-ENTRY           00805000
+.NOSTA5  ANOP                                                  @DF02306 00806000
+         L     R3,RRCTRX                                       @DA33314 00807000
+         SLR   R2,R2                                           @DA33314 00808000
+         ST    R2,RRCTRX          CLEAR REENTRY COUNT (REACT)  @DA33314 00809000
+         ST    R2,PIRCTR          ... PAG_IN CTR (REACTIVATION)@DA33314 00810000
+         DR    R2,R5                                           @DA33314 00811000
+         AL    R3,EXPAVX          CALCULATE..                  @DA33314 00812000
+         LR    R2,R3              GET 2*REENTRY RATE           @DA33314 00813000
+         SRL   R3,1               .. EXP. AVERAGE OF           @DA33314 00814000
+         ST    R3,EXPAVX          .. REENTRY RATE              @DA33314 00815000
+         AIF   (NOT &LOLEV).NOSTA6                             @DA33314 00816000
+         STH   R3,LTRP            S    STORE INTO LLTAB-ENTRY  @DA33314 00817000
+.NOSTA6  ANOP                                                  @DA33314 00818000
+         SPACE 1                                               @DA33314 00819000
+         CR    R1,R9              CONDITIONAL REACTIVATION?    @D36ZDRP 00820000
+         BNE   REACTPUC           NO, BRANCH                   @D365DRP 00821000
+         AIF   (NOT &LOLEV).NOSTA7                             @DA33314 00822000
+         XC    LTI(2),LTI         S    SET ID OF LLTAB-ENTRY TO ZERO    00823000
+         MVI   LLTABE,X'00'       S    SET REACT.INDICATION    @DA33314 00824000
+.NOSTA7  ANOP                                                  @DF02306 00825000
+.*DEL    ALR   R2,R2              GET 4*REENTRY RATE           @DA33314 00826000
+         CL    R2,EXPAVE          REENTRY-RATE STILL TOO HIGH IN ...   *00827000
+                                  .... RELATION TO PAGING RATE @DA33314 00828000
+         AIF   (&LOLEV).YESTA8                                 @D52VDRP 00829000
+         BHR   R9                 ==========> SKIP REACTIVATION@D149DVB 00830000
+.YESTA8  ANOP                                                  @D52VDRP 00831000
+         AIF   (NOT &LOLEV).NOSTA8                             @DF02306 00832000
+         BH    REACT5             S Y , PREPARE LLTAB ENTRY    @DA33314 00833000
+*        GENSERV INC,FIELD=ECTR,REG=(R3)                       @D52VDVB 00834000
+         GENSERV INC,FIELD=ECTR,REG=(R3)                       @D52VDVB 00835000
+.NOSTA8  ANOP                                                  @DF02306 00836000
+REACT3   CLI   NDEACTP,0          ANY PARTITION DEACTIVATED    @DA26818 00837000
+         AIF   (NOT &LOLEV).NOSTA81                                     00838000
+         BE    REACT6             S NO, PREPARE LLTAB ENTRY             00839000
+.NOSTA81 ANOP                                                           00840000
+         BER   R9                 ==========> SKIP REACTIVATION@D149DVB 00841000
+         AIF   (NOT &LOLEV).NOSTA65                            @DF02306 00842000
+         B     REACTPC            RETURN,EXIT 2: TRY REACTIV.  @DF00881 00843000
+REACT6   EQU   *                                                        00844000
+         MVI   LTI,X'01'          S    MODIFY ID OF LLTAB-ENTRY         00845000
+*        GENSERV INC,FIELD=REACTNP,REG=(R3)                    @D52VDVB 00846000
+         GENSERV INC,FIELD=REACTNP,REG=(R3)                    @D52VDVB 00847000
+REACT5   DS    0H                                                       00848000
+         MVC   LTS(4),NPSQE       S  STORE NUMBER OF PSQ ENTRIES        00849000
+         L     R2,PFCTR           S                                     00850000
+         S     R2,PFCTRO          S                                     00851000
+         BNZ   REACT51            S                                     00852000
+         LA    R2,1               S                                     00853000
+REACT51  L     R5,RECLAIM         S                                     00854000
+         S     R5,RECLAIMO        S                                     00855000
+         LA    R4,100             S                                     00856000
+         MR    R4,R4              S                                     00857000
+         DR    R4,R2              S                                     00858000
+         STH   R5,LTRECL          S    STORE RECLAIMING PERCENTAGES     00859000
+         ST    R9,STSAVE          S                                     00860000
+         BAL   R9,LLTABR          S    STORE LLTAB-ENTRY INTO LLTAB     00861000
+         L     R9,STSAVE          S                                     00862000
+         BR    R9                 S RETURN                              00863000
+.NOSTA65 ANOP                                                  @DF02306 00864000
+         SPACE 2                                                        00865000
+*-------------------------------------------------------------*@D149DVB 00866000
+*   THE REACTIVATION ROUTINE TRIES TO REACTIVATE THAT DEACTI-           00867000
+*   VATED PARTITION, WHICH HAS CURRENTLY THE HIGHEST DISPATCHING        00868000
+*   PRIORITY.                                                           00869000
+*-------------------------------------------------------------*@D149DVB 00870000
+         SPACE 1                                                        00871000
+REACTPUC DS    0H                                              @D14ZDVB 00872000
+         AIF   (NOT &LOLEV).NOSTA62                            @DF02306 00873000
+         MVI   LLTABE,X'E4'       S                            @DF00926 00874000
+         LA    R8,RPOSTPX         DON'T CHECK REACT. COUNTER   @DF00881 00875000
+         B     REACTP                                          @DF00881 00876000
+REACTPC  LA    R8,CHECKRC         CHECK REACTIVATION COUNTER   @DF00881 00877000
+REACTP   DS    0H                                              @D61BDRP 00878000
+         SPACE 1                                                        00879000
+.NOSTA62 ANOP                                                  @DF02306 00880000
+         MVI   REACTECB+CCBCOM1-CCBADR,0 RESET TRAFIC BIT IN ...       *00881000
+                                  ... REACTIVATION TECB        @DA26818 00882000
+         LA    R3,&NPART+&NCLASS  GET NO. OF PART. AND CLASSES @D51IDRP 00883000
+         L     R2,ASTATPOW        GET ADDR OF OF STATIC PRIOR. @D51IDRP 00884000
+SCANREAC LA    R2,4(,R2)          OFFSET TO 1ST/NEXT PART.ENTRY@D51IDRP 00885000
+         ICM   R5,15,0(R2)        GET ADDR OF CLASS-PCB        @D51IDRP 00886000
+         BZ    SCANREA1           SKIP, IF PCB NOT AVAILABLE   @D51IDRP 00887000
+         USING PCBADR,R5          SET BASE FOR CLASS-PCB       @D36IDRP 00888000
+         TM    PCBFLAG,SUPPRPFH   PF SUPPRESSED FOR THIS CLASS @D36IDRP 00889000
+         BO    RPOSTP             YES, BRANCH                  @D36IDRP 00890000
+SCANREA1 BCT   R3,SCANREAC        TEST NEXT STAT. PART./CLASS  @D36IDRP 00891000
+         BAL   R5,PMRHWERR        ENTER HARDWAIT                        00892000
+*        R5 - ADDR OF PCB OF PARTITION/CLASS TO BE REACTIVATED @D519DRP 00893000
+RPOSTP   EQU   *                                                        00894000
+         SGCOV SGPLLEV,MC=2                                    @D52VDRP 00895000
+         AIF   (NOT &LOLEV).NOSTA63                            @DF02306 00896000
+         BR    R8                 BRANCH TO CHECKRC/RPOSTPX             00897000
+CHECKRC  L     R0,NPSQE           R0=# OF SELECT.-POOL ELEMENTS@D35EDRP 00898000
+         C     R0,PCBRCNT         REACT. COUNTER LESS THAN     @D36IDRP 00899000
+*                                 NO.OF UNFIXED PAGE FRAMES             00900000
+*                                 EQ OR GT REACTIVATION CNTER  @DF00881 00901000
+*                                 REACTIVATE PARTITION                  00902000
+         BNL   RPOSTPX            S  NO, REACTIVATE PARTITION  @DF00881 00903000
+         MVI   LTI,X'02'          S REACTIVATION NOT POSSIBLE  @DF00881 00904000
+         MVC   LTI+D1(L1),PCBRCNT+3   S SAVE REQUESTED RC-COUNTER       00905000
+         ST    R9,STSAVE          S                                     00906000
+         BAL   R9,LLTABR          S  WRITE STATISTIC TO LLTAB           00907000
+         L     R9,STSAVE          S                                     00908000
+         BR    R9                 S  RETURN TO ALLBOUND                 00909000
+RPOSTPX  EQU   *                                               @DF00881 00910000
+*        GENSERV INC,FIELD=NREACTC,REG=(R8)                    @D52VDVB 00911000
+         GENSERV INC,FIELD=NREACTC,REG=(R8)                    @D52VDVB 00912000
+.NOSTA63 ANOP                                                  @DF02306 00913000
+*        GENSERV INC,FIELD=IJBAPNO,REG=(RC)                    @D52VDVB 00914000
+         GENSERV INC,FIELD=IJBAPNO,REG=(RC)                    @D52VDVB 00915000
+*        GENSERV DEC,FIELD=NDEACTP,REG=(RC)                    @D52VDVB 00916000
+         GENSERV DEC,FIELD=NDEACTP,REG=(RC)                    @D52VDVB 00917000
+         SPACE 1                                               @DA26818 00918000
+*   INDICATE PAGEFAULT MAY BE HANDLED FOR THIS PARTITION/CLASS @D519DRP 00919000
+         SPACE 1                                               @DA26818 00920000
+         LR    R2,R5              SAVE PCB ADDRESS FOR LOLEV   @D61RDRP 00921000
+         NI    PCBFLAG,XFF-SUPPRPFH INDICATE NO PF SUPPRESSED  @DA26818 00922000
+         NI    SUPFLAG,XFF-KLLEDBT    OPEN DEACTIVATION        @D35EDGA 00923000
+*   CHECK WHETHER PART/CLASS DEACTIVATED BY TPIN               @D61RDRP 00924000
+         TM    PCBFLAG,SUPPFTPI   TPIN ACTIVE FOR PCB / CLASS  @DY43684 00925000
+         BZ    REACTP8            NO, SKIP FURTHER CHECK       @D61RDRP 00926000
+         LA    RA,TPPCBSAV-4      POINT TO PCB ADDR STRING     @D61RDRP 00927000
+REACTP2  LA    RA,4(,RA)          POINT TO 1ST/NEXT ENTRY      @D61RDRP 00928000
+         CLC   0(4,RA),F0         END OF STRING REACHED        @D61RDRP 00929000
+         BNE   REACTP6            YES, BRANCH                  @DY43697 00930000
+         CL    R5,0(,RA)          PART/CLASS DEACT. BY TPIN    @D61RDRP 00931000
+         BNE   REACTP2            NO, CHECK NEXT PCB IN LIST   @D61RDRP 00932000
+*                                 YES, REMOVE ENTRY FROM LIST  @D61RDRP 00933000
+         LA    R2,TPPCBSVE-4      GET REMAINING LENGTH ...     @D61RDRP 00934000
+         SR    R2,RA              ... TO MOVE ..               @D61RDRP 00935000
+         BCTR  R2,0               ... FOR EXECUTE              @D61RDRP 00936000
+         EX    R2,MVCPCBL         MOVE REM. PART BY ONE ENTRY  @D61RDRP 00937000
+REACTP6  NI    PCBFLAG,XFF-SUPPFTPI RESET TPIN                 @DY43684 00938000
+         LR    R2,R5              RESTORE R2 FOR LOLEV         @D61RDRP 00939000
+REACTP8  BAL   RA,REACPCB         REACTIVATE PART/CLASS        @D61RDRP 00940000
+*SGLINK REACPCB,INPUT=(R5,RA,RE,RF),WORK=(R1,R3,R5)            @D61RDRP 00941000
+         DROP  R5                 DROP BASE FOR PART/CLASS PCB @D61RDVB 00942000
+         SPACE 1                                                        00943000
+REACTPXT DS    0H                                              @D61RDVB 00944000
+         AIF   (NOT &LOLEV).NOSTA64                            @DF02306 00945000
+*    R2 - ADDR OF PCB BELONGING TO REACTIVATED PARTITION/CLASS @D519DRP 00946000
+         USING PCBADR,R2          S                            @D61RDRP 00947000
+         TM    PCBFLAG,PCBCLFLG   S  IS CLASS TO BE REACTIVATED@D51IDRP 00948000
+         BZ    REACTS1            S  NO, BRANCH                @D51IDRP 00949000
+         L     R2,PCBANPCB        S  GET 1ST PCB IN CLASS      @D51IDRP 00950000
+REACTS1  DS    0H                 S                            @D51IDRP 00951000
+         MVC   LTI(2),PCELID      S  ID OF REACTIVATED PART.   @D51IDRP 00952000
+         ST    R9,STSAVE          S                                     00953000
+         BAL   R9,LLTABR          S  WRITE STATISTIC TO LLTAB           00954000
+         L     R9,STSAVE          S                                     00955000
+         DROP  R2                 S  DROP BASE FOR PCBADR      @D61RDRP 00956000
+.NOSTA64 ANOP                                                  @DF02306 00957000
+         BAL   R5,ACTDEVCB        SET DEVSTAT OF DEVCB'S ¬EMPTY@DA42992 00958000
+         LTR   R7,R7              CALLED BY PMR OR SUBRTN      @DA26818 00959000
+         BPR   R7                 ==========>  YES, RETURN     @DA42992 00960000
+ACTPMR   DS    0H                                              @DA42992 00961000
+         L     R4,APMRTIB                                      @DA42992 00962000
+         USING TIBADR,R4                                       @DA42992 00963000
+         CLI   TIBRQID,WAITBND     CAN PMR BE ACTIVATED        @DA42992 00964000
+         BE    ACTPMR5             YES, ACTIVATE PMR           @DA42992 00965000
+         CLI   TIBRQID,SYSBND      CAN PMR BE ACTIVATED        @DA42992 00966000
+         BE    ACTPMR5             YES, ACTIVATE PMR           @DA42992 00967000
+         L     R6,DISPAD                                       @DA42992 00968000
+         USING DISP,R6             SET BASE FOR DISPATCHER     @DA42992 00969000
+         LTR   R7,R7               CALLED BY ALLBOUND          @DA42992 00970000
+         BZ    ALBRTRN             ======> YES, RETURN ALLBOUND@DA42992 00971000
+         BR    R6                  ======> NO,  EXIT TO DISP   @DA42992 00972000
+         DROP  R4                  DROP BASE FOR TIBADR        @DA42992 00973000
+         DROP  R6                  DROP BASE FOR DISPATCHER    @DA42992 00974000
+         SPACE 1                                                        00975000
+*    SGSETUP ACTIVATE,STASK=PMR,WR1=R4,WR2=R7,OPTION=SYSOWNER  @D529DRP 00976000
+         SPACE 1                                               @D14BDRP 00977000
+ACTPMR5  DS    0H                                              @DA42992 00978000
+         SGSETUP ACTIVATE,STASK=PMR,WR1=R4,WR2=R7,                     *00979000
+               OPTION=SYSOWNER                                 @D52VDRP 00980000
+         LTR   RC,RC              MORE DEACTIVATED PARTITIONS  @DA26818 00981000
+         BNP   LLPMRRET           NO --->                      @DA26818 00982000
+         LA    R1,300*4           SET TIMER INTERVALL...       @D51GDRP 00983000
+*                                  .. TO 4 SEC (4*300*2**8)    @DA26818 00984000
+         LA    RC,REACTECB                                     @DA26818 00985000
+*        SETIME (1),(RC),PREC     SET TIMER                    @DA26818 00986000
+         SETIME (1),(RC),PREC     SET TIMER                    @DA26818 00987000
+         B     LLPMRRET           ==========>   GOTO PMR TASK  @D149DVB 00988000
+         SPACE 1                                                        00989000
+MVCPCBL  MVC   0(1,RA),4(RA)      USED VIA EXECUTE             @D61RDRP 00990000
+         SPACE 2                                                        00991000
+*-------------------------------------------------------------*@D149DVB 00992000
+*    SET DEVSTAT OF ALL DEVCB'S TO NOT EMPTY                   @D14BDRP 00993000
+*     R5 - RETURN ADDRESS                                      @DA42992 00994000
+*-------------------------------------------------------------*@D149DVB 00995000
+         SPACE 1                                               @DA26818 00996000
+ACTDEVCB LH    R4,DEVCBNUM        GET NUMBER OF PDS DEVICES    @KD40259 00997000
+         L     RB,ADEVCB          GET ADDR OF 1ST DEVCB        @D14BDVB 00998000
+         USING DEVCB,RB                                        @D14BDVB 00999000
+REACTLP  NI    DEVSTAT,XFF-DEVEMPTY RESET EMPTY INDICATION     @D14BDVB 01000000
+         L     RB,DEVCBNXT        GET NEXT DEVCB               @D14BDVB 01001000
+         BCT   R4,REACTLP         HANDLE NEXT DEVCB            @D14BDVB 01002000
+         BR    R5                 =====> RETURN                @DA42992 01003000
+         DROP  RB                 DROP BASE FOR DEVCB          @D14BDVB 01004000
+         SPACE 2                                                        01005000
+*-------------------------------------------------------------*@D61RDRP 01006000
+*    DEACTIVATE OR REACTIVATE PART/CLASS                       @D61RDRP 01007000
+*      ENTRY:                                                  @D61RDRP 01008000
+*        DEACPCB - TO DEACTIVATE PART/CLASS                    @D61RDRP 01009000
+*        REACPCB - TO REACTIVATE PART/CLASS                    @D61RDRP 01010000
+*      INPUT:                                                  @D61RDRP 01011000
+*        R5 - ADDR OF PART/CLASS TO BE HANDLED                 @D61RDRP 01012000
+*        RA - RETURN ADDRESS                                   @D61RDRP 01013000
+*        RE - BASE OF DATA AREA (APMGMDAT)                     @D61RDRP 01014000
+*        RF - BASE OF CODE AREA (ALOLEV)                       @D61RDRP 01015000
+*-------------------------------------------------------------*@D61RDRP 01016000
+*SGLINK DEACPCB,S,INPUT=(R5,RA,RE,RF),WORK=(R1,R3,R5)          @D61RDRP 01017000
+DEACPCB  DS    0H                                              @D61RDVB 01018000
+         USING PCBADR,R5                                       @D61RDRP 01019000
+         LA    R3,PFDEACTX(,0)    SUPPRESS PAGE FAULT PROCESS  @D61RDVB 01020000
+         B     DEACREA0                                        @D61RDRP 01021000
+*SGLINK REACPCB,S,INPUT=(R5,RA,RE,RF),WORK=(R1,R3,R5)          @D61RDRP 01022000
+REACPCB  DS    0H                                              @D61RDVB 01023000
+         LA    R3,PFREACTX(,0)    ACTIVATE PAGE FAULT PROCESS  @D61RDVB 01024000
+DEACREA0 L     R1,DEVDEACT        DEACTIVATION QUEUE           @D61RDVB 01025000
+         TM    PCBFLAG,PCBCLFLG   CLASS PCB                    @D61RDVB 01026000
+         BZ    DEACREA1           NO, ---------->              @D61RDVB 01027000
+         DROP  R5                 DROP BASE FOR CLASS/PART PCB @D61RDVB 01028000
+*                                 YES, GET 1ST PCB IN CLASS    @D61RDRP 01029000
+         USING CPCBADR,R5         BASE FOR CLASS PCB           @D61RDRP 01030000
+*    GENSERV  TEST,FIELD=CPCBFPCB,REG=(R5),BC=BZ,LAB=(RA)      @DY43684 01031000
+     GENSERV  TEST,FIELD=CPCBFPCB,REG=(R5),BC=BZ,LAB=(RA)      @DY43684 01032000
+         USING PCBADR,R5          SET BASE FOR PART PCB        @D61RDVB 01033000
+DEACREA1 DS    0H                                              @D61RDVB 01034000
+*        DISPMAC FUNC=PFUPD,INP1=(R1),INP2=(R3),INP3=(R5)      @D61RDVB 01035000
+         DISPMAC FUNC=PFUPD,INP1=(R1),INP2=(R3),INP3=(R5)      @D61RDVB 01036000
+*    GENSERV  TEST,FIELD=PCBANPCB,REG=(R5),BC=BNZ,LAB=DEACREA1 @D61RDVB 01037000
+     GENSERV  TEST,FIELD=PCBANPCB,REG=(R5),BC=BNZ,LAB=DEACREA1 @D61RDVB 01038000
+         DROP  R5                 FORGET BASE FOR PART-PCB     @D61RDVB 01039000
+         BR    RA                 RETURN =============>        @D61RDRP 01040000
+         TITLE 'VSE/AF SUPERVISOR     SGPLLEV     LOAD LEVELER (TPIN-AN*01041000
+               D TPOUT SUPP.)'                                 @D14ZDRP 01042000
+*-------------------------------------------------------------*@D149DVB 01043000
+*     ROUTINE PROLOGUE                                         @D149DVB 01044000
+*     ROUTINE NAME:   SVC088                                   @D149DVB 01045000
+*     MACRO:          SGPLLEV                                  @D149DVB 01046000
+*     FUNCTION:       PROVIDES FUNCTION FOR TPIN-MACRO (SVC-88)@D149DVB 01047000
+*                     (TP-BALANCING)            )              @D149DVB 01048000
+*     CALLED BY:      SVC-88 AMODE(24,DATON)                   @D149DVB 01049000
+*     CALLED ROUTINES: TERMPGIN AMODE(24,DATON)                @D52VDRP 01050000
+*     INPUT:   R6 :   ADDRESS DISPATCHER                       @D149DVB 01051000
+*              IJBTPBAL: NO OF TP-BALANCED PARTITIONS          @D149DVB 01052000
+*     OUTPUT:  NO PAGE FAULTS ARE HANDLED FOR THE              @D149DVB 01053000
+*              REQUESTED NO OF TP-BALANCED PARTITIONS -        @D149DVB 01054000
+*              IF THERE ARE SUFFICIENT.                        @D149DVB 01055000
+*              CICS, VTAM, OCCF, POWER, ICCF ARE NOT           @D149DVB 01056000
+*              TP-BALANCED.                                    @D149DVB 01057000
+*              TPPCBSAV : PCB ADDRESSES OF TP-BAL. PART./CLASS @D149DVB 01058000
+*     EXIT:    DISPATCHER                                      @D149DVB 01059000
+*                                                              @D149DVB 01060000
+*     OPERATION:                                               @D149DVB 01061000
+*         SVC088:                                              @D149DVB 01062000
+*         TPVAL := IJBTPBAL      /*   IJBTPBAL VALUE LOW CORE*/@D149DVB 01063000
+*         SUPFLAG := TPBIT                                     @D149DVB 01064000
+*         IF  SUPFLAG=KLLEDT                                   @D149DVB 01065000
+*         THEN DO WHILE TPVAL > 0                              @D149DVB 01066000
+*            TPTID := TID (REQUESTING TASK)                    @D149DVB 01067000
+*            DO FOR ALL OTHER PARTITIONS /*DO NOT CONSIDER   */@D149DVB 01068000
+*                               /*PARTIT. WHICH OWNS REQ TASK*/@D149DVB 01069000
+*               GET_ADDR (PCB)                                 @D149DVB 01070000
+*               IF PCB.PCBFLAG¬=SUPPRPFH                       @D149DVB 01071000
+*                  & PCB.PCBSSFLG¬=PWR&VTAM&ICCF&OCCF&CICS     @D149DVB 01072000
+*                  & PIBFLAG1(PCB)¬=APPEN                      @D149DVB 01073000
+*                  THEN DO                                     @D149DVB 01074000
+*                      TPPCBSAV(VAR):= A(PCB)                  @D149DVB 01075000
+*                      CALL DEACPCB                            @D149DVB 01076000
+*                      GET_NEXT(VAR)                           @D149DVB 01077000
+*                  ELSE                                        @D149DVB 01078000
+*            END (DO_FOR)                                      @D149DVB 01079000
+*            DECREASE TPBAL                                    @D149DVB 01080000
+*            END (DO-WHILE)                                    @D149DVB 01081000
+*         ELSE                                                 @D149DVB 01082000
+*         SUPFLAG := KLLEDBT                                   @D149DVB 01083000
+*         RETURN                                               @D149DVB 01084000
+*         END (SVC088);                                        @D149DVB 01085000
+*-------------------------------------------------------------*@D149DVB 01086000
+         SPACE 1                                               @D149DVB 01087000
+SVC088   L     RE,APMGMDAT                                     @D35EDRP 01088000
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 01089000
+         BOR   R6                 YES, ==========> SKIP TPIN   @D61BDRP 01090000
+         L     RF,ALOLEV                                       @D35EDRP 01091000
+*        GENSERV TEST,FIELD=IJBTPBAL,REG=(R2),BC=BZ,LAB=(R6)   @D52VDVB 01092000
+         GENSERV TEST,FIELD=IJBTPBAL,REG=(R2),BC=BZ,LAB=(R6)   @D52VDVB 01093000
+         OI    SUPFLAG,TPBIT      CLOSE REACTIVATION           @D35EDGA 01094000
+         TM    SUPFLAG,KLLEDBT    IS BATCH DEACTIVATED ALREADY @D35EDGA 01095000
+         BOR   R6                 YES,EXIT                     @D31AUHL 01096000
+         LH    R4,PIK                                          @D36IDRP 01097000
+         STH   R4,TPPIK           SAVE PIK                     @D31AUHL 01098000
+         MVC   TPTID(L2),TID      SAVE TID                     @D36IDRP 01099000
+         SPACE 2                                                        01100000
+*    DEACTIVATE PAGEIN REQUESTS                                @D369DRP 01101000
+         LR    R8,RE              GET ADDR OF DATA AREA IN R8  @D36IDRP 01102000
+         L     R7,ATERMPGN        GET ENTRY ADDR               @D36IDRP 01103000
+         BALR  R7,R7              DEACTIVATE PAGEIN            @D36IDRP 01104000
+         SPACE 2                                               @D36IDRP 01105000
+*   DEACTIVATE NUMBER OF BATCH PARTITIONS INDICATED BY TPBAL   @D369DRP 01106000
+*    (VALUE CONTAINED IN R2)                                   @D369DRP 01107000
+         LA    R3,&NPART+&NCLASS  GET NO. OF PART. AND CLASSES @D51IDRP 01108000
+         LA    RA,TPPCBSAV                                     @D51IDRP 01109000
+         SGCOV SGPLLEV,MC=3                                    @D52VDRP 01110000
+TPINLP   LR    R4,R3              GET OFFSET IN                @D51IDRP 01111000
+         SLL   R4,2                 STATIC PRIORITY TABLE      @D51IDRP 01112000
+         A     R4,ASTATPOW        GET ADDR. IN STAT. PRIO. TAB.@D51IDRP 01113000
+         BCTR  R3,0               GET NEW INDEX FOR NEXT TIME  @D36IDRP 01114000
+         LTR   R3,R3              ARE WE THRU THE TABLE        @D51IDRP 01115000
+         BM    TPINEND            YES, TERMINATE               @D51IDRP 01116000
+         ICM   R7,15,0(R4)        GET ADDR OF CLASS-PCB        @D51IDRP 01117000
+         BZ    TPINLP             SKIP IF PCB NOT AVAILABLE    @D51IDRP 01118000
+         USING PCBADR,R7          SET BASE FOR CLASS-PCB       @D36IDRP 01119000
+         TM    PCBFLAG,SUPPRPFH   ALREADY DEACTIVATED          @D36IDRP 01120000
+         BO    TPINDECR           YES, BRANCH                  @D36IDRP 01121000
+         CLI   PCBPIK,XFF         CLASS ALREADY LOADED         @D51IDRP 01122000
+         BE    TPINLP             NO, SKIP                     @D51IDRP 01123000
+         SPACE 2                                                        01124000
+****   TEST FOR PARTITIONS NOT ALLOWED TO BE DEACTIVATED                01125000
+         LR    R1,R7              GET PCB IN CORRECT REGISTER  @D51IDRP 01126000
+         TM    PCBFLAG,PCBCLFLG   IS THIS A CLASS PCB          @D51IDRP 01127000
+         BZ    TPINLP1            NO, BRANCH                   @D51IDRP 01128000
+*      GENSERV TEST,FIELD=PCBANPCB,REG=(R1),BC=BZ,LAB=TPINDECR @D52VDVB 01129000
+       GENSERV TEST,FIELD=PCBANPCB,REG=(R1),BC=BZ,LAB=TPINDECR @D52VDVB 01130000
+         DROP  R7                 FORGET BASE FOR CLASS-PCB    @D51IDRP 01131000
+         USING PCBADR,R1          SET BASE FOR PARTITION PCB   @D51IDRP 01132000
+TPINLP1  CLC   PCEPIK,TPPIK       IS THIS TPIN PARTITION       @D51IDRP 01133000
+         BE    TPINLP             YES, BRANCH                  @D36IDRP 01134000
+         CLI   PCBVTCNT,ZERO      HAS PARTITION OPEN ACB'S     @D36IDRP 01135000
+         BNE   TPINDECR           YES, CONTINUE SCAN           @D36IDRP 01136000
+         TM    PCBSSFLG,PWR+VTAM+ICCF+OCCF+CICS  POWER, VTAM,          *01137000
+                                  ICCF, OCCF OR CICS           @DA26818 01138000
+         BNZ   TPINDECR           YES, CONTINUE SCAN           @D36IDRP 01139000
+         L     R5,PCEPIB          GET ADDR OF PIB              @D51IDRP 01140000
+         USING PIBADR,R5                                       @D36IDRP 01141000
+         TM    PIBPUBAS,APPEN     TP PARTITION SELECTED        @D51IDRP 01142000
+         BNZ   TPINDECR           YES, CONTINUE SCAN           @D36IDRP 01143000
+*      GENSERV TEST,FIELD=PCBANPCB,REG=(R1),BC=BNZ,LAB=TPINLP1 @D52VDVB 01144000
+       GENSERV TEST,FIELD=PCBANPCB,REG=(R1),BC=BNZ,LAB=TPINLP1 @D52VDVB 01145000
+         DROP  R5,R1              FORGET BASE FOR PIB, PCB     @D36IDRP 01146000
+         SPACE 1                                                        01147000
+         ST    R7,0(,RA)          SAVE CLASS-PCB OF DEACT.PART.@D36IDRP 01148000
+*    INDICATE NO PAGEFAULT MAY BE HANDLED FOR THIS PART./CLASS @D369DRP 01149000
+         LR    R4,RA              SAVE RA                      @D61RDRP 01150000
+         USING PCBADR,R7          SET BASE FOR CLASS-PCB       @D51IDRP 01151000
+         OI    PCBFLAG,SUPPFTPI   TPIN INDICATION              @DY43684 01152000
+         LR    R0,R3              SAVE R3                      @D61RDVB 01153000
+         LR    R5,R7              CURRENT PCB/CLASS-PCB        @D61RDVB 01154000
+         BAL   RA,DEACPCB         DEACTIVATE PART/CLASS        @D61RDRP 01155000
+*SGLINK DEACPCB,INPUT=(R5,RA,RE,RF),WORK=(R1,R3,R5)            @D61RDRP 01156000
+         DROP  R7                 DROP BASE FOR PART/CLASS PCB @D61RDVB 01157000
+         LR    R3,R0              RESTORE R3                   @D61RDVB 01158000
+TPINTPXT LA    RA,4(R4)           SET POINTER TO NEXT FIELD    @D61RDRP 01159000
+TPINDECR BCT   R2,TPINLP          CHECK NEXT PARTITION         @D36IDRP 01160000
+TPINEND  OI    SUPFLAG,KLLEDBT    INDICATE NO LOAD LEVELLING   @D36IDRP 01161000
+         BR    R6                 =========> EXIT TO DISPATCHER@D52VDRP 01162000
+         DROP  RE                 DROP BASE FOR DATA AREA      @KD40259 01163000
+         DROP  RF                 DROP BASE FOR CODE AREA      @KD40259 01164000
+         EJECT                                                 @D14ZDVB 01165000
+*-------------------------------------------------------------*@D149DVB 01166000
+*     ROUTINE PROLOGUE                                         @D149DVB 01167000
+*     ROUTINE NAME:   SVC089                                   @D149DVB 01168000
+*     MACRO:          SGPLLEV                                  @D149DVB 01169000
+*     FUNCTION:       PROVIDES FUNCTION FOR TPOUT-MACRO (SVC-89)        01170000
+*                     (TP-BALANCING)                           @KD40259 01171000
+*     ENTRY POINTS:                                            @D149DVB 01172000
+*            SVC089:  ENTERED BY SVC-89, SGAP, REACTY          @D149DVB 01173000
+*                               WITH AMODE(24,DATON)           @KD40259 01174000
+*            TPOUT:   CALLED BY SVC-43 RTN (PLOAD) VIA         @KD40259 01175000
+*                     'AMODESW CALL', AMODE(24,DATON)          @KD40259 01176000
+*     CALLED ROUTINES: ACTDEVCB                                @D149DVB 01177000
+*     INPUT:                                                   @D149DVB 01178000
+*              TPPCBSAV: PCB ADDRESSES OF TP-BAL. PART./CLASSES@D149DVB 01179000
+*            IN ADDITION IF ENTERED VIA TPOUT:                 @KD40259 01180000
+*              R7 :   RETURN ADDRESS                           @KD40259 01181000
+*              R8 :   ADDRESS OF PMGMDATA                      @KD40259 01182000
+*     OUTPUT:  REACTIVATE TP-BALANCED PARTITIONS               @D149DVB 01183000
+*     EXIT:  IF ENTERED AT SVC089,                             @D149DVB 01184000
+*              ACTPMR (REACTIVATION OF PAGE MANAGER)           @D149DVB 01185000
+*            IF ENTERED AT TPOUT, RETURN TO CALLER             @KD40259 01186000
+*                                                              @D149DVB 01187000
+*     OPERATION:                                               @D149DVB 01188000
+*         SVC089:                                              @D149DVB 01189000
+*         INDICATE NOT CALLED AS SUBROUTINE                    @KD40259 01190000
+*         TPOUT:                                               @KD40259 01191000
+*         SUPFLAG := ¬(TPBIT & KLLEDBT)                        @D149DVB 01192000
+*         DO FOR ALL TP-BALANCED PARTITIONS                    @D149DVB 01193000
+*                               /* ARE IN TPPCBSAV           */@D149DVB 01194000
+*               GET_ADDR (PCB)                                 @D149DVB 01195000
+*               IF PCB.PCBFLAG¬=SUPPRPFH                       @D149DVB 01196000
+*                  THEN DO                                     @D149DVB 01197000
+*                      CALL REACPCB                            @D149DVB 01198000
+*                  ELSE                                        @D149DVB 01199000
+*         END (DO_FOR)                                         @D149DVB 01200000
+*         CALL ACTDEVCB         /*INDICATE DEVCB'S NOT EMPTY */@KD40259 01201000
+*         CLEAR TPPCBSAV                                       @D149DVB 01202000
+*         CLEAR TPIDENT                                        @D149DVB 01203000
+*         IF CALLED AS SUBROUTINE THEN EXIT TO CALLER          @KD40259 01204000
+*         EXIT ACTPMR           /*   REACTIVATE PAGE MGR     */@D149DVB 01205000
+*         END (SVC089);                                        @D149DVB 01206000
+*-------------------------------------------------------------*@D149DVB 01207000
+         SPACE 1                                                        01208000
+TPOUT    DS    0H                 ENTRY FOR SUBROUTINE LINKAGE @KD40259 01209000
+*SGLINK  TPOUT,S,INPUT=(R7:RETURN,R8:APMGMDAT),AMODE=24        @KD40259 01210000
+         USING PMGMDATA,R8        SET BASE FOR DATA AREA       @KD40259 01211000
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 01212000
+         BOR   R7                 YES, =======> RETURN         @D61BDRP 01213000
+         STM   R0,RF,SAVELL       SAVE CALLERS REGISTERS       @KD40259 01214000
+         L     RF,ALOLEV          GET CODE AREA BASE           @KD40259 01215000
+         USING LOLEV,RF                                        @KD40259 01216000
+         LR    RE,R8              GET DATA AREA BASE           @KD40259 01217000
+         DROP  R8                 DROP BASE FOR DATA AREA      @KD40259 01218000
+         SGCOV SGPLLEV,MC=4       CALLED AS SUBROUTINE         @D52VDRP 01219000
+         B     SVC0891                                         @KD40259 01220000
+         DROP  RF                 DROP BASE FOR CODE AREA      @KD40259 01221000
+         SPACE 1                                                        01222000
+SVC089   SLR   R7,R7              INDICATE CALLED VIA SVC089   @KD40259 01223000
+         L     RE,APMGMDAT        GET DATA AREA BASE           @D35EDRP 01224000
+         USING PMGMDATA,RE                                     @KD40259 01225000
+         L     RF,ALOLEV          GET CODE AREA BASE           @D36IDRP 01226000
+         USING LOLEV,RF                                        @KD40259 01227000
+         STM   R0,RF,SAVELL       SAVE REGISTERS               @KD40259 01228000
+SVC0891  NI    SUPFLAG,XFF-TPBIT-KLLEDBT  OPEN REACTIVATION    @DA11955 01229000
+*   REACTIVATE PARTITIONS DEACTIVATED BY PREVIOUS TPIN-REQUEST @D369DRP 01230000
+         L     R6,DISPAD          GET DISPATCHER ADDRESS       @KD40259 01231000
+         USING DISP,R6                                         @D36IDRP 01232000
+         TM    IJBFLG08,IJBNOPDS  NON PDS SYSTEM               @D61BDRP 01233000
+         BOR   R6                 YES, =======> EXIT TO DISP   @D61BDRP 01234000
+         LA    R2,TPPCBSAV                                     @D61RDVB 01235000
+TPOUTLP  L     RB,0(,R2)          GET A(CLASS-PCB)             @D61RDVB 01236000
+         LTR   RB,RB              END OF LIST REACHED          @D36IDRP 01237000
+         BZ    TPOUTEND           YES, BRANCH                  @D36IDRP 01238000
+         SGCOV SGPLLEV,MC=5                                    @D52VDRP 01239000
+         USING PCBADR,RB          SET BASE FOR CLASS-PCB       @DA26818 01240000
+         NI    PCBFLAG,XFF-SUPPFTPI RESET TPIN INDICATION      @DY43684 01241000
+         TM    PCBFLAG,SUPPRPFH   MEANWHILE DEACT. BY LOAD-LEV.@D36IDRP 01242000
+*           THIS IS ONLY POSSIBLE IF APNO=0 AND TPIN ACTIVE    @D369DRP 01243000
+         BO    TPOUTLP1           YES, SKIP REACT. BY TPOUT    @D36IDRP 01244000
+*    INDICATE PAGEFAULT MAY BE HANDLED FOR THIS PARTITION      @D369DRP 01245000
+         LR    R5,RB              GET CURRENT PCB/CLASS-PCB    @D61RDVB 01246000
+         BAL   RA,REACPCB         REACTIVATE PART/CLASS        @D61RDRP 01247000
+*SGLINK REACPCB,INPUT=(R5,RA,RE,RF),WORK=(R1,R3,R5)            @D61RDRP 01248000
+         DROP  RB                 DROP BASE FOR PART/CLASS PCB @DA26818 01249000
+TPOUTLP1 LA    R2,4(,R2)          GET ADDR OF NEXT FIELD       @D61RDVB 01250000
+         B     TPOUTLP            GET NEXT PARTITION           @D36IDRP 01251000
+TPOUTEND XC    TPPCBSAV,TPPCBSAV  CLEAR SAVE AREA FOR PIK/4    @D36IDRP 01252000
+         XC    TPIDENT,TPIDENT    CLEAR TASK ID'S OF TPIN TASK @D36IDRP 01253000
+         BAL   R5,ACTDEVCB        SET DEVCB'S TO NOT EMPTY     @DA42992 01254000
+         LTR   R7,R7              CALLED AS SUBROUTINE         @DA42992 01255000
+         BZ    TPOUTND1           NO, ---> BRANCH              @KD40259 01256000
+         DROP  RE,RF              DROP BASE FOR DATA AND CODE  @KD40259 01257000
+         LA    R8,PMRTID          POST PMR ...                 @KD40259 01258000
+         BAL   RF,IOPOST0         ... TASK                     @KD40259 01259000
+*SGLINK  IOPOST0,INPUT=(R6:DISP,R8:TID,RF:RETURN),WORK=(R8,RE) @KD40259 01260000
+         L     RE,APMGMDAT        GET DATA AREA BASE           @KD40259 01261000
+         USING PMGMDATA,RE        RESET DATA AREA BASE         @KD40259 01262000
+         LM    R0,RF,SAVELL       RESTORE CALLERS REGISTERS    @KD40259 01263000
+*        AMODESW RETURN,REG=(R7)  ======> RETURN TO CALLER     @KD40259 01264000
+         AMODESW RETURN,REG=(R7)  ======> RETURN TO CALLER     @KD40259 01265000
+         SPACE 1                                                        01266000
+         USING LOLEV,RF           RESET CODE AREA BASE         @KD40259 01267000
+TPOUTND1 SGSETUP UPDTIME,NEXTPCB=ASYSPCB,OPTION=OWNER,                 *01268000
+               WR1=RB,WR2=R4,WR3=R7                            @DA34439 01269000
+         SLR   RC,RC              INDICATE NO TECB_EXIT FROM ...       *01270000
+                                  ... PAGE MANAGER             @DA26818 01271000
+         LR    R7,RC              INDICATE ...                 @DA26818 01272000
+         BCTR  R7,0               ...      NO ALLBOUND INVOC.  @DA42992 01273000
+         B     ACTPMR             ACTIVATE PMR                 @D51IDRP 01274000
+         DROP  R6                 FORGET BASE FOR DISP         @D36IDRP 01275000
+         AIF   (NOT &LOLEV).NODEGR4                            @DF02306 01276000
+WTIME1   STCK  GTTIME             S  GET TIME OF DAY                    01277000
+         NI    GTTIME+D1,XFF-X'20' S  DELETE HIGH ORDER BIT             01278000
+         LM    R2,R3,GTTIME       S                                     01279000
+         SLDL  R2,10              S  GET 1 MSEC AS INCREMENT            01280000
+         ST    R2,SYSDWT          S  SAVE START OF SYSTEM WAIT          01281000
+         BR    R9                 S  RETURN TO ALLBND                   01282000
+         SPACE 1                                                        01283000
+WTIME2   L     R1,SYSDWT          S                                     01284000
+         LTR   R1,R1              S  START TIME SET ?                   01285000
+         BCR   4,R9               S  NO, RETURN TO INTERRUPT HANDLER    01286000
+         STCK  GTTIME             S  GET TIME OF DAY                    01287000
+         NI    GTTIME+D1,XFF-X'20' S  DELETE HIGH ORDER BIT             01288000
+         LM    R2,R3,GTTIME       S                                     01289000
+         SLDL  R2,10              S  GET 1 MSEC AS INCREMENT            01290000
+         SR    R2,R1              S  GET SYSTEM WAIT TIME               01291000
+         SLL   R2,1               S                                     01292000
+         SRL   R2,1               S                                     01293000
+         LR    R3,R2              S                                     01294000
+         A     R3,WCTR            S  GET SUM OF SYSTEM WAIT TIMES       01295000
+         ST    R3,WCTR            S                                     01296000
+         LR    R3,R2              S                                     01297000
+         A     R3,WTD             S  GET SYSTEM WAIT TIME DURING        01298000
+*                                 S  DEACTIVATION INTERVALL             01299000
+         ST    R3,WTD             S                                     01300000
+         LR    R3,R2              S                                     01301000
+         A     R3,WTR             S  GET SYSTEM WAIT TIME DURING        01302000
+*                                 S  REACTIVATION INTERVALL             01303000
+         ST    R3,WTR             S                                     01304000
+         CLI   PGQOCNT+1,PGQOMAX  S ARE PAGE-OUT REQUESTS ENQ. @D14BDRP 01305000
+         BNE   WTIME2X            S  YES                       @D14BDRP 01306000
+         L     R3,ASYSPCB                                               01307000
+         TM    PMRBYTE-SYSPCB(R3),PMRBIT IS PMR ACTIVE         @D51IDRP 01308000
+         BO    WTIME2X            S        YES, BRANCH         @D51IDRP 01309000
+         A     R2,WPCTR           S  GET SUM OF SYSTEM WAIT TIMES       01310000
+*                                 S  WITHOUT PAGE-I/O                   01311000
+         ST    R2,WPCTR           S                                     01312000
+WTIME2X  SR    R2,R2              S                                     01313000
+         BCTR  R2,R0              S  SET NEG. VALUE AS START OF         01314000
+*                                 S  SYSTEM WAIT                        01315000
+         ST    R2,SYSDWT          S                                     01316000
+         BR    R9                 S  RETURN TO INTERRUPT HANDLER        01317000
+         SPACE 1                                                        01318000
+         DS    0F                 S                                     01319000
+SYSDWT   DC    4X'FF'             S  START OF SYSTEM WAIT               01320000
+GTTIME   DC    D'0'               S  TIME OF DAY                        01321000
+.NODEGR4 ANOP                                                           01322000
+         DROP  RE,RF                                           @D35EDRP 01323000
+         MEND                                                           01324000

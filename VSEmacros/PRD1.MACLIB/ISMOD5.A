@@ -1,0 +1,424 @@
+.* IBM DISK OPERATING SYSTEM                                   @DL29ZCN 00050000
+.* ISFMS - ISMOD5 - 5686-007-02-C440                           @U31TUJS 00100000
+.* COPYRIGHT = THIS MACRO IS "RESTRICTED MATERIALS OF IBM"     @D41TDKY 00150000
+.*             5686-007 (C) COPYRIGHT IBM CORP. 1977,1989      @U31TUJS 00200000
+.*             ALL RIGHTS RESERVED                             @U31TUJS 00250000
+.*             LICENSED MATERIALS - PROPERTY OF IBM            @U31TUJS 00300000
+.*             SEE COPYRIGHT INSTRUCTIONS, G120-2083           @U31TUJS 00350000
+* ISFMS - ISMOD5 - 5686-007-02-C440                            @U31TUJS 00400000
+         DC    X'7961'                  SEARCH KEY EQUAL/HIGH.          00450000
+* CCW CONTENTS: X'69', POINTER TO KEYARG, FLAGS 60, KEYLENGTH.          00500000
+         AIF   (NOT &SW(15)).IP1        RPS NOT SPECIFIED      @DL30SMP 00550000
+         DC    X'0E6B'                  TIC TO *+24            @DL30SMP 00600000
+* CCW CONTENTS  X'08', POINTER TO *+24, FLAGS 60, 5.           @DL30SMP 00650000
+         DC    X'F081' .                SET SECTOR (ARG = 0)   @DL30SMP 00700000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 00750000
+         AGO   .IP2                                            @DL30SMP 00800000
+.IP1     ANOP                                                  @DL30SMP 00850000
+         DC    X'0C6B'                  TIC TO *+16.                    00900000
+* CCW CONTENTS: X'08', POINTER TO *+16, FLAGS 60, 5.                    00950000
+.IP2     ANOP                                                  @DL30SMP 01000000
+         DC    X'D17B'                  READ HOME ADDRESS.              01050000
+* CCW CONTENTS: X'1A', 'IJHACTNA', FLAGS 70, 5.                         01100000
+         DC    X'516C'                  READ ID (MULTI/TRACK).          01150000
+* CCW CONTENTS: X'92', 'IJHACTNA', FLAGS 60, 10.                        01200000
+         DC    X'7961'                  SEARCH KEY EQUAL/HIGH.          01250000
+* CCW CONTENTS: X'69', POINTER TO KEYARG, FLAGS 60, KEYLENGTH.          01300000
+         DC    X'046B'                  TIC TO *-16.                    01350000
+* CCW CONTENTS: X'08', POINTER TO *-16, FLAGS 60, 5.                    01400000
+         DC    X'150C'                  READ NEXT INDEX ADDRESS.        01450000
+* CCW CONTENTS: X'06', 'IJHACTIN', FLAGS 00, 10.                        01500000
+         AIF   (NOT &SW(23)).IQ1                                   3-10 01550000
+         LA    4,IJHACTIN               IOAREA ADDRESS              3-4 01600000
+         AIF   (&SW(24)).IQ             RDONLY SPECIFIED       @DL30SMP 01650000
+         ST    4,IJHEWORK                                           3-4 01700000
+         MVI   IJHEWORK,X'12'           INDICATE READ MASTER INDEX  3-4 01750000
+         TM    IJHCILN,X'02'            IF MASTER INDEX PRESENT,    3-4 01800000
+         BO    *+8                        GO HERE                   3-4 01850000
+IJHCAAB  MVI   IJHEWORK,X'22'           INDICATE READ CYLINDER INDEX3-4 01900000
+         AGO   .IR                                                  3-4 01950000
+.IQ      ANOP                                                       3-4 02000000
+         ST    4,44(13)                                             3-4 02050000
+         MVI   44(13),X'12'             INDICATE READ MASTER INDEX  3-4 02100000
+         TM IJHCILN,X'02'               IF MASTER INDEX PRESENT,    3-4 02150000
+         BC    1,*+8                        GO HERE                 3-9 02200000
+IJHCAAB  EQU   *                                                    3-4 02250000
+         MVI   44(13),X'22'             INDICATE READ CYLINDER INDEX3-4 02300000
+.IQ1     AIF   (NOT &SW(24)).IR        RDONLY NOT SPECIFIED    @DL30SMP 02350000
+         L  13,IJHADKEY                RELOAD R13                   3-4 02400000
+.IR      ANOP                                                       3-4 02450000
+IJHCHKIN OI    IJHCNTSW,X'01'          SET SEEK SWITCH ***          3-4 02500000
+         BAL   4,IJHCXCOR              EXCP AND WAIT  ***           3-4 02550000
+         TM    IJHCNTSW,X'01'          NEED SEEK CHECK  **          3-4 02600000
+         BZ    IJHACFLL                NO,  ****                    3-4 02650000
+         L     9,IJHAHRAA+4            COUNT AREA FOR SEEK CHECK *  3-4 02700000
+         BAL   4,IJHSKERR              TEST FOR OVER/UNDER SEEK  ** 3-4 02750000
+         B     IJHACINX                RE-EXECUTE CCW CHAIN         3-4 02800000
+         NI    IJHCNTSW,X'FE'          TURN OFF SEEK SWITCH  ***    3-4 02850000
+         TM    IJHCNTSW,X'80'          OVER/UNDER SWITCH ON        3-8  02900000
+         BZ    IJHACFLL                NO                          3-8  02950000
+         LA    4,IJHCHKIN+8            RESTORE REG 4               3-8  03000000
+         B     IJHBUMP                 YES, RETURN TO FINSIH WAIT  3-8  03050000
+IJHACFLL MVC   IJHCSADR(8),IJHACTIN     GET NEXT LEVEL INDEX POINTER.   03100000
+         LA    4,IJHACFLL               INITIALIZE RETURN ADDR.     3-6 03150000
+         TM    IJHACTIN+8,X'28'         IF A DUMMY CHAINED ENTRY,       03200000
+         BO    IJHCEXWT                   BRANCH TO CONTINUE SEARCH.    03250000
+         BM    IJHAEBEG                 IF AN INACTIVE ENTRY, OR A      03300000
+*                                         DUMMY END ENTRY, GO TO        03350000
+*                                         PROCESS RECORD PAST LAST KEY. 03400000
+         TM    IJHCILN,X'02'            IF NO MASTER INDEX,             03450000
+         BC    12,IJHAA12                 GO HERE.                      03500000
+         AIF   (NOT &SW(21)).IS                                     3-9 03550000
+         TM    IJHCOPT,X'10'            IF INDEX IN CORE IS SPECIFIED,  03600000
+         BZ    IJHRDCI                 BRANCH TO READ CYL INDEX     3-4 03650000
+         LH    10,IJHNEG40             LOAD BASE                    3-4 03700000
+         AR    10,3                                                 3-4 03750000
+         TM    IJHCORBT,X'10'          NEED TO SEARCH CYL INDEX     3-4 03800000
+         BZ    IJHAA12                 NO,BRANCH                    3-4 03850000
+         NI    IJHCORBT,X'EF'                                       3-4 03900000
+.IS      ANOP                                                       3-9 03950000
+         AIF   (NOT &SW(23)).IU                                     3-4 04000000
+         LA    4,IJHACTIN               IOAREA ADDRESS              3-4 04050000
+         AIF   (&SW(24)).IT            RDONLY SPECIFIED        @DL30SMP 04100000
+         ST    4,IJHEWORK                                           3-4 04150000
+         MVI   IJHEWORK,X'22'           INDICATE READ CYLINDER INDEX3-4 04200000
+         AGO   .IU                                                  3-4 04250000
+.IT      LR    IJHREG13,IJHREG0        RESTORE POINTER              3-9 04300000
+         ST    4,44(13)                                             3-4 04350000
+         MVI   44(13),X'22'             INDICATE READ CYLINDER INDEX3-4 04400000
+.IU      ANOP                                                       3-4 04450000
+IJHRDCI  BAL   4,IJHCEXWT              EXCP AND WAIT (CYL INDEX)    3-4 04500000
+         EX    0,IJHACFLL               GET TRACK INDEX POINTER.        04550000
+IJHAA12  MVC   IJHACTIA(10),IJHCSADR    SAVE TRACK INDEX ADDRESS.       04600000
+         BAL   4,IJHCBLD1               BRANCH TO CCW BUILDER.          04650000
+*****                 TRACK INDEX SEARCH                          ***** 04700000
+         AIF   (NOT &SW(15)).IU1        RPS NOT SPECIFIED      @DL30SMP 04750000
+         DC    X'F041' .                SET SECTOR (ARG = 0)   @DL30SMP 04800000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 04850000
+.IU1     ANOP                                                  @DL30SMP 04900000
+         DC    X'8C4B'                  SEARCH ID IQUAL.                04950000
+* CCW CONTENTS: X'31', 'IJHCSADR+3', FLAGS 40, 5.                       05000000
+         DC    X'066B'                  TIC TO *-8.                     05050000
+* CCW CONTENTS: X'08', POINTER TO *-8, FLAGS 60, 5.                     05100000
+         DC    X'106C'                  READ COCR.                      05150000
+* CCW CONTENTS: X'06', 'IJHACOCR'S FLAGS 60, 10.                        05200000
+         DC    X'516C'                  READ COUNT (MULTI/TRACK).       05250000
+* CCW CONTENTS: X'92', 'ISHACTNA', FLAGS 60, 10.                        05300000
+         DC    X'7941'                  SEARCH KEY EQUAL/HIGH.          05350000
+* CCW CONTENTS: X'69', POINTER TO KEYARG, FLAGS 40, KEY LENGTH.         05400000
+         DC    X'046B'                  TIC TO *-16.                    05450000
+* CCW CONTENTS: X'08', POINTER TO *-16, FLAGS 60, 5.                    05500000
+         DC    X'156C'                  READ TRACK ADDRESS.             05550000
+* CCW CONTENTS: X'06', 'IJHACTIN', FLAGS 60, 10.                        05600000
+         DC    X'526C'                  READ COUNT (MULTI/TRACK).       05650000
+* CCW CONTENTS: X'92', 'IJHACTOA', FLAGS 60, 10.                        05700000
+         DC    X'1D0C'                  READ OVERFLOW ADDRESS.          05750000
+* CCW CONTENTS: X'06', 'IJHCBCKT', FLAGS 00, 10.                        05800000
+         AIF   (NOT &SW(23)).IW                                     3-4 05850000
+         AIF   (&SW(24)).IV             RDONLY SPECIFIED       @DL30SMP 05900000
+         MVI   IJHEWORK,X'42'           INDICATE READ TRACK INDEX   3-4 05950000
+         AGO   .IW                                                  3-4 06000000
+.IV      ANOP                                                       3-4 06050000
+         MVI   44(13),X'42'             INDICATE READ TRACK INDEX   3-4 06100000
+.IW      ANOP                                                       3-4 06150000
+         B     IJHAA42                  EXCP & RETURN TO USER.          06200000
+IJHAWTNK LM    IJHARG4,IJHARG6,IJHAARAD GET POINTERS.                   06250000
+         TM    IJHAGATE,X'01'           FOR EOF ADD,                    06300000
+         BO    IJHAQUA                    GO HERE.                      06350000
+         EX    0,IJHACFLL               MOVE TRACK INDEX POINTER INTO   06400000
+*        MVC   IJHCSADR(8),IJHACTIN       SEEK/SEARCH BUCKET.           06450000
+         TM    IJHACTIN+8,X'10'         IF NORMAL ADDITION TO PRIME     06500000
+         BZ    IJHAA23                    DATA AREA, GO HERE.           06550000
+         B     IJHAOBEG                 GO TO OVERFLOW TRACK ROUTINE.   06600000
+         AGO   .D8                                                  3-4 06650000
+.IX      ANOP                                                       3-4 06700000
+*****       SUBROUTINE TO UPDATE A DISK ADDRESS                   ***** 06750000
+IJHACUOV LA    8,IJHAOCOH+1             ENTRY TO UPDATE OVERFLOW        06800000
+         B     IJHAA13                    ADDRESS (GET HIGH RECORD #).  06850000
+IJHACUPD LA    8,4                                             @DL2W721 06900000
+         SR    9,8                                                  4-0 06950000
+         CLI   0(9),X'02'                                      @DA15889 07000000
+         BE    IJHAA13B                BRANCH IF YES                4-0 07050000
+         SR    8,8                                             @DM05927 07100000
+         IC    8,IJHCPDDV              GET PD DEVICE TYPE      @DM05927 07150000
+         LA    8,IJHAA13A(8)           ADD TABLE ADDRESS       @DM05927 07200000
+         MVC   IJHAOCOH+6(1),0(8)      SET C2 UPPER LIMIT      @DL2W721 07250000
+IJHAA13B LA    8,4                     RESTORE 8               @DL2W721 07300000
+         AR    9,8                     RESTORE 9               @DL2W721 07350000
+         LA    8,IJHACLTR              GET CNTRL FIELD         @DL2W721 07400000
+IJHAA13  CLC   0(1,9),0(8)              COMPARE RECORD NUMBER TO MAX.   07450000
+         BNE   IJHAA14                  IF NOT FULL, GO HERE.           07500000
+         MVI   0(9),X'00'               RESET TO ZERO.                  07550000
+         BCTR  9,0                      BACK POINTERS UP ONE BYTE       07600000
+         BCT   8,IJHAA13                  AND BRANCH.                   07650000
+IJHAA14  SR    8,8                      BUMP ID BY ONE.                 07700000
+         IC    8,0(9)                                                   07750000
+         LA    8,1(8)                                                   07800000
+         STC   8,0(9)                                                   07850000
+         SR    8,8                                             @DM05927 07900000
+         IC    8,IJHCPDDV              GET PD DEVICE TYPE      @DM05927 07950000
+         LA    8,IJHAA13C(8)           ADD TABLE ADDRESS       @DM05927 08000000
+         MVC   IJHAOCOH+6(1),0(8)      RESET C2 UPPER LIMIT    @DL2W721 08050000
+         BR    4                        RETURN TO CALLING ROUTINE.      08100000
+IJHAA13A DC    X'C7C70500FF00000000FFFF'       UPPER C2 LIMITS @DL2W721 08150000
+IJHAA13C DC    X'C7C7050093000000005BB7'                       @DL2W721 08200000
+*********************************************************************** 08250000
+*NAME: P-CODE ROUTINE.                                                * 08300000
+*FUNCTION: TO DEVELOP P-CODE FOR SEQUENCE LINK FIELD.                 * 08350000
+*ENTRY POINT: 'IJHACDVP'.                                             * 08400000
+*INPUT: 'IJHCSADR' CONTAINS ADDRESS OF RECORD TO BE ADDED, LESS ONE.  * 08450000
+*       'IJHARG3'(#6) POINTS TO DISPLACEMENT OF POINTER TO SL FIELD.  * 08500000
+*OUTPUT: P-BYTE CONTAINS HEAD SEEK, OR LONG SEEK, AS APPLICABLE.      * 08550000
+*EXIT: B 2(IJHARG3), RETURN TO CALLING ROUTINE.                       * 08600000
+*EXTERNAL ROUTINES: NONE.                                             * 08650000
+*REGISTER USE: #6, #8.                                                * 08700000
+*NOTES: NONE.                                                         * 08750000
+*********************************************************************** 08800000
+IJHACDVP LH    IJH10,0(IJHARG3)         GET POINTER TO SEQUENCE LINK    08850000
+         L     IJH10,0(IJH10,1)           FIELD.                        08900000
+         MVI   9(IJH10),X'07'           MOVE IN LONG SEEK.              08950000
+         CLC   0(1,IJH10),IJHCSADR      IF NEW OVERFLOW REC & LAST ARE  09000000
+         BNE   2(IJHARG3)                 NOT IN SAME EXTENT, LONG      09050000
+*                                         SEEK IS NEEDED.               09100000
+         CLC   3(2,IJH10),IJHCSADR+3    IF NOT ON SAME CYLINDER, LONG   09150000
+         BNE   2(IJHARG3)                 SEEK IS NEEDED.               09200000
+         MVI   9(IJH10),X'1B'           MOVE IN HEAD SEEK.              09250000
+         B     2(IJHARG3)               RETURN.                         09300000
+***** ROUTINE TO INCREMENT PRIME RECORD COUNT BY ONE              ***** 09350000
+IJHACUPP L     IJH10,IJHACPRC           GET COUNT.                      09400000
+         LA    IJH10,1(IJH10)           BUMP COUNT BY ONE.              09450000
+         ST    IJH10,IJHACPRC                                           09500000
+         BR    9                        RETURN TO CALLING ROUTINE   3-4 09550000
+*****   SUBROUTINE TO SET UP TRACK CONTROL FOR SHARED OR NORMAL   ***** 09600000
+IJHACDTR MVC   IJHACLTR(1),IJHCPDH      MOVE HIGH RECORD # ON PRIME     09650000
+*                                         DATA TRACK INTO RECORD CHANGE 09700000
+*                                         LIMIT.                        09750000
+         TM    IJHACTIN+8,X'08'         IF IT IS NOT A SHARED TRACK,    09800000
+         BCR   8,IJHARG3                  RETURN.                       09850000
+         MVC   IJHACLTR(1),IJHCSTH      GET HIGH # ON SHARED TRACK.     09900000
+IJHAENT  MVC   IJHCSADR+6(2),IJHCDRCY   INSERT POINTER TO FIRST DATA    09950000
+         SR    4,4                        RECORD ON CYLINDER, AND       10000000
+         IC    4,IJHCSADR+7               DECREMENT BY ONE.             10050000
+         BCTR  4,0                                                      10100000
+         STC   4,IJHCSADR+7                                             10150000
+         BR    IJHARG3                  BACK TO MAIN ROUTINE.           10200000
+***** THIS ROUTINE SETS UP THE LAST TRACK INDEX ADDRESS           ***** 10250000
+IJHACLTI MVC   IJHCSADR(8),IJHCCLPA     GET LAST PRIME DATA RECORD      10300000
+         MVC   IJHCSADR+3(5),IJHACLTA     ADDRESS, AND MODIFY IT TO     10350000
+         MVC   IJHACTNA(5),IJHACLTA       GIVE LAST TRACK INDEX ENTRY.  10400000
+         XC    IJHCSADR+6(2),IJHCSADR+6 GET COCR ADDRESS.               10450000
+         BR    IJHARG3                  RETURN TO CALLING ROUTINE.      10500000
+*****  SUBROUTINE TO CONSTRUCT TRACK INDEX OVERFLOW ENTRY         ***** 10550000
+IJHAOMTO MVC   IJHCSADR(10),IJHACTIA    GET TRACK INDEX ADDR INTO       10600000
+*                                         SEEK ADDR.                    10650000
+         AIF   (&SW(24)).IY             RDONLY SPECIFIED       @DL30SMP 10700000
+         MVC   IJHCBCKT(10),IJHAOMBB    GET NEW OVFLO REC. ADDRESS.     10750000
+         AGO   .IZ                                                  3-3 10800000
+.IY      ANOP                                                       3-3 10850000
+         LR    13,0                     POINT TO SAVE AREA          3-4 10900000
+         MVC   IJHCBCKT(8),60(13)      GET NEW OVERFLOW RECORD ADDR 3-3 10950000
+         MVC   IJHCBCKT+8(2),IJHACOLS                               3-3 11000000
+.IZ      ANOP                                                       3-3 11050000
+         BR    IJHARG2                  RETURN TO CALLING ROUTINE.      11100000
+***** ROUTINE TO GET POINTER AND HIGH KEY FOR NORMAL ENTRY              11150000
+IJHACBKI LH    IJHA4,IJHCKYSZ           MOVE KEY OF LAST RECORD ON      11200000
+         BCTR  IJHA4,0                    PRIME DATA TRACK TO IOAREAL.  11250000
+         EX    IJHA4,IJHAA21                                            11300000
+         AH    IJHARG4,IJHCKYSZ         INSERT POINTER TO PRIME DATA    11350000
+IJHAA15  MVC   8(10,IJHARG4),IJHACTIN     TRACK.                        11400000
+         L     IJHARG4,IJHAARAD                                         11450000
+         BR    IJHARG3                                                  11500000
+*********************************************************************** 11550000
+*NAME: WRITE EOF RECORD.                                              * 11600000
+*FUNCTION: TO WRITE THE EOF RECORD AFTER ADDING TO A PRIME DATA TRACK.* 11650000
+*ENTRY POINT: 'IJHACEOF'.                                             * 11700000
+*INPUT: LAST PRIME DATA RECORD ADDRESS IN 'IJHACRID'.                 * 11750000
+*OUTPUT: EOF RECORD WRITTEN.                                          * 11800000
+*EXIT: BR IJHARG2, RETURN TO CALLING ROUTINE.                         * 11850000
+*EXTERNAL ROUTINES: 'IJHACUPD'--UPDATE A DISK ADDRESS.                * 11900000
+*                   'IJHAIOOP'--EXCP, WAIT, ERROR TEST.               * 11950000
+*REGISTER USE: #4 THRU #6, #9.                                        * 12000000
+*********************************************************************** 12050000
+IJHACEOF EX    0,IJHACGTO               GET LAST PRIME DATA RECORD      12100000
+         LA    9,IJHCSADR+7               ADDRESS INTO SEEK ADDRESS.    12150000
+         BAL   4,IJHACUPD               BUMP ID TO GET EOF ID.          12200000
+         XC    IJHCSADR+1(2),IJHCSADR+1  CLEAR BIN NUMBER           3-7 12250000
+         CLC   IJHCCLPA(7),IJHCSADR    IF EOF ID ON NEXT TRACK,         12300000
+         BNE   IJHACACH                   GO HERE.                      12350000
+IJHACIN4 MVC   IJHACFID(5),IJHCSADR+3   SAVE EOF ID.                    12400000
+         EX    0,IJHACGTO               GET LAST PRIME DATA RECORD      12450000
+*                                         ADDRESS INTO SEEK ADDRESS.    12500000
+IJHACDOF BAL   IJHA4,IJHCBLD1           BUILD CCW TO WRITE NEW EOF.     12550000
+         AIF   (NOT &SW(15)).IZ1        RPS NOT SPECIFIED      @DL30SMP 12600000
+         DC    X'F101' .                SET SECTOR             @DL30SMP 12650000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 12700000
+.IZ1     ANOP                                                  @DL30SMP 12750000
+         DC    X'8C4B'                  SEARCH ID EQUAL.                12800000
+*CCW CONTENTS: X'31', 'IJHCSADR+3', FLAGS 40, 5.                        12850000
+         DC    X'066B'                  TIC TO *-8.                     12900000
+* CCW CONTENTS: X'08', POINTER TO *-8, FLAGS 60, 5.                     12950000
+         DC    X'342C'                  WRITE COUNT, KEY, DATA.         13000000
+*CCW CONTENTS: X'1D', 'IJHACFID', FLAGS 20, 10.                         13050000
+         AIF   (NOT &SW(23)).I1                                     3-4 13100000
+         LA    4,IJHACFID               IOAREA ADDRESS              3-4 13150000
+         AIF   (&SW(24)).I0             RDONLY SPECIFIED       @DL30SMP 13200000
+         ST    4,IJHEWORK                                           3-4 13250000
+         MVI   IJHEWORK,X'89'           INDICATE WRITE DATA         3-4 13300000
+         AGO   .I1                                                  3-4 13350000
+.I0      ANOP                                                       3-4 13400000
+         ST    4,44(13)                                             3-4 13450000
+         MVI   44(13),X'89'             INDICATE WRITE DATA         3-4 13500000
+.I1      AIF   (NOT &SW(11)).I2                                     3-9 13550000
+         BAL   IJHREG7,IJHCEXCP        GO TO EXCP                   3-9 13600000
+         TM    IJHCCCB+2,IJHWTBIT      WAIT                         3-9 13650000
+         BO    *+6                                                  3-9 13700000
+         SVC   IJHSVC7                                              3-9 13750000
+         MVC   IJHCSADR(IJHDL8),IJHCCLPA RESTORE PRIME DATA ADDRESS 3-9 13800000
+         BAL   IJHREG10,IJHCMCAL       GET LOGICAL UNIT NUMBER      3-9 13850000
+         BAL   IJHREG4,IJHCERRT        TEST FOR ERRORS              3-9 13900000
+         SVC   IJHSVC36                FREE HELD TRACK              3-9 13950000
+         NI    IJHCILN,X'FF'-IJHTRKHD  CLEAR DATA TRACK HELD BIT    3-9 14000000
+         AGO   .I3                                                  3-9 14050000
+.I2      ANOP                                                       3-9 14100000
+         BAL   4,IJHAIOOP               EXCP, WAIT, ERROR TEST.         14150000
+.I3      ANOP                                                       3-9 14200000
+         BR    IJHARG2                  RETURN TO CALLING ROUTINE.      14250000
+***** EOF RECORD ON NEW TRACK                                     ***** 14300000
+IJHACACH CLI   IJHCSADR+6,X'00'         FOR EOF ON SAME CYLINDER,       14350000
+         BNE   IJHAA16                    GO HERE.                      14400000
+         CLI   IJHCPDDV,X'02'          PD ON 2321                   4-0 14450000
+         BE    IJHAA19                 YES,BRANCH                   4-0 14500000
+         CLC   IJHCSADR+3(2),IJHAA18   FOR SAME DISK PACK           4-0 14550000
+         BNE   IJHAA17                    GO HERE.                      14600000
+         MVI   IJHCSADR+4,X'01'         ADJUST CYL ADDR TO SKIP VTOC.   14650000
+IJHAA17  BAL   IJHARG3,IJHAENT          INSERT POINTER TO FIRST DATA    14700000
+*                                         RECORD ON CYLINDER LESS ONE.  14750000
+         MVC   IJHACFID(3),IJHCSADR+3   GET EOF ID ON SHARED TRACK  3-4 14800000
+         MVC   IJHACFID+3(2),IJHCDRCY                               3-4 14850000
+         B     IJHACDOF                 WRITE EOF RECORD            3-4 14900000
+IJHAA16  EX    0,IJHACIN4               GET EOF ID LESS ONE.            14950000
+         LA    9,IJHACFID+4             GET EOF ID.                     15000000
+         BAL   4,IJHACUPD                                               15050000
+         B     IJHACDOF                 WRITE EOF RECORD.               15100000
+IJHAA18  DC    XL4'00'                  CONSTANT.                       15150000
+IJHAA19  CLC   IJHCSADR+3(3),IJHAA18    FOR SAME BIN ON 2321,           15200000
+         BNE   IJHAA17                    GO HERE.                      15250000
+         MVI   IJHCSADR+5,X'01'         ADJUST CYL ADDR TO SKIP VTOC.   15300000
+         B     IJHAA17                  CONTINUE.                       15350000
+*********************************************************************** 15400000
+*NAME: OVERFLOW ADDRESS GENERATOR ROUTINE.                            * 15450000
+*FUNCTION: TO CALCULATE THE NEXT OVERFLOW RECORD ADDRESS, AND TO      * 15500000
+*          CHECK IT AGAINST EXTENT LIMITS.                            * 15550000
+*ENTRY POINT: 'IJHAOMCO'.                                             * 15600000
+*INPUT: #1 THRU #3 POINT TO DTFIS TABLE.                              * 15650000
+*OUTPUT: EITHER 'IJHACLOA' (LAST INDEPENDENT OVERFLOW RECORD ADDRESS) * 15700000
+*             OR 'IJHACOCR' (LAST CYLINDER OVERFLOW RECORD ADDRESS)   * 15750000
+*             UPDATED.                                                * 15800000
+*        'IJHAOADR' CONTAINS LAST OVERFLOW RECORD ADDRESS.            * 15850000
+*        'IJHAOMBB' CONTAINS NEW OVERFLOW RECORD ADDRESS.             * 15900000
+*EXITS: NORMAL-- BR 'IJHARG2', RETURN TO CALLING ROUTINE.             * 15950000
+*       ERROR -- B 'IJHACADX', NO OVERFLOW AREA AVAILABLE.            * 16000000
+*EXTERNAL ROUTINES: 'IJHACUOV'--SUBROUTINE TO UPDATE A DISK ADDRESS.  * 16050000
+*REGISTER USE: #1 THRU #3 POINT TO DTFIS TABLE.                       * 16100000
+*              #4 USED AS LINK REGISTER.                              * 16150000
+*              'IJHARG2'(#5) AS RETURN REGISTER.                      * 16200000
+*              #7 THRU #9 AS WORK REGISTERS.                          * 16250000
+*              'IJHARG7'(#14) FOR INTERNAL RETURN.                    * 16300000
+*NOTES: NO REGISTERS ARE SAVED.                                       * 16350000
+*********************************************************************** 16400000
+IJHAOMCO BALR  6,0                      SET UP INTERNAL RETURN      3-4 16450000
+         TM    IJHCOPT,X'20'            IF NO CYLINDER OVERFLOW,        16500000
+         BZ    IJHAOMIO                   GO HERE.                      16550000
+IJHAA20  CLC   IJHACOCR+1(2),IJHAOCOH   IF LAST OVERFLOW RECORD ON      16600000
+         BE    IJHAOMIO                   CYLINDER HAS BEEN USED, HERE. 16650000
+         AIF   (&SW(24)).I4             RDONLY SPEDIFIED       @DL30SMP 16700000
+         MVC   IJHAOADR(5),IJHCSADR     CALCULATE LAST                  16750000
+         MVC   IJHAOADR+5(3),IJHACOCR     OVERFLOW RECORD ADDRESS.      16800000
+         AGO   .I5                                                  3-3 16850000
+.I4      ANOP                                                       3-3 16900000
+         LR    13,0                     POINT TO SAVE AREA          3-4 16950000
+         MVC   52(5,13),IJHCSADR       CALCULATE LAST               3-3 17000000
+         MVC   57(3,13),IJHACOCR         OVERFLOW RECORD ADDRESS    3-3 17050000
+.I5      ANOP                                                       3-3 17100000
+         LA    9,IJHACOCR+2             BRANCH TO UPDATE COCR (CYLINDER 17150000
+         BAL   4,IJHACUOV                 OVERFLOW CONTROL RECORD).     17200000
+         CLI   IJHACOCR+2,X'00'         SET CC = 8 IF # OF REMAINING    17250000
+*                                         TRACKS MUST BE DECREMENTED.   17300000
+         LA    7,IJHACOCR+4             SET POINTER.                    17350000
+         BAL   IJH10,IJHAODN1           DECREMENT # REMAINING TRACKS.   17400000
+         AIF   (&SW(24)).I6            RDONLY SPECIFIED        @DL30SMP 17450000
+         MVC   IJHAOMBB(5),IJHAOADR     CALCULATE ADDRESS OF NEW        17500000
+         MVC   IJHAOVID+2(3),IJHACOCR     OVERFLOW RECORD.              17550000
+         AGO   .I7                                                  3-3 17600000
+.I6      ANOP                                                       3-3 17650000
+         MVC   60(5,13),52(13)         CALCULATE ADDRESS OF NEW     3-3 17700000
+         MVC   65(3,13),IJHACOCR         OVERFLOW RECORD.           3-3 17750000
+.I7      ANOP                                                       3-3 17800000
+         EX    0,IJHAA20                FOR CYLINDER OVERFLOW AREA NOT  17850000
+         BCR   7,IJHARG2                  FULL, RETURN.                 17900000
+         LH    9,IJHACOFC               INCREMENT NUMBER OF CYLINDER    17950000
+         LA    9,1(9)                     OVERFLOW AREAS FULL.          18000000
+         STH   9,IJHACOFC                                               18050000
+         BR    IJHARG2                  RETURN TO CALLING ROUTINE.      18100000
+*****      NO CYLINDER OVERFLOW AVAILABLE                         ***** 18150000
+IJHAOMIO CLI   IJHACOLL,X'00'           IF NO INDEPENDENT OVERFLOW,     18200000
+         BE    IJHACADX                   GO HERE TO EXIT.              18250000
+         CLC   IJHACLOA(7),IJHACOUP     IF INDEPENDENT OVERFLOW UPPER   18300000
+         BH    IJHACADX                   LIMIT IS EXCEEDED, EXIT HERE. 18350000
+         AIF   (&SW(24)).I8            RDONLY SPECIFIED        @DL30SMP 18400000
+         MVC   IJHAOADR(8),IJHACLOA     GET LAST OVFLO. RECORD ADDRESS. 18450000
+         AGO   .I9                                                  3-3 18500000
+.I8      ANOP                                                       3-3 18550000
+         LR    13,0                     POINT TO SAVE AREA          3-4 18600000
+         MVC   52(8,13),IJHACLOA       GET LAST OVERFLOW RCD ADDR   3-3 18650000
+.I9      ANOP                                                       3-3 18700000
+         OI    IJHAGATE,X'02'           INDICATE INDEP. OVFLO. ADD.     18750000
+         LA    9,IJHACLOA+7             BRANCH TO GET NEW INDEPENDENT   18800000
+         BAL   4,IJHACUOV                 OVERFLOW RECORD ADDRESS.      18850000
+         LA    7,IJHACOTC               IF NECESSARY, DECREMENT # OF    18900000
+         CLI   IJHACLOA+7,X'00'           INDEPENDENT OVERFLOW TRACKS.  18950000
+         BAL   IJH10,IJHAODN1                                           19000000
+         AIF   (&SW(24)).JA             RDONLY SPECIFIED       @DL30SMP 19050000
+         MVC   IJHAOMBB(8),IJHACLOA     GET NEW OVFLO. RECORD ADDRESS.  19100000
+         AGO   .JB                                                  3-3 19150000
+.JA      ANOP                                                       3-3 19200000
+         MVC   60(8,13),IJHACLOA       GET NEW OVERFLOW RECORD ADDR 3-3 19250000
+.JB      ANOP                                                       3-3 19300000
+         BR    IJHARG2                  RETURN TO CALLING ROUTINE.      19350000
+*********************************************************************** 19400000
+IJHAODN1 BCR   7,IJH10                  RETURN FOR REC # NOT ZERO.      19450000
+         LH    9,0(7)                   DECREMENT # OF REMAINING        19500000
+         BCTR  9,0                        TRACKS.                       19550000
+         STH   9,0(7)                                                   19600000
+         BR    6                        GO TO START OF THIS ROUTINE 3-4 19650000
+* ENTRY  POINT                                                          19700000
+IJHAA21  MVC   8(0,IJHARG4),0(IJHARG6)  MOVE KEY FROM KEYARG TO         19750000
+*                                         IOAREAL+8.                    19800000
+IJHAA22  MVC   0(0,IJHARG6),8(IJHARG4)  IOAREAL+8 TO KEYARG.            19850000
+         AGO   .JD                                                  3-4 19900000
+.JC      ANOP                                                       3-4 19950000
+IJHAWRKY BAL   4,IJHCINIT               LOAD BASE REGISTERS         3-4 20000000
+         NI    IJHAGATE,X'00'           INITIALIZE TO ZERO.             20050000
+         NI    IJHCRTR,X'CD'            TURN OFF OVERFLOW, READ, AND    20100000
+*                                         WRITE KEY SWITCHES.           20150000
+         LM    IJHARG4,IJHARG6,IJHAARAD INITIALIZE POINTERS.            20200000
+         EX    0,IJHAISKY               MVC KEY FROM WORKL TO KEY AREA. 20250000
+         B     IJHACINX                 BRANCH TO INDEX SEARCH.         20300000
+         AGO   .IP                                                  3-9 20350000
+.JD      ANOP                                                       3-4 20400000
+*****            NORMAL ADDITION TO PRIME AREA PATH               ***** 20450000
+IJHAA23  BAL   IJHARG3,IJHACDTR         SET UP TRACK CONTROL.           20500000
+         CLC   IJHCCLPA(7),IJHCSADR     IF ADDITION IS TO THE LAST      20550000
+         BNE   IJHANOWO                   PRIME DATA TRACK, AND IT IS   20600000
+         TM    IJHACSTI,X'02'             NOT FULL, SKIP OVERFLOW       20650000
+         BZ    IJHAA25                    ADDRESS COMPUTATION.          20700000
+IJHANOWO BAL   IJHARG2,IJHAOMCO         CALCULATE OVERFLOW ADDRESS.     20750000
+IJHAA25  BAL   IJHA4,IJHCBLD1           BUILD CCW TO SEARCH AND READ    20800000
+*                                         THE PRIME DATA TRACK.         20850000
+         AIF   (NOT &SW(15)).JD1        RPS NOT SPECIFIED      @DL30SMP 20900000
+         DC    X'F101' .                SET SECTOR             @DL30SMP 20950000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 21000000
+.JD1     ANOP                                                  @DL30SMP 21050000
+         DC    X'8C4B'                  SEARCH ID EQUAL.                21100000
+* CCW CONTENTS: X'31', 'IJHCSADR+3', FLAGS 40, 5.                       21150000
+         DC    X'066B'                  TIC TO *-8.                     21200000

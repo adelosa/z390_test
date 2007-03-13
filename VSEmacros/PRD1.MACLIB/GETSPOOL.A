@@ -1,0 +1,316 @@
+         MACRO                                                          00050000
+&LABEL   GETSPOOL &SPL=,&JOBN=,&PBUF=,&LINENO=,&CC=NO,&CLASS=,         *00100000
+               &QUEUE=,&USERID=,                               @D02PIXS*00150000
+               &PBUFL=,&MODE=,&PWD=,&JNUM=                     @D02PIXR 00200000
+.*MACRO NAME:                 GETSPOOL                                  00250000
+.*FUNCTION:                   1) LINE AT A TIME SEQUENTIAL RETRIEVAL    00300000
+.*                               FROM A POWER OUTPUT FILE.              00350000
+.*                            2) BROWSING OF A POWER OUTPUT FILE        00400000
+.*                               (CONTROLLED BY LINENO PARAMETER).      00450000
+.*GENERAL DESCRIPTION:        1) SPECIFIED PARAMETER VALUES ARE SET     00500000
+.*                               UP IN THE SPL.                         00550000
+.*                            2) XPOST IS INVOKED TO COMMUNICATE THE    00600000
+.*                               REQUEST TO POWER.                      00650000
+.*                            3) REGISTER 15 IS TESTED FOR AN XPOST     00700000
+.*                               ERROR, AND IF SO, THE ERROR CODE IS    00750000
+.*                               MULTIPLIED BY TWO TO DISTINGUISH IT    00800000
+.*                               FROM AN XWAIT ERROR AND THE XWAIT      00850000
+.*                               IS BYPASSED.                           00900000
+.*                            4) XWAIT IS INVOKED TO WAIT FOR THE       00950000
+.*                               POWER RESPONSE.                        01000000
+.*                            5) XWAIT AND XPOST ERRORS (REGISTER 15)   01050000
+.*                               SHOULD BE DIAGNOSED BY THE USER.       01100000
+.*                               (SEE XWAIT, XPOST DESCRIPTIONS).       01150000
+.*                            6) REQUEST FEEDBACK, BOTH NORMAL AND      01200000
+.*                               ERROR, SHOULD BE EXAMINED BY THE       01250000
+.*                               USER.  IT IS IN THE FIRST BYTE         01300000
+.*                               FOLLOWING THE SPMXECB (IN CASE THE     01350000
+.*                               SPL POINTER WAS INVALID), AND IN THE   01400000
+.*                               ERROR FEEDBACK BYTE OF THE SPL.        01450000
+.*                               SEE SPL DESCRIPTION FOR VALUES.        01500000
+.*PARAMETERS:                 SPL=(R1)                 REQUIRED         01550000
+.*                               SPECIFIES THE SPOOL PARAMETER LIST     01600000
+.*                               ASSOCIATED WITH THIS REQUEST.          01650000
+.*                            JOBN=NAME/(R2)      OPTIONAL(SEE NOTE)    01700000
+.*                               SPECIFIES THE UNIQUE POWER JOB NAME    01750000
+.*                               ASSOCIATED WITH THIS FILE.             01800000
+.*                            PBUF=LABEL/(R3)     OPTIONAL(SEE NOTE)    01850000
+.*                               SPECIFIES THE LOCATION OF THE BUFFER   01900000
+.*                               POWER WILL USE TO RETURN THE OUTPUT    01950000
+.*                               LINE.                                  02000000
+.*                            LINENO=VALUE/(R4)   OPTIONAL              02050000
+.*                               SPECIFIES THE LINE NUMBER OF THE LINE  02100000
+.*                               TO BE RETRIEVED.  IF PRESENT, IT       02150000
+.*                               IMPLIES BROWSE MODE.                   02200000
+.*                            CC=NO/YES           OPTIONAL              02250000
+.*                               DEFAULT IS NO.  IF YES IS SPECIFIED,   02300000
+.*                               COMMAND CODES IN THE OUTPUT LINES      02350000
+.*                               WILL BE FED BACK IN THE SPL.           02400000
+.*                            CLASS=VALUE/(R6)    OPTIONAL(SEE NOTE)    02450000
+.*                               SPECIFIES THE CURRENT CLASS OF THE     02500000
+.*                               SELECTED FILE.                         02550000
+.*                            PBUFL=VALUE/(R7)    OPTIONAL(SEE NOTE)    02600000
+.*                               SPECIFIES THE LENGTH OF THE BUFFER.    02650000
+.*                               (SEE PBUF PARAMETER.)                  02700000
+.*                            MODE=BUF                                  02750000
+.*                               SPECIFIES BUFFERING OF OUTPUT IN THE   02800000
+.*                               USER BUFFER (SEE PBUF PARAMETER).      02850000
+.*                               IF OMITTED UNBUFFERED GETSPOOL IS      02900000
+.*                               THE DEFAULT.                           02950000
+.*                            QUEUE=LST|PUN|RDR|XMT                     03000000
+.*                               SPECIFIES THE QUEUE TO BE ACCESSED     03050000
+.*                            PWD=VALUE/(R8)     OPTIONAL(SEE NOTE)     03100000
+.*                               SPECIFIES THE JOB PROTECTION           03150000
+.*                               PASSWORD. IF IT DOES NOT MATCH, DATA   03200000
+.*                               ARE NOT TRANSFERED AND ACCESS          03250000
+.*                               INHIBITED IS POSTED IN THE SPL.        03300000
+.*                            USERID=NAME/(R9)   OPTIONAL(SEE NOTE)     03350000
+.*                               SPECIFIES THE USERID OF THE ISSUER     03400000
+.*                            JNUM=(R9)         OPTIONAL                03450000
+.*                               THE REGISTER MUST BE LOADED WITH THE   03500000
+.*                               BINARY JOBNUMBER TO RETRIEVE A         03550000
+.*                               PARTICULAR JOB WHEN MORE THAN ONE JOB  03600000
+.*                               IS IN THE QUEUE WITH THE SAME JOB      03650000
+.*                               NAME. THE JOB NUMBER MUST BE RESET     03700000
+.*                               BY THE USER WHEN HE CHANGES THE JOB    03750000
+.*                               NAME. A ZERO JOB NUMBER MEANS NO JOB   03800000
+.*                               NUMBER CHECKING.                       03850000
+.*ERROR FEEDBACK:             1) XPOST ERRORS - SEE XPOST DESCRIPTION   03900000
+.*                               ARE NOT TRANSFERED AND ACCESS          03950000
+.*                               IF ONE OCCURS IT IS MULTIPLIED BY 16   04000000
+.*                               TO DISTINGUISH IT FROM AN XWAIT        04050000
+.*                               ERROR, AND THE XWAIT IS BYPASSED.      04100000
+.*                            2) XPOST ERRORS - SEE XPOST DESCRIPTION   04150000
+.*                            3) REQUEST ERRORS AND FEEDBACK            04200000
+.*                               SEE SPL DESCRIPTION                    04250000
+.*NOTE: THESE PARAMETERS, WHILE NOT REQUIRED ON AN INDIVIDUAL CALL,     04300000
+.*      MUST BE PRESENT IN THE SPL PRIOR TO INVOKING THE POWER          04350000
+.*      INTERFACE.  THEY COULD HAVE BEEN SET ON A PREVIOUS CALL, OR     04400000
+.*      VIA A SPL  TYPE=DEFINE   MACRO.                                 04450000
+.*                                                                      04500000
+         LCLC  &JOBNR,&PBUFR,&LNR,&CLASSR,&PBUFLR,&BR,&CCR,&SPLR        04550000
+         LCLC  &CHAR,&BUF,&PWRDR,&JNUMR                        @D02PIXR 04600000
+         LCLC  &QID,&USERR                                     @D03PIXW 04650000
+.*                                                                      04700000
+         AGO   .ZZZ                                                     04750000
+*        LICENSED MATERIALS - PROPERTY OF IBM                           04800000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    04850000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 1979, 2004                    04900001
+*        SEE COPYRIGHT INSTRUCTIONS                                     04950000
+.*************************************************************          05000000
+.* ATTENTION:                                                *          05050000
+.* ---------- THE MACRO IS USED BY ICCF TO COMMUNICATE WITH  *          05100000
+.*            VSE/POWER AND THEREFORE MUST BE SHIPPED TO     *          05150000
+.*            THE ICCF-DEVELOPEMENT GROUP IF MODIFICATION    *          05200000
+.*            WOULD TAKE PLACE.                              *          05250000
+.*************************************************************          05300000
+.ZZZ     ANOP                                                           05350000
+.* IBM DISK OPERATING SYSTEM                                            05400000
+* VSE/POWER - GETSPOOL - 5686-CF7-03                                    05450001
+         AIF   ('&LABEL' EQ '').NOLABEL  LABEL SPECIFIED?      @D02PIXR 05500000
+&LABEL   DS    0H                                                       05550000
+.NOLABEL ANOP                                                  @D02PIXR 05600000
+.*                                                                      05650000
+.********************************************************************** 05700000
+.*             UPDATE SPL IF NECESSARY                                * 05750000
+.********************************************************************** 05800000
+         AIF   (K'&SPL LT 3).ERSPL1 BR IF INVALID SPL PARAM    @D35BIQI 05850000
+         AIF   ('&SPL'(1,1) NE '(').ERSPL1 BR IF NOT A REG     @D35BIQI 05900000
+&SPLR    SETC  '&SPL(1)'                                                05950000
+         AIF   ('&SPLR' EQ '0' OR '&SPLR' EQ '1' OR '&SPLR' EQ '14'    X06000000
+               OR '&SPLR' EQ '15').ERSPL  BR IF INVALID REG             06050000
+         AGO   .CKJOBN                                         @D02PIXR 06100000
+.ERSPL   MNOTE 12,'PARAMETER MUST BE A REGISTER OTHER THAN 0, 1, 14 OR X06150000
+               15'                                             @D35BIQI 06200000
+         MEXIT                                                          06250000
+.ERSPL1  MNOTE 12,'SPL PARAMETER MUST BE A REGISTER'           @D35BIQI 06300000
+         MEXIT                                                 @D35BIQI 06350000
+.*                                                                      06400000
+.**********    CHECK JOBN SPECIFICATION    **************************** 06450000
+.*                                                                      06500000
+.CKJOBN  ANOP                                                  @D02PIXR 06550000
+         AIF   (K'&JOBN EQ 0).CKPBUF  BR IF NO JOBN PARAM               06600000
+         AIF   ('&JOBN'(1,1) EQ '(').JOBNREG  BR IF REG SPECIFIED       06650000
+&JOBNR   SETC  '15'                                                     06700000
+         BAL   &JOBNR,*+12    POINT TO JOBNAME                          06750000
+         DC    CL8'&JOBN'     JOBNAME FOR POWER                         06800000
+.JOBNMVC MVC   SPJB-SPLS(L'SPJB,&SPLR),0(&JOBNR)  MOVE JOBNAME TO SPL   06850000
+         AGO   .CKPBUF                                         @D02PIXR 06900000
+.JOBNREG ANOP                                                  @D02PIXR 06950000
+&JOBNR   SETC  '&JOBN(1)'                                               07000000
+         AIF   ('&JOBNR' NE '&SPLR' AND '&JOBNR'  NE '0').JOBNMVC       07050000
+         MNOTE 12,'INVALID JOBN REGISTER SPECIFICATION'        @D35BIQI 07100000
+         MEXIT                                                          07150000
+.*                                                                      07200000
+.**********    CHECK PBUF SPECIFICATION    **************************** 07250000
+.*                                                                      07300000
+.CKPBUF  AIF   (K'&PBUF EQ 0).CKLN  BR IF NO PBUF PARAM                 07350000
+         AIF   ('&PBUF'(1,1) EQ '(').PBUFREG  BR IF REG SPECIFIED       07400000
+&PBUFR   SETC  '15'                                                     07450000
+         LA    &PBUFR,&PBUF   POINT TO POWER BUFFER                     07500000
+.PBUFST  ST    &PBUFR,SPPB-SPLS(,&SPLR)  POWER BUFFER POINTER TO SPL    07550000
+         AGO   .CKLN                                           @D02PIXR 07600000
+.PBUFREG ANOP                                                  @D02PIXR 07650000
+&PBUFR   SETC  '&PBUF(1)'                                               07700000
+         AIF   ('&PBUFR' NE '&SPLR' AND '&PBUFR' NE '&JOBNR').PBUFST    07750000
+         MNOTE 12,'INVALID PBUF REGISTER SPECIFICATION'        @D35BIQI 07800000
+         MEXIT                                                          07850000
+.*                                                                      07900000
+.**********    CHECK LINENO SPECIFICATION    ************************** 07950000
+.*                                                                      08000000
+.CKLN    AIF   (K'&LINENO EQ 0).CKCC  BR IF NO LINENO PARAM             08050000
+&BR      SETC  '+SPBR'                                                  08100000
+         AIF   ('&LINENO'(1,1) EQ '(').LNREG  BR IF REG SPECIFIED       08150000
+&LNR     SETC  '15'                                                     08200000
+         LA    &LNR,&LINENO   SET LINE NUMBER VALUE                     08250000
+.LNST    STCM  &LNR,7,SPCT-SPLS(&SPLR)  LINE NUMBER VALUE TO SPL        08300000
+         AGO   .CKCC                                           @D02PIXR 08350000
+.LNREG   ANOP                                                  @D02PIXR 08400000
+&LNR     SETC  '&LINENO(1)'                                             08450000
+         AIF   ('&LNR' NE '&SPLR' AND '&LNR' NE '&JOBNR' AND           X08500000
+               '&LNR' NE '&PBUFR').LNST                                 08550000
+         MNOTE 12,'INVALID LINENO REGISTER SPECIFICATION'      @D35BIQI 08600000
+         MEXIT                                                          08650000
+.*                                                                      08700000
+.**********    CHECK CC SPECIFICATION    ****************************** 08750000
+.*                                                                      08800000
+.CKCC    AIF   ('&CC' EQ 'NO').CKBUF  BR IF NO CC OPTION       @D02PIXR 08850000
+         AIF   ('&CC' EQ 'YES').CCYES BR IF CC INVALID         @D02PIXR 08900000
+.CCER    MNOTE 4,'INVALID CC SPECIFICATION - ''NO'' ASSUMED'   @D35BIQI 08950000
+         AGO   .CKBUF                                                   09000000
+.CCYES   ANOP                                                  @D02PIXR 09050000
+&CCR     SETC  '+SPCO'                                                  09100000
+.*                                                                      09150000
+.**********    CHECK MODE SPECIFICATION    **************************** 09200000
+.*                                                                      09250000
+.CKBUF   ANOP                                                  @D02PIXR 09300000
+         AIF   ('&MODE' EQ 'BUF').YESBUF                       @D02PIXR 09350000
+         AIF   ('&MODE' EQ '').NOBUF                           @D02PIXR 09400000
+         MNOTE 4,'INVALID MODE SPECIFICATION, PARAMETER IGNORED'        09450000
+         AGO   .NOBUF                                          @D02PIXR 09500000
+.YESBUF  ANOP                                                  @D02PIXR 09550000
+&BUF     SETC  '+SPBG'             BUFFERED GETSPOOL           @D02PIXR 09600000
+.NOBUF   ANOP                                                  @D02PIXR 09650000
+.SETR3   MVI   SPR3-SPLS(&SPLR),SPLD&BR&CCR&BUF SET REQ BYTE   @D02PIXR 09700000
+.*                                                                      09750000
+.**********    CHECK CLASS SPECIFICATION    *************************** 09800000
+.*                                                                      09850000
+.CKCLASS AIF   (K'&CLASS EQ 0).CKPBUFL  BR IF NO CLASS PARAM            09900000
+         AIF   ('&CLASS'(1,1) EQ '(').CLREG  BR IF REG SPECIFIED        09950000
+&CHAR    SETC  '&CLASS'(1,1)                                            10000000
+         AIF   (K'&CLASS EQ 1).CLMVI  BR IF SINGLE CHARACTER            10050000
+         MNOTE 4,'CLASS PARAM TRUNCATED TO FIRST CHARACTER'    @D35BIQI 10100000
+         AGO   .CLMVI                                          @D02PIXR 10150000
+.CLREG   ANOP                                                           10200000
+&CLASSR  SETC  '&CLASS(1)'                                              10250000
+         AIF   ('&CLASSR' NE '&SPLR' AND '&CLASSR' NE '&JOBNR' AND     X10300000
+               '&CLASSR' NE '&PBUFR' AND '&CLASSR' NE '&LNR').CLSTC     10350000
+         MNOTE 12,'INVALID CLASS REGISTER SPECIFICATION'       @D35BIQI 10400000
+         MEXIT                                                          10450000
+.CLMVI   MVI   SPCL-SPLS(&SPLR),C'&CHAR'        OUTPUT CLASS TO SPL     10500000
+         AGO   .CKPBUFL       BR TO CHECK PBUFL PARAM                   10550000
+.CLSTC   STC   &CLASSR,SPCL-SPLS(,&SPLR)  OUTPUT CLASS TO SPL           10600000
+.*                                                                      10650000
+.**********    CHECK PBUFL SPECIFICATION    *************************** 10700000
+.*                                                                      10750000
+.CKPBUFL AIF   (K'&PBUFL EQ 0).CKPWRD BR IF NO PBUFL PARAM     @D02PIXR 10800000
+         AIF   ('&PBUFL'(1,1) EQ '(').PBLREG  BR IF REG SPECIFIED       10850000
+&PBUFLR  SETC  '15'                                                     10900000
+         LA    &PBUFLR,&PBUFL  SET POWER BUFFER LENGTH                  10950000
+.PBLST   ST    &PBUFLR,SPBL-SPLS(,&SPLR)  POWER BUFFER LENGTH TO SPL    11000000
+         AGO   .CKPWRD                                         @D02PIXR 11050000
+.PBLREG  ANOP                                                  @D02PIXR 11100000
+&PBUFLR  SETC  '&PBUFL(1)'                                              11150000
+         AIF   ('&PBUFLR' NE '&SPLR' AND '&PBUFLR' NE '&JOBNR' AND     X11200000
+               '&PBUFLR' NE '&PBUFR' AND '&PBUFLR' NE '&LNR' AND       X11250000
+               '&PBUFLR' NE '&CLASSR').PBLST                   @D02PIXR 11300000
+         MNOTE 12,'INVALID PBUFL REGISTER SPECIFICATION'       @D35BIQI 11350000
+         MEXIT                                                          11400000
+.*                                                                      11450000
+.***********   CHECK PWD SPECIFICATION   ****************************** 11500000
+.*                                                                      11550000
+.CKPWRD  ANOP                                                  @D02PIXR 11600000
+         AIF   (K'&PWD EQ 0).CKUSER   BR IF NO PWD PARAMETER   @D02PIXS 11650000
+         AIF   ('&PWD'(1,1) EQ '(').CPWDREG    BR IF REG SPECIFIED      11700000
+&PWRDR   SETC  '15'                                                     11750000
+         BAL   &PWRDR,*+12    POINT TO PASSWORD                @D02PIXR 11800000
+         DC    CL8'&PWD'      PASSWORD SPECIFIED BY USER       @D02PIXR 11850000
+.PWRDMVC MVC   SPPW-SPLS(L'SPPW,&SPLR),0(&PWRDR)  MOVE PASSWORD TO SPL  11900000
+         AGO   .CKUSER                                         @D02PIXS 11950000
+.CPWDREG ANOP                                                           12000000
+&PWRDR   SETC  '&PWD(1)'                                                12050000
+         AIF   ('&PWRDR' NE '&SPLR' AND '&PWRDR' NE '&JOBNR' AND       X12100000
+               '&PWRDR' NE '&PBUFR' AND '&PWRDR' NE '&LNR' AND         X12150000
+               '&PWRDR' NE '&CLASSR' AND '&PWRDR' NE '&PBUFLR').PWRDMVC 12200000
+.*                                                             @D02PIXR 12250000
+         MNOTE 12,'INVALID PWD REGISTER SPECIFICATION'         @D02PIXR 12300000
+         MEXIT                                                          12350000
+.*                                                                      12400000
+.***********   CHECK USERID SPECIFICATION   *************************** 12450000
+.*                                                                      12500000
+.CKUSER  ANOP                                                  @D03PIXW 12550000
+         AIF   (K'&USERID EQ 0).CHKJNUM  BR IF NO USER ID      @D03PIXW 12600000
+         AIF   ('&USERID'(1,1) EQ '(').CUSEREG  BR IF REG SPECIFIED     12650000
+&USERR   SETC  '15'                                                     12700000
+         BAL   &USERR,*+12    POINT TO USER ID                 @D03PIXW 12750000
+         DC    CL8'&USERID'   USER ID SPECIFIED BY USER        @D03PIXW 12800000
+.USERMVC MVC   SPUS-SPLS(L'SPUS,&SPLR),0(&USERR)  MOVE USER ID TO SPL   12850000
+         AGO   .CHKJNUM                                        @D03PIXW 12900000
+.CUSEREG ANOP                                                           12950000
+&USERR   SETC  '&USERID(1)'                                    @D03PIXW 13000000
+         AIF   ('&USERR' NE '&SPLR' AND '&USERR' NE '&JOBNR' AND       X13050000
+               '&USERR' NE '&PBUFR' AND '&USERR' NE '&LNR' AND         X13100000
+               '&USERR' NE '&CLASSR' AND '&USERR' NE '&PBUFLR').USERMVC 13150000
+.*                                                             @D03PIXW 13200000
+         MNOTE 12,'INVALID USERID REGISTER SPECIFICATION'      @D03PIXW 13250000
+         MEXIT                                                          13300000
+.*                                                                      13350000
+.************  CHECK JNUM SPECIFICATION  ****************************** 13400000
+.*                                                                      13450000
+.CHKJNUM ANOP                                                  @D02PIXR 13500000
+         AIF   (K'&JNUM EQ 0).JNUMRST                          @D02PIXR 13550000
+         AIF   ('&JNUM' EQ 'SPL').CHKQID                       @D02PIXS 13600000
+         AIF   ('&JNUM'(1,1) NE '(').JNUMERR                   @D02PIXR 13650000
+&JNUMR   SETC  '&JNUM(1)'                                      @D02PIXR 13700000
+         AIF   ('&JNUMR' EQ '&SPLR' OR '&JNUMR' EQ '&JOBNR' OR         X13750000
+               '&JNUMR' EQ '&PBUFR' OR '&JNUMR' EQ '&LNR').JNUMERR      13800000
+         AIF   ('&JNUMR' EQ '&CLASSR' OR '&JNUMR' EQ '&PBUFLR' OR      X13850000
+               '&JNUMR' EQ '&PWRDR').JNUMERR                   @D02PIXR 13900000
+         STH   &JNUMR,SPJN-SPLS(,&SPLR) JOB NUMBER TO SPL      @D02PIXR 13950000
+         AGO   .CHKQID                                         @D02PIXR 14000000
+.JNUMRST ANOP                                                  @D02PIXS 14050000
+         XC    SPJN-SPLS(L'SPJN,&SPLR),SPJN-SPLS(&SPLR) JOB#=0 @D03PIXH 14100000
+         AGO   .CHKQID                                         @D02PIXR 14150000
+.JNUMERR ANOP                                                  @D02PIXR 14200000
+         MNOTE 12,'INVALID JNUM REGISTER SPECIFICATION'        @D02PIXR 14250000
+         MEXIT                                                 @D02PIXR 14300000
+.*                                                                      14350000
+.***********   CHECK QUEUE SPECIFICATION   **************************** 14400000
+.*                                                                      14450000
+.CHKQID  ANOP                                                  @D02PIXS 14500000
+&QID     SETC  'L'                 SET DEFAULT QUEUE ID        @D02PIXS 14550000
+         AIF   (K'&QUEUE EQ 0).CHKQ20  BR IF OMITTED           @D02PIXS 14600000
+         AIF   ('&QUEUE' EQ 'LST').CHKQ20                      @D02PIXS 14650000
+&QID     SETC  'P'                 SET PUNCH QUEUE ID          @D02PIXS 14700000
+         AIF   ('&QUEUE' EQ 'PUN').CHKQ20                      @D02PIXS 14750000
+&QID     SETC  'R'                 SET READER QUEUE ID         @D03PIXW 14800000
+         AIF   ('&QUEUE' EQ 'RDR').CHKQ20                      @D03PIXW 14850000
+         MNOTE 4,'INVALID QUEUE SPECIFICATION, DEFAULT ASSUMED'        *14900000
+                                                               @D02PIXS 14950000
+&QID     SETC  'L'                 SET UP DEFAULT QUEUE ID     @D02PIXS 15000000
+.CHKQ20  ANOP                                                  @D02PIXS 15050000
+         MVI   SPSQ-SPLS(&SPLR),C'&QID'       SET UP QUEUE ID  @DA23621 15100000
+.*                                                                      15150000
+.XECBT   ANOP                                                  @D02PIXR 15200000
+         XECBTAB TYPE=CHECK,XECB=SPMXECB LOCATE USER XECB      @DA10872 15250000
+         LTR   15,15                     ERROR?                @D35BIQI 15300000
+         BNZ   *+8                       BRANCH IF YES         @D35BIQI 15350000
+         NI    2(1),X'7F'                UNPOST USER XECB      @DA10872 15400000
+.*                                                                      15450000
+         XPOST XECB=SMXP,POINTRG=(14)                                   15500000
+         SLA   15,4           MULTIPLY ERROR CODE BY 16        @DA14989 15550000
+         BNZ   *+10           SKIP WAIT IF POST ERROR                   15600000
+         LA    1,SPXL-SPLS(,&SPLR) POINT TO LIST XECB NAME IN SPL       15650000
+.*                                                                      15700000
+         XWAIT XECB=(1),POINTRG=(14)                                    15750000
+         MEND                                                           15800000

@@ -1,0 +1,79 @@
+         TITLE 'E X A I C A 1    ---  TSS CICS APPLICATION INTERFACE'   00002000
+*********************************************************************** 00003000
+*                                                                     * 00004000
+*  NAME     - EXAICA1                                                 * 00005000
+*                                                                     * 00006000
+*  FUNCTION - COMMAND LEVEL ASSEMBLER CODE ......                     * 00007000
+*             TEST TSSCAI USING TEMPORARY STORAGE RECORD.             * 00008000
+*                                                                     * 00009000
+*  CALLS    - THE CICS APPLICATION INTERFACE PROGRAM                  * 00010000
+*                                                                     * 00011000
+*********************************************************************** 00012000
+*                                                                       00013000
+         EJECT                                                          00014000
+DFHEISTG DSECT                                                          00015000
+TSSQID   DS   0CL8                TEMPORARY STORAGE QUEUE NAME          00016000
+TSSQPREF DS   CL4                 QUEUE ID PREFIX IS ALWAYS 'TSSA'      00017000
+TSSQTERM DS   CL4                 QUEUE NAME SUFFIX IS TERMINAL NAME    00018000
+TSSCREC  DS   2CL185              PARAMETER LIST FOR TSSCAI             00019000
+         EJECT                                                          00020000
+R2       EQU   2                                                        00021000
+EXAICA1  CSECT                                                          00022000
+*                                                                       00023000
+* TELL CICS TO IGNORE A QUEUE NOT FOUND CONDITION.                      00024000
+*                                                                       00025000
+         EXEC  CICS IGNORE CONDITION QIDERR                             00026000
+*                                                                       00027000
+* PURGE THE QUEUE OF ANY OLD REQUESTS.                                  00028000
+*                                                                       00029000
+         MVC   TSSQPREF,=CL4'TSSA'                                      00030000
+         MVC   TSSQTERM,EIBTRMID                                        00031000
+*                                                                       00032000
+         EXEC  CICS DELETEQ TS QUEUE(TSSQID)                            00033000
+*                                                                       00034000
+* RESET THE HANDLE.                                                     00035000
+*                                                                       00036000
+         EXEC  CICS HANDLE CONDITION QIDERR                             00037000
+         EXEC  CICS IGNORE CONDITION LENGERR                            00038000
+*                                                                       00039000
+* BUILD THE TSSCPL PARAMETER LIST.                                      00040000
+*                                                                       00041000
+         MVC   TSSQPREF,=CL4'TSSA'                                      00042000
+         MVC   TSSQTERM,EIBTRMID                                        00043000
+         LA    R2,TSSCREC             R2 @ OF PARAMETER LIST            00044000
+         USING TSSCPL,R2              ESTABLISH ADDRESSABILITY          00045000
+         MVC   TSSHEAD,=CL8'TCPLV3L0' IDENTIFY 3.0 PLIST                00046000
+         MVC   TSSCLASS,=CL8'FIELD   '                                  00047000
+         MVC   TSSRNAME,=CL8'TSSFIELD'                                  00048000
+         MVC   TSSPPGM,=CL8'        '                                   00049000
+         MVC   TSSACC,=CL8'        '                                    00050000
+*                                                                       00051000
+* WRITE THE REQUEST RECORD TO TEMPORARY STORAGE.                        00052000
+*                                                                       00053000
+         EXEC  CICS WRITEQ TS QUEUE(TSSQID)                            X00054000
+               FROM(TSSCREC) LENGTH(TSSLNGTH) MAIN                      00055000
+*                                                                       00056000
+* INVOKE THE TOP SECRET APPLICATION INTERFACE TO PROCESS THE REQUEST.   00057000
+*                                                                       00058000
+         EXEC  CICS LINK PROGRAM('TSSCAI')                              00059000
+*                                                                       00060000
+* READ THE REQUEST RECORD BACK FROM TEMPORARY STORAGE.                  00061000
+*                                                                       00062000
+         EXEC  CICS READQ TS QUEUE(TSSQID)                             X00063000
+               INTO(TSSCREC) LENGTH(TSSLNGTH)                           00064000
+*                                                                       00065000
+* PURGE THE REQUEST QUEUE.                                              00066000
+*                                                                       00067000
+         EXEC  CICS DELETEQ TS QUEUE(TSSQID)                            00068000
+*                                                                       00069000
+*                                                                       00070000
+*                                                                       00071000
+* RETURN TO CICS                                                        00072000
+*                                                                       00073000
+         EXEC  CICS RETURN                                              00074000
+*                                                                       00075000
+* WORKING STORAGE.                                                      00076000
+*                                                                       00077000
+TSSLNGTH DC   H'+370'                                                   00078000
+         #TSSCPL                  CICS PARAMETER LIST                   00079000
+         END                                                            00080000

@@ -1,0 +1,183 @@
+*ASM CICS(NOPROLOG NOEPILOG)                                            00001000
+         TITLE 'JOB ACCOUNT ROUTINE'                                    00002000
+CAPRE002 START 0                                                        00003000
+         SPACE                                                          00004000
+R0       EQU   0                                                        00005000
+R1       EQU   1                                                        00006000
+R2       EQU   2                                                        00007000
+R3       EQU   3                                                        00008000
+R4       EQU   4                                                        00009000
+R5       EQU   5                                                        00010000
+R6       EQU   6                                                        00011000
+R7       EQU   7                                                        00012000
+R8       EQU   8                                                        00013000
+R9       EQU   9                  JOB ACCOUNT RECORD BASE REGISTER      00014000
+R10      EQU   10                 COMMUNICATION AREA BASE REGISTER      00015000
+R11      EQU   11                 EXEC INTERFACE BLOCK BASE REGISTER    00016000
+R12      EQU   12                 PROGRAM BASE REGISTER                 00017000
+R13      EQU   13                 DYNAMIC STORAGE BASE REGISTER         00018000
+R14      EQU   14                                                       00019000
+R15      EQU   15                                                       00020000
+         EJECT                                                          00021000
+*********************************************************************** 00022000
+*********************************************************************** 00023000
+*                    CICS COMMAND LEVEL PROLOG                        * 00024000
+*********************************************************************** 00025000
+*********************************************************************** 00026000
+         SPACE                                                          00027000
+         DFHEIENT CODEREG=(R12),DATAREG=(R13),EIBREG=(R11)              00028000
+         EJECT                                                          00029000
+*********************************************************************** 00030000
+*********************************************************************** 00031000
+*                         PROGRAM MAINLINE                            * 00032000
+*********************************************************************** 00033000
+*********************************************************************** 00034000
+         SPACE                                                          00035000
+MAIN0000 DS    0H                                                       00036000
+         L     R10,DFHEICAP       LOAD COMMUNICATION AREA ADDRESS       00037000
+         USING RPJE,R10           AUDIT RECORD ADDRESSABILITY           00038000
+         LA    R9,JOBACCT         LOAD JOB ACCOUNT REC AREA ADDRESS     00039000
+         USING PACCNT,R9          JOB ACCOUNT REC ADDRESSABILITY        00040000
+         SPACE                                                          00041000
+         CLI   RPJERECT,RPJEPJE   IS THIS AUDIT REC OF PRINT JOB END?   00042000
+         BNE   RETURN00           ...NO-BRANCH,RETURN TO CALLER         00043000
+         SPACE                                                          00044000
+         EXEC  CICS,ENQ,LENGTH(8),RESOURCE(RAPSACNT)                    00045000
+         SPACE                                                          00046000
+         LA    R0,RPJEKDAT        JULIAN DATE ADDRESS                   00047000
+         LA    R1,ACDATE          GREGORIAN DATE ADDRESS                00048000
+         BAL   R14,JULD0000       ...CONVERT DATE                       00049000
+         SPACE                                                          00050000
+         MVC   ACSTRT,RPJESTIM    MOVE JOB START TIME                   00051000
+         MVC   ACSTOP,RPJEETIM    MOVE JOB ENDING TIME                  00052000
+         MVC   ACUSER,RPJEINFO    MOVE USER INFORMATION                 00053000
+         MVC   ACNAME,RPJEJNA     MOVE JOB NAME                         00054000
+         MVC   ACNUMB,RPJEJNO     MOVE JOB NUMBER                       00055000
+         MVI   ACIDEN,C'L'        MOVE L FOR LIST                       00056000
+         MVC   ACNUMB,RPJEJNO     MOVE JOB NUMBER                       00057000
+         SPACE                                                          00058000
+         CLI   RPJEEOJ,RPCENORM   IS JOB STATUS NORMAL?                 00059000
+         BNE   MAIN0110           ...NO-BRANCH, CHECK NEXT STATUS       00060000
+         MVI   ACCANC,X'10'       SET STATUS NORMAL                     00061000
+         B     MAIN0200           ...CONTINUE FILLING RECORD            00062000
+         SPACE                                                          00063000
+MAIN0110 DS    0H                                                       00064000
+         CLI   RPJEEOJ,RPCEFLSH   IS JOB STATUS FLUSHED?                00065000
+         BNE   MAIN0120           ...NO-BRANCH, CHECK NEXT STATUS       00066000
+         MVI   ACCANC,X'40'       SET STATUS FLUSHED                    00067000
+         B     MAIN0200           ...CONTINUE FILLING RECORD            00068000
+         SPACE                                                          00069000
+MAIN0120 DS    0H                                                       00070000
+         CLI   RPJEEOJ,RPCESTOP   IS JOB STATUS STOPPED?                00071000
+         BNE   MAIN0130           ...NO-BRANCH, CHECK NEXT STATUS       00072000
+         MVI   ACCANC,X'30'       SET STATUS STOPPED                    00073000
+         B     MAIN0200           ...CONTINUE FILLING RECORD            00074000
+         SPACE                                                          00075000
+MAIN0130 DS    0H                                                       00076000
+         CLI   RPJEEOJ,RPCEERR    IS JOB STATUS CANCELED?               00077000
+         BNE   MAIN0200           ...NO-BRANCH SKIP TO NEXT FIELD       00078000
+         MVI   ACCANC,X'70'       SET STATUS STOPPED                    00079000
+         SPACE                                                          00080000
+MAIN0200 DS    0H                                                       00081000
+         MVC   LSTSUF,RPJEJSF     MOVE IN JOB SUFFIX                    00082000
+         MVC   LSTFOR,RPJEFNO     MOVE IN FORMS IDENTIFICATION          00083000
+         MVC   LSTPAG(2),RPJEPAGE+2       NUMBER OF PAGES PRINTED       00084000
+         MVC   LSTNUM,RPJELINE    MOVE IN NUMBER OF LINES PRINTED       00085000
+         MVC   LSTADR,=CL3'RAP'   MOVE IN CUU                           00086000
+         SPACE                                                          00087000
+         STCM  R9,7,PCHCCW+1      ADDRESS OF OUTPUT                     00088000
+         L     R5,=A(PUNCH)       ADDRESS OF CCB                        00089000
+         EXCP  (R5)               WRITE THE RECORD                      00090000
+         SPACE                                                          00091000
+         EXEC  CICS,WAIT EVENT,ECADDR(R5)                               00092000
+         SPACE                                                          00093000
+         EXEC  CICS,DEQ,LENGTH(8),RESOURCE(RAPSACNT)                    00094000
+         EJECT                                                          00095000
+*********************************************************************** 00096000
+*********************************************************************** 00097000
+*                    RETURN CONTROL TO CICS                           * 00098000
+*********************************************************************** 00099000
+*********************************************************************** 00100000
+         SPACE                                                          00101000
+RETURN00 DS    0H                                                       00102000
+         EXEC  CICS,RETURN                                              00103000
+         EJECT                                                          00104000
+*********************************************************************** 00105000
+*********************************************************************** 00106000
+*              CONVERT JULIAN DATE TO GREGORIAN DATE                  * 00107000
+*                                                                     * 00108000
+*  INPUT:  R0  - ADDRESS OF PACKED JULIAN DATE                        * 00109000
+*          R1  - ADDRESS OF 8 BYTE OUTPUT AREA                        * 00110000
+*  OUTPUT: GREGORIAN DATE IN FIELD POINTED TO BY R1                   * 00111000
+*********************************************************************** 00112000
+*********************************************************************** 00113000
+         SPACE                                                          00114000
+JULD0000 DS    0H                                                       00115000
+         STM   R14,R12,REGSAVE    SAVE CALLERS REGISTERS                00116000
+         LR    R3,R0              LOAD JULIAN DATE ADDRESS              00117000
+         LR    R4,R1              LOAD GREGORIAN DATE ADDRESS           00118000
+         SPACE                                                          00119000
+         ZAP   0(8,R4),0(4,R3)    MOVE JULIAN DATE TO WORK AREA         00120000
+         SRP   0(8,R4),64-3,0     SHIFT OUT DAY                         00121000
+         CVB   R1,0(R4)           CONVERT YEAR TO BINARY                00122000
+         STC   R1,0(R4)           STORE YEAR                            00123000
+         LA    R5,JULDTBL1        LOAD NORMAL YEAR MONTH TABLE          00124000
+         TM    0(R4),X'03'        LEAP YEAR ?                           00125000
+         BNZ   JULD0100           ..NO-BRANCH                           00126000
+         LA    R5,JULDTBL2        ..YES-USE LEAP YEAR TABLE             00127000
+         SPACE                                                          00128000
+JULD0100 DS    0H                                                       00129000
+         UNPK  0(5,R4),1(3,R3)    UNPACK JULIAN DATE                    00130000
+         MVC   6(2,R4),0(R4)      MOVE YEAR INTO POSITION               00131000
+         SPACE                                                          00132000
+         LA    R2,JULDTBL3        LOAD MONTH NUMBER TABLE ADDRESS       00133000
+JULD0200 DS    0H                                                       00134000
+         CP    2(2,R3),0(2,R5)    CORRECT MONTH TABLE ENTRY ?           00135000
+         BNH   JULD1000           ..YES-BRANCH                          00136000
+         LA    R5,2(,R5)          BUMP TABLE POINTER                    00137000
+         LA    R2,2(,R2)          BUMP MONTH NUMBER TABLE ADDRESS       00138000
+         B     JULD0200           CONTINUE                              00139000
+         SPACE                                                          00140000
+JULD1000 DS    0H                                                       00141000
+         SH    R5,=H'2'           BACKUP TO CORRECT ENTRY               00142000
+         MVC   0(2,R4),2(R3)      MOVE JULIAN DAY TO WORK AREA          00143000
+         SP    0(2,R4),0(2,R5)    COMPUTE GREGORIAN DAY                 00144000
+         UNPK  2(3,R4),0(2,R4)    UNPACK DAY                            00145000
+         OI    4(R4),X'F0'        FIX SIGN POSITION                     00146000
+         MVC   0(2,R4),0(R2)      MOVE MONTH                            00147000
+         MVI   2(R4),C'/'         MOVE DELIMETER                        00148000
+         MVI   5(R4),C'/'         MOVE DELIMETER                        00149000
+         SPACE                                                          00150000
+         LM    R14,R12,REGSAVE    RESTORE CALLERS REGISTERS             00151000
+         BR    R14                RETURN TO CALLER                      00152000
+         SPACE                                                          00153000
+JULDTBL1 DC    PL2'0,31,59,90,120,151,181,212,243,273,304,334,365'      00154000
+JULDTBL2 DC    PL2'0,31,60,91,121,152,182,213,244,274,305,335,366'      00155000
+JULDTBL3 DC    C'00',C'01',C'02',C'03',C'04',C'05',C'06'                00156000
+         DC    C'07',C'08',C'09',C'10',C'11',C'12'                      00157000
+         EJECT                                                          00158000
+*********************************************************************** 00159000
+*********************************************************************** 00160000
+*                    CONSTANTS AND LITERALS                           * 00161000
+*********************************************************************** 00162000
+*********************************************************************** 00163000
+         SPACE                                                          00164000
+RAPSACNT DC    CL8'RAPSACNT'      CONSTANT OF RAPSACNT                  00165000
+PUNCH    CCB   SYSPCH,PCHCCW      PUNCH CCB                             00166000
+PCHCCW   CCW   X'01',*-*,X'20',80 PUNCH CCW                             00167000
+         SPACE                                                          00168000
+         LTORG                                                          00169000
+         EJECT                                                          00170000
+PACCNT   PACCNT LIST=YES                                                00171000
+         EJECT                                                          00172000
+DFHEISTG DFHEISTG ,               START OF DYNAMIC STORAGE              00173000
+         SPACE                                                          00174000
+REGSAVE  DS    9D                 REGISTER SAVE AREA                    00175000
+         SPACE                                                          00176000
+JOBACCT  DS    XL(LSTLNG)         JOB ACCOUNT RECORD                    00177000
+         SPACE                                                          00178000
+DFHEIEND DFHEIEND ,               END OF DYNAMIC STORAGE                00179000
+         EJECT                                                          00180000
+         COPY   CAPRAUD4                                                00181000
+         EJECT                                                          00182000
+         END                                                            00183000

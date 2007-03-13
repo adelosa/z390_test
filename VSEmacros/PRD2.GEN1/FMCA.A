@@ -1,0 +1,428 @@
+*%GOTO PLAS_FMCA;                                                       00050000
+         MACRO                                                          00100000
+         FMCA     &DECLARE=YES   Declare FMCA     (YES or NO)           00150000
+         GBLB     &FMCA                                                 00200000
+         AIF   ('&FMCA' EQ '1').SKIPFM  If &FMCA is on, then skip       00250000
+.*                             FMCA declaration                         00300000
+&FMCA    SETB  (1)             Set &FMCA to on                          00350000
+         AIF   ('&DECLARE' EQ 'NO').SKIPFM   If DECLARE=NO was          00400000
+.*                             specified, then skip FMCA                00450000
+.*                             declaration                              00500000
+*/***START OF SPECIFICATIONS******************************************/ 00550000
+*/*                                                                  */ 00600000
+*/*  MACRO-NAME = FMCA                                               */ 00650000
+*/*                                                                  */ 00700000
+*/*  DESCRIPTIVE-NAME = Communication Area between                   */ 00750000
+*/*                     Supervisor and module IJBFMBD ( family API   */ 00800000
+*/*                     input checking and translation routine )     */ 00850000
+*/*                                                                  */ 00900000
+*/*  PROPRIETARY STATEMENT:                                          */ 00950000
+*/*             THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          */ 01000000
+*/*             5686-066 (C) COPYRIGHT IBM CORPORATION 1997          */ 01050000
+*/*             LICENSED MATERIALS - PROPERTY OF IBM                 */ 01100000
+*/*                                                                  */ 01150000
+*/*  FUNCITON = Communication Area between Supervisor and module     */ 01200000
+*/*             IJBFMBD ( family APIinput checking and translation   */ 01250000
+*/*             routine ).                                           */ 01300000
+*/*             TCB extention field TCBXFMCA is pointing to this     */ 01350000
+*/*             data area. Module IJBFMBD creates and deletes        */ 01400000
+*/*             the area.                                            */ 01450000
+*/*                                                                  */ 01500000
+*/*  MACRO-TYPE = Mapping macro                                      */ 01550000
+*/*                                                                  */ 01600000
+*/*  NOTES =                                                         */ 01650000
+*/*                                                                  */ 01700000
+*/*  MACRO-SIZE = See assembler listing                              */ 01750000
+*/*                                                                  */ 01800000
+*/*  INVOCATION =                                                    */ 01850000
+*/*                                                                  */ 01900000
+*/*    HASM = FMCA                                                   */ 01950000
+*/*                                                                  */ 02000000
+*/*  CHANGE-ACTIVITY =                                               */ 02050000
+*/*    Created for AF Version 6 Release 1                            */ 02100000
+*/* DELETED FIELDS FM_DYNPRT TO FM_MKLEN                     @D62ADJS*/ 02110001
+*/*                                                                  */ 02150000
+*/***END OF SPECIFICATIONS********************************************/ 02200000
+         EJECT                                                          02250000
+*/********************************************************************/ 02300000
+*/*                                                                  */ 02350000
+*/*  FMCA     - Communication Area between Supervisor and IJBFMBD/TN */ 02400000
+*/*             (Family API Input Checking/Convertion)               */ 02450000
+*/*                                                                  */ 02500000
+*/********************************************************************/ 02550000
+         SPACE                                                          02600000
+FMCA     DSECT                    Family API communication area         02650000
+         DS  0F                   Word alignment                        02700000
+FM_ID          DS  CL4            Identifier of commarea                02750000
+FM_MAXLEN      DS  F              Total length including dyn.storage    02800000
+FM_FLAGS       DS  X              Flag byte                             02850000
+FM_FREESTG     EQU X'80'          Clean up all storage                  02900000
+FM_ADDSERV     EQU X'40'          Additional service is requested       02950000
+               DS  CL3            Reserved                              03000000
+               DS  10F            Reserved for future use               03650000
+               DS  A              Reserved                              03700000
+FM_R0USER      DS  F              User REG 0 swapped from TCBSAVE       03750000
+FM_R1USER      DS  F              User REG 1 swapped from TCBSAVE       03800000
+FM_SVCUSER     DS  H              User SVC from SVCIC (last VSE SVC)    03850000
+FM_SVCVSE      DS  H              VSE SVC that simulates MVS SVC        03900000
+FM_SVCMVS      DS  H              MVS SVC passed to IJBFMBD by SUP      03950000
+               DS  H              Reserved for future use               04000000
+FM_MACNAME     DS  CL16           MVS macro name                        04050000
+FM_ABCODE      DS  F              ABEND MVS CODE                        04100000
+FM_RESCODE     DS  F              ABEND reason code                     04150000
+FM_SUBRESC     DS  F              ABEND subreason code                  04200000
+FM_FCODE       DS  F              Cleanup Exit function code field      04250000
+FM_DYNSTG_ID   DS  CL8            Identifier of dynamic storage area    04350000
+FM_DYNSTG      DS  0F             Dynamic storage begins here           04400000
+FMCALEN        EQU *-FMCA         Length of commarea                    04450000
+FM_XFF         EQU X'FF'          Highest byte value                    04500000
+*/********************************************************************/ 04550000
+*/* DCL  FUNCTION REQUEST FROM IJBFMBD TO THE SUPERVISOR (CALLER)    */ 04600000
+*/********************************************************************/ 04650000
+*                                                                       04700000
+FM_OK          EQU 0              Supervisor performs VSE SVC           04750000
+FM_RESVC       EQU 1              ??do we need it??                     04800000
+FM_UNPOST      EQU 2              WAIT: Set the task waiting            04850000
+FM_NOWAIT      EQU 3              WAIT: ECBs are posted (return)        04900000
+FM_RPOST       EQU 4              POST the task                         04950000
+*              EQU 5..7           Reserved for future use               05000000
+*                                                                       05050000
+*/********************************************************************/ 05100000
+*/* DCL  Misc Constants                                              */ 05150000
+*/********************************************************************/ 05200000
+*                                                                       05250000
+FM_STAE_NO     EQU 0              DETACH, STAE=NO                       05300000
+FM_STAE_YES    EQU 1              DETACH, STAE=YES                      05350000
+*                                                                       05400000
+*/********************************************************************/ 05450000
+*/* DCL  FUNCTION REQUEST FROM THE SUPERVISOR TO IJBFMBD             */ 05500000
+*/********************************************************************/ 05550000
+*                                                                       05600000
+FM_INIT        EQU FM_XFF+1       Initialization of storage area(s)     05650000
+FM_CLEANUP     EQU FM_XFF+2       Clean up all storage                  05700000
+*              EQU FM_XFF+3...19  Reserved for future use               05750000
+*FM_ESTAE       EQU FM_XFF+20      PC for ESTAEX (also defined in FMPL) 05800000
+FM_ESTAE       EQU X'030F'        PC for ESTAEX (also defined in FMPL)  05850000
+*                                                                       05900000
+*                                                                       05950000
+* For more detailed descr.see PLX part                                  06000000
+*                                 Additional services                   06050000
+FM_CLEANUP_EOT EQU FM_XFF+101      No longer used??                     06100000
+FM_SERVICES    EQU FM_XFF+101      Needed by FMGET macro                06150000
+FM_POST_SERVICE_RTN EQU FM_XFF+102 Get address of post service routine  06200000
+FM_CLEANUP_POX      EQU FM_XFF+103 Free POX queue storage of partition  06250000
+*                                                                       06300000
+FM_POXINTERN   EQU FM_XFF+300      POST EXIT Service Calls - INTERNAL   06350000
+FM_POX_FIND    EQU FM_XFF+336      POST EXIT Find entry                 06400000
+FM_POX_INIT    EQU FM_XFF+340      POST EXIT Init table header          06450000
+FM_POXFIRST    EQU FM_XFF+390      POST EXIT Service Calls - FIRST EXT  06500000
+FM_POX_ADD     EQU FM_XFF+394      POST EXIT Add entry                  06550000
+FM_POX_DELETE  EQU FM_XFF+398      POST EXIT Delete entry               06600000
+FM_POXLAST     EQU FM_XFF+398      POST EXIT Service Calls - LAST  EXT  06650000
+*                                                                       06700000
+FM_WAIT        EQU 1              WAIT                                  06750000
+FM_POST        EQU 2              POST                                  06800000
+FM_ATTACHX     EQU 42             ATTACH                                06850000
+FM_DETACH      EQU 62             DETACH                                06900000
+FM_ABEND       EQU 13             ABEND                                 06950000
+FM_CHAP        EQU 44             CHAP                                  07000000
+FM_TTIMER      EQU 46             TTIMER                                07050000
+FM_STIMER      EQU 47             STIMER                                07100000
+FM_STIMERM     EQU 47 or 46       STIMERM; SET 47, TEST/CANCEL 46       07150000
+FM_ESPIE       EQU 109            ESPIE                                 07200000
+FM_ESTAEX      EQU FM_XFF+20      ESTAEX                                07250000
+*                                                                       07300000
+*/********************************************************************/ 07350000
+*/* DCL  CORRESPONDING VSE SVCs                                      */ 07400000
+*/********************************************************************/ 07450000
+*                                                                       07500000
+FM_VSE_WAIT                   EQU 29 (WAITM)                            07550000
+FM_VSE_POST                   EQU 40                                    07600000
+FM_VSE_CANCEL                 EQU 6                                     07650000
+FM_VSE_ATTACH                 EQU 38                                    07700000
+FM_VSE_CHAP                   EQU 78                                    07750000
+FM_VSE_DETACH                 EQU 39                                    07800000
+FM_VSE_STIMER                 EQU 18                                    07850000
+FM_VSE_TTIMER                 EQU 52                                    07900000
+FM_VSE_EXITS                  EQU 255                                   07950000
+*                                                                       08000000
+*/********************************************************************/ 08050000
+*/* DCL RETURN CODES PASSED TO CALLER BY $IJBFMBD                    */ 08100000
+*/********************************************************************/ 08150000
+*                                                                       08200000
+FM_ENTRY_NOT_FOUND            EQU  4                                    08250000
+FM_ENTRY_ALREADY_IN_TABLE     EQU  8                                    08300000
+FM_SEQ_ERROR                  EQU 12                                    08350000
+FM_SGETVIS_ERROR              EQU 14                                    08400000
+FM_SFREEVIS_ERROR             EQU 16                                    08450000
+FM_IJBFMTBL_FAILED            EQU 20                                    08500000
+*                                                                       08550000
+.SKIPFM   ANOP                                                          08600000
+          MEND                                                          08650000
+ %PLAS_FMCA: ;                                                          08700000
+ GEN;                                                                   08750000
+         FMCA     DECLARE=NO           Do not declare the FMCA          08800000
+ @ENDGEN;                                                               08850000
+ /***START OF SPECIFICATIONS******************************************/ 08900000
+ /*                                                                  */ 08950000
+ /*  MACRO-NAME = FMCA                                               */ 09000000
+ /*                                                                  */ 09050000
+ /*   DESCRIPTIVE-NAME = Communication Area between                  */ 09100000
+ /*                      Supervisor and module IJBFMBD ( family API  */ 09150000
+ /*                      input checking and translation routine )    */ 09200000
+ /*                                                                  */ 09250000
+ /*   SECURITY =                                                     */ 09300002
+ /********************************************************************/ 09460002
+ /*                                                                  */ 09470002
+ /*             SUPERVISOR - FMCA - 5686-066-06                      */ 09480002
+ /*                                                                  */ 09490002
+ /*             LICENSED MATERIALS - PROPERTY OF IBM                 */ 09491002
+ /*             "RESTRICTED MATERIALS OF IBM"                        */ 09492002
+ /*             5686-066                                             */ 09493002
+ /*             (C) COPYRIGHT IBM CORP. 1996                         */ 09494003
+ /*                                                                  */ 09494102
+ /********************************************************************/ 09495002
+ /*                                                                  */ 09500000
+ /*   FUNCITON = Communication Area between Supervisor and module    */ 09550000
+ /*              IJBFMBD ( family API input checking and translation */ 09600000
+ /*              routine ).                                          */ 09650000
+ /*              TCB extention field TCBXFMCA is pointing to this    */ 09700000
+ /*              data area. Module IJBFMBD creates and deletes       */ 09750000
+ /*              the area.                                           */ 09800000
+ /*                                                                  */ 09850000
+ /*   MACRO-TYPE = Mapping macro                                     */ 09900000
+ /*                                                                  */ 09950000
+ /*   NOTES =                                                        */ 10000000
+ /*                                                                  */ 10050000
+ /*   MACRO-SIZE = See assembler listing                             */ 10100000
+ /*                                                                  */ 10150000
+ /*   INVOCATION =                                                   */ 10200000
+ /*                                                                  */ 10250000
+ /*    HASM = FMCA                                                   */ 10300000
+ /*                                                                  */ 10350000
+ /*  CHANGE-ACTIVITY =                                               */ 10400000
+ /*    Created for AF Version 6 Release 1                            */ 10450000
+ /*                                                                  */ 10500000
+ /*                                                                  */ 10550000
+ /***END OF SPECIFICATIONS********************************************/ 10600000
+ @EJECT;                                                                10650000
+ /********************************************************************/ 10700000
+ /*                                                                  */ 10750000
+ /*  FMCA     - Communication Area between Supervisor and IJBFMBD    */ 10800000
+ /*             (Family API Input Checking/Convertion)               */ 10850000
+ /*                                                                  */ 10900000
+ /********************************************************************/ 10950000
+ @SPACE;                                                                11000000
+ DCL 1 FMCA     BASED BDY(WORD),                                        11050000
+                                  /* Family API commarea layout      */ 11100000
+       2 FM_ID       CHAR(4),     /* Identifier of commarea          */ 11150000
+       2 FM_MAXLEN   FIXED(31),   /* Total length incl. dyn.storage  */ 11200000
+       2 FM_FLAGS    BIT(8),      /* Flag byte                       */ 11250000
+          3 FM_FREESTG BIT(1),    /* Clean up all storage. If pos. of   11300000
+                                     this bit is changed, then change   11350000
+                                     macro FMFREE accordingly        */ 11400000
+          3 FM_ADDSERV BIT(1),    /* Additional service is requested    11450000
+                                     such as FM_CLEANUP_EOT          */ 11500000
+          3 *          BIT(6),    /* Reserved                        */ 11550000
+       2 *           CHAR(3),     /* Reserved                        */ 11600000
+       2 * (10)      PTR(31),     /* Reserved                        */ 12250000
+       2 *           PTR(31),     /* Reserved                        */ 12300000
+       2 FM_R0USER   PTR(31),     /* User REG 0  swapped from TCBSAVE*/ 12350000
+       2 FM_R1USER   PTR(31),     /* User REG 1  swapped from TCBSAVE*/ 12400000
+       2 FM_SVCUSER  FIXED(16),   /* User SVC from TCB, last VSE SVC */ 12450000
+       2 FM_SVCVSE   FIXED(16),   /* VSE SVC that simulates MVS SVC  */ 12500000
+       2 FM_SVCMVS   FIXED(16),   /* MVS SVC passed to IJBFMBD by SUP*/ 12550000
+       2 *           FIXED(16),   /* Reserved for future use         */ 12600000
+       2 FM_MACNAME  CHAR(16),    /* MVS macro name                  */ 12650000
+       2 FM_ABCODE   FIXED(31),   /* ABEND MVS CODE                  */ 12700000
+       2 FM_RESCODE  FIXED(31),   /* ABEND reason code               */ 12750000
+       2 FM_SUBRESC  FIXED(31),   /* ABEND subreason code            */ 12800000
+       2 *           FIXED(31),   /* Reserved                        */ 12850000
+       2 FM_WKAREA   CHAR(72),    /* 72 byte work area               */ 12900000
+       2 FM_DYNSTG_ID CHAR(8),    /* Identifier of dyn.storage area  */ 12950000
+       2 FM_DYNSTG    CHAR(0);    /* Dynamic storage begins here     */ 13000000
+                                                                @SPACE; 13050000
+ /********************************************************************/ 13100000
+ /* DCL  MISC                                                   )    */ 13150000
+ /********************************************************************/ 13200000
+                                                                        13250000
+ DCL FMCALEN  FIXED(31) CONSTANT(LENGTH(FMCA)); /* Length of commarea*/ 13300000
+ DCL FM_XFF   FIXED(31) CONSTANT('FF'X);        /* Highest byte value*/ 13350000
+ DCL FMC_FREESTG FIXED(31) CONSTANT(128);                               13400000
+ DCL FMC_ADDSERV FIXED(31) CONSTANT( 64);                               13450000
+ /********************************************************************/ 13500000
+ /* DCL  CODES in case of VSE unique MVS abend '02C5'X               */ 13550000
+ /********************************************************************/ 13600000
+ DCL ABCODE_FOR_VSE FIXED(31) CONSTANT('02C5'X);/* MVS abend code used  13650000
+                                          used to signal VSE problem */ 13700000
+ DCL VSEREA_INT     FIXED(31) CONSTANT(-1);     /* 02C5X Reason code    13750000
+                                          used for internal errors   */ 13800000
+ DCL VSEREA_POX     FIXED(31) CONSTANT(1);      /* 02C5X Reason code    13850000
+                                          used by POXSERV routine    */ 13900000
+ DCL VSEREA_POST    FIXED(31) CONSTANT(2);      /* 02C5X Reason code    13950000
+                                          used by POST service       */ 14000000
+ DCL VSEREA_DETACH  FIXED(31) CONSTANT(3);      /* 02C5X Reason code    14050000
+                                          used by POST service       */ 14100000
+ DCL VSEREA_ESPIE   FIXED(31) CONSTANT(4);      /* 02C5X Reason code    14150000
+                                          used by ESPIE service      */ 14200000
+ DCL VSEREA_ESTAEX  FIXED(31) CONSTANT(5);      /* 02C5X Reason code    14250000
+                                          used by ESTAEX service     */ 14300000
+                                                                @SPACE; 14350000
+ DCL VSEREA_04  FIXED(31) CONSTANT( 4);/* Invalid Function code      */ 14400000
+ DCL VSEREA_08  FIXED(31) CONSTANT( 4);/* DELETE failed during DETACH*/ 14450000
+ DCL VSEREA_12  FIXED(31) CONSTANT( 4);/* POX FIND, IJBFMTBL failed  */ 14500000
+ DCL VSEREA_16  FIXED(31) CONSTANT( 8);/* POX FIND, no table header  */ 14550000
+ DCL VSEREA_20  FIXED(31) CONSTANT(12);/* POX ADD,  IJBFMTBL failed  */ 14600000
+ DCL VSEREA_24  FIXED(31) CONSTANT(16);/* POX ADD,  no table header  */ 14650000
+ DCL VSEREA_28  FIXED(31) CONSTANT(20);/* POX DEL,  IJBFMTBL failed  */ 14700000
+ DCL VSEREA_32  FIXED(31) CONSTANT(24);/* POX DEL,  no table header  */ 14750000
+ DCL VSEREA_36  FIXED(31) CONSTANT(28);/* POX Initialization failed  */ 14800000
+ DCL VSEREA_40  FIXED(31) CONSTANT( 4);/* VAL ECBE, not initialized  */ 14850000
+ DCL VSEREA_44  FIXED(31) CONSTANT( 8);/* VAL ECBE, IJBFMTBL failed  */ 14900000
+ DCL VSEREA_48  FIXED(31) CONSTANT(12);/* VAL ECBE, no table header  */ 14950000
+ DCL VSEREA_52  FIXED(31) CONSTANT( 4);/* ESPIE invalid function R0  */ 15000000
+ DCL VSEREA_56  FIXED(31) CONSTANT( 4);/* ESTAEX invalid function R0 */ 15050000
+                                                                @SPACE; 15100000
+ /********************************************************************/ 15150000
+ /* DCL  FUNCTION REQUEST FROM IJBFMBD TO THE SUPERVISOR (CALLER)    */ 15200000
+ /********************************************************************/ 15250000
+                                                                        15300000
+ DCL FM_OK                     FIXED(31) CONSTANT(0);                   15350000
+ DCL FM_RESVC                  FIXED(31) CONSTANT(1);                   15400000
+ DCL FM_UNPOST                 FIXED(31) CONSTANT(2);                   15450000
+ DCL FM_NOWAIT                 FIXED(31) CONSTANT(3);                   15500000
+ DCL FM_RETURNTO_DISP          FIXED(31) CONSTANT(FM_NOWAIT);           15550000
+ DCL FM_RPOST                  FIXED(31) CONSTANT(4);                   15600000
+ /*  Reserved for future use   FIXED(31) CONSTANT(5..7)              */ 15650000
+                                                                @SPACE; 15700000
+ /********************************************************************/ 15750000
+ /* DCL  Misc Constants                                              */ 15800000
+ /********************************************************************/ 15850000
+ DCL FM_STAE_NO       FIXED(31) CONSTANT(0); /* DETACH, STAE=NO      */ 15900000
+ DCL FM_STAE_YES      FIXED(31) CONSTANT(1); /* ATTACH, STAE=YES     */ 15950000
+                                                                @SPACE; 16000000
+ /********************************************************************/ 16050000
+ /* DCL  FUNCTION CODES FROM SUPERVISOR TO IJBFMBD                   */ 16100000
+ /********************************************************************/ 16150000
+ DCL FM_WAIT                   FIXED(31) CONSTANT( 1); /*WAITM*/        16200000
+ DCL FM_POST                   FIXED(31) CONSTANT( 2);                  16250000
+ DCL FM_ATTACHX                FIXED(31) CONSTANT(42);                  16300000
+ DCL FM_DETACH                 FIXED(31) CONSTANT(62);                  16350000
+ DCL FM_ABEND                  FIXED(31) CONSTANT(13);                  16400000
+ DCL FM_CHAP                   FIXED(31) CONSTANT(44);                  16450000
+ DCL FM_TTIMER                 FIXED(31) CONSTANT(46);                  16500000
+ DCL FM_STIMER                 FIXED(31) CONSTANT(47);                  16550000
+ /* you find ESTAEX and ESPIE in macro FMPL                         */  16600000
+ DCL FM_ESPIE                  FIXED(31) CONSTANT(109);                 16650000
+                                                                @SPACE; 16700000
+                                                                        16750000
+ /*------------------------------------------------------------------*/ 16800000
+ /* IJBFMBD unique function request                                  */ 16850000
+ /*------------------------------------------------------------------*/ 16900000
+ DCL FM_INIT                   FIXED(31) CONSTANT(FM_XFF+1);            16950000
+ DCL FM_CLEANUP                FIXED(31) CONSTANT(FM_XFF+2);            17000000
+ /*  Reserved for future use   FIXED(31) CONSTANT(FM_XFF+3..+19)     */ 17050000
+ /*------------------------------------------------------------------*/ 17100000
+ /* Request to map a program call (PC)                               */ 17150000
+ /*------------------------------------------------------------------*/ 17200000
+ DCL FM_PCSTART                FIXED(31) CONSTANT(FM_XFF+400);          17250000
+ DCL FM_ESTAEX                 FIXED(31) CONSTANT('030F'X);             17300000
+ !DCL FM_ESTAEX                 FIXED(31) CONSTANT(FM_XFF+20);          17350000
+ /*------------------------------------------------------------------*/ 17400000
+ /* Additional Service to be performed by IJBFMBD                    */ 17450000
+ /* Single call interface, no INIT / CLEANUP                         */ 17500000
+ /*------------------------------------------------------------------*/ 17550000
+ !DCL FM_CLEANUP_EOT            FIXED(31) CONSTANT(FM_XFF+101);         17600000
+ DCL FM_SERVICES               FIXED(31) CONSTANT(FM_XFF+101);          17650000
+ DCL FM_POST_SERVICE_RTN       FIXED(31) CONSTANT(FM_XFF+102);          17700000
+ DCL FM_CLEANUP_POX            FIXED(31) CONSTANT(FM_XFF+103);          17750000
+                                                                @SPACE; 17800000
+ /*------------------------------------------------------------------*/ 17850000
+ /*  POST EXIT SERVICE Routine requests performed by IJBFMBD         */ 17900000
+ /*------------------------------------------------------------------*/ 17950000
+ DCL FM_POXINTERN              FIXED(31) CONSTANT(FM_XFF+300);          18000000
+ DCL FM_POX_FIND               FIXED(31) CONSTANT(FM_XFF+336);          18050000
+ DCL FM_POX_INIT               FIXED(31) CONSTANT(FM_XFF+340);          18100000
+ DCL FM_POXFIRST               FIXED(31) CONSTANT(FM_XFF+390);          18150000
+ DCL FM_POX_ADD                FIXED(31) CONSTANT(FM_XFF+394);          18200000
+ DCL FM_POX_DELETE             FIXED(31) CONSTANT(FM_XFF+398);          18250000
+ DCL FM_POXLAST                FIXED(31) CONSTANT(FM_XFF+398);          18300000
+                                                                @SPACE; 18350000
+ /********************************************************************/ 18400000
+ /* DCL  CORRESPONDING VSE SVCs                                      */ 18450000
+ /********************************************************************/ 18500000
+                                                                @SPACE; 18550000
+ DCL FM_VSE_WAIT                   FIXED(31) CONSTANT(29);              18600000
+ DCL FM_VSE_POST                   FIXED(31) CONSTANT(40);              18650000
+ DCL FM_VSE_ATTACH                 FIXED(31) CONSTANT(38);              18700000
+ DCL FM_VSE_DETACH                 FIXED(31) CONSTANT(39);              18750000
+ DCL FM_VSE_CANCEL                 FIXED(31) CONSTANT(6);               18800000
+ DCL FM_VSE_CHAP                   FIXED(31) CONSTANT(78);              18850000
+ DCL FM_VSE_STIMERM_SET            FIXED(31) CONSTANT(18);              18900000
+ DCL FM_VSE_STIMER                 FIXED(31) CONSTANT(18);              18950000
+ DCL FM_VSE_TTIMER                 FIXED(31) CONSTANT(52);              19000000
+ DCL FM_VSE_EXITS                  FIXED(31) CONSTANT(255);             19050000
+                                                                @SPACE; 19100000
+ /********************************************************************/ 19150000
+ /* DCL RETURN CODES PASSED TO CALLER OF $IJBFMBD                    */ 19200000
+ /********************************************************************/ 19250000
+                                                                        19300000
+ DCL    FM_ENTRY_NOT_FOUND     FIXED(31) CONSTANT(4);/* Issued if       19350000
+                                         IJBFMTBL does not find the     19400000
+                                         table entry                 */ 19450000
+ DCL    FM_ENTRY_ALREADY_IN_TABLE FIXED(31) CONSTANT(8);/* Issued if    19500000
+                                         IJBFMTBL detects that the      19550000
+                                         entry is already in table      19600000
+                                         NOTE: No longer for POXQUEUE*/ 19650000
+ DCL    FM_IJBFMTBL_FAILED     FIXED(31) CONSTANT(20);/* Issued if      19700000
+                                         IJBFMTBL detects an error      19750000
+                                         during table processing     */ 19800000
+ DCL    FM_SEQ_ERROR           FIXED(31) CONSTANT(12);/* Issued if      19850000
+                                         IJBFMBD detects a sequence     19900000
+                                         error, i.e. no INIT for FMCA*/ 19950000
+ DCL    FM_SGETVIS_ERROR       FIXED(31) CONSTANT(14); /* Issued if     20000000
+                                         SGETVIS macro fails         */ 20050000
+ DCL    FM_SFREEVIS_ERROR      FIXED(31) CONSTANT(16);/* Issued if      20100000
+                                         IJBFMBD detects FREEVIS        20150000
+                                         error (FMFREE)              */ 20200000
+                                                                @SPACE; 20250000
+ /********************************************************************/ 20300000
+ /* DCL RETURN CODES I N T E R N A L                                 */ 20350000
+ /*               >>> greater 32 <<<                                 */ 20400000
+ /********************************************************************/ 20450000
+                                                                @SPACE; 20500000
+ DCL    FM_ABEND_ERROR         FIXED(31) CONSTANT(32);/* Issued if      20550000
+                                         IJBFMBD should perform ABEND*/ 20600000
+                                                                @SPACE; 20650000
+ DCL    FM_INVALID_ADDR_ERROR  FIXED(31) CONSTANT(36);/* Issued by      20700000
+                                         CALLSUP macro if address is    20750000
+                                         invalid                     */ 20800000
+ DCL    FM_PROTECT_ADDR_ERROR  FIXED(31) CONSTANT(40);/* Issued by      20850000
+                                         CALLSUP macro if protection    20900000
+                                         violation was detected      */ 20950000
+ DCL    FM_ECB_FORMAT_ERROR    FIXED(31) CONSTANT(44);/* Issued by      21000000
+                                         VALIDATE_ECB_FORMAT routine if 21050000
+                                         incorrect boudary detected  */ 21100000
+ DCL    FM_WAIT_COUNT_ERROR    FIXED(31) CONSTANT(48);/* Issued by      21150000
+                                         WAIT routine if wait_count     21200000
+                                         larger then ECB#            */ 21250000
+ DCL    FM_NUCLKUP_ERROR       FIXED(31) CONSTANT(52);/* Issued by      21300000
+                                         CALLSUP SERVICE(LOAD | DELETE) 21350000
+                                         if NUCLKUP fails            */ 21400000
+ DCL    FM_LOAD_ERROR          FIXED(31) CONSTANT(56);/* Issued by      21450000
+                                         CALLSUP SERVICE(LOAD) if       21500000
+                                         LOAD service fails          */ 21550000
+ DCL    FM_DELETE_ERROR        FIXED(31) CONSTANT(60);/* Issued by      21600000
+                                         CALLSUP SERVICE(DELETE) if     21650000
+                                         DELETE service fails        */ 21700000
+ DCL    FM_POXSERV_ERROR       FIXED(31) CONSTANT(64);/* Issued by      21750000
+                                         POXSERV subroutine if there    21800000
+                                         is no table header available   21850000
+                                         or IJBENTRY failed          */ 21900000
+ DCL    FM_POST_EXIT_ERROR     FIXED(31) CONSTANT(68);/* Issued by      21950000
+                                         POST exit validation if        22000000
+                                         post exit routine is not in    22050000
+                                         table                       */ 22100000
+ DCL    FM_INVALID_FCODE       FIXED(31) CONSTANT(72);/* Issued if      22150000
+                                         function code is not supported 22200000
+                                                                     */ 22250000

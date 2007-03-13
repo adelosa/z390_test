@@ -1,0 +1,1245 @@
+         MACRO                                                          00001000
+         SGMIH                                                          00002000
+         GBLB  &SGMIH     SGMIH PRINT CONTROL SWITCH                    00003000
+         GBLA  &AG1       NUMBER OF PUBS (FOR MORE DEVICES)    @D51ODGL 00004000
+         GBLB  &VSE270    RELEASE CONTROL SWITCH               @D66ADAP 00006000
+         GBLB  &VSE280    RELEASE CONTROL SWITCH               @D28ADAP 00007000
+         ACTR  200        LOOP CONTROL                                  00008000
+***************************************************************         00009000
+*                                                                       00010000
+*        IBM DISK OPERATING SYSTEM                                      00011000
+*        SUPERVISOR - SGMIH - 5686-066-06                      @DA37198 00012000
+*                                                                       00013000
+*        LICENSED MATERIALS-PROPERTY OF IBM                    @D51GDAP 00014000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"           @D51GDAP 00015000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1980, 2005           @D66CDAP 00016490
+*        SEE COPYRIGHT INSTRUCTIONS                            @D51GDAP 00017000
+*                                                                       00018000
+***************************************************************         00019000
+.* /* START OF SPECIFICATIONS ****                                      00020000
+.*01  MODULE-TYPE = MACRO                                               00021000
+.*                                                                      00022000
+.*01  DESCRIPTIVE NAME = MISSING INTERRUPT HANDLER                      00023000
+.*                                                                      00024000
+.*01  NOTES       = CHANGE ACTIVITY                                     00025000
+.* A000000-999999                                              @D37BDAP 00026000
+.* EXCLUDE DEVICE 1052 FROM MIH-PROCESS                        @DA24568 00027000
+.* EXCLUDE DEVICE 7770 FROM MIH-PROCESS                        @DA24568 00028000
+.* ENFORCE CORRECT CURSOR POSITION AFTER DECISION MESSAGE      @DA28322 00029000
+.* ENFORCE CORRECT DEFAULT FOR 1052 DECISION MESSAGES          @DA29889 00030000
+.* ENFORCE MIH PROCESS FOR ALL DEVICES IF EOT IS ACTIVE        @DA29643 00031000
+.* NOT I/O INTERRUPT DRIVEN 1419 NEED NO MIH OTHER THAN AT EOJ @DA30641 00032000
+.* SKIP MIH PROCESS AS LONG AS SDAID IS IN PROCESS             @D14CDAP 00033000
+.* ALLOW ASYNCHRONEOUS OPERATOR REPLY                          @D14CDAP 00034000
+.* SOFTWAIT, PUB QUEUED FOR RECOVERY AFTER ERP COMPLETE        @DA34415 00035000
+.* HWFFF IN ROUTINE MIHTPTST                                   @DA34300 00036000
+.* ILLEGAL SVC15 AFTER MIH MESSAGE RESPONSE                    @DA35615 00037000
+.* INCORRECT TEST FOR PROGRAM RETRYABILITY                     @DA36116 00038000
+.* CCB ADDRESSABILTY FOR EXCP-REAL REQUEST                     @DA36324 00039000
+.* SETUP IOINTER BASE REG. BEFORE ISSUING WRT ERASE SCREEN I/O @DA36675 00040000
+.* MISSING INTERRUPT MSG NOT SHOWN WHEN SYSLOG BUSY DURING WRT @DA37198 00041000
+.* MAINATIN THE CORRECT ACTIVE OLD TIME STAMP                  @DA37824 00042000
+.* BYPASS MIH IN CASE OF OPERATING REMOTE                      @D31PDAP 00043000
+.* PROVIDE CORRECT CUA ADDRESS IN MIH RECORD                   @DA34506 00044000
+.* ESA SUPPORT                                                 @D51GDAP 00045000
+.* CCB ADDRESSABILITY AT MIHTPTST                              @DA40318 00046000
+.* MORE DEVICES SUPPORT                                        @D51ODGL 00047000
+.* WAITFFF IN SGSCHED, LOW CORE CUU NOT SET UP CORRECTLY       @DA40731 00048000
+.* REFORMAT MIH ELAPSE TIME INTERVAL FOR EREP                  @DA41354 00049000
+.* SNS TASK LOOP DURING I/O OPERATION TO CONSOLE WITH WSA      @DA41699 00050000
+.* PREVENT INSTRUCTION LINE OVERWRITE WHILE MIH IS WORKING     @DA41723 00051000
+.* ENSURE SUBCHANNEL TO BE CLEARED IN CASE FUNCTION PENDING    @DA41879 00052000
+.* MSG0P36I NO RECORD FOUND - SYSTEM HANGS                     @DA42144 00053000
+.* WAITFFF AFTER LOST CE/DE MSG AND ONLINE CUU IS ENTERED      @DA42825 00054000
+.* INCREASE MIN WAIT TIME DUE TO TIME NEEDED FOR PATH VERIFY   @DA42913 00055000
+.* NEW CONSOLE INTERFACE SUPPORT                               @D61CDAP 00056000
+.* PREVENT DEVICE/TASK HANG IN CASE OF DECISION-TYPE MESSAGES  @DA43896 00057000
+.* PREVENT H/W IN CASE OF LOST INTERRUPT FOR TP DEVICES        @DA43916 00058000
+.* PREVENT MIH LOOP AND ENFORCE TIMER INTERRUPT                @DA43979 00059000
+.* PREVENT HARD/WAIT IN CASE OF LOST CHANNEL END INTERRUPT     @DA44201 00060000
+.* HARDWAIT 000A0000 00EEEEEE OR CHANNEL QUEUE CORRUPTION      @DA44241 00061000
+.* PREVENT SNS-TASK LOOP WHILE WAITING FOR I/O                 @DA44680 00062000
+.* HAVE MIH USE ITS OWN SCHIB                                  @DY45166 00063000
+.* EXCLUDE TERMINAL PRINTER X'B001' FROM MIH CHECK             @DY45166 00064000
+.* FORCE REMNANTS FROM MIH PROCESSING TO BE RESET IN CHANQ     @DY45166 00065000
+.* SNS-TASK LOOP AFTER MIH REPLY WAS ENTERED                   @DY45768 00066000
+.* QDIO DEVICE SUPPORT                                         @D66ADAP 00067000
+.* MORE TASKS SUPPORT                                          @D66CDAP 00068000
+.* PREVENT CSCH TO BE ISSUED FOR HYPER-SOCKET DEVICES          @DY45817 00069000
+.* PREVENT MIH PROCESS DURING RESTART PROCESSING               @DY46139 00070000
+.* PREVENT EREP RECORD TO BE WRITTEN FOR VTAPE DEVICES         @DY46289 00070500
+.* MSG0E02D ISSUED WHEN TOD+2 WRAPS AND SIR MIH,CUU,XX ACTIVE  @DY46584 00070700
+.*                                                                      00071000
+.**** END OF SPECIFICATIONS ***/                                        00072000
+.********************************************************************** 00073000
+.*                                                                    * 00074000
+.*       GENERAL FUNCTIONS                                            * 00075000
+.*                                                                    * 00076000
+.*       AFTER A PREDEFINED TIME INTERVAL HAS ELAPSED, ALL ENTRIES    * 00077000
+.*       IN THE CHANNEL QUEUE ARE INSPECTED FOR A 'LONG TIME ENTRY'   * 00078000
+.*       IF SUCH A LONG TIME ENTRY IS FOUND, IT WILL BE ANALYZED TO   * 00079000
+.*       RECOGNIZE AN EVENTUALLY MISSING INTERRUPT, IN WHICH CASE     * 00080000
+.*       AN APPROPRIATE MESSAGE-ID AS WELL AS A MESSAGE-ACTION-ID     * 00081000
+.*       AS WELL AS AN EXIT-ID WILL BE SET UP. THE EMERGENCY MESSAGE  * 00082000
+.*       WRITER WILL THEN BE ACTIVATED TO PRINT THE APPROPRIATE       * 00083000
+.*       MESSAGE TEXT AND TO HANDLE THE ERROR CONDITION.              * 00084000
+.*       ALL ACTIVE ENTRIES IN THE CHANNEL QUEUE THAT ARE NOT YET     * 00085000
+.*       MARKED AS LONG TIME ENTRIES, WILL BE MARKED AS SUCH, BUT     * 00086000
+.*       NO FURTHER PROCESSING WILL BE DONE.                          * 00087000
+.*                                                                    * 00088000
+.*                                                                    * 00089000
+.*       GENERAL REGISTER USAGE                                       * 00090000
+.*                                                                    * 00091000
+.*       R1                                                           * 00092000
+.*       R2                                                           * 00093000
+.*       R3                                                           * 00094000
+.*       R4                                                           * 00095000
+.*       R5                                                             00096000
+.*       R6 DISPATCHER BASE REGISTER                                  * 00097000
+.*       R7 LINK REGISTER                                             * 00098000
+.*       R8                                                           * 00099000
+.*       R9                                                           * 00100000
+.*       RA                                                           * 00101000
+.*       RB                                                           * 00102000
+.*       RC                                                           * 00103000
+.*       RD SGMIH BASE REGISTER                                       * 00104000
+.*       RE                                                           * 00105000
+.*       RF                                                           * 00106000
+.*                                                                    * 00107000
+.********************************************************************** 00108000
+         AIF   (NOT &SGMIH).NPRT010                            @D61NDAP 00109000
+         PRINT GEN                                                      00110000
+.NPRT010 ANOP                                                           00111000
+         DC    CL8'SGMIH   '                                            00112000
+         DC    CL8'DY46584 '      CHANGE ACTIVITY CODE         @DY46584 00113680
+         SPACE 3                                                        00114000
+         TITLE 'VSE SUPERVISOR     SGMIH     MISSING INTERRUPT HANDLER' 00115000
+         USING MISINTAT,RD        MIH BASE REGISTER            @D52VDAP 00116000
+         USING DISP,R6            DISPATCHER BASE REGISTER              00117000
+MISINTAT NOP   0                  ENTRY POINT OF IOINTER                00118000
+MISINTHD DC    0H'0'              ENTRY POINT OF DISP                   00119000
+MISINTSW NOPR  R7                 SIR MIH=OFF SWITCH           @D61CDAP 00120000
+         TM    SNSFLAG,SNSMSGRO   MIH WAITING FOR RESPONSE     @D61CDAP 00121000
+         BO    MIHGOSNS           YES, ====================>>> @D61CDAP 00122000
+MIHNRPLY TM    SNSFLAG,SNSMSGOP   MIH CURRENTLY ACTIVE         @DY45768 00123000
+         BNZR  R7                 YES, ====================>>> @D14CDAP 00124000
+         STCK  MIHCLNEW           STORE NEW CLOCK                       00125000
+         BCR   3,R7                    ====================>>>          00126000
+         STM   RC,R1,MIHREGC      SAVE CALLERS REGISTERS       @DA29643 00127490
+         SPACE 1                                               @D3CADAP 00128000
+         MVC   MIHCCNEW(8),MIHCLNEW SAVE CURRENT TIME          @DA43914 00129000
+         ICM   RE,15,MIHCCNEW+2   SIGNIFICANT PART (16 USECS)  @DA43914 00130000
+         AL    RE,MIHCNTI5        ADD FIVE  SECONDS INTERVAL   @DA43914 00131000
+         BC    12,MIHNOCRY        BRANCH IF NO CARRY           @DA44680 00132000
+         SLR   RF,RF              CLEAR REGISTER               @DA44680 00133000
+         ICM   RF,3,MIHCCNEW      GET OLD SETTING              @DA44680 00134000
+         AL    RF,F1              ADD THE CARRY                @DAOM    00135000
+         STCM  RF,3,MIHCCNEW      STORE UPDATED VALUE          @DA44680 00136000
+MIHNOCRY STCM  RE,15,MIHCCNEW+2   NEW CLOCK VALUE              @DA43914 00137000
+         STCKC MIHCCCOM           STORE CLOCK COMPARATOR       @DA43914 00138000
+         CLC   MIHCCNEW(6),MIHCCCOM  COMPARATOR ALREADY SET    @DA43914 00139000
+         BH    MIHMR000           YES,                         @D62NDAP 00140000
+         SCKC  MIHCCNEW           SET NEW CLOCK COMPARATOR     @DA43914 00141000
+         SPACE 3                                               @D3CADAP 00142000
+MIHMR000 L     RE,MIHCLNEW        GET NEW TIME STAMP                    00143000
+         L     RF,MIHCACTO        STAMP FOR LAST ACTIVE OLD             00144000
+         SR    RE,RF              GET DIFFERENCE IN SECONDS             00145000
+         ST    RE,MIHELAPS        ELAPSED TIME INTERVAL                 00146000
+         CLI   EMWFLAG1,ZERO      SPECIAL PROCESSING REQUIRED  @D14CDAP 00147000
+         BNE   MIHEMGCY           YES, ======================> @D14CDAP 00148000
+MIHMR010 TM    IJBOPMOD,IJBOPREM  OPERATING REMOTE             @D61NDAP 00149000
+         BO    MIHEXIT            YES, ======================> @D61NDAP 00150000
+         CL    RE,MIHAWAIT        ACTIVE WAIT TIME ELAPSED     @D14CDAP 00151000
+         BL    MIHEXIT            NO,  ======================> @D14CDAP 00152000
+         MVC   MIHCACTO,MIHCLNEW  UPDATE STAMP FOR ACTIVE OLD           00153000
+         L     RE,MIHCLNEW        GET NEW TIME STAMP                    00154000
+         L     RF,MIHCINAO        STAMP FOR LAST INACTIVE               00155000
+         SR    RE,RF              GET DIFFERENCE IN SECONDS             00156000
+MIHMR020 CL    RE,MIHMWAIT        IS MAXIMUM WAIT TIME ELAPSED @DA28738 00157000
+         BL    MIHMR030           NO                                    00158000
+         MVC   MIHCINAO,MIHCLNEW  UPDATE STAMP FOR INACT. OLD           00159000
+MIHMR030 LH    RE,YPUBTAB         ADDRESS OF PUB TABLE                  00160000
+         USING PUBADR,RE          PUB BASE                              00161000
+         BAL   RF,MIHMR050        TEST FOR QUEUED REQUESTS              00162000
+         LA    RE,NEXTPUB         POINT TO NEXT PUB                     00163000
+MIHMR050 CLI   PUBCHANN,XFF       END OF PUB TABLE                      00164000
+         BE    MIHNORTY           YES, WE ARE DONE             @DY45988 00165000
+         CLI   PUBCHQPT,NOTQUED   IS A REQUEST QUEUED TO PUB            00166000
+         BER   RF                 NO, GET NEXT PUB ENTRY                00167000
+         SLR   RC,RC              CLEAR WORK REGISTER                   00168000
+         IC    RC,PUBCHQPT        GET CHANNEL QUEUE POINTER             00169000
+         AIF   (&AG1 LE 254).LOD0000                                    00170000
+         ICM   RC,2,PUBCHQPH      GET UPPER BYTE                        00171000
+.LOD0000 ANOP                                                           00172000
+         SLL   RC,CHQSLEN         MULTIPLY WITH ENTRY LENGTH            00173000
+         A     RC,ACHANQ          ADD ADDRESS OF CHANQ TABLE            00174000
+         ICM   RC,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00175000
+         USING CHQADR,RC          CHANQ BASE                            00176000
+         TM    PUBCSFLG,QEDERR    QUEUED FOR RECOVERY                   00177000
+         BOR   RF                 YES, ANALYZE NEXT PUB                 00178000
+         TM    PUBCSFLG,PUBLOBSY  DELAYED RETRY PENDING        @DY45988 00179000
+         BO    MIHMR0B0           YES, PROVIDE FOR RESTART     @DY45988 00180000
+         CLC   MIHELAPS,MIHAWAIT  ACTIVE WAIT TIME ELAPSED     @DY46139 00181000
+         BLR   RF                 NO, THEN SKIP MIH PROCESS    @DY46139 00182000
+         TM    PUBCSFLG,OPINTV    INTERVENTION REQUIRED                 00183000
+         BZ    MIHMR070           NO, TEST FOR LONG TIME ENTRY          00184000
+         CLC   CHQTID,IORQ4AR     IS THIS A SYSTEM TASK I/O             00185000
+         BNLR  RF                 NO, ANALYZE NEXT PUB                  00186000
+         OI    CHQCCSIO,CHQCCLTE  YES, FORCE MESSAGE RIGHT AWAY         00187000
+MIHMR070 SLR   R2,R2              CLEAR REGISTER               @D28ADAP 00188000
+         ICM   R2,3,CHQPUBHI      GET PUB INDEX                @D28ADAP 00189000
+         SLL   R2,2               MULTIPLY WITH FOUR           @D28ADAP 00190000
+         A     R2,APBXAREA        POINT TO PUBX ADDR. TABLE    @D28ADAP 00191000
+         L     R2,0(,R2)          GET PUBX ADDR                @D28ADAP 00192000
+         USING PBXADR,R2          PUBX    BASE ADDRESS         @D28ADAP 00193000
+         ST    R2,MIHPBXAD        PRESERVE FOR LATER USE       @D28ADAP 00193500
+         TM    CHQCCSIO,CHQCCLTE  IS THIS A LONG TIME ENTRY    @D28ADAP 00194000
+         BO    MIHMR100           YES, WE NEED TO PROCESS IT            00195000
+         TM    CHQCCSIO,CHQCCACT  DID WE START REQUEST         @DAOM    00196000
+         BZR   RF                 NO,                          @DAOM    00197000
+         TM    PBXMIHFL,PBXNOMIH  MIH TO BE SUPPRESSED         @DAOM    00198000
+         BO    MIHMR0A0           YES, RESET AND PROCESS NEXT  @DAOM    00199000
+         TM    PBXMIHFL,PBXMIHTI  SPECIAL PROCESSING REQUESTED @DAOM    00200000
+         BZ    MIHMR090           NO,                          @DAOM    00201000
+         LA    R1,PBXMIHTI        GET COUNTER BITS             @DAOM    00202000
+         IC    R0,PBXMIHFL        GET FLAG BYTE                @DAOM    00203000
+         NR    R0,R1              CLEAR ALL EXCEPT TIME UNITS  @DAOM    00204000
+         TM    PBXMIHFL,PBXTINSS  IS TIME UNIT IN SECONDS      @DAOM    00205000
+         BO    MIHMR080           YES,                         @DAOM    00206000
+         MH    R0,MIHCHW60        VALUE IN SECONDS NOW         @DAOM    00207000
+MIHMR080 MH    R0,MIHCNTI1+2      VALUE IN UNITS OF 128 USECS  @DAOM    00208000
+         L     R1,CHQCCBB3+1      START TIME FROM CHQ          @DY46584 00209090
+         SLL   R1,3               GET ORIGINAL TIME            @DY46584 00209180
+         CLM   R1,15,MIHCLNEW+2   > CURRENT MIHCLNEW+2?        @DY46584 00209270
+         BNH   MIHMR084           NO, NO TOD+2 WRAP            @DY46584 00209360
+         LCR   R1,R1              COMPLEMENT                   @DY46584 00209450
+         SRL   R1,3               ADJUST                       @DY46584 00209540
+         ST    R1,CHQCCBB3+1      SET ADJUSTED START TIME      @DY46584 00209630
+MIHMR084 AL    R0,CHQCCBB3+1      ADD THE START TIME           @DAOM    00209720
+         SLL   R0,3               ADJUST IT TO 16 USEC  (TOD)  @DAOM    00210000
+         CLM   R0,15,MIHCLNEW+2   IS INTERRUPT OVERDUE         @DAOM    00211000
+         BHR   RF                 NO, NOT YET                  @DAOM    00212000
+         OI    CHQCCSIO,CHQCCLTE  INDICATE LONG TIME ENTRY     @DAOM    00213000
+         B     MIHMR100           PROCESS RIGHT AWAY           @DAOM    00214000
+MIHMR090 OI    CHQCCSIO,CHQCCLTE  INDICATE LONG TIME ENTRY     @DAOM    00215000
+         BR    RF                 RETURN TO MAIN LINE          @DAOM    00216000
+MIHMR0A0 NI    CHQCCSIO,XFF-CHQCCLTE RESET LONG TIME ENTRY     @DAOM    00217000
+         BR    RF                 RETURN TO MAIN LINE          @DAOM    00218000
+         DROP  R2                 RELEASE PBXADR BASE          @DAOM    00219000
+MIHMR0B0 DS    0H'0'              LONG BUSY DEVICE PROCESSING  @DY45988 00220000
+         LH    R2,PUBCHANN        GET CUU ADDRESS              @DY45988 00221000
+         NI    PUBCSFLG,XFF-PUBLOBSY-OPINTV RESET GATING BITS  @DY45988 00222000
+         LR    R3,RE              COPY PUB ADDRESS             @DY45988 00223000
+         LR    R4,RC              COPY CHANQ ADDRESS           @DY45988 00224000
+         B     SNSRST30           RETRY======================> @DY45988 00225000
+         SPACE 1                                                        00226000
+*                                                                       00227000
+*        INTERRUPT OVERDUE PROCESSING                                   00228000
+*                                                                       00229000
+         USING PBXADR,R2          PBXADR BASE                           00230000
+MIHMR100 DS    0H                                              @D66ADAP 00231000
+         CLI   PUBDEVTY,T3800     IS THIS 3800 PRINTER         @DA32152 00257000
+         BE    MIHMR140           YES, MIH TO WORK AT EOJ ONLY @DA32152 00258490
+         CLI   PUBDEVTY,T3277     IS THIS A TP DEVICE          @DAOM113 00259000
+         BNE   MIHMR120           NO,                          @DAOM113 00260490
+         TM    PUBOPTN,X'01'      IS THIS A TERMINAL PRINTER   @DAOM113 00261000
+         BO    MIHMR140           YES, MIH TO WORK AT EOJ ONLY @DAOM113 00262490
+         B     MIHMR300           NORMAL MIH PROCESSING        @DY45166 00263000
+MIHMR120 CLI   PUBDEVTY,T2701     IS THIS SOME KIND TP DEVICE  @DAOM113 00264490
+         BL    MIHMR300           NO, DO NORMAL MIH PROCESS    @DA29643 00265000
+         CLI   PUBDEVTY,TCTCA     IS THIS A CTCA               @D61NDAP 00266000
+         BE    MIHMR140           YES, MIH TO WORK AT EOJ ONLY @D61NDAP 00267490
+         TM    PUBDEVTY,TUNSPZ    IS THIS AFP PRINTER OR UNSP  @D21WDAP 00268000
+         BO    MIHMR140           YES, MIH TO WORK AT EOJ ONLY @D21WDAP 00269490
+         CLI   PUBDEVTY,T7772     IS THIS A 270X OR 7770/7772  @DA29643 00270000
+         BNH   MIHMR140           YES, MIH TO WORK AT EOJ ONLY @DA29643 00272990
+         CLI   PUBDEVTY,T3705     IS THIS THE ICA              @DA29643 00274980
+         BNE   MIHMR300           NO, DO NORMAL MIH PROCESSING @DA29643 00277000
+         TM    PUBOPTN,X'10'      TEST MODE BYTE IF REALLY ICA @DA29643 00278000
+         BNO   MIHMR300           NO, DO NORMAL MIH PROCESSING @DA29643 00279000
+MIHMR140 DS    0H'0'              MIH AT EOJ PROCESSING        @DA29643 00281990
+         BAL   R3,MIHTEOJ         TEST FOR EOJ AND SET CC      @DY46289 00283980
+*SGLINK  MIHTEOJ INPUT=(R3,RC,RD),WORK=R1                      @DY46289 00285970
+         BO    MIHMR300           YES, IT IS EOJ CONDITION     @DY46289 00287960
+MIHNOMIH NI    CHQCCSIO,XFF-CHQCCLTE FORGET IT NOW             @DY46289 00289950
+         BR    RF                 PROCESS NEXT DEVICE                   00291940
+         EJECT ,                                                        00293930
+MIHMR300 DS    0H'0'              NORMAL MIH PROCESSING        @DA29643 00299000
+         TM    EMWFLAG1,EMWF1LAE  DID WE FIND LONG ACTIVE ENTRY@DA29643 00300000
+         BOR   RF                 YES, DONT OVERWRITE                   00301000
+         TM    PBXFLAG,PBXTAPE    IS THIS A TAPE DEVICE        @DY46289 00302020
+         BZ    MIHMR380           NO,                          @DY46289 00302040
+         ICM   R3,15,PBXSIMID     IS THIS A VITUAL TAPE        @DY46289 00302060
+         BZ    MIHMR380           NO,                          @DY46289 00302080
+         OC    PBXSIMAD,PBXSIMAD  ALREADY IN TERMINATION       @DY46289 00302100
+         BZ    MIHNOMIH           YES, PREVENT MIH PROCESSING  @DY46289 00302120
+         LR    R2,R3              COPY TACNTADR ADDRESS        @DY46289 00302140
+         DROP  R2                 RELEASE PBXADR BASE          @DY46289 00302160
+         USING TACNTADR,R2        TACNTADR BASE                @DY46289 00302180
+         L     R3,AMIHMR320       GET 31-BIT ADDRESS           @DY46289 00302200
+         BASSM 0,R3               SWITCH INTO 31-BIT MODE      @DY46289 00302220
+AMIHMR320 DC   A(MIHMR320+X'80000000') 31-BIT ADDRESS MODE     @DY46289 00302240
+MIHMR320 LA    R3,MIHMR380        24-BIT CONTINUATION ADDR.    @DY46289 00302260
+         TM    TACNTFLG,SIM#TCP+SIM#VSAM REMOTE REQUEST        @DY46289 00302280
+         BZ    MIHMR340           NO, JOIN MAIN PATH           @DY46289 00302300
+         OI    EMWFLAG2,EMWF2VTA+EMWF2VTV ASSUME REMOTE VSAM   @DY46289 00302320
+         TM    TACNTFLG,SIM#VSAM  IS IT A VSAM FILE            @DY46289 00302340
+         BO    MIHMR340           YES, DO MIH PROCESSING       @DY46289 00302360
+         NI    EMWFLAG2,XFF-EMWF2VTV RESET REMOTE VSAM FILE    @DY46289 00302380
+         OI    EMWFLAG2,EMWF2VTT  INDICATE REMOTE TCP/IP FILE  @DY46289 00302400
+         BAL   R3,MIHTEOJ         TEST FOR EOJ AND SET CC      @DY46289 00302420
+*SGLINK  MIHTEOJ INPUT=(R3,RC,RD),WORK=R1                      @DY46289 00302440
+         LA    R3,MIHMR380        24-BIT CONTINUATION ADDR.    @DY46289 00302460
+         BO    MIHMR340           YES, IT IS EOJ CONDITION     @DY46289 00302480
+         LA    R3,0(,RF)          FORCE RETURN TO PUBSCAN      @DY46289 00302500
+         NI    CHQCCSIO,XFF-CHQCCLTE FORGET IT NOW             @DY46289 00302520
+         NI    EMWFLAG2,XFF-EMWF2VTA-EMWF2VTV-EMWF2VTT RESET   @DY46289 00302540
+MIHMR340 BSM   0,R3               GET BACK INTO 24-BIT MODE    @DY46289 00302560
+MIHMR380 STM   RC,RF,MIHREGC      PRESERVE CURRENT POINTERS             00302580
+         LA    R7,MIHLTPRC        OVERWRITE RETURN ADDRESS              00303000
+         TM    PUBCSFLG,OPINTV    IS IT INTERVENTION REQUIRED           00304000
+         BOR   RF                 YES, ALLOW IT TO BE OVERLAYED         00305490
+         OI    EMWFLAG1,EMWF1LAE  FOUND LONG ACTIVE ENTRY               00306000
+         BR    RF                 CONTINUE SCAN                         00307000
+         SPACE 1                                                        00308000
+*SGLINK  MIHTEOJ INPUT=(R3,RC,RD),WORK=R1                               00308060
+MIHTEOJ  SLR   R1,R1              CLEAR                        @DY46289 00308120
+         ICM   R1,3,CHQTID        GET TASK ID                  @DY46289 00308180
+         SLL   R1,2               MULTIPLY WITH FOUR           @DY46289 00308240
+         AL    R1,ATIBATAB        ADDRESS OF TIB ADDRESS       @DY46289 00308300
+         L     R1,0(,R1)          GET TIB ADDRESS              @DY46289 00308360
+         USING TIBADR,R1          TIB BASE POINTER             @DY46289 00308420
+         TM    TIBFLAG1,EOTACT    IS TASK TERMINATING          @DY46289 00308480
+         BOR   R3                 EOT, ======================> @DY46289 00308540
+         TM    TIBFLAG,FETCHEOJ   EOJ PROCESSING               @DY46289 00308600
+         BOR   R3                 EOT, ======================> @DY46289 00308660
+         SR    R1,R1              FORCE CC=00                  @DY46289 00308720
+         DROP  R1                 RELEASE TIB BASE POINTER     @DY46289 00308780
+         BR    R3                 MIH, ======================> @DY46289 00308840
+         SPACE 2                                                        00308900
+MIHEMGCY DS    0H'0'              SPECIAL PROCESSING           @DY45988 00309000
+         TM    EMWFLAG1,EMWF1SNS  IS SNS-TASK I/O ONGOING      @DY45988 00310490
+         BZ    MIHEMG10           NO, CHECK OTHER CONDITIONS   @DY45988 00311000
+         CL    RE,MIHSWAIT        IS MINIMUM WAIT TIME ELAPSED @DY45988 00312000
+         BL    MIHEXIT            NO,                          @DY45988 00313000
+         B     SNSEMGCY           YES, ======================> @DY45988 00314000
+MIHEMG10 CL    RE,MIHRWAIT        IS MINIMUM WAIT TIME ELAPSED @DY45988 00315000
+         BL    MIHEXIT            NO,  ======================> @DY45988 00316000
+         TM    EMWFLAG1,EMWF1RTY  DELAYED RETRY PENDING        @DY45988 00317000
+         BO    MIHMR030           YES,                         @DY45988 00318000
+         B     MIHMR010           NO, PROCEED MAIN LINE CODE   @DY45988 00319000
+         SPACE 1                                                        00320000
+MIHNORTY NI    EMWFLAG1,XFF-EMWF1RTY RESET DELAYED RETRY PEND. @DY45988 00321000
+MIHEXIT  LM    RC,R3,MIHREGC      RESTORE USERS REGISTERS      @DA29643 00322490
+         BR    R7                      =====================>>>         00323000
+         SPACE 3                                                        00324000
+         DROP  RE                 RELEASE PUB BASE                      00325000
+         DROP  RC                 RELEASE CHANQ BASE                    00326000
+         SPACE 3                                                        00327000
+MIHGOSNS TM    EMWWTORE+2,TRABIT  HAS ECB BEEN POSTED          @D61CDAP 00328000
+         BO    MIHGO010           YES,                         @DY45768 00329000
+         TM    EMWFLAG1,EMWF1SNS  SPECIAL PROCESSING REQUIRED  @DY45768 00330000
+         BZR   R7                 NO,  ====================>>> @D61CDAP 00331000
+         B     MIHNRPLY           PREVENT ENDLESS LOOP         @DY45768 00332000
+MIHGO010 OI    SNSFLAG,SNSMSGOP   INDICATE MIH SERVICE NEEDED  @D61CDAP 00333000
+         L     R8,ASNSTIB         ADDRESS OF SNS-TIB           @D61CDAP 00334000
+         CLI   TIBRQID-TIBADR(R8),NOTACT IS SNS-TASK ACTIVE    @D61CDAP 00335000
+         BNER  R6                 YES, ====================>>> @D61CDAP 00336000
+         BAL   RF,POST            POST SNS-TASK                @D61CDAP 00337000
+*SGLINK  POST,INPUT=R6,R8,RF),WORK=RE                          @D61CDAP 00338000
+         BR    R6                      ====================>>> @D61CDAP 00339000
+         EJECT ,                                                        00340000
+*        CONSTANTS                                                      00341000
+MIHCLNEW DC    D'0'               NEW TIME OF DAY CLOCK                 00342000
+MIHCACTO DC    D'0'               OLD ACTIVE TIME STAMP                 00343000
+MIHCINAO DC    D'0'               OLD INACT. TIME STAMP                 00344000
+MIHACTSV DC    D'0'               SAVED OLD ACTIVE TIME STAMP  @DA37824 00345000
+MIHCCNEW DC    D'0'               NEW CLOCK COMARATOR VALUE    @DA43914 00346000
+MIHCCCOM DC    D'0'               SAVED CLOCK COMPARATOR VALUE @DA43914 00347000
+MIHCNTI5 DC    A(5000000/16)      5 SEC (IN 16  USEC UNITS)    @DAOM    00348000
+MIHCNTI1 DC    A(1000000/128)     1 SEC (IN 128 USEC UNITS)    @DAOM    00349000
+MIHZERO  DC    F'0'               CONSTANT ZERO                         00350000
+MIHELAPS DC    F'0'               ELAPSED TIME                          00351000
+MIHRWAIT DC    F'3'               MIN WAIT TIME FOR RETRY      @DY45988 00352000
+MIHSWAIT DC    F'20'              MIN WAIT TIME FOR SYS-TASK   @DA44680 00353000
+MIHFWAIT DC    XL8'F0F0F0F3F0F0F0F0' WAIT TIME IN HHMMSSDD     @DA41354 00354000
+MIHAWAIT DC    F'180'             WAIT TIME FOR STARTED I/O'S           00355000
+MIHMWAIT DC    F'600'             WAIT TIME FOR NOT STARTED I/O         00356000
+MIHPBXAD DC    F'0'               ADDRESS OF PUBX              @D52VDAP 00357000
+MIHREGC  DC    F'0'               REGISTER RC                           00358000
+MIHREGD  DC    F'0'               REGISTER RD                           00359000
+MIHREGE  DC    F'0'               REGISTER RE                           00360000
+MIHREGF  DC    F'0'               REGISTER RF                           00361000
+MIHREG0  DC    F'0'               REGISTER R0                           00362000
+MIHREG1  DC    F'0'               REGISTER R1                           00363000
+MIHCTLR8 DC    F'0'               CONTROL REGISTER 8                    00364000
+MIHCHW60 DC    H'60'              CONSTANT                              00365000
+MIHWFLD  DC    X'0000'            WORK FIELD                            00366000
+MIHDEBUG DC    XL16'00'           DEBUG INFO                            00367000
+MIHTRTAB DC    CL16'0123456789ABCDEF' TRANSLATE TABLE                   00368000
+MIHCNMIH DC    CL4'MIHP'          CONSTANT                              00369000
+MIHCNONE DC    C'*NONE*'          DEFAULT VOLID                         00370000
+         TITLE 'VSE SUPERVISOR    SGMIH     STATUS AND DEVICE ANALYZER' 00371000
+         USING PUBADR,RE          PUB BASE POINTER                      00372000
+         USING CHQADR,RC          CHANQ BASE POINTER                    00373000
+MIHLTPRC EQU   *                                                        00374000
+         MVC   MIHDEBUG(2),PUBCHANN GET CUU ADDRESS                     00375000
+         MVC   MIHDEBUG+2(2),CHQCCSIO GET PROCESSING INFO               00376000
+         MVC   MIHDEBUG+4(4),CHQCHAIN GET CCB ADDRESS                   00377000
+         MVC   MIHDEBUG+8(8),CHQCSW GET CSW INFO                        00378000
+         DEBUG USERDATA,XXDBGMC,MIHDEBUG DEBUG DATA                     00379000
+         NI    EMWFLAG1,XFF-EMWF1LAE RESET PROCESSING BIT               00380000
+         MVI   RID+1,DISPID       PREVENT REGISTER SAVING               00381000
+         SLR   RB,RB              CLEAR PARAMETER REGISTER              00382000
+         SLR   R1,R1              CLEAR WORK REGISTER                   00383000
+         TM    PUBCSFLG,OPINTV    INTERVENTION REQUIRED                 00384000
+         BZ    MIHLT010           NO, TEST STATUS BYTES                 00385000
+         LA    RB,EMWMNO05        SET UP MESSAGE ID                     00386000
+         ICM   RB,M2,EMWOCWT      INDICATE TASK IS WAITING              00387000
+         ICM   RB,M4,EMWMTACT     MESSAGE TYPE IS ACTION                00388000
+         B     MIHLT040                                        @D61CDAP 00389000
+MIHLT010 TM    CHQCSW+5,X'3F'     ANY UNUSUAL CHANNEL STATUS            00390000
+         BNZ   MIHLT070           YES, CONTINUE CHECKING                00391000
+         IC    R1,CHQCSW+4        GET CU+DEV STATUS IN R1               00392000
+         TM    CHQCSW+4,X'F0'     ANY UNUSUAL CU STATUS                 00393000
+         BNZ   MIHLT050           YES, CONTINUE CHECKING                00394000
+MIHLT020 IC    RB,MIHDVMSG(R1)    GET MESSAGE NUMBER IN RB              00395000
+MIHLT030 ICM   RB,M2,EMWOCIGN     SET ACTION INDICATOR TO IGNORE        00396000
+         ICM   RB,M4,EMWMTINF     INFORMATION TYPE MESSAGE              00397000
+         MVI   CHQIOINF,ERPXIGNR  INDICATE IGNORE EXIT                  00398000
+MIHLT040 BAL   RA,MIHTIO          GET SUBROUTINE BASE          @D61CDAP 00399000
+         BC    8,MIHCC8           DEVICE IS AVAILABLE                   00400000
+         BC    4,MIHCC4           STATUS PENDING                        00401000
+         BC    2,MIHCC2           DEVICE IS BUSY                        00402000
+         B     MIHCC1             DEVICE IS NOT OPERATIONAL             00403000
+         SPACE 1                                                        00404000
+MIHLT050 TM    CHQCSW+4,X'70'     ANY BIT EXCEPT ATTENTION              00405000
+         BNZ   MIHLT060           YES, DONT RESET ANY BIT               00406000
+         N     R1,F15             RESET ATTENTION BIT                   00407000
+         B     MIHLT020           PROCESS DEVICE STATUS                 00408000
+MIHLT060 SRL   R1,4               ELIMINATE DEVICE STATUS               00409000
+         IC    RB,MIHCUMSG(R1)    GET MESSAGE NUMBER IN RB              00410000
+         B     MIHLT030           DO TIO TO GET ACTION FIELD            00411000
+         SPACE 1                                                        00412000
+MIHLT070 IC    R1,CHQCSW+5        GET CHANNEL STATUS                    00413000
+         TM    CHQCSW+5,X'F0'     IS IT A SEVERE ERROR                  00414000
+         BZ    MIHLT090           YES,                                  00415000
+         TM    CHQCSW+5,X'0F'     SURE ITS NOT SEVERE                   00416000
+         BNZ   MIHLT080           NO, IT IS SEVERE                      00417000
+         SRL   R1,4               STRIP OFF LOW ORDER BITS              00418000
+         IC    RB,MIHCHMSG(R1)    GET MESSAGE CODE IN RB                00419000
+         B     MIHLT030           DO TIO TO GET ACTION FIELD            00420000
+         SPACE 1                                                        00421000
+MIHLT080 N     R1,F15             TURN OFF UNUSED BITS                  00422000
+MIHLT090 IC    RB,MIHCCMSG(R1)    GET MESSAGE CODE IN RB                00423000
+         B     MIHLT030           DO TIO TO GET ACTION FIELD            00424000
+         SPACE 2                                                        00425000
+MIHCC1   EQU   *                                                        00426000
+         IC    RB,MIHMSGNO        DEVICE NOT OPERATIONAL                00427000
+         NI    CHQCCSIO,XFF-CHQCCLTE DEVICE NO LONGER ACTIVE   @D68ADAP 00427500
+MIHCC8   EQU   *                                                        00428000
+         TM    PUBCSFLG,OPINTV    INTERVENTION REQUIRED        @D61CDAP 00429000
+         BO    MIHLTEND           YES,                         @D61CDAP 00430000
+         BAL   RA,MIHTPTST        IS THIS A TP DEVICE          @DA24568 00431000
+         BZ    MIHCC805           NO, PROCEED MAIN LINE        @D67ADAP 00432000
+         ICM   RB,M2,EMWOCPST     SET ACTION INDICATOR         @D67ADAP 00433000
+         B     MIHLTEND                                        @D67ADAP 00434000
+MIHCC805 NI    CHQCCSIO,XFF-CHQCCACT DEVICE NO LONGER ACTIVE   @D67ADAP 00435000
+         MVI   CHQIOINF,ERPXDEQ   INDICATE DEQUNCON EXIT                00436000
+         OC    CHQCCBAD+1(3),CHQCCBAD+1 IS CCB AVAILABLE                00437000
+         BZ    MIHLTEND           NO, IGNORE BUT DEQUEUE                00438000
+         TM    CHQDEV,CHQDASD+CHQFBA IS DEVICE A DASD                   00439000
+         BZ    MIHCC810           NO                                    00440000
+         ICM   RB,M2,EMWOCRTY     SET OPERATOR CODE TO RETRY            00441000
+         MVI   CHQIOINF,ERPXINIT  INDICATE RETRY EXIT                   00442000
+         TM    CHQCCBB2,CHNBIT    IS CHANNEL PROGRAM RETRYABLE @DA36116 00443000
+         BO    MIHCC810           NO, POST ERROR                        00444000
+         CLI   CHQERRCT,3         IS RETRY LIMIT EXHAUSTED     @DA43979 00445000
+         BNL   MIHCC810           YES,                         @DA43979 00446000
+         IC    RA,CHQERRCT        GET ERROR COUNT              @DA43979 00447000
+         LA    RA,1(,RA)          INCREASE ERROR COUNT         @DA43979 00448000
+         STC   RA,CHQERRCT        STORE NEW ERROR COUNT        @DA43979 00449000
+         B     MIHLTEND           YES                                   00450000
+MIHCC810 MVI   CHQIOINF,ERPXPSTR  INDICATE PSTRESET EXIT                00451000
+         ICM   RB,M2,EMWOCPST     SET ACTION INDICATOR TO POSTED        00452000
+         TM    CHQCCBB1,ACCUNRIO  IS USER TO BE CANCELED                00453000
+         BNZ   MIHLTEND           NO, LEAVE ACTION POSTED               00454000
+         CLC   CHQTID,IORQ4AR     IS THIS A SYSTEM TASK REQUEST@D66CDAP 00455000
+         BNH   MIHLTEND           YES, LEAVE ACTION POSTED              00456000
+         ICM   RB,M2,EMWOCCNL     SET ACTION INDICATOR TO CANCEL        00457000
+MIHCC820 MVI   CHQIOINF,ERPXER1A  INDICATE CANCEL EXIT                  00458000
+MIHLTEND LR    R1,RE              COPY PUB ADDRESS                      00459000
+         MVC   EMWCHANQ+1(1),PUBCHQPT  COPY CHANNEL QUEUE INDEX@D51ODGL 00460000
+         AIF   (&AG1 LE 254).LOD0010                           @D51ODGL 00461000
+         MVC   EMWCHANQ(1),PUBCHQPH COPY CHANQ HIGH INDEX      @D51ODGL 00462000
+.LOD0010 ANOP                                                  @D51ODGL 00463000
+         LR    R0,RB              COPY MESSAGE CODES                    00464000
+         B     EMGMWRT                 ======================>          00465000
+MIHCC4   EQU   *                  STATUS PENDING EXIT                   00466000
+         L     R9,XASUBSCH        RELOAD SUBCHANNEL ID         @D28ADAP 00467000
+         ST    R9,IOINF           SAVE SUBCHANNEL-ID           @D28ADAP 00468000
+         ST    RE,INTPARM         PROVIDE INTERRUPT PARAMETER  @D28ADAP 00469000
+         L     R9,AINTER          BASE ADDRESS OF IOINTER               00470000
+         USING INTRTN,R9          IOINTER BASE POINTER                  00471000
+         B     INTRTN             LET IOINTER PROCESS INTERRUPT         00472000
+         DROP  R9                 RELEASE IOINTER BASE                  00473000
+MIHCC2   EQU   *                  DEVICE BUSY EXIT                      00474000
+         ICM   RB,M4,EMWMTOPD     INDICATE OPERATOR DECISION            00475000
+         OC    CHQCCBAD+1(3),CHQCCBAD+1 IS CCB AVAILABLE                00476000
+         BZ    MIHLTEND           NO, NO RETRY POSSIBLE                 00477000
+         TM    CHQDEV,CHQDASD+CHQFBA IS DEVICE A DASD                   00478000
+         BZ    MIHCC210           NO                                    00479000
+         ICM   RB,M2,EMWOCRTY     SET OPERATOR CODE TO RETRY            00480000
+         TM    CHQCCBB2,CHNBIT    IS CHANNEL PROGRAM RETRYABLE @DA36116 00481000
+         BZ    MIHLTEND           YES, RETRY IS POSSIBLE                00482000
+MIHCC210 ICM   RB,M2,EMWOCPST     SET ACTION INDICATOR TO POSTED        00483000
+         TM    CHQCCBB1,ACCUNRIO  IS USER ACCEPTING ERRORS              00484000
+         BNZ   MIHLTEND           YES, LEAVE ACTION POSTED              00485000
+         CLC   CHQTID,IORQ4AR     IS THIS A SYSTEM TASK REQUEST@D66CDAP 00486000
+         BNH   MIHLTEND           YES, LEAVE ACTION POSTED              00487000
+         ICM   RB,M2,EMWOCCNL     SET ACTION INDICATOR TO CANCEL        00488000
+         B     MIHLTEND           SET UP PROPOSED ACTION                00489000
+         SPACE 2                                                        00490000
+MIHMSGNO DC    X'07'                                                    00491000
+.*CHNSTA EQUALS    0102030405060708090A0B0C0D0E0F                       00492000
+MIHCCMSG DC    X'00090909090909090909090909090909' CHAN MSG             00493000
+.*CHNSTA EQUALS    102030405060708090A0B0C0D0E0F0                       00494000
+MIHCHMSG DC    X'00090909090909090909090909090909' CHAN MSG             00495000
+.*DEVSTA EQUALS    102030405060708090A0B0C0D0E0F0                       00496000
+MIHCUMSG DC    X'00060808000800080908080000000000' CU   MSG             00497000
+.*DEVSTA EQUALS    0102030405060708090A0B0C0D0E0F                       00498000
+MIHDVMSG DC    X'02090909030303030404040409090909' DEV  MSG             00499000
+         TITLE 'VSE SUPERVISOR     SGMIH     TEST DEVICE STATUS    '    00500000
+MIHTIO   SLR   R0,R0              SET WORKREG TO ZERO                   00501000
+         SLR   R1,R1              SET CODITION CC=00                    00502000
+         LR    R2,RE              COPY PUB POINTER             @D61CDAP 00503000
+         BAL   RF,EMGETSCH        GET XA SUBCHANNEL            @D51GDAP 00504000
+*SGLINK  EMGETSCH INPUT=(R2,RF),OUTPUT=(R1,R2)                          00505000
+         L     RF,MIHPBXAD        GET PUBX ADDRESS             @D52VDAP 00506000
+         USING PBXADR,RF          PUBX BASE POINTER            @D52VDAP 00507000
+         TM    PUBCSFLG,OPINTV    INTERVENTION REQUIRED        @D52VDAP 00508000
+         BALR  R1,0               SAVE CONDITION CODE CC=11    @D68ADAP 00508500
+         BO    MIHTIOEX           YES,                         @D52VDAP 00509000
+         OC    PBXSIMID,PBXSIMID  IS DEVICE BEING SIMULATED    @D66ADAP 00510000
+         BNZ   MIHTIO40           YES, TREAT AS BUSY           @D66ADAP 00511000
+         TM    PBXFLAG,PBXDASD+PBXFBAVD IS THIS A VIRTUAL FBA  @D52VDAP 00512000
+*        BO    MIHTIO40           YES, TREAT AS BUSY           @DZ41DAP 00513190
+*HERE    THE ABOVE BUSY EXIT WOULD BE BETTER FOR NEXT RELEASES @DZ41DAP 00513380
+         BNO   MIHTIO20           NO, PROCEED                  @D52VDAP 00513570
+         NI    CHQCCSIO,XFF-CHQCCLTE RESET LONG TIME ENTRY BIT @D52VDAP 00514000
+         BR    R6                      ====================>>> @D52VDAP 00515000
+         DROP  RF                 RELEASE PUBX BASE POINTER    @D52VDAP 00516000
+MIHTIO20 L     R1,XASUBSCH        RESTORE SUBCHANNEL NUMBER    @D68ADAP 00517290
+         LA    RF,MIHSCHIB        GET ADDRESS OF SCHIB         @DY45166 00517580
+         USING SCHIB,RF           SCHIB BASE POINTER           @D51GDAP 00518000
+         STSCH SCHIB              STORE SUBCHANNEL             @D51GDAP 00519000
+         BALR  R1,0               SAVE CONDITION CODE          @D51GDAP 00520000
+         BC    1,MIHTIOEX         BRANCH ON NOT OPERATIONAL    @DA41879 00521000
+         TM    SCHSTB3,SCHSCSP    IS STATUS PENDING            @D51GDAP 00522000
+         BO    MIHTIO30           YES, SIMULATE STATUS PENDING @D28ADAP 00523000
+         TM    SCHSTB3,SCHACSA+SCHACDA SUBCHNL/DEVICE ACTIVE   @D51GDAP 00524000
+         BNZ   MIHTIO40           YES, SIMULATE BUSY           @D51GDAP 00525000
+         SLR   R1,R1              FORCE CC=00                  @D51GDAP 00526000
+         B     MIHTIOEX           RETURN TO USER               @DA41879 00527000
+MIHTIO30 CLI   *,XFF              FORCE CC=01 STATUS PENDING   @D51GDAP 00528000
+         BAL   R1,MIHTSTOC        SAVE CC AND PROCEED          @D51GDAP 00529000
+MIHTIO40 CLI   *,ZERO             FORCE CC=10 (BUSY)           @D51GDAP 00530000
+         BAL   R1,MIHTSTOC        SAVE CC AND PROCEED          @D51GDAP 00531000
+MIHTSTOC CH    R2,SYSOCDEV        IS IT THE SYSOCDEV           @DA32676 00532000
+         BNE   MIHTIOEX           NO,                          @DA32676 00533000
+         L     R1,XASUBSCH        RESTORE SUBCHANNEL-ID        @D51GDAP 00534000
+         HSCH                     HALT CONSOLE IO              @D51GDAP 00535490
+         BAL   RF,EMCSCHRT        CLEAR CONSOLE SUBCHANNEL     @D52VDAP 00536000
+         SLR   R1,R1              FORCE CC=00                  @DA32676 00537000
+MIHTIOEX STH   R0,MIHWFLD         SAVE SPECIAL INFORMATION              00538000
+         STCM  R1,8,MIHWFLD       SAVE TIO CONDITION CODE               00539000
+         ICM   RB,8,MIHWFLD       RETURN IT TO USER                     00540000
+         SPM   R1                 RETURN CC=XX IN PSW                   00541490
+         BR    RA                      ======================>          00542000
+         DC    0F'0'              FORCE WORD BOUNDARY          @DY45290 00543000
+         DC    CL8'MIHSCHIB'      SUBCHANNEL INFORMATION BLOCK @DY45166 00544000
+         DC    0F'0'              FORCE WORD BOUNDARY          @DY45290 00545000
+MIHSCHIB DC    XL(SCHLEN)'00'                                  @DY45166 00546000
+         EJECT ,                                               @D61CDAP 00547000
+*SGLINK  EMGETSCH INPUT=(R2,RF),OUTPUT=(R1,R2)                          00548000
+EMGETSCH MVC   CHNADR(2),0(R2)    SAVE CUU ADDRESS             @D51GDAP 00549000
+         SH    R2,YPUBTAB         GET PUB DISPLACEMENT         @D51GDAP 00550000
+         SRL   R2,PUBSLEN-PBXISLEN DIVIDE BY 2                 @D51ODGL 00551000
+         A     R2,APBXAREA        POINT TO PUBX ADDR           @D51GDAP 00552000
+         L     R2,0(,R2)          GET PUBX ADDR                @D51GDAP 00553000
+         USING PBXADR,R2          INFORM ASSEMBLER             @D51GDAP 00554000
+         ST    R2,MIHPBXAD        SAVE PUBX ADDRESS            @D52VDAP 00555000
+         MVC   XASUBSC1(2),PBXSCH GET SUBCHANNEL ID            @D51GDAP 00556000
+         L     R1,XASUBSCH        GET SUBCHANNEL ID            @D28ADAP 00557000
+         LH    R2,CHNADR          SET CUU IN R2                @D51GDAP 00558000
+         DROP  R2                 RELEASE PUBX BASE POINTER    @D51GDAP 00559000
+         BR    RF                 RETURN TO CALLER             @D51GDAP 00560000
+         SPACE 3                                               @D52VDAP 00561000
+EMCSCHRT STM   RE,R1,EMCSCHSV     SAVE REGISTERS               @D52VDAP 00562000
+         L     RF,MIHPBXAD        GET PUBX ADDRESS             @DY45817 00564000
+         USING PBXADR,RF          PUBX BASE POINTER            @DY45817 00565000
+         CLI   PBXPUBCD,TQDIO     IS THIS QDIO DEVICE          @DY45817 00566000
+         BE    EMCSCHXT           YES, DON'T ISSUE CSCH        @DY45817 00567000
+         DROP  RF                 RELEASE PUBX BASE            @DY45817 00568000
+         LA    RF,MIHSCHIB        GET SCHIB ADDRESS            @DY45166 00570000
+         USING SCHIB,RF           SCHIB BASE POINTER           @D52VDAP 00571000
+         CSCH                     CLEAR SUBCHANNEL             @D52VDAP 00572000
+         BO    EMCSCHXT           NOT OPERATIONAL              @D52VDAP 00573000
+EMCSCH10 STSCH SCHIB              GET SUBCHANNEL INFO          @D52VDAP 00574000
+         BO    EMCSCHXT           NOT EXISTING SUBCHANNEL      @D52VDAP 00575000
+         TM    SCHSTB3,SCHSCSP    STATUS PENDING               @D52VDAP 00576000
+         BO    EMCSCH20           YES,                         @D52VDAP 00577000
+         LA    RE,1024            SET LOOP COUNT               @D52VDAP 00578000
+         BCT   RE,*               GIVE SUBSYSTEM A CHANCE      @D52VDAP 00579000
+         B     EMCSCH10                                        @D52VDAP 00580000
+EMCSCH20 L     RE,IRB$            ADDRESS OF IRB               @D52VDAP 00581000
+         USING IRB,RE             IRB BASE POINTER             @D52VDAP 00582000
+         TSCH  IRB                CLEAR INTERRUPT              @D52VDAP 00583000
+         L     RF,MIHPBXAD        GET PUBX ADDRESS             @D61NDAP 00584000
+         USING PBXADR,RF          PUBX BASE POINTER            @D61NDAP 00585000
+         MVC   PBXIRB(16),IRB     GET SUBCHANNEL STATUS        @D61NDAP 00586000
+EMCSCHXT LM    RE,R1,EMCSCHSV     RELOAD CALLER REGISTERS      @D52VDAP 00587000
+         BR    RF                 RETURN TO CALLER             @D52VDAP 00588000
+EMCSCHSV DC    4F'0'              SAVE AREA                    @D52VDAP 00589000
+         DROP  RF                 RELEASE PUBX BASE POINTER    @D61NDAP 00590000
+         DROP  RE                 RELEASE IRB   BASE           @D52VDAP 00591000
+         TITLE 'VSE SUPERVISOR     SGMIH     TEST FOR TP-DEVICE       ' 00592000
+         USING PUBADR,RE          PUB BASE POINTER             @D52VDAP 00593000
+MIHTPTST TM    CHQCCBB3,APPEN     IS APPENDAGE PRESENT         @DA24568 00594000
+         BZR   RA                 NO,  ======================> @DA24568 00595000
+         LR    R8,RA              SAVE RETURN ADDR             @DA40318 00596000
+         LR    R3,RE              SET PUB ADDR FOR CQDSP       @DA40318 00597000
+         BAL   R7,CQDSP           MAKE SURE CCB IS ADDRESSABLE @DA40318 00598000
+*SGLINK  CQDSP,INPUT=(R3,R6,R7),OUTPUT=(R1,R4,RA),WORK=R0      @DA40318 00599000
+         LR    RA,R8              RESTORE RETURN ADDR          @DA40318 00600000
+         USING CCBADR,R1          CCB BASE POINTER             @DA24568 00601000
+         CLI   PUBDEVTY,TQDIO     IS THIS A QDIO DEVICE        @D66ADAP 00603000
+         BE    MIHTP010           YES,                         @D66ADAP 00604000
+         TM    CHQGRP,CHQGRVTM    IS THIS A VTAM REQUEST       @D51GDAP 00606000
+         BO    MIHTP010           YES                          @DA24568 00607000
+         TM    CCBCLS,BTAM        IS THIS A BTAM REQUEST       @DA24568 00608000
+         BZR   RA                 NO,  ======================> @D51GDAP 00609000
+MIHTP010 OI    CCBCOM1,DISERR     INDICATE DISASTER ERROR      @DA32187 00610000
+         MVI   CHQIOINF,ERPXINTR  INDICATE INTRTN EXIT         @DA24568 00611000
+         XC    CHQCSW(8),CHQCSW   SET CSW TO ZERO              @DA44241 00612000
+         MVI   CHQCSW+4,DEVEND    SIMULATE DEVICE END          @DA43916 00613000
+         CLI   PUBDEVTY,TQDIO     IS THIS A QDIO DEVICE        @D67FDAP 00615000
+         BNE   MIHTP020           NO,                          @D67FDAP 00616000
+         MVI   CHQCSW+3,X'01'     INDICATE LOST INTERRUPT      @D67FDAP 00617000
+MIHTP020 CLI   *,0                SET CC UNEQUAL TO 00         @D67ADAP 00619000
+         BR    RA                 RETRN======================> @DA24568 00620000
+         DROP  R1                 RELEASE CCB BASE POINTER     @DA24568 00621000
+         SPACE 3                                                        00622000
+         DROP  RC                 RELEASE CHANQ BASE                    00623000
+         DROP  RE                 RELEASE PUB BASE POINTER              00624000
+         DROP  RD                 RELEASE SGMIH BASE POINTER            00625000
+         DROP  R6                 RELEASE DISP BASE                     00626000
+         TITLE 'VSE SUPERVISOR     SGMIH     PREPARE EMERGENCY MESSAGE' 00627000
+         USING EMWINTRQ,RF        EMWINTRQ BASE POINTER                 00628000
+         USING DISP,R6            DISP BASE POINTER                     00629000
+         USING PUBADR,R3          PUB BASE POINTER                      00630000
+EMWINTRQ EQU   *                  ISSUE MESSAGE 10 FOR STASK            00631000
+         TM    SNSFLAG,SNSMSGRO+SNSMSGOP MIH CURRENTLY ACTIVE  @D61CDAP 00632000
+         BNZR  R6                 YES, ====================>>> @D61CDAP 00633000
+         LA    R0,EMWMNO05        SET UP MESSAGE NUMBER                 00634000
+         ICM   R0,M2,EMWOCWT      SET OPERATOR CODE TO WAIT             00635000
+         ICM   R0,M4,EMWMTACT     MESSAGE TYPE IS ACTION                00636000
+         LR    R1,R3              COPY PUB POINTER                      00637000
+         OI    PUBCSFLG,OPINTV    SET INTERVENTION REQUIRED    @D61CDAP 00638000
+         MVC   EMWCHANQ+1(1),PUBCHQPT  COPY CHANNEL QUEUE INDEX@D51ODGL 00639000
+         AIF   (&AG1 LE 254).LOD0020                           @D51ODGL 00640000
+         MVC   EMWCHANQ(1),PUBCHQPH    INCLUDING HIGH BYTE     @D51ODGL 00641000
+.LOD0020 ANOP                                                  @D51ODGL 00642000
+         LR    RD,R3              COPY PUB POINTER             @D61CDAP 00643000
+         SH    RD,YPUBTAB         OFFSET IN PUB TABLE          @D61CDAP 00644000
+         SRL   RD,PUBSLEN-2       INDEX IN PUB2 ADDRESS TABLE  @D61CDAP 00645000
+         A     RD,APB2AREA        ADDRESS OF PUB2 ADDRESS      @D61CDAP 00646000
+         L     RD,0(,RD)          ADDRESS OF PUB2 ENTRY        @D61CDAP 00647000
+         USING PUB2ADR,RD         PUB2 ENTRY BASE              @D61CDAP 00648000
+         OI    P2FLAGS,P2DOMSV    FORCE SIO INTERCEPT ON READY @D61CDAP 00649000
+         L     RD,AMISINTA        MESSAGE WRITER BASE ADDRESS  @D52VDAP 00650000
+         B     EMGMWRT                 ======================>          00651000
+         DROP  R3                 RELEASE PUB POINTER                   00652000
+         DROP  R6                 RELEASE DISP BASE                     00653000
+         DROP  RF                 RELEASE EMWINTRQ BASE POINTER         00654000
+         TITLE 'VSE SUPERVISOR     SGMIH     EMERGENCY MESSAGE WRITER ' 00655000
+         USING MISINTAT,RD        SGMIH BASE ADDRESS                    00656000
+         USING DISP,R6            DISP BASE POINTER            @D52VDAP 00657000
+EMGMWRT  L     R8,ASNSTIB         ADDRESS OF SNS TIB           @D14CDAP 00658000
+         USING TIBADR,R8          SNS TIB BASE POINTER         @D14CDAP 00659000
+         CLI   TIBRQID,SYSBND     IS SNS-TASK ACTIVE           @D14CDAP 00660000
+         BNE   SNSEMGCY           YES, PROBABLY EMERGENCY CASE          00661000
+         DROP  R8                 RELEASE TIB BASE POINTER              00662000
+         OI    SNSFLAG,SNSMSGOP   INDICATE GOT WORK TO DO               00663000
+         BAL   RF,POST            ACTIVATE SNS-TASK            @D14CDAP 00664000
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=RE                                  00665000
+         ST    R0,EMWPARM0        SAVE MSG CODES                        00666000
+         ST    R1,EMWPUBPT        SAVE PUB POINTER             @D51ODGL 00667000
+         BR    R6                      ====================>>>          00668000
+         SPACE 3                                                        00669000
+SNSEMGCY L     RE,AHQRESCH        GET SNS-TASK CHANQ ENTRY     @D14CDAP 00670000
+         USING CHQADR,RE          SNS CHANQ ENTRY BASE POINTER          00671000
+         L     R1,CHQCCBAD        ADDRESS OF SNS CCB                    00672000
+         ICM   R1,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00673000
+         LTR   R1,R1              IS CCB STILL AVAILABLE                00674000
+         BZR   R6                 NO,  ====================>>>          00675000
+         USING CCBADR,R1          SNS CCB BASE POINTER                  00676000
+         LH    R3,CHQPUBHI        PUB ENTRY NUMBER             @D51ODGL 00677000
+         SLL   R3,PUBSLEN         MULTIPLY WITH 8              @D51ODGL 00678000
+         AH    R3,YPUBTAB         ADDRESS OF PUB                        00679000
+         USING PUBADR,R3          PUB BASE POINTER                      00680000
+         LH    R2,PUBCHANN        GET DEVICE-ID                         00681000
+         STH   R2,CHNADR          SET UP CUU IN LOW CORE       @DA41699 00682000
+*        OI    SYSFLAG2,AFTIOINT  INDICATE ENTERED FROM IOINTER@D28DR06 00683000
+         TM    CHQCCSIO,CHQCCLTE  LONG TIME SNS ENTRY          @DA41699 00684000
+         BZ    SNSEM050           NO,                                   00685000
+         OI    CHQPROC,CHQDQUNC   DEQUEUE UNCONDITIONALLY      @D51GDAP 00686000
+         ICM   R7,7,CHQCSW+D1     GET CCW ADDRESS              @D51GDAP 00687000
+         BNZ   SNSEM020           ADDRESS IS PRESENT           @D51GDAP 00688000
+         L     R7,CCBCCW          GET USERS FIRST CCW ADDRESS  @D51GDAP 00689000
+SNSEM020 STCM  R7,7,CHQCSW+D1     SAVE ADDRESS IN CHQCSW       @D51GDAP 00690000
+         DROP  R1                 RELEASE CCB BASE POINTER     @D51GDAP 00691000
+         LR    R2,R3              COPY PUB POINTER             @D51GDAP 00692000
+         L     RF,MIHPBXAD        GET PUBX ADDRESS             @D28ADAP 00693000
+         USING PBXADR,RF          PUBX BASE POINTER            @D28ADAP 00694000
+         OC    PBXSIMID,PBXSIMID  IS DEVICE BEING SIMULATED    @D28ADAP 00695000
+         BO    SNSEM040           YES, SKIP CSCH PROCESS       @D28ADAP 00696000
+         DROP  RF                 RELEASE PBXADR BASE          @D28ADAP 00697000
+         BAL   RF,EMGETSCH        GET XA SUBCHANNEL NUMBER     @D51GDAP 00698000
+*SGLINK  EMGETSCH INPUT=(R2,RF),OUTPUT=(R1,R2)                          00699000
+         HSCH                     HALT SUBCHANNEL              @D51GDAP 00700000
+         BAL   RF,EMCSCHRT        CLEAR SUBCHANNEL             @D52VDAP 00701000
+SNSEM040 MVC   MIHCHQIS(32),0(RE) PROVIDE DEBUG INFORMATION    @D62NDAP 00702000
+         DEBUG USERDATA,XXDBGMC,MIHSNS31,MIHCHQIS,MIHCHQIS+16  @D62NDAP 00703000
+         B     ERR1A                   ====================>>>          00704000
+MIHSNS31 DC    CL16'ERR-1A IN SNS   ' SNS I/O TERMINATED       @D62NDAP 00705000
+MIHCHQIS DC    CL32'00'           CHANQ INFO                   @D62NDAP 00706000
+         DROP  RE                 RELEASE SNS-CHANQ ENTRY BASE          00707000
+.*                                                             @D61CDAP 00708000
+.*       SNS-TASK REQUEST HAS NOT YET BEEN STARTED             @D61CDAP 00709000
+.*                                                             @D61CDAP 00710000
+SNSEM050 SLR   R4,R4              CLEAR CHANQ POINTER                   00711000
+         IC    R4,PUBCHQPT        ACTIVE CHANQ ENTRY NO.                00712000
+         AIF   (&AG1 LE 254).LOD0030                           @D51ODGL 00713000
+         ICM   R4,2,PUBCHQPH                                   @D51ODGL 00714000
+.LOD0030 ANOP                                                  @D51ODGL 00715000
+         SLL   R4,CHQSLEN         OFFSET WITHIN CHANQ                   00716000
+         A     R4,ACHANQ          ADDRESS OF ACTIVE ENTRY               00717000
+         ICM   R4,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00718000
+         USING CHQADR,R4          ACTIVE CHANQ BASE POINTER             00719000
+         L     R1,CHQCCBAD        ADDRESS OF CURRENT CCB                00720000
+         ICM   R1,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00721000
+         USING CCBADR,R1          CCB BASE POINTER             @DA41699 00722000
+         CLC   CHQTID,IORQ4SNS    IS SNS REQUEST THE FIRST     @D66CDAP 00723000
+         BNE   SNSRSCLR           NO, TERMINATE THIS I/O       @DA43916 00724000
+         OI    CHQCCSIO,CHQCCLTE  LONG TIME SNS ENTRY          @DA43916 00725000
+         B     SNSRST30           YES, GET DEVICE RESTARTED    @DA43916 00726000
+SNSRSCLR OI    CHQPROC,CHQDQUNC+CHQDOINT DELAYED PROCESSING             00727000
+         MVI   CHQIOINF,ERPXER1A  FORCE CANCEL EXIT                     00728000
+         BAL   R7,CQDSP           SWITCH TO CORRECT SPACE      @DA42825 00729000
+*SGLINK  CQDSP,INPUT=(R3,R6,R7),OUTPUT=(R1,R4,RA),WORK=R0      @DA42825 00730000
+         LTR   R1,R1              IS CCB STILL AVAILABLE       @D61CDAP 00731000
+         BZ    SNSRSC10           NO,                          @D61CDAP 00732000
+         L     R7,CCBCCW          GET CCW ADDRESS                       00733000
+         STCM  R7,M7,CHQCSW+D1    AND STORE IT FOR USER                 00734000
+         DROP  R1                 RELEASE CCB BASE POINTER              00735000
+SNSRSC10 NI    CHQCCSIO,XFF-CHQCCACT DEVICE NO LONGER ACTIVE            00736000
+         LR    R2,R3              COPY PUB POINTER             @D51GDAP 00737000
+         L     RF,MIHPBXAD        GET PUBX ADDRESS             @D28ADAP 00738000
+         USING PBXADR,RF          PUBX BASE POINTER            @D28ADAP 00739000
+         OC    PBXSIMID,PBXSIMID  IS DEVICE BEING SIMULATED    @D28ADAP 00740000
+         BNZ   SNSRSC20           YES, SKIP CSCH PROCESS       @D28ADAP 00741000
+         DROP  RF                 RELEASE PBXADR BASE          @D28ADAP 00742000
+         BAL   RF,EMGETSCH        GET XA SUBCHANNEL NUMBER     @D51GDAP 00743000
+*SGLINK  EMGETSCH INPUT=(R2,RF),OUTPUT=(R1,R2)                          00744000
+         HSCH                     HALT SUBCHANNEL              @D51GDAP 00745000
+         BAL   RF,EMCSCHRT        CLEAR SUBCHANNEL             @D52VDAP 00746000
+SNSRSC20 TM    PUBCSFLG,QEDERR    IS DEVICE QUEUED IN ERROR             00747000
+         BZ    SNSRST10           NO                                    00748000
+         OI    CHQFLG1,CHQCSQED   SAVE IN CURRENT ENTRY        @D52VDAP 00749000
+SNSRST10 TM    PUBCSFLG,DEVBSY    IS DEVICE MARKED BUSY                 00750000
+         BZ    SNSRST20           NO                                    00751000
+         OI    CHQFLG1,CHQCSBSY   SAVE IN CURRENT ENTRY        @D52VDAP 00752000
+SNSRST20 NI    PUBCSFLG,XFF-DEVBSY-QEDERR-OPINTV RESET GATES            00753000
+         MVC   MIHCHQIS(32),0(R4) SAVE                         @D62NDAP 00754000
+         DEBUG USERDATA,XXDBGMC,MIHERR31,MIHCHQIS,MIHCHQIS+16           00755000
+         IC    R7,PUBCHQPT        CURRENT CHANQ POINTER                 00756000
+         IC    R8,CHQCHAIN        NEXT-IN-CHAIN POINTER                 00757000
+         STC   R8,PUBCHQPT        NEXT BECOMES NOW FIRST                00758000
+         AIF   (&AG1 LE 254).LOD0040                           @D51ODGL 00759000
+         ICM   R7,2,PUBCHQPH      DO PROCESSING FOR HIGH BYTES @D51ODGL 00760000
+         IC    R8,CHQCHNHI                                     @D51ODGL 00761000
+         STC   R8,PUBCHQPH                                     @D51ODGL 00762000
+.LOD0040 ANOP                                                  @D51ODGL 00763000
+         DROP  R3                 RELEASE PUB BASE POINTER              00764000
+         IC    R8,CHQCHAIN-CHQADR(RE) GET OLD-NEXT POINTER              00765000
+         STC   R8,CHQCHAIN        SAVE IN OLD-FIRST ENTRY               00766000
+         STC   R7,CHQCHAIN-CHQADR(RE) MAKE OLD-FIRST THE NEXT           00767000
+         AIF   (&AG1 LE 254).LOD0050                           @D51ODGL 00768000
+         IC    R8,CHQCHNHI-CHQADR(RE)   ALSO FOR HIGH BYTES    @D51ODGL 00769000
+         STC   R8,CHQCHNHI                                     @D51ODGL 00770000
+         STCM  R7,2,CHQCHNHI-CHQADR(RE)                        @D51ODGL 00771000
+.LOD0050 ANOP                                                  @D51ODGL 00772000
+.NCRT010 ANOP                                                           00773000
+SNSRST30 STH   R2,CHNADR          SET UP LOW CORE CUU                   00774000
+         L     R9,AINTER          BASE ADDRESS OF IOINTER               00775000
+         USING INTRTN,R9          IOINTER BASE POINTER                  00776000
+         BAL   RF,INTERTRN        CALCULATE CCT POINTER                 00777000
+         B     INITRG                  =====================>>          00778000
+         DROP  R9                                                       00779000
+MIHERR31 DC    CL16'ERR-1A FROM MIH ' SNS I/O TERMINATED       @D62NDAP 00780000
+         SPACE 3                                                        00781000
+         DROP  R4                 RELEASE CHANQ BASE                    00782000
+         TITLE 'VSE SUPERVISOR    SGMIH     EMERGENCY MESSAGE WRITER'   00783000
+.*                                                                      00784000
+.*       EMERGENCY MESSAGE WRITER (RUNNING AS SNS TASK)                 00785000
+.*                                                                      00786000
+EMWPRMSG EQU   *                  EMERGENCY SITUATION                   00787000
+         NI    SNSFLAG,XFF-SNSMSGOP RESET MIH SERVICE NEEDED   @D61CDAP 00788000
+         L     R0,MIHCNMIH        GET EYE-CATCHER              @D61BDAP 00789000
+         ICM   R1,12,SNSFLAG      GET SNS FLAG                 @D61BDAP 00790000
+         ICM   R1,3,EMWFLAG1      GET EMWFLAG1 AND EMWFLAG2    @D61BDAP 00791000
+         ICM   R3,15,EMWPUBPT     GET PUB POINTER              @D61CDAP 00792000
+         BZ    EMWPR000           WE DID RECEIVE THE INTERRUPT @D61CDAP 00793000
+         SH    R3,YPUBTAB         GET PUB DISPLACEMENT         @D51GDAP 00794000
+         SRL   R3,PUBSLEN-PBXISLEN DIVIDE BY 2                 @D51ODGL 00795000
+         A     R3,APBXAREA        POINT TO PUBX ADDR           @D51GDAP 00796000
+         L     R3,0(,R3)          GET PUBX ADDR                @D51GDAP 00797000
+EMWPR000 ST    R3,MIHPBXAD        SAVE PUBX ADDRESS            @D52VDAP 00798000
+         DEBUG ALLREGS,XXDBGMC    GET DATA PRINTED             @D61BDAP 00799000
+         TM    EMWFLAG1,EMWF1CLR  DO WE HAVE TO ISSUE DOM      @D61CDAP 00800000
+         BO    EMWDODOM           YES,                         @D61CDAP 00801000
+         TM    SNSFLAG,SNSMSGRO   IS READ OUTSTANDING          @D61CDAP 00802000
+         BZ    EMWPR005           NO,                          @D61CDAP 00803000
+         TM    EMWWTORE+2,X'80'   WAS REPLY RECEIVED           @D61CDAP 00804000
+         BO    EMWREPLY           YES, ANALYSE INPUT           @D61CDAP 00805000
+         BR    R6                      ====================>>> @D61CDAP 00806000
+.*                                                             @D61CDAP 00807000
+.*       SET UP MIH MESSAGE                                    @D61CDAP 00808000
+.*                                                             @D61CDAP 00809000
+EMWPR005 LR    RE,R6              FORCE EXIT TO DISPATCHER     @D14CDAP 00810000
+         SLR   R0,R0              CLEAR REGISTER                        00811000
+         LR    R1,R0              CLEAR REGISTER                        00812000
+         ICM   R3,15,EMWPUBPT     RESTORE PUB POINTER          @D61CDAP 00813000
+         BZ    EMWPRXIT           NO, FORGET IT                @D61NDAP 00814000
+         USING PUBADR,R3          PUB BASE POINTER             @D61CDAP 00815000
+         CLI   EMWPMGNO,EMWMNOMX  IS INPUT VALID                        00816000
+         BH    EMWPR010           YES                                   00817000
+         IC    R1,EMWPMGNO        GET MESSAGE CODE                      00818000
+         CVD   R1,EMWDWORD        CONVERT TO DECIMAL                    00819000
+         OI    EMWDWORD+7,X'0F'   SET LOW ORDER BITS FOR UNPK           00820000
+EMWPR010 SLL   R1,4               MULTIPLY WITH MSG LENGTH              00821000
+         LA    R1,EMWMSGST(R1)    ADDRESS OF MESSAGE                    00822000
+         MVC   EMWMSTXT,ZERO(R1)  MOVE MESSAGE TO PRINT BUFFER          00823000
+         UNPK  EMWMSGNO(2),EMWDWORD+6(2) SET UP MESSAGE NUMBER          00824000
+         UNPK  EMWMSGL1+22(4),0(3,R3) UNPACK CUU               @D61CDAP 00825000
+         LH    R4,EMWCHANQ        GET CHANQ ENTRY NUMBER       @D52VDAP 00826000
+         SLL   R4,CHQSLEN         OFFSET WITHIN CHANQ          @D52VDAP 00827000
+         A     R4,ACHANQ          ADDRESS OF CHANQ ENTRY       @DA42692 00828000
+         ICM   R4,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00829000
+         USING CHQADR,R4          CHANQ BASE POINTER           @D52VDAP 00830000
+EMWPR020 MVI   EMWMSGL1+25,X'40'  CLEAR UNUSED BYTE            @D61CDAP 00831000
+         TR    EMWMSGL1+22(3),MIHTRTAB-X'F0' SET CORRECT CHAR. @D61CDAP 00832000
+         IC    R1,EMWPMGMT        GET MESSAGE TYPE                      00833000
+         STC   R1,EMWMSGMT        STORE MESSAGE TYPE                    00834000
+         IC    R1,EMWPMGAC        GET ACTION INDICATOR                  00835000
+         STC   R1,EMWMSGOC        STORE OPERATOR CODE                   00836000
+         MVC   EMWRESP,EMWRCIGN   SET DEFAULT OPTION TO IGNORE @D14CDAP 00837000
+         LA    R7,EMWTEXT         POINT TO MESSAGE TEXT        @D61CDAP 00838000
+         CLI   EMWPMGMT,EMWEQUCD  IS IT A DECISION MESSAGE              00839000
+         BNE   EMWPR035           NO                                    00840000
+EMWRP025 B     EMWPR030                                                 00841000
+         TM    IJBOPMOD,IJBOPSAC+IJBOPDIS CAN USER RESPOND     @D61NDAP 00842000
+         BZ    EMWPR030           YES                          @D61NDAP 00843000
+         MVC   EMWRESP,EMWRCCNL   ASSUME CANCEL FUNCTION       @D61NDAP 00844000
+         B     EMWPR035                                        @D61NDAP 00845000
+EMWPR030 OI    SNSFLAG,SNSMSGRO   INDICATE READ OUTSTANDING    @D61CDAP 00846000
+         XC    EMWWTORE,EMWWTORE  RESET ECB INFORMATION        @D61CDAP 00847000
+*        WTOR  TEXT=((R7),EMWRESP,6,EMWWTORE),ROUTCDE=2,DESC=11         00848000
+         WTOR  TEXT=((R7),EMWRESP,6,EMWWTORE),ROUTCDE=2,DESC=11         00849000
+         B     EMWPRCHK                                                 00850000
+EMWPR035 DS    0H'0'                                                    00851000
+         CLI   EMWPMGMT,EMWEQUCA  IS IT AN ACTION TYPE MSG     @D61CDAP 00852000
+         BNE   EMWPR040           NO                                    00853000
+*        OI    EMWFLAG1,EMWF1CLR  INDICATE DOM REQUIRED        @D61CDAP 00854000
+*        WTO   TEXT=(((R7),DE)),ROUTCDE=2,DESC=11                       00855000
+         WTO   TEXT=(((R7),DE)),ROUTCDE=2,DESC=11                       00856000
+         B     EMWPRCHK                                                 00857000
+*        WTO   TEXT=(((R7),DE)),ROUTCDE=2,DESC=12                       00858000
+EMWPR040 WTO   TEXT=(((R7),DE)),ROUTCDE=2,DESC=12                       00859000
+         SLR   R1,R1              FORCE PBXDOMID TO BE RESET   @D61CDAP 00860000
+         B     EMWPRCHK                                                 00861000
+         SPACE 3                                                        00862000
+EMWDODOM DS    0H'0'                                                    00863000
+         SLR   R1,R1              DEFAULT TO DOM REQUEST       @D61CDAP 00864000
+         ICM   R7,15,MIHPBXAD     GET PUBX ADDRESS             @D61CDAP 00865000
+         BZ    EMWST010           VERY STRANGE                 @D61CDAP 00866000
+         USING PBXADR,R7          PUBX BASE POINTER            @D61CDAP 00867000
+         ICM   R1,15,PBXDOMID     GET DOM ID FOR DOM REQUEST   @D61CDAP 00868000
+         BZ    EMWSTDOM           NO DOM ID AVAILABLE          @D61CDAP 00869000
+         DROP  R7                 RELEASE PUBX BASE POINTER    @D61CDAP 00870000
+         DOM   MSG=(R1)           DELETE MESSAGE               @D61CDAP 00871000
+         SLR   R1,R1              CLEAR DOM-ID                 @D61CDAP 00872000
+EMWPRCHK TM    IJBFLG08,IJBDEBUG  IS DEBUG ACTIVE              @D61NDAP 00873000
+         BZ    EMWSTDOM           NO,                          @D61NDAP 00874000
+         LTR   RF,RF              ANY ERRORS ON DOM, WTO, WTOR @D61CDAP 00875000
+         BZ    EMWSTDOM           NO,                          @D61CDAP 00876000
+         BAL   R5,SYSERROR        SYSTEM ERROR                 @D61CDAP 00877000
+         SPACE 3                                               @D61CDAP 00878000
+EMWSTDOM ICM   R7,15,MIHPBXAD     GET PUBX ADDRESS             @D61CDAP 00879000
+         BZ    EMWST010           VERY STRANGE                 @D61CDAP 00880000
+         USING PBXADR,R7          PUBX BASE POINTER            @D61CDAP 00881000
+         ST    R1,PBXDOMID        SAVE OR RESET DOM-ID         @D61CDAP 00882000
+         DROP  R7                 RELEASE PUBX BASE POINTER    @D61CDAP 00883000
+EMWST010 L     R8,TCBPTR          SNS TASK TCB                 @D61CDAP 00884000
+         USING TCBADR,R8          SNS TASK TCB BASE POINTER    @D61CDAP 00885000
+         L     R8,TCBSAVE         SNS TASK SAVE AREA           @D61CDAP 00886000
+         USING SVEARA,R8          SNS TASK SAVE AREA BASE      @D61CDAP 00887000
+         L     R7,ASNSINIT        GET SNS-TASK BASE ADDRESS    @D61CDAP 00888000
+         STCM  R7,7,SVEPSW2+1     RESTORE SNS TASK ENTRY POINT @D61CDAP 00889000
+         ST    R7,SVER0D          RESTORE SNS TASK BASE ADDRESS@D61CDAP 00890000
+         TM    EMWFLAG1,EMWF1CLR  DOM PROCESSING ONLY          @DA43914 00891000
+         BZ    EMWST030           NO,                          @DA43914 00892000
+         NI    EMWFLAG1,XFF-EMWF1CLR RESET DOM TO BE ISSUED    @DA43914 00893000
+         NI    SNSFLAG,XFF-SNSMSGRO-X'10'  SNSPVDLY RESET      @DY45768 00894000
+         LR    RE,R6              FORCE EXIT TO DISPATCHER     @DA43914 00895000
+         B     EMWPRXIT                ======================> @DA43914 00896000
+EMWST030 LTR   R1,R1              IS IT DECISION OR ACTION MSG @DA43914 00897000
+         BZ    EMWPRE30           NO,                          @DA43914 00898000
+         TM    SNSFLAG,SNSMSGRO   ARE WE EXPECTING A REPLY     @D61CDAP 00899000
+         BZR   R6                 NO,  ====================>>> @D61CDAP 00900000
+         ICM   R3,15,EMWPUBPT     INTERRUPT STILL MISSING      @D61CDAP 00901000
+         BZR   R6                 NO,  ====================>>> @D61CDAP 00902000
+         TM    IJBOPMOD,IJBOPSAC+IJBOPDIS CAN USER RESPOND     @D61NDAP 00903000
+         BZR   R6                 YES  ====================>>> @D61NDAP 00904000
+         CLI   EMWPMGMT,EMWEQUCD  IS IT A DECISION MESSAGE              00905000
+         BE    EMWREPLY           YES                                   00906000
+         DROP  R8                 RELEASE SNS SAVE AREA POINTER         00907000
+.*                                                             @D61CDAP 00908000
+.*       MESSAGE REQUIRES OPERATOR RESPONSE                    @D61CDAP 00909000
+.*                                                             @D61CDAP 00910000
+.*                                                             @D61CDAP 00911000
+.*       POST USER REQUEST AND INITIATE CANCEL WHEN REQUIRED   @D61CDAP 00912000
+.*                                                             @D61CDAP 00913000
+EMWPRE30 DC    0H'0'              MIH CANCEL PROCESSING        @D66ADAP 00914000
+         ICM   R7,15,MIHPBXAD     GET PUBX ADDRESS             @D66ADAP 00915000
+         BZ    EMWPRE70           VERY STRANGE                 @D66ADAP 00916000
+         USING PBXADR,R7          PUBX BASE POINTER            @D61CDAP 00918000
+         TM    EMWFLAG2,EMWF2VTA  REMOTE VIRTUAL TAPE          @D66ADAP 00919000
+         BZ    EMWPRE50           NO,                          @D66ADAP 00920000
+         TM    PBXFLAG,PBXTAPE    IS THIS A TAPE DEVICE        @D66ADAP 00921000
+         BZ    EMWPRE50           NO, VERY STRANGE             @D66ADAP 00922000
+         ICM   R7,15,PBXSIMID     IS THIS A VITUAL TAPE        @D66ADAP 00923000
+         BZ    EMWPRE50           NO, VERY STRANGE             @D66ADAP 00924000
+         USING TACNTADR,R7        TACNTADR BASE                @D66ADAP 00925000
+         L     R8,AEMWPRE40       GET 31-BIT ADDRESS           @D66ADAP 00926000
+         BASSM 0,R8               SWITCH INTO 31-BIT MODE      @D66ADAP 00927000
+AEMWPRE40 DC   A(EMWPRE40+X'80000000') CONTINUATION ADDRESS    @D66ADAP 00928000
+EMWPRE40 LA    R8,TADMCBLEN       LENGTH OF DATA-MANAGER PART  @D66ADAP 00929000
+         LNR   R8,R8              PROVIDE FOR SUBTRACTION      @D66ADAP 00930000
+         AR    R7,R8              ADDRESS OF TADMADR CONTROL   @D66ADAP 00931000
+         USING TADMCBADR,R7       TADMCBADR BASE               @D66ADAP 00932000
+         OI    TADMRSTA,VTSRQCNF  LET TAPESRV KNOW CANCEL,FORCE@D68PGA  00933190
+         ICM   R8,15,EMWMIHCD     LOAD RETURN AND REASON CODE  @D68PGA  00933380
+         STCM  R8,12,TADMRETC     PASS RETURN CODE BACK        @D68PGA  00933570
+         STCM  R8,3,TADMREAS      PASS REASON CODE BACK        @D68PGA  00933760
+         LH    R0,TADMOTID        TASK OF SERVICE OWNER        @D68PGA  00933950
+         OI    TADMOECB+2,TRABIT  POST THE SERVICE OWNER       @D68PGA  00934140
+*        TREADY TASK=(0),COND=IO  ACTIVATE VTA TASK IF I/O BND @D68PGA  00934330
+         TREADY TASK=(0),COND=IO  ACTIVATE VTA TASK IF I/O BND @D68PGA  00934520
+*        NI    CHQPROC,XFF-CHQDQUNC RESET DEQUNCON BIT         @D66ADAP 00934710
+*        OI    CHQCCBB1,DISERR    INDICATE DISASTER ERROR      @D66ADAP 00934900
+         LA    R8,EMWPRE70        CONTINUATION ADDRESS         @D66ADAP 00936000
+         BSM   0,R8               GET BACK INTO 24-BIT MODE    @D66ADAP 00937000
+EMWMIHCD DC    XL4'02220111'      RETURN AND REASON CODE       @D68PGA  00938490
+EMWPRE50 DS    0H'0'                                                    00939000
+         LR    RC,R4              PROVIDE CHANQ ADDRESS        @D67ADAP 00940000
+         LR    RE,R3              PROVIDE PUB ADDRESS          @D67ADAP 00941000
+         BAL   RA,MIHTPTST        IS THIS A TP DEVICE          @D67ADAP 00942000
+         BNZ   EMWPRE70           YES,                         @D67ADAP 00943000
+         OI    CHQCCBB1,DISERR    INDICATE DISASTER ERROR      @D66ADAP 00944000
+         OI    CHQPROC,CHQDQUNC   DEQUEUE UNCONDITIONALLY      @DAOM    00945000
+         ICM   R7,7,CHQCSW+1      GET CCW ADDRESS                       00946000
+         BNZ   EMWPRE70           LEAVE STATUS UNCHANGED                00947000
+         BAL   R7,CQDSP           SET UP CCB ADDRESSABILITY    @DA36324 00948000
+*SGLINK  CQDSP,INPUT=(R3,R6,R7),OUTPUT=(R1,R4,RA),WORK=R0      @DA36324 00949000
+         USING CCBADR,R1          CCB BASE POINTER                      00950000
+         L     R7,CCBCCW          ADDRESS OF USERS 1ST CCW              00951000
+         STCM  R7,7,CHQCSW+1      SAVE ADDRESS IN CHQCSW                00952000
+         DROP  R1                 RELEASE CCB BASE POINTER              00953000
+.*                                                             @D61CDAP 00954000
+.*       RETRY                                                 @D61CDAP 00955000
+.*                                                             @D61CDAP 00956000
+EMWPRE70 L     R9,AINTER          IOINTER BASE ADDRESS         @D61CDAP 00957000
+         USING INTRTN,R9          IOINTER BASE POINTER         @D61CDAP 00958000
+         LR    RE,R6              FORCE DISPATCHER EXIT        @D66ADAP 00959000
+         TM    EMWFLAG2,EMWF2VTA  REMOTE VIRTUAL TAPE          @D66ADAP 00960000
+         BO    EMWPROUT           YES, SUPPRESS RECORDING      @D66ADAP 00961000
+         NI    CHQFLG1,XFF-CHQCSBSY-CHQCSQED RESET GATING BITS          00962000
+         NI    PUBCSFLG,XFF-DEVBSY-QEDERR RESET PUB FLAG BITS           00963000
+         MVC   CSW(L8),CHQCSW     RESTORE CSW IN LOW CORE               00964000
+         SLR   R8,R8              CLEAR REGISTER                        00965000
+         IC    R8,CHQIOINF        GET RETURN INFORMATION                00966000
+         L     RE,ERPXAD1(R8)     ERP EXIT ADDRESS TABLE                00967000
+         L     R2,ASRQTAB         RESOURCE DESCRIPTOR TABLE    @D61BDAP 00968000
+         LA    R2,SRQERQ-SRQTAB(R2) ERBLOC RESOURCE DESCRIPTOR @D61BDAP 00969000
+         USING RQADR,R2           RESOURCE DESCRIPTOR BASE     @D61BDAP 00970000
+         TM    RSCDESC,FREEBIT    ERP ERROR QUEUE ENTRY FREE   @D66ADAP 00971000
+         BZ    EMWPROUT           NO, CANT DO THE RECORDING    @D66ADAP 00972000
+         MVC   RSCDESC,TID        SET ERBLOC IN USE            @D66ADAP 00973000
+         L     R2,AERBLOC         POINT TO ERBLOC AREA                  00974000
+         USING ERBLOC,R2          UNIT CHCK ENTRY BASE POINTER @DA42144 00975000
+         XC    ERQCSW1(ERQRFRL1-ERQCSW1),ERQCSW1  CLEAR ERBLOC @DA42144 00976000
+         LA    R2,ERQ1-ERBLOC(R2) POINT TO ERP ERROR ENTRY              00977000
+         USING ERQAEADR,R2        ALTERNATE ENTRY BASE POINTER @D21WDAP 00978000
+         OI    ERQAEFLG,OCCUP     INDICATE ENTRY IS IN USE              00979000
+         LA    R0,ERQAECOM-4      ADDRESS OF RECORD BODY -4             00980000
+         ST    R0,ERQAEADR        SAVE IT IN ALTERNATE ENTRY            00981000
+         MVI   ERQAELEN,32        LENGTH OF MIH BODY RECORD             00982000
+         MVI   ERQAETYP,X'70'     RECORD ID FOR MIH RECORD              00983000
+         MVI   ERQAEMSG,RMSAE     INDICATE ALTERNATE ENTRY              00984000
+         MVI   ERQAEIND,XFF       INDICATE NOT AN ERROR RECORD @DA34415 00985000
+         STH   R3,ERQAEPUB        SAVE PUB ADDRESS IN ENTRY             00986000
+         L     RF,TIBPTR          ADDRESS OF SNS-TIB                    00987000
+         ST    RF,ERQAETIB        SAVE TIB POINTER IN ENTRY             00988000
+         TM    CHQCSW+4,CHANEND   DID WE RECEIVE CHANNEL END            00989000
+         BZ    EMWPRR10           NO, INDICATE CE PENDING               00990000
+         OI    ERQAESW2,X'40'     INDICATE DE PENDING                   00991000
+         B     EMWPRR20                                                 00992000
+EMWPRR10 OI    ERQAESW2,X'80'     INDICATE CE PENDING                   00993000
+EMWPRR20 L     RF,CRADDR          ADDRESS OF COMREG                     00994000
+         USING COMREG,RF          COMREG BASE POINTER                   00995000
+         MVC   ERQAECOM(8),COMNAME SET UP JOB NAME                      00996000
+         DROP  RF                 RELEASE COMREG BASE                   00997000
+         MVC   ERQAECOM+MIHAECUU+1(2),CHNADR GET CURRENT CUU            00998000
+         MVC   ERQAECOM+MIHAEPCU+1(2),PUBCHANN SAVE PRIM. CUU           00999000
+         MVC   ERQAECOM+MIHAEVOL(6),MIHCNONE SET VOLID *NONE*  @DA34506 01000000
+         MVC   ERQAECOM+MIHAEDTY(1),PUBDEVTY STORE DEVICE TYPE          01001000
+         MVC   ERQAECOM+MIHAETIM(8),MIHFWAIT SET ELAPSED TIME  @DA41354 01002000
+         LR    R7,RE              SAVE EXIT ADDRESS            @D14CDAP 01003000
+         TM    CHQDEV,CHQDASD+CHQFBA IS THIS A DISK DEVICE              01004000
+         BZ    EMWPRR30           NO, LEAVE VOLID *NONE*                01005000
+         BAL   RE,RMSGETP2        GET PUB2 ADDRESS                      01006000
+*SGLINK  RMSGETP2,INPUT=(R3,R6,RE),OUTPUT=R8,WORK=RB                    01007000
+         USING PUB2ADR,R8         PUB2 BASE POINTER                     01008000
+         MVC   ERQAECOM+MIHAEVOL(6),P2DVOL GET CORRECT VOLID            01009000
+         DROP  R8                 RELEASE PUB2 BASE POINTER             01010000
+         DROP  R2                 RELEASE ALTERNATE ENTRY BASE          01011000
+EMWPRR30 L     R8,AERPTIB         TIB OF TASK TO BE ACTIVATED  @D14CDAP 01012000
+         CLI   TIBRQID-TIBADR(R8),WAITBND IS ERP-TASK WAITBOUND@D61NDAP 01013000
+         BE    EMWPRR40           YES,                         @D61NDAP 01014000
+         CLI   TIBRQID-TIBADR(R8),SYSBND ERP ALREADY ACTIVE    @D21YDOW 01015000
+         BNE   EMWPRR50           YES, SKIP ACTIVATION         @D21YDOW 01016000
+EMWPRR40 L     RF,ERPBASE         GET ERP BASE ADDRESS         @D61NDAP 01017000
+         USING SGERP,RF           SGERP BASE POINTER           @D61NDAP 01018000
+         OI    SGERPECB+2,TRABIT  POST ERP MASTER ECB          @D61NDAP 01019000
+         DROP  RF                 RELEASE SGERP BASE POINTER   @D61NDAP 01020000
+         BAL   RF,POST            ACTIV. ERP TASK FOR RECORDING@D61NDAP 01021000
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=RE                         @D14CDAP 01022000
+EMWPRR50 LR    RE,R7              RESTORE EXIT ADDRESS         @D14CDOW 01023000
+EMWPROUT NI    CHQCCSIO,XFF-CHQCCLTE RESET LONG TIME ENTRY BIT @D3CADAP 01024000
+         MVI   CHQIOINF,ZERO      RESET EXIT INFORMATION       @DY45166 01025000
+EMWPRXIT NI    EMWFLAG2,XFF-EMWF2VTA-EMWF2VTV-EMWF2VTT RESET   @DY46289 01026590
+         XC    MIHPBXAD,MIHPBXAD  CLEAR PUBX POINTER           @D61CDAP 01027180
+         CR    R6,RE              EXIT TO DISPATCHER                    01028000
+         BER   RE                 YES, ====================>>>          01029000
+         BAL   R7,CQDSP           RESTORE LOW CORE POINTERS    @DA35615 01030000
+         BAL   RF,INTERTRN        RESTORE CCT POINTER                   01031000
+         DROP  R9                 RELEASE IOINTER BASE                  01032000
+         BR    RE                 EXIT ====================>>>          01033000
+*                                 RETRY                                 01034000
+*                                 IGNORE                                01035000
+*                                 PSTRESET                              01036000
+*                                 DEQUNCON                              01037000
+*                                 CANCEL                                01038000
+*                                 DISP                                  01039000
+MIHAECUU EQU   8                  OFFSET OF      CUU IN MIH REC.        01040000
+MIHAEPCU EQU   11                 OFFSET OF PRIM CUU IN MIH REC.        01041000
+MIHAEVOL EQU   14                 OFFSET OF    VOLID IN MIH REC.        01042000
+MIHAEDTY EQU   20                 OFFSET OF DEV.TYPE IN MIH REC.        01043000
+MIHAETIM EQU   24                 OFFSET OF INTERVAL IN MIH REC.        01044000
+         SPACE 3                                                        01045000
+EMWREPLY NI    SNSFLAG,XFF-SNSMSGRO NO MORE READ OUTSTANDING   @D61CDAP 01046000
+         TM    SNSFLAG,X'10' SNSPVDLY DELAYED PATH VERIFICATION@DY45768 01047000
+         BZ    EMWREP10           NO,                          @DY45768 01048000
+         NI    SNSFLAG,XFF-X'10' SNSPVDLY RESET DELAYED PROCESS@DY45768 01049000
+         OI    SNSFLAG,SNSPVWRK   ENSURE PATH VERIFICATION NOW @DY45768 01050000
+EMWREP10 ICM   R3,15,EMWPUBPT     DID WE RECEIVE INTERRUPT     @D61CDAP 01051000
+         BZR   R6                 YES, ====================>>> @D61CDAP 01052000
+         USING PUBADR,R3          PUB BASE POINTER             @D61CDAP 01053000
+         LH    R4,EMWCHANQ        CHANQ ENTRY NUMBER           @D61CDAP 01054000
+         SLL   R4,CHQSLEN         OFFSET WITHIN CHANQ          @D61CDAP 01055000
+         A     R4,ACHANQ          ADDRESS OF CHANQ ENTRY       @D61CDAP 01056000
+         ICM   R4,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 01057000
+         USING CHQADR,R4          CHANQ BASE POINTER           @D61CDAP 01058000
+         OC    EMWRESP,EMWBLANK   TRANSLATE TO CAPITAL LETTERS          01059000
+         CLI   EMWRESP,C'I'       WAS RESPONSE IGNORE                   01060000
+         BE    EMWREIGN           REPLY WAS IGNORE                      01061000
+         BH    EMWRERTY           REPLY COULD HAVE BEEN RETRY           01062000
+EMWRECNL CLC   EMWRESP,EMWRCCNL   DID OPERATOR REPLY CANCEL             01063000
+         BNE   EMWINMSG           NO, INVALID RESPONSE                  01064000
+         BAL   R7,EMWHALT         HALT DEVICE FIRST ========>>          01065000
+         CLI   EMWPMGAC,EMWEQUCR  IS RETRY POSSIBLE                     01066000
+         BE    EMWRER10           YES, THEN RETRY                       01067000
+         AIF   (NOT &VSE280).N280020                           @DSCSI   01068000
+         L     RF,MIHPBXAD        GET PBXADR POINTER           @DSCSI   01069000
+         USING PBXADR,RF          PBXADR BASE POINTER          @DSCSI   01070000
+         TM    PBXFLAG,PBXDASD+PBXSCSI IS THIS A SCSI DEVICE   @DSCSI   01071000
+         BZ    EMWREC10           NO,                          @DSCSI   01072000
+         OI    CHQCCBB1,DISERR    INDICATE CANCEL PENDING      @DSCSI   01073000
+         B     EMWRSCSI           EXIT,======================> @DSCSI   01074000
+         DROP  RF                 RELEASE PBXADR BASE          @DSCSI   01075000
+.N280020 ANOP                                                           01076000
+EMWREC10 MVI   CHQIOINF,ERPXER1A  FORCE CANCEL EXIT                     01077000
+         B     EMWPRE30           CANCEL THIS REQUEST          @D61NDAP 01078000
+EMWRERTY CLC   EMWRESP(5),EMWRCRTY DID OPERATOR REPLY RETRY             01079000
+         BNE   EMWINMSG           NO, INVALID RESPONSE                  01080000
+         CLI   EMWPMGAC,EMWEQUCR  IS RETRY POSSIBLE                     01081000
+         BNE   EMWINMSG           NO, INVALID RESPONSE                  01082000
+         BAL   R7,EMWHALT         HALT I/O BEFORE ==========>>          01083000
+EMWRER10 NI    CHQCCSIO,ZERO      RESET SIO FLAGS                       01084000
+         MVI   CHQIOINF,ERPXINIT  MAKE RETRY POSSIBLE                   01085000
+         AIF   (NOT &VSE280).N280040                                    01086000
+         L     RF,MIHPBXAD        GET PBXADR POINTER           @DSCSI   01087000
+         USING PBXADR,RF          PBXADR BASE POINTER          @DSCSI   01088000
+         TM    PBXFLAG,PBXDASD+PBXSCSI IS THIS A SCSI DEVICE   @DSCSI   01089000
+         BZ    EMWPRE70           NO,                          @DSCSI   01090000
+         NI    PUBCSFLG,XFF-DEVBSY-QEDERR-OPINTV RESET GATES   @DSCSI   01091000
+EMWRSCSI L     R9,AINTER          IOINTER BASE ADDRESS         @DSCSI   01092000
+         USING INTRTN,R9          IOINTER BASE POINTER         @DSCSI   01093000
+         LR    RE,R6              FORCE DISPATCHER EXIT        @DSCSI   01094000
+         B     EMWPROUT           EXIT,======================> @DSCSI   01095000
+         DROP  R9                 RELEASE IOINTER BASE         @DSCSI   01096000
+         DROP  RF                 RELEASE PBXADR BASE                   01097000
+         AGO   .Y280020                                                 01098000
+.N280040 ANOP                                                           01099000
+         B     EMWPRE70           RETRY REQUEST                         01100000
+.Y280020 ANOP                                                           01101000
+EMWREIGN LR    RE,R6              FORCE DISPATCHER EXIT                 01102000
+         CLC   EMWRESP,EMWRCIGN   DID OPERATOR REPLY IGNORE             01103000
+         BNE   EMWINMSG           NO, INVALID REPLY            @DAOM    01104000
+         NI    CHQPROC,XFF-CHQDQUNC RESET DEQUNCON BIT         @DAOM    01105000
+         B     EMWPROUT           YES, DONT DO ANYTHING        @DAOM    01106000
+EMWINMSG MVI   EMWPMGNO,EMWMNO01  ENFORCE INVALID REPLY MESSAGE         01107000
+         B     EMWPR005           WRITE MESSAGE                         01108000
+         SPACE 1                                                        01109000
+EMWHALT  DS    0H'0'                                                    01110000
+         LR    R2,R3              COPY PUB POINTER             @D51GDAP 01111000
+         BAL   RF,EMGETSCH        GET XA SUBCHANNEL NUMBER     @D51GDAP 01112000
+*SGLINK  EMGETSCH INPUT=(R2,RF),OUTPUT=(R1,R2)                          01113000
+         TM    EMWFLAG2,EMWF2VTA  VIRTUAL TAPE PROCESSING      @D66ADAP 01114000
+         BOR   R7                 YES, ======================> @D66ADAP 01115000
+         L     RF,MIHPBXAD        GET PUBX ADDRESS             @D52VDAP 01116000
+         USING PBXADR,RF          PUBX BASE POINTER            @D52VDAP 01117000
+         AIF   (NOT &VSE280).N280060                                    01118000
+         TM    PBXFLAG,PBXDASD+PBXSCSI IS THIS A SCSI DEVICE   @DSCSI   01119000
+         BNO   EMWHA040           NO,                          @DSCSI   01120000
+*        TM    CHQCCBB1,DISERR    CANCEL ALREADY PENDING       @DSCSI   01121000
+*        BO    EMWHA020           YES, ======================> @DSCSI   01122000
+         OI    CHQCCBB1,DISERR    INDICATE CANCEL PENDING      @DSCSI   01123000
+         LA    R2,PBXADR          PROVIDE PUBX ADDRESS         @DSCSI   01124000
+         L     RF,IJBAFCPA        ADDRESS OF FCP COMM. AREA    @DSCSI   01125000
+         USING FCPTAB,RF          FCB CNTL.BLOCK BASER         @DSCSI   01126000
+         ICM   RC,15,FCSCSIAD     IJBSCSI BASE ADDRESS         @DSCSI   01127000
+         BZ    EMWHA020           VERY STRANGE                 @DSCSI   01128000
+         DROP  RF                 RELEASE FCPTAB BASE          @DSCSI   01129000
+         LA    RF,8               OFFSET OF ABORT PROCESSING   @DSCSI   01130000
+         ALR   RF,RC              ADDRESS OF ABORT ENTRY       @DSCSI   01131000
+         BASSM RE,RF              HAVE IJBSCSI INITIATE ABORT  @DSCSI   01132000
+*SGLINK  $IJBSCSI,INPUT(R2,RC,RE),OUTPUT=RF                    @DSCSI   01133000
+         LTR   RF,RF              HAS ABORT  BEEN ACCEPTED     @DSCSI   01134000
+         BZ    EMWHA020           YES,                         @DSCSI   01135000
+         NI    CHQCCBB1,XFF-DISERR RESET CANCELED BIT          @DSCSI   01136000
+EMWHA020 L     RE,DISPAD          DISPATCHER BASE ADDRESS      @DSCSI   01137000
+         BR    R7                 RETRN======================> @D28DR06 01138000
+EMWHA040 DS    0H'0'              ISSUE THE HSCH INSTRUCTION   @DSCSI   01139000
+.N280060 ANOP                                                           01140000
+         HSCH                     HALT SUBCHANNEL              @D51GDAP 01141000
+         BAL   RF,EMCSCHRT        CLEAR SUBCHANNEL             @D52VDAP 01142000
+         NI    PUBCSFLG,XFF-OPINTV RESET OPINTV BIT            @DBOC    01143000
+         BR    R7                 RETURN                                01144000
+EMWRCCNL DC    C'CANCEL '                                               01145000
+EMWRCIGN DC    C'IGNORE '                                               01146000
+EMWRCRTY DC    C'RETRY  '                                               01147000
+         DROP  R3                 RELEASE PUB BASE                      01148000
+         DROP  R4                 RELEASE CHANQ BASE                    01149000
+         DROP  R6                 RELEASE DISP BASEPOINTER              01150000
+EMWDWORD DC    D'0'               WORK FIELD                            01151000
+EMWPARM0 DS    0F'0'              PARAMETER FIELD MSG CODES             01152000
+EMWPTIOC DC    X'00'              DEVICE TIO CONDITION CODE             01153000
+EMWPMGMT DC    X'00'              MESSAGE TYPE ID                       01154000
+EMWPMGAC DC    X'00'              OPERATOR CODE                         01155000
+EMWPMGNO DC    X'00'              MESSAGE NUMBER                        01156000
+EMWPUBPT DC    F'0'               PARAMETER FIELD PUB ADDRESS           01157000
+EMWCHANQ DC    H'0'               CHANNEL QUEUE INDEX          @D51ODGL 01158000
+EMWTEXT  DC    AL2(EMWMSEND-EMWTEXT) MESSAGE LENGTH            @D61CDAP 01159000
+EMWMSGL1 DC    C'0E00A          DEVICE CUU    '                         01160000
+EMWMSGNO EQU   EMWMSGL1+2         MESSAGE NUMBER                        01161000
+EMWMSGMT EQU   EMWMSGL1+4         MESSAGE TYPE                          01162000
+EMWMSGOC EQU   EMWMSGL1+6         OPERATOR CODE                         01163000
+EMWMSTXT DC    C' MESSAGE TEXT   '                                      01164000
+EMWMSEND EQU   *                                                        01165000
+EMWWTORE DC    XL4'0'             WTOR ECB                     @D61CDAP 01166000
+EMWRESP  DC    C'      '          MESSAGE RESPONSE                      01167000
+EMWRDINP DC    X'000000'                                                01168000
+EMWBLANK DC    C'      '                                                01169000
+EMWFLAG1 DC    X'00'              FLAG BYTE                    @D61CDAP 01170000
+EMWF1WRK EQU   X'80'              GOT WORK TO DO                        01171000
+EMWF1SNS EQU   X'40'              SNS TASK IS ACTIVE                    01172000
+EMWF1CLR EQU   X'20'              ISSUE A DOM REQUEST          @D14CDAP 01173000
+EMWF1PVT EQU   X'10'              PATH VERIFICATION ONGOING    @DA43916 01174000
+EMWF1RTY EQU   X'08'              CHECK FOR DELAYED RETRIES    @DY45988 01175000
+EMWF1LAE EQU   X'01'              FOUND LONG ACTIVE ENTRY               01176000
+EMWFLAG2 DC    X'00'              FLAG BYTE                    @DA41699 01177000
+EMWF2VTA EQU   X'80'              VTAPE PROCESSING             @D66ADAP 01178000
+EMWF2VTV EQU   X'40'              VTAPE IS A VSAM FILE         @DY45789 01179000
+EMWF2VTT EQU   X'20'              VTAPE IS A TCP/IP CONNECTION @DY45789 01180000
+.*       MESSAGE TYPE CODES                                             01181000
+EMWMTACT DC    C'A'                    ACTION TYPE MESSAGE              01182000
+EMWMTOPD DC    C'D'                    DECISION TYPE MESSAGE            01183000
+EMWMTINF DC    C'I'                    INFORMATION TYPE MESSAGE         01184000
+         SPACE 1                                                        01185000
+.*       OPERATOR CODES                                                 01186000
+EMWOCCNL DC    C'C'                    ACTION CANCEL INDICATOR          01187000
+EMWOCIGN DC    C'I'                    ACTION IGNORE INDICATOR          01188000
+EMWOCPST DC    C'P'                    ACTION POSTED INDICATOR          01189000
+EMWOCRTY DC    C'R'                    ACTION RETRY  INDICATOR          01190000
+EMWOCWT  DC    C'W'                    ACTION WAIT   INDICATOR          01191000
+         SPACE 1                                                        01192000
+EMWEQUCA EQU   C'A'                                                     01193000
+EMWEQUCC EQU   C'C'                                                     01194000
+EMWEQUCD EQU   C'D'                                                     01195000
+EMWEQUCI EQU   C'I'                                                     01196000
+EMWEQUCP EQU   C'P'                                                     01197000
+EMWEQUCR EQU   C'R'                                                     01198000
+EMWEQUCW EQU   C'W'                                                     01199000
+         SPACE 3                                                        01200000
+EMWMSGST DS    0H'0'                                                    01201000
+EMWMSG00 DC    C'UNKNOWN STATUS  '                                      01202000
+EMWMSG01 DC    C'INVALID REPLY   '                                      01203000
+EMWMSG02 DC    C'LOST CHN+DEV END'                                      01204000
+EMWMSG03 DC    C'LOST CHANNEL END'                                      01205000
+EMWMSG04 DC    C'LOST DEVICE END '                                      01206000
+EMWMSG05 DC    C' IS NOT READY   '                                      01207000
+EMWMSG06 DC    C'AWAITING READY  '                                      01208000
+EMWMSG07 DC    C' NOT OPERATIONAL'                                      01209000
+EMWMSG08 DC    C'ERR. ON RECOVERY'                                      01210000
+EMWMSG09 DC    C'ERR. ON RECOVERY'                                      01211000
+EMWMSGEN EQU   *                                                        01212000
+EMWMNO00 EQU   (EMWMSG00-EMWMSGST)/16                                   01213000
+EMWMNO01 EQU   (EMWMSG01-EMWMSGST)/16                                   01214000
+EMWMNO02 EQU   (EMWMSG02-EMWMSGST)/16                                   01215000
+EMWMNO03 EQU   (EMWMSG03-EMWMSGST)/16                                   01216000
+EMWMNO04 EQU   (EMWMSG04-EMWMSGST)/16                                   01217000
+EMWMNO05 EQU   (EMWMSG05-EMWMSGST)/16                                   01218000
+EMWMNO06 EQU   (EMWMSG06-EMWMSGST)/16                                   01219000
+EMWMNO07 EQU   (EMWMSG07-EMWMSGST)/16                                   01220000
+EMWMNO08 EQU   (EMWMSG08-EMWMSGST)/16                                   01221000
+EMWMNO09 EQU   (EMWMSG09-EMWMSGST)/16                                   01222000
+EMWMNOMX EQU   (EMWMSGEN-EMWMSGST)/16                                   01223000
+         SPACE 1                                                        01224000
+         DROP  RD                      RELEASE SGMIH BASE               01225000
+         AIF   (NOT &SGMIH).NPRT020                                     01226000
+         PRINT NOGEN                                                    01227000
+.NPRT020 ANOP                                                           01228000
+         MEND                                                           01229000

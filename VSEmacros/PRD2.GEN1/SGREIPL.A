@@ -1,0 +1,211 @@
+         MACRO                                                          00010000
+         SGREIPL                                                        00020000
+.*                                                                      00040000
+.*       IBM DISK OPERATING SYSTEM                                      00050000
+*        SUPERVISOR - SGREIPL - 5686-CF7                                00060001
+       AGO  .ZZZ                                                        00070000
+*      LICENSED MATERIALS - PROPERTY OF IBM                             00080000
+*      THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                      00090000
+*      5686-CF7 (C) COPYRIGHT IBM CORP. 2004                            00100000
+*      SEE COPYRIGHT INSTRUCTIONS                                       00110000
+.ZZZ   ANOP                                                             00120000
+.**** START OF SPECIFICATIONS ***************************************** 00130000
+.*                                                                      00140000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00150000
+.*                                                                      00160000
+.*01* DESCRIPTIVE NAME = SCSI RE-IPL                                    00170000
+.*                                                                      00180000
+.*  STATUS           =  NEW MACRO - FIRST RELEASE 7.1                   00190000
+*                                                                       00200000
+*   FUNCTION         =  THIS MACRO CONTAINS ROUTINES TO HANDLE          00210000
+*                       SCSI REIPL AND IS CALLED BY SGUNATT             00220006
+.*                                                                      00230000
+.*  RESTRICTIONS     =  MUST BE LOCATED IN SUPERVISOR FIXED STORAGE     00240000
+.*                      BELOW 16 MB REAL                                00250000
+*                                                                       00260000
+*   REGISTER CONVENT.=  R0 - PARAMETER REGISTER                         00270000
+*                    =  R1 - PARAMETER REGISTER                         00280000
+*                    =  R2 - WORK REGISTER                              00290000
+*                    =  R3 - PARAMETER SAVE/WORK REGISTER               00300000
+*                    =  R4 - WORK REGISTER                              00310000
+*                    =  R5 - WORK REGISTER                              00320000
+*                    =  R6 - BASE REGISTER OF DISPATCHER                00330000
+*                    =  R7 - PARAMETER SAVE/WORK REGISTER               00340000
+*                    =  R8 - TIB POINTER                                00350000
+*                    =  RC - BASE REGISTER OF THESE ROUTINES            00360000
+*                    =  RD - WORK REGISTER                              00370000
+*                    =  RE - WORK REGISTER                              00380000
+*                    =  RF - WORK REGISTER                              00390000
+.*                                                                      00400000
+.*  MACRO TYPE       =  ASSEMBLER                                       00410000
+*                                                                       00420000
+*   ENTRY POINT      =  DOSREIPL                                        00430000
+*                                                                       00440000
+*   CALLER           =  SGUNATT DOREIPL FOR SCSI SYSRES                 00450000
+*                                                                       00460000
+*   INPUT            =                                                  00470000
+*                                                                       00480000
+*   OUTPUT(ASSEMBLER)=  NONE                                            00490000
+*                                                                       00500000
+*   EXIT NORMAL      =  NONE                                            00510000
+*                                                                       00520000
+*   EXIT ERROR       =  ILLEGAL SVC IS FORCED WHEN ?????                00530000
+.*                                                                      00540000
+.*  EXTERNAL REFEREN.=  NONE                                            00550000
+.*                                                                      00560000
+.*  DATA AREAS       =  NONE                                            00570000
+.*                                                                      00580000
+.*  CONTROL BLOCKS   =  UNATTCB, REIPL BLOCK                            00590000
+.*                                                                      00600000
+.*  TABLES           =  NONE                                            00610000
+.*                                                                      00620000
+.*  MACROS           =  UNATTCB, MAPREIPL                               00630000
+*                                                                       00640000
+*   AUTHORIZATION    =  FLAG PCBARIPL                                   00650000
+*                                                                       00660000
+.*  CHANGE ACTIVITIES=  NEW MACRO   FIRST RELEASE 7.1                   00670000
+.*                                                                      00680000
+.** END OF SPECIFICATIONS ********************************************* 00690000
+*                                                                       00700000
+         GBLB &SGREIPL            PRINT CONTROL SWITCH                  00701021
+         AIF  (NOT &SGREIPL).REIPL10                                    00710002
+         PRINT GEN                                                      00720000
+.REIPL10 ANOP                                                           00730001
+         TITLE 'VSE SUPERVISOR SGREIPL -        SCSI REIPL ROUTINE'     00740007
+         DC    CL8'SGREIPL '                                            00750001
+         DC    CL8'GA-LEVEL'      CHANGE ACT.CODE / LAST APAR           00760000
+         SPACE 3                                                        00770000
+         USING DOSREIPL,RC        ROUTINE BASE POINTER                  00780000
+         USING DISP,R6            DISAPATCHER BASE POINTER              00790000
+         USING TIBADR,R8          TIB BASE POINTER                      00800000
+         USING TCBADR,RA          TCB BASE POINTER                      00810000
+         USING SVEARA,RB          SAVE AREA BASE POINTER                00820000
+DOSREIPL DS    0H                 RE-IPL                                00830006
+*        BSM   0,RE               RETURN                                00831016
+         STM   R9,R8,RIPLSAVE-DOSREIPL(RF)  SAVE REGISTERS              00831108
+         LR    RC,RF              SETUP BASE                            00832008
+         L     R5,IJBUNCBP        GET UNATTENDED NODE BLOCK             00840111
+         USING UNATTCB,R5         UNATTCB BASE                          00840211
+         LH    R2,UNAIDEV         GET CUU OF IPL DEVICE                 00840311
+**  FIND PUB                                                            00840406
+         LH    R3,YPUBTAB         ADDRESS OF PUB-TABLE                  00840506
+         USING PUBADR,R3          PUB BASE POINTER                      00840606
+RIPFPUB  DS    0H                 SCAN PUB TABLE FOR IPL CUU            00840710
+         CLI   PUBCHANN,XFF       IS THIS PUB-TABLE END                 00840806
+         BE    RIPRET             YES ---->                             00840910
+         CH    R2,PUBCHANN        IS THIS THE RIGHT PUB                 00841013
+         BE    RIPFPUBX           YES, --->                             00841110
+         LA    R3,NEXTPUB         POINT TO NEXT PUB                     00841206
+         B     RIPFPUB            CHECK NEXT DEVICE                     00841310
+         DROP  R3                 RELEASE PUB BASE POINTER              00841406
+**  FIND PUBX                                                           00841506
+RIPFPUBX DS    0H                                                       00841610
+         SH    R3,YPUBTAB         OFFSET IN PUB TABLE                   00841706
+         SRL   R3,1               DEVIDED BY TWO                        00841806
+         A     R3,APBXAREA        ADDRESS OF PUB EXTENTION              00841906
+         L     R3,0(R3)           GET PUBX POINTER                      00842006
+         USING PBXADR,R3          PUB BASE POINTER                      00842106
+         TM    PBXFLAG,PBXSCSI    IS THIS A SCSI DEVICE                 00842206
+         BO    RIPSCSI            YES, --->                             00842310
+RIPRET   DS    0H                                                       00842510
+         LM    R9,R8,RIPLSAVE     RESTORE CALLERS REGISTERS             00842606
+         BSM   0,RE               RETURN TO CALLER                      00843008
+         SPACE 2                                                        00843106
+RIPSCSI  DS    0H                                                       00844010
+         L     R7,UNARIPLB         R7: A(REIPL BLOCK IN SUPV)           00847010
+         USING RIPLBLK,R7          MAPREIPL BASE                        00849010
+         TM    IJBFLG08,IJBSAENV   STAND ALONE ENVIRONMENT              00850010
+         BO    RIPINST             YES, --->                            00860012
+*    FILL REIPL BLOCK WITH SCSI INFORMATION FROM SCSI BLOCK             00860110
+         AMODESW SET,AMODE=31,WR=(R9)  WE MAY HAVE 31-BIT ADDR          00860215
+         L     R3,PBXASCSI         LOAD A(SCSI BLOCK)                   00860310
+         DROP  R3                  RELEASE PUBX BASE                    00860411
+         USING SCSIBLK,R3          UNATTCB BASE                         00860510
+         STOSM UNATPMSK,SMDAT                                           00860613
+         MVC   RIPRES,UNAIDEV      SET SCSI IPL DEVICE                  00860710
+         MVC   RIPRFCP,SCIFCPCU    SET SCSI FCP DEVICE                  00860810
+         MVC   RIPRWWPN,SCIWWPN    SET SCSI WWPN NUMBER                 00860910
+         MVC   RIPRLUN,SCILUN      SET SCSI LUN NUMBER                  00861010
+         MVC   RIPLOADP,UNALOADP   SET LOADPARM                         00861120
+         MVC   RIPCON,SYSOCDEV     SET OPERATOR CONSOLE                 00861217
+         STNSM UNATPMSK,DISABLE-PERMASK-DATMASK DISABLE                 00861413
+         AMODESW SET,AMODE=24,WR=(R9)  SWITCH BACK TO 24-BIT            00861515
+RIPINST  DS    0H                                                       00862010
+         STIDP RIPCPUID            GET CPUID                            00870010
+         CLI   RIPRES,X'FF'        VALID INFORMATION PRESENT ?          00892110
+         BE    RIPERR              NO, -->                              00892210
+*    MAKE WWPN NUMBER PRINTABLE                                         00892310
+         UNPK  RCPWORK(9),RIPRWWPN(5)   UNPACK WWPN FIRST PART          00892410
+         TR    RCPWORK(8),RTRBCK1-X'F0' TRANSLATE INTO 0-F              00893010
+         MVC   RIPCPPO(8),RCPWORK       --> CP COMMAND AREA             00894010
+         UNPK  RCPWORK(9),RIPRWWPN+4(5) UNPACK WWPN SECOND PART         00894110
+         TR    RCPWORK(8),RTRBCK1-X'F0' TRANSLATE INTO 0-F              00894210
+         MVC   RIPCPPO+9(8),RCPWORK     --> CP COMMAND AREA             00894310
+*    MAKE LUN NUMBER PRINTABLE                                          00894410
+         UNPK  RCPWORK(9),RIPRLUN(5)    UNPACK LUN FIRST PART           00894510
+         TR    RCPWORK(8),RTRBCK1-X'F0' TRANSLATE INTO 0-F              00894610
+         MVC   RIPCPLU(8),RCPWORK       --> CP COMMAND AREA             00894710
+         UNPK  RCPWORK(9),RIPRLUN+4(5)  UNPACK LUN SECOND PART          00894810
+         TR    RCPWORK(8),RTRBCK1-X'F0' TRANSLATE INTO 0-F              00894910
+         MVC   RIPCPLU+9(8),RCPWORK     --> CP COMMAND AREA             00895010
+*    MAKE FCP CUU NUMBER PRINTABLE                                      00895110
+         UNPK  RCPWORK(5),RIPRFCP(3)    UNPACK FCP CUU                  00895210
+         TR    RCPWORK(4),RTRBCK1-X'F0' TRANSLATE INTO 0-F              00895310
+         MVC   RCPFCP(8),RCPWORK        --> CP COMMAND AREA             00895410
+         CLI   RIPCPUID,XFF        RUNNING UNDER VM                     00895618
+         BNE   RIPLPAR             NO,                                  00895718
+*    ISSUE CP COMMANDS TO DEFINE LOAD DEVICE AND IPL IT                 00896010
+         LA    R8,RIPCPCML         LENGTH OF COMMAND                    00900021
+         LA    R2,RIPCPCMD         SET LOADDEV                          00910021
+         DC    X'83',X'28',XL2'0008'  GIVE CP DIAGNOSE                  00920015
+         LA    R8,L'RIPLCMD        LENGTH OF COMMAND                    00921021
+         LA    R2,RIPLCMD          IPL FCP DEVICE                       00922021
+         DC    X'83',X'28',XL2'0008'  GIVE CP DIAGNOSE                  00923015
+         LPSW  RIPLHW                                                   00923220
+RIPLPAR  DS    0H                                                       00924018
+         MVC   RIPLPDV+5(4),RCPFCP      FCP CUU TO DISPLAY AREA         00924122
+         MVC   RIPLPPO(8),RIPCPPO       WWPN TO DISPLAY AREA            00924218
+         MVC   RIPLPPO+8(8),RIPCPPO+9   WWPN TO DISPLAY AREA            00924318
+         MVC   RIPLPLU(8),RIPCPLU       LUN TO DISPLAY AREA             00924418
+         MVC   RIPLPLU+8(8),RIPCPLU+9   LUN TO DISPLAY AREA             00924518
+         MVC   0(RIPTXLN,0),RIPLPTX     DISPLAY AREA TO LOW CORE        00924622
+         LPSW  RIPLHW                                                   00924719
+RIPERR   DS    0H                                                       00924818
+         LM    R9,R8,RIPLSAVE      RESTORE CALLERS REGISTERS            00925021
+         B     ERR21               INVALID SVC                          00926021
+         DROP  R3                  DROP SCSI BLOCK                      00927021
+         DROP  R5                  DROP UNATTCB                         00928021
+         DROP  R7                  DROP MAPREIPL                        00929021
+         DROP  RC                  DROP ROUTINE BASE                    00930021
+         EJECT                                                          00950000
+*------------------------------------------------------------*          00960000
+*                                                            *          00970000
+*    LOCAL DATA OF DOSREIPL                                  *          00980000
+*                                                            *          00990000
+*------------------------------------------------------------*          01000000
+         MAPREIPL                                                       01010000
+         SPACE 2                                                        01020000
+RIPCPUID DC    D'0'                CPU ID OF THE VSE MACHINE            01030021
+RIPLHW   DC    X'000A00000000FFCC' HARDWAIT FOR MANUAL REIPL            01031024
+RIPLSAVE DS    XL64                                                     01040000
+         SPACE 2                                                        01050000
+RIPCPCMD DC    C'SET LOADDEV PORT '  SET FCP WWPN AND LUN IN VM         01060006
+RIPCPPO  DC    C'50050763 00C293CB LUN '                                01070006
+RIPCPLU  DC    C'51790000 00000000'                                     01080006
+RIPCPCML EQU   *-RIPCPCMD          COMMAND LENGTH                       01081021
+RIPLCMD  DC    C'IPL CUU '         IPL FCP                              01090021
+RCPFCP   EQU   RIPLCMD+4           VM FCP CUU IN PRINTABLE FORM         01091021
+RCPWORK  DC    XL12'00'                                                 01092010
+RTRBCK1  DC    C'0123456789ABCDEF' TRANSLATION STRING                   01093021
+.*                                                                      01100000
+RIPLPTX  DC    CL16'REIPL ON HMC:'                                      01100124
+RIPLPDV  DC    CL16'LOAD ADDR:´ CUU'                                    01101024
+         DC    CL16'WWPN:'                                              01101124
+RIPLPPO  DC    CL16'5005076300C293CB'                                   01102018
+         DC    CL16'LUN:'                                               01102118
+RIPLPLU  DC    CL16'5179000000000000'                                   01103018
+RIPTXLN  EQU   *-RIPLPTX                                                01106018
+         AIF  (NOT &SGREIPL).REIPL90                                    01110001
+         PRINT NOGEN                                                    01120000
+.REIPL90 ANOP                                                           01130001
+         MEND                                                           01131009

@@ -1,0 +1,383 @@
+         TITLE ' OUTEXAMP'                                              00001000
+         PUNCH ' PHASE OUTEXAMP,*'                                      00002000
+*********************************************************************** 00003000
+**                                                                   ** 00004000
+**                      O U T E X A M P                              ** 00005000
+**                                                                   ** 00006000
+**          VSE/POWER OUTPUT EXIT:  EXAMPLE PROGRAM                  ** 00007000
+**                                                                   ** 00008000
+**                                                                   ** 00009000
+*********************************************************************** 00010000
+*                                                                     * 00011000
+*   THIS PROGRAM - NAMED OUTEXAMP - ACTS AS AN EXAMPLE FOR A USER     * 00012000
+*   WRITTEN OUTPUT EXIT ROUTINE.                                      * 00013000
+*                                                                     * 00014000
+*   THIS EXAMPLE GIVES A SKELETON WHICH SHOWS HOW THE INTERFACE       * 00015000
+*   BETWEEN VSE/POWER AND A USER WRITTEN OUTPUT EXIT WORKS.           * 00016000
+*   IT CAN NOT SHOW THE VARIOUS FUNCTIONS AN OUTPUT EXIT COULD        * 00017000
+*   PERFORM SINCE THAT DEPENDS ON THE NEEDS OF THE CUSTOMER.          * 00018000
+*                                                                     * 00019000
+*   THE FUNCTIONS, FOR EXAMPLE, COULD BE:                             * 00020000
+*                                                                     * 00021000
+*        - MODIFY DATA RECORDS TO NATIONAL STANDARDS' NEEDS           * 00022000
+*        - PRODUCE OWN SEPARATOR PAGES/CARDS                          * 00023000
+*        - PLACE THE COMPANY'S LOGO ON A HEADER PAGE                  * 00024000
+*        - ACHIEVE DIFFERENT PRINTER OPERATIONS                       * 00025000
+*        - APPEND SECURITY CLASSIFICATION ON EACH PAGE                * 00026000
+*        - SELECTIVELY PRODUCE SEPARATOR PAGES/CARDS FOR A            * 00027000
+*          PARTICULAR USER OR JOB                                     * 00028000
+*                                                                     * 00029000
+*   GIVEN HERE IS AN EXAMPLE HOW THE FUNCTION                         * 00030000
+*   'ADD SECURITY CLASSIFICATION  ON EACH PAGE' CAN BE                * 00031000
+*   IMPLEMENTED. HERE THE SECURITY CLASSIFICATION IS                  * 00032000
+*   PRINTED ON TOP OF EVERY PAGE BY A LOCAL LIST TASK.                * 00033000
+*                                                                     * 00034000
+*   SINCE MORE THAN ONE LIST TASK CAN BE ACTIVE IN PARALLEL           * 00035000
+*   A WORK AREA OF 50 BYTES IS REQUESTED BY THIS EXAMPLE.             * 00036000
+*   THE WORK AREA IS USED HERE TO SAVE RECORD INFORMATION.            * 00037000
+*   IF THE WORK AREA IS NOT PRESENT THE LIST TASK IS STOPPED.         * 00038000
+*                                                                     * 00039000
+*                                                                     * 00040000
+*                                                                     * 00041000
+*   THE FOLLOWING ADDRESSABILITY IS ASSUMED AT ENTRY TO THE           * 00042000
+*   OUTPUT EXIT:                                                      * 00043000
+*                                                                     * 00044000
+*        R1 - ADDRESS OF PARAMETER LIST PASSED BY VSE/POWER           * 00045000
+*        RA - ADDRESS OF VSE/POWER COMMON ADDRESS TABLE (CAT)         * 00046000
+*        RB - ADDRESS OF TASK CONTROL BLOCK (TCB)                     * 00047000
+*        RE - RETURN ADDRESS TO VSE/POWER                             * 00048000
+*        RF - BASE REGISTER OF THIS ROUTINE                           * 00049000
+*                                                                     * 00050000
+*   THE OUTPUT EXIT MAY NOT ALTER THE CONTENTS OF                     * 00051000
+*   REGISTERS 10, 11 AND 12. THESE REGISTERS ARE RESERVED FOR         * 00052000
+*   VSE/POWER. ALL OTHER REGISTERS MAY BE USED BY                     * 00053000
+*   THE OUTPUT EXIT.                                                  * 00054000
+*                                                                     * 00055000
+*   THIS OUTPUT EXIT PHASE IS LOCATED WITHIN THE                      * 00056000
+*     - PAGEABLE AREA OF THE VSE/POWER PARTITION WHEN LOADED          * 00057000
+*       AT VSE/POWER INITIALIZATION TIME, OR IN THE                   * 00058000
+*     - GETVIS AREA OF THE VSE/POWER PARTITION WHEN LOADED            * 00059000
+*       AFTER INITIALIZATION BY THE 'PLOAD' COMMAND.                  * 00060000
+*   FOR DEBUGGING LOCATE THE OUTPUT EXIT IN STORAGE BY                * 00061000
+*   THE STORAGE DESCRIPTOR 'OUTPUT-EXIT' AND BY THE POINTER 'CAOEX'   * 00062000
+*   IN THE COMMON ADDRESS TABLE OF VSE/POWER.                         * 00063000
+*                                                                     * 00064000
+*********************************************************************** 00065000
+*                                                                     * 00066000
+*********************************************************************** 00067000
+*                                                                     * 00068000
+*   THE FOLLOWING MACROS ARE REQUIRED:                                * 00069000
+*                                                                     * 00070000
+*        VSE/POWER:                                                   * 00071000
+*                                                                     * 00072000
+*           IPW$DXE - DSECT FOR THE INTERFACE PARAMETER LIST          * 00073000
+*                                                                     * 00074000
+*                                                                     * 00075000
+*                                                                     * 00076000
+*********************************************************************** 00077000
+         EJECT                                                          00078000
+         SPACE 2                                                        00079000
+*        REGISTER USAGE                                                 00080000
+         SPACE 2                                                        00081000
+*        R0 - **** - WORK REGISTER                                      00082000
+*        R1 - **** - POINTER TO INTERFACE PARAMETER LIST                00083000
+*        R2 - **** - WORK REGISTER                                      00084000
+*        R3 - **** - WORK REGISTER                                      00085000
+*        R4 - **** - WORK REGISTER                                      00086000
+*        R5 - **** - POINTER TO QUEUE RECORD (NOT USED BY OUTPUT EXIT)  00087000
+*        R6 - **** - POINTER TO THE WORK AREA                           00088000
+*        R7 - **** - WORK REGISTER                                      00089000
+*        R8 - **** - WORK REGISTER                                      00090000
+*        R9 - **** - WORK REGISTER                                      00091000
+*        RA - **** - POINTER TO CAT (NOT USED BY OUTPUT EXIT)           00092000
+*        RB - **** - POINTER TO TCB                                     00093490
+*        RD - **** - WORK REGISTER                                      00094000
+*        RE - **** - RETURN ADDRESS TO VSE/POWER                        00095000
+*        RF - **** - BASE REGISTER                                      00096000
+         EJECT                                                          00097000
+OUTEXAMP DS    0H                                                       00098000
+         USING *,RF                ESTABLISH ADDRESSABILITY             00099000
+         USING PADS,RA             MAKE VSE/POWER CAT ADDRESSABLE       00100000
+         USING TCDS,RB             MAKE VSE/POWER TCB ADDRESSABLE       00101000
+         USING OEXDS,R1            ESTABLISH ADDRESSABILITY FOR         00102000
+*                                  PARAMETER LIST                       00103000
+         B     IPWX005             BRANCH OVER STORAGE DESCRIPTOR       00104000
+         SPACE                                                          00105000
+         DC    CL12'OUTPUT-EXIT'   DEFINE STORAGE DESCRIPTOR            00106000
+         SPACE                                                          00107000
+*              SINCE THIS OUTPUT EXIT EXAMPLE NEEDS A WORK AREA         00108000
+*              THE TASK WILL BE STOPPED IF NONE IS PRESENT.             00109000
+         SPACE 2                                                        00109100
+*        WHENEVER A WORK AREA IS USED, THE LENGTH OF THIS AREA MUST BE  00109200
+*        VERIFIED EACH TIME THE EXIT GAINS CONTROL, BECAUSE             00109300
+*        - THE EXIT MIGHT HAVE BEEN LOADED BY OPERATOR WITH A WRONG     00109400
+*          LENGTH OF ITS WORK AREA                                      00109500
+*        - A NEW VERSION OF THE EXIT MIGHT HAVE BEEN LOADED AND THE     00109600
+*          PREVIOUSLY DEFINED WORK AREA IS STILL USED UNTIL THE TASK    00109700
+*          ENDS.                                                        00109800
+         SPACE                                                          00110000
+IPWX005  DS    0H                                                       00111000
+         ICM   R6,15,OEXWA         WORK AREA PRESENT ?                  00112000
+         BZ    IPWX007             ..NO, STOP TASK                      00113490
+         USING WDSECT,R6           ESTABLISH ADDRESSABILITY FOR WORK    00114000
+*                                  AREA                                 00115000
+*        THE WORK AREA EXISTS AND CAN NOW BE ADDRESSED. TEST IF         00115050
+*        THE WORK AREA IS LARGE ENOUGH.                                 00115100
+         SPACE 1                                                        00115150
+         L     R7,WDLENGTH             GET SPECIFIED WORK AREA SIZE     00115200
+         LA    R8,WDLEN                GET REQU. SIZE OF WORK AREA      00115250
+         CR    R7,R8                   WORK AREA TOO SHORT ?            00115300
+         BNL   IPWX010                 ..NO, CONTINUE EXIT              00115350
+         SPACE 1                                                        00115400
+IPWX007  DS    0H                                                       00115450
+         SPACE 1                                                        00115500
+*        RESPECT THAT MACRO IPW$WTO DESTROYS REGISTER R0-R3             00115550
+         SPACE 1                                                        00115600
+         LA    R7,IPWMSG1          GET ADDRESS OF IPWMSG1               00115650
+         BAL   R6,SUBWTO           ISSUE OEXMSG1                        00115700
+         SPACE 1                                                        00115750
+         LA    R7,IPWMSG2          GET ADDRESS OF IPWMSG2               00115800
+         BAL   R6,SUBWTO           ISSUE OEXMSG2                        00115850
+         SPACE 2                                                        00115900
+         B     IPWXSTP             GO AND STOP TASK                     00115950
+         SPACE                                                          00116000
+*              DIFFERENT ACTIONS MAY BE NECESSARY FOR THE DIFFERENT     00117000
+*              TYPES OF TASK. THEREFORE WE DETERMINE THE TYPE OF TASK   00118000
+*              FOR WHICH THE OUTPUT EXIT CURRENTLY WORKS.               00119000
+         SPACE                                                          00120000
+IPWX010  DS    0H                                                       00121000
+         TM    OEXTT,OETLST        WORKING FOR A LOCAL LIST TASK ?      00122000
+         BO    IPWX100             ..YES,CONTINUE                       00123000
+         SPACE                                                          00124000
+         TM    OEXTT,OETPUN        WORKING FOR A LOCAL PUNCH TASK ?     00125000
+         BO    IPWX200             ..YES, CONTINUE                      00126000
+         SPACE                                                          00127000
+         TM    OEXTT,OETDST        WORKING FOR DEVICE SERVICE TASK ?    00128000
+         BO    IPWX300             ..YES, CONTINUE                      00129000
+         SPACE                                                          00130000
+         TM    OEXTT,OETXPT        WORKING FOR SPOOL ACCESS GET TASK ?  00131000
+*                                  ..IN CASE 'SET OUTEXIT=SAS'          00132000
+         BO    IPWX350             ..YES, CONTINUE                      00133000
+         SPACE                                                          00134000
+         B     IPWX400             MUST BE RJE TASK                     00135000
+         SPACE                                                          00136000
+*********************************************************************** 00137000
+**                HANDLE LOCAL LIST TASK                             ** 00138000
+*********************************************************************** 00139000
+*                                                                     * 00140000
+*   FOR A LOCAL LIST TASK A SECURITY CLASSIFICATION IS PRINTED        * 00141000
+*   AS FIRST RECORD ON EACH PAGE. A NEW PAGE ALWAYS STARTS AFTER      * 00142000
+*   POSITIONING THE PRINTER VIA A 'SKIP TO CHANNEL 1' COMMAND         * 00143000
+*   (OPERATION CODE X'8B') TO THE FIRST LINE OF THE PAGE.             * 00144000
+*   THAT MEANS AFTER THE 'SKIP TO CHANNEL 1' WAS PASSED TO THE        * 00145000
+*   PRINTER A NEW RECORD (THE RECORD WITH THE SECURITY                * 00146000
+*   CLASSIFICATION) MUST BE INSERTED.                                 * 00147000
+*                                                                     * 00148000
+*********************************************************************** 00149000
+         SPACE 2                                                        00150000
+IPWX100  DS    0H                                                       00151000
+         CLI   OEXCC,IPW8B         SKIP TO CHANNEL 1 RECEIVED ?         00152000
+         BNE   IPWX110             ..NO, CONTINUE                       00153000
+         SPACE                                                          00154000
+*              THE CURRENT OPERATION CODE IS SAVED IN THE WORK AREA TO  00155000
+*              KNOW THAT SKIP TO CHANNEL 1 IS PROCESSED.                00156000
+         SPACE                                                          00157000
+         MVC   WDOPCODE,OEXCC      SAVE CURRENT OPERATION CODE          00158000
+         B     IPWXNOR             CONTINUE NORMAL PROCESSING           00159000
+         SPACE                                                          00160000
+IPWX110  DS    0H                                                       00161000
+         CLI   WDOPCODE,IPW8B      WAS LAST RECORD SKIP TO CHANNEL 1 ?  00162000
+         BNE   IPWXNOR             ..NO, CONTINUE NORMAL PROCESSING     00163000
+         SPACE                                                          00164000
+*              SET UP PARAMETER LIST TO INSERT RECORD                   00165000
+         SPACE                                                          00166000
+         LA    R2,IPDATA1          GET RECORD ADDRESS                   00167000
+         ST    R2,OEXRV            SET UP RECORD ADDRESS                00168000
+         LA    R2,L'IPDATA1        GET LENGTH OF RECORD                 00169000
+         ST    R2,OEXRL            SET UP RECORD LENGTH                 00170000
+         MVI   OEXCC,IPW11         SET UP OPERATION CODE                00171000
+         MVI   WDOPCODE,X'00'      CLEAR OP CODE TO FORGET ABOUT        00172000
+*                                  SKIP TO CHANNEL 1                    00173000
+         B     IPWXINS             CONTINUE WITH INSERT                 00174000
+         SPACE 2                                                        00175000
+*********************************************************************** 00176000
+**                HANDLE LOCAL PUN TASK                              ** 00177000
+*********************************************************************** 00178000
+         SPACE 2                                                        00179000
+IPWX200  DS    0H                                                       00180000
+*                 INSERT HERE SPECIAL FUNCTIONS TO BE PERFORMED FOR     00181000
+*                 A PUNCH TASK                                          00182000
+         SPACE                                                          00183000
+         B     IPWXNOR             CONTINUE NORMAL PROCESSING           00184000
+         SPACE 2                                                        00185000
+*********************************************************************** 00186000
+**                HANDLE DEVICE SERVICE TASK                         ** 00187000
+*********************************************************************** 00188000
+         SPACE 2                                                        00189000
+IPWX300  DS    0H                                                       00190000
+*                 INSERT HERE SPECIAL FUNCTIONS TO BE PERFORMED FOR     00191000
+*                 A DEVICE SERVICE TASK                                 00192000
+         SPACE                                                          00193000
+         B     IPWXNOR              CONTINUE NORMAL PROCESSING          00194000
+         SPACE 2                                                        00195000
+*********************************************************************** 00196000
+**                HANDLE SPOOL ACCESS GET TASK                       ** 00197000
+*********************************************************************** 00198000
+         SPACE 2                                                        00199000
+IPWX350  DS    0H                                                       00200000
+*                 INSERT HERE SPECIAL FUNCTIONS TO BE PERFORMED FOR     00201000
+*                 A SPOOL ACCESS GET TASK                               00202000
+         SPACE                                                          00203000
+         B     IPWXNOR              CONTINUE NORMAL PROCESSING          00204000
+         SPACE 2                                                        00205000
+*********************************************************************** 00206000
+**                HANDLE RJE TASK                                    ** 00207000
+*********************************************************************** 00208000
+         SPACE 2                                                        00209000
+IPWX400  DS    0H                                                       00210000
+*                 INSERT HERE SPECIAL FUNCTIONS TO BE PERFORMED FOR     00211000
+*                 AN RJE TASK                                           00212000
+         SPACE                                                          00213000
+         B     IPWXNOR              CONTINUE NORMAL PROCESSING          00214000
+         SPACE 2                                                        00215000
+*********************************************************************** 00216000
+**                STOP TASK                                          ** 00217000
+*********************************************************************** 00218000
+         SPACE 2                                                        00219000
+IPWXSTP  DS    0H                                                       00220000
+         MVI   OEXRC,OERSTP        INDICATE TO STOP THE TASK            00221000
+         B     IPWXEXT             CONTINUE                             00222000
+         SPACE 2                                                        00223000
+*********************************************************************** 00224000
+**                FLUSH HOLD QUEUE ENTRY (NOT USED BY THIS EXAMPLE)  ** 00225000
+*********************************************************************** 00226000
+         SPACE 2                                                        00227000
+IPWXFLH  DS    0H                                                       00228000
+         MVI   OEXRC,OERFLH        INDICATE TO FLUSH HOLD THE QUEUE     00229000
+*                                  ENTRY                                00230000
+         B     IPWXEXT             CONTINUE                             00231000
+         SPACE 2                                                        00232000
+*********************************************************************** 00233000
+**                FLUSH QUEUE ENTRY  (NOT USED BY THIS EXAMPLE)      ** 00234000
+*********************************************************************** 00235000
+         SPACE 2                                                        00236000
+IPWXFLS  DS    0H                                                       00237000
+         MVI   OEXRC,OERFLS        INDICATE TO FLUSH THE QUEUE ENTRY    00238000
+         B     IPWXEXT             CONTINUE                             00239000
+         SPACE 2                                                        00240000
+*********************************************************************** 00241000
+**                INSERT A NEW RECORD                                ** 00242000
+*********************************************************************** 00243000
+         SPACE 2                                                        00244000
+IPWXINS  DS    0H                                                       00245000
+         MVI   OEXRC,OERINS        INDICATE TO INSERT A NEW RECORD      00246000
+         B     IPWXEXT             CONTINUE                             00247000
+         SPACE 2                                                        00248000
+*********************************************************************** 00249000
+**                DELETE THE CURRENT RECORD (NOT USED BY THIS        ** 00250000
+**                                           EXAMPLE)                ** 00251000
+*********************************************************************** 00252000
+         SPACE 2                                                        00253000
+IPWXDEL  DS    0H                                                       00254000
+         MVI   OEXRC,OERDEL        INDICATE TO DELETE THE RECORD        00255000
+         B     IPWXEXT             CONTINUE                             00256000
+         SPACE 2                                                        00257000
+*********************************************************************** 00258000
+**                NORMAL RETURN                                      ** 00259000
+*********************************************************************** 00260000
+         SPACE 2                                                        00261000
+IPWXNOR  DS    0H                                                       00262000
+         MVI   OEXRC,OEROK         INDICATE NORMAL PROCESSING           00263000
+         SPACE 2                                                        00264000
+*********************************************************************** 00265000
+**                EXIT                                               ** 00266000
+*********************************************************************** 00267000
+         SPACE 2                                                        00268000
+IPWXEXT  DS    0H                                                       00269000
+         BR    RE                  RETURN TO VSE/POWER                  00270000
+         SPACE                                                          00271000
+         DROP  R1,R6               RELEASE ADDRESSABILITY               00272000
+         SPACE                                                          00273000
+         EJECT                                                          00274000
+*********************************************************************** 00274030
+*        SUBROUTINE TO ISSUE MESSAGE ON OPERATOR CONSOLE              * 00274060
+*                                                                     * 00274090
+* USAGE OF VSE/POWER MACRO IPW$WTO:                                   * 00274120
+*       THIS MACRO, TOGETHER WITH SOME INDICATIONS SET IN THE TCB,    * 00274150
+*       CAN BE USED TO DISPLAY A MESSAGE ON THE CENTRAL OPERATOR      * 00274180
+*       CONSOLE.                                                      * 00274210
+*       THE USAGE OF THIS MACRO DESTROYS THE REGISTER R0 - R3.        * 00274240
+*       THE MESSAGE TO BE DISPLAYED SHOULD CONTAIN ALPHAMERIC         * 00274270
+*       CHARACTERS ONLY.                                              * 00274300
+*                                                                     * 00274330
+*********************************************************************** 00274360
+         SPACE 2                                                        00274390
+SUBWTO   DS    0H                                                       00274420
+         STCM  R7,7,TCMW+1             PASS MESSAGE ADDRESS             00274450
+         MVI   TCMW,X'00'              CLEAR OPTION BYTE                00274480
+         OI    TCMW,TCPCOP             FORCE MESSAGE TO CONSOLE         00274510
+         OI    TCMW,TCDNMM             SUPPRESS MESSAGE MODIFICATION    00274540
+         SPACE 1                                                        00274570
+         IPW$WTO TCMW                  ISSUE MESSAGE                    00274600
+         SPACE                                                          00274630
+         MVI   TCMW,X'00'              CLEAR OPTION BYTE                00274660
+         BR    R6                      RETURN TO CALLER                 00274690
+         SPACE 5                                                        00274720
+         DROP  RA,RB               RELEASE ADDRESSABILITY               00274750
+         EJECT                                                          00274780
+         SPACE                                                          00274810
+*********************************************************************** 00275000
+**                D E F I N I T I O N S                              ** 00276000
+*********************************************************************** 00277000
+         SPACE 2                                                        00278000
+IPW8B    EQU   X'8B'                OP. CODE: SKIP TO CHANNEL 1         00279000
+IPW11    EQU   X'19'                OP. CODE: WRITE AND SPACE 3 LINES   00280000
+         SPACE                                                          00281000
+IPWMSG1  DC    AL1(IPWMSG1L-IPWMSG1-1)   LENGTH OF MESSAGE              00281100
+         DC    C'INCORRECT SIZE OF WORKAREA GIVEN, 50 BYTES NEEDED'     00281200
+IPWMSG1L EQU   *                                                        00281300
+         SPACE 1                                                        00281400
+IPWMSG2  DC    AL1(IPWMSG2L-IPWMSG2-1)   LENGTH OF MESSAGE              00281500
+         DC    C'DISABLE OUTEXIT USING PVARY'                           00281600
+IPWMSG2L EQU   *                                                        00281700
+         SPACE                                                          00281800
+*********************************************************************** 00282000
+*        LINE TO BE INSERTED BY THE OUTPUT EXIT                       * 00283000
+*********************************************************************** 00284000
+         SPACE                                                          00285000
+IPDATA1  DC    C'           ******* INTERNAL USE ONLY *******         ' 00286000
+         SPACE                                                          00287000
+*********************************************************************** 00288000
+*        DSECT FOR WORK AREA                                          * 00289000
+*********************************************************************** 00290000
+         SPACE                                                          00291000
+WDSECT   DSECT                      DSECT OF WORK AREA                  00292000
+WDLENGTH DS    F                    LENGTH OF WORK AREA                 00293000
+WDOPCODE DS    X'00'                SAVE OPERATION CODE                 00294000
+WDAREA   DS    CL45' '              UNUSED PART OF WORK AREA            00295000
+WDLEN    EQU   *-WDLENGTH           LENGTH OF WORK AREA                 00295500
+         SPACE                                                          00296000
+         EJECT                                                          00297000
+*********************************************************************** 00298000
+         LTORG                                                          00299000
+*********************************************************************** 00300000
+*********************************************************************** 00301000
+*        DUMMY SECTION OF  PARAMETER LIST                             * 00302000
+*********************************************************************** 00303000
+         SPACE                                                          00304000
+         IPW$DXE                                                        00305000
+         SPACE 4                                                        00306000
+         IPW$EQU ,                 DEFINE REGISTER EQUATES AS           00307000
+*                                  USED IN VSE/POWER CODING             00308000
+         SPACE 2                                                        00309000
+         IPW$DPA ,                 LAYOUT OF COMMON ADDRESS TABLE       00310000
+*                                  (CAT) ALSO CALLED PERMANENT AREA     00311000
+*                                  OF VSE/POWER.                        00312000
+         SPACE 2                                                        00313000
+         IPW$DTC ,                 LAYOUT OF TASK CONTROL BLOCK (TCB)   00314000
+         SPACE 2                                                        00315000
+         IPW$DQR ,                 LAYOUT OF INTERNAL QUEUE RECORD      00316000
+         SPACE 2                   ADDRESSED BY TCQV OF TCB             00317000
+         IPW$DNR JHR=YES,JTR=YES,DHR=YES,OUT=YES NETWORK CONTROL RECS   00318000
+         SPACE 2                                                        00319000
+*        END                       NOT REQUIRED FOR '.A' COPY BOOK      00320000

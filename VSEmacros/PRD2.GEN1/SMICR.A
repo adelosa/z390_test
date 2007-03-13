@@ -1,0 +1,742 @@
+         MACRO                                                          00001000
+         SMICR                                                          00002000
+***************************************************************         00003000
+*                                                             *         00004000
+*        LICENSED MATERIALS-PROPERTY OF IBM                   *         00005000
+*        "RESTRICTED MATERIALS OF IBM"                        *         00006000
+*        5686-CF7                                             *         00007000
+*        (C) COPYRIGHT IBM CORP. 1977, 2004                   *         00008000
+*                                                             *         00009000
+***************************************************************         00010000
+.*  CHANGE ACTIVITY = AS FOLLOWS                                        00011000
+.*  MSG0S04I ILLEGAL SVC1C                                     @DA33641 00012000
+.*  REDUNDANT CODE REMOVED FOR POSTING THE MICR TASK           @DA34738 00013000
+.*  LOOP IF VMCF INTERRUPT WITH 370 SUPVR UNDER VM AND MICR    @DA36111 00014000
+.*  HARDWAIT DUE ERROR IN CODE                                 @DA36308 00015000
+.*  RETRY THE SIO FOR STACKER SELECT 3 TIMES ON A CHNL PGMCHK  @DA37528 00016000
+.*  APPC/VM INTERRUPT HOOK                                     @D31BDUL 00017000
+.*  SCLP (SERVICE CALL LOGICAL PROCESSING) SUPPORT             @D31EMOW 00018000
+.*  ALLOW VMCF TO RUN WITH MODE=370                            @DA38478 00019000
+.*  5.1 EXTENSIONS FOR CICS                                    @D51HDOW 00020000
+.*  MORE DEVICES SUPPORT WITH ESA 112                          @D51ODGL 00021000
+.*  REMOVE MICR SUPPORT                                        @D61NDOW 00022000
+.*  MP SUPPORT                                                 @D61RDOW 00023000
+.*  VSE/ESA 2.3  FAMILY API                                    @D64ADVB 00024000
+.*  MACRO SUPPORT FOR STAND ALONE DUMP                         @KXA1601 00025000
+.*  HW FED BECAUSE SUCCESSFULL 'SIGP RESTART' NOT RECOGNIZED   @DY43585 00026000
+.*  CPU CB OVERLAYED DURING HARDWAIT PROCESSING                @DY44364 00027000
+.*  MORE THAN 255 TASKS                                        @D66ODOW 00028000
+.*  CALL IJBFCP TO DO A RELEASE IF LOCKFILE IS ON SCSI         @D68DDMZ 00029000
+.*  SA-DUMP HANG, SIGP STOPPED CURRENT CPU                     @DY46195 00029500
+.*                                                                      00030000
+.* ************************************************************         00031000
+         GBLB  &SMICR             SMICR PRINT CONTROL SWITCH   @D37DDAP 00032000
+         GBLB  &IJBSGEN           SUPERVISOR GENERATION SWITCH @KXA1601 00033000
+         SPACE                                                          00034000
+         AIF   (NOT &SMICR).NPRT010                            @D14BDAP 00035000
+         AIF   (NOT &IJBSGEN).NOTS010                          @D61NDOW 00036000
+         PRINT GEN                                             @D37DDAP 00037000
+.NPRT010 ANOP                                                  @D37DDAP 00038000
+         DC    CL8'SMICR   '                                            00039000
+         DC    C' DY46195  '      LAST CHANGE                  @DY46195 00040490
+         USING EXTRTN,RE          SMICR BASE REGISTER          @D35EDAP 00041000
+         USING DISP,R6                                         @D35EDAP 00042000
+EXTRTN   DS    0H                 EXTERNAL INTERRUPT PROCESSING@DA36308 00043000
+         CLC   EXTINTC(2),EXTCLCK IS IT CLOCK COMP INTERRUPT   @D64ADOW 00044000
+         BE    EXTCLOCK           YES, --->                    @D64ADOW 00045000
+*        DEBUG EXFIELDS,XXDBGMC                                         00046000
+         DEBUG EXFIELDS,XXDBGMC                                @D61RDOW 00047000
+         CLC   EXTINTC(2),EXTCPU  IS IT CPU TIMER INTERRUPT    @D64ADOW 00048000
+         BE    EXTCPUTI           YES, --->                    @D64ADOW 00049000
+         CLC   EXTINTC(2),EXTINTKY IS IT INTERRUPT KEY         @D64ADOW 00050000
+         BE    EXTOCPR            YES, --->                    @D64ADOW 00051000
+         CLC   EXTINTC(2),EXTSVSIG EXPECTED SERVICE SIGNAL     @D31EMOW 00052000
+         BNE   EXTRTN02           NO,  ====================>>> @D64ADOW 00053000
+         L     R9,ASPDTTAB        ADDR OF SPDT-TABLE           @D61NDOW 00054000
+         L     RA,EXTPARWD        GET EXTERNAL INT PARAM WORD  @D61NDOW 00055000
+         USING SPDTTAB,R9         ESTABLISH ADDRESSABILITY     @D61NDOW 00056000
+         B     SPTSSIH                 ====================>>> @D61NDOW 00057000
+         DROP  R9                                              @D61NDOW 00058000
+         SPACE 3                                                        00059000
+EXTRTN02 DS    0H                                              @D61NDOW 00060000
+         CLC   EXTINTC(2),EXTVMCFC IS THIS A VMFC INTERRUPT    @D14CDAP 00061000
+         BNE   EXTRTN04           NO, --->                     @D61NDOW 00062000
+         L     R9,ASPDTTAB        ADDR OF SPDT-TABLE           @D61NDOW 00063000
+         USING SPDTTAB,R9         ESTABLISH ADDRESSABILITY     @D61NDOW 00064000
+         B     SPTVMCF                 ====================>>> @D61NDOW 00065000
+         DROP  R9                                              @D61NDOW 00066000
+EXTRTN04 DS    0H                                              @D61NDOW 00067000
+         CLC   EXTINTC(2),EXTIUCVC IUCV EXTERNAL INTERRUPT     @DA29210 00068000
+         BNE   EXTRTNEN           NO,                          @D64ADOW 00069000
+         L     RD,AAPPCEX         GET PTR APPC EXT. INT. HANDL.@D31BDUL 00070000
+         BR    RD                                              @D64ADOW 00071000
+EXTRTNEN BR    R6                 IGNORE OTHER EXT INTERRUPTS  @D64ADOW 00072000
+         SPACE                                                          00073000
+EXTPARWD DC    F'0'               EXTERNAL INTERRUPT PARAMETER @D61NDOW 00074000
+***                               ... WORD SAVE AREA                    00075000
+         SPACE                                                          00076000
+EXTINTKY DC    X'0040'            INTERRUPT KEY                @D64ADOW 00077000
+EXTCLCK  DC    X'1004'            CLOCK COMPARATOR INTERRUPT   @D64ADOW 00078000
+EXTCPU   DC    X'1005'            CPU TIMER INTERRUPT          @D64ADOW 00079000
+EXTSVSIG DC    X'2401'            SERVICE SIGNAL INTERRUPT     @D31EMOW 00080000
+EXTIUCVC DC    X'4000'            IUCV INTERRUPTION CODE       @DA36111 00081000
+EXTVMCFC DC    X'4001'            VMCF INTERRUPTION CODE       @DA36111 00082000
+         DROP  R6                 RELEASE DISP BASE            @D64ADOW 00083000
+         DROP  RE                 RELEASE SMICR BASE           @D64ADOW 00084000
+         SPACE 5                                                        00085000
+*********************************************************************** 00086000
+*                                                                     * 00087000
+*        PROCESS CPU TIMER INTERRUPT                                  * 00088000
+*                                                                     * 00089000
+*********************************************************************** 00090000
+         SPACE                                                          00091000
+         USING EXTRTN,RE          SMICR BASE REGISTER          @D64ADOW 00092000
+         USING DISP,R6                                         @D64ADOW 00093000
+EXTCPUTI DS    0H                                              @D51HDOW 00094000
+         L     RD,AEXTCPUT        ADDR OF CPU TIMER RTN        @D51HDOW 00095000
+         BR    RD                 BR , ======================> @D51HDOW 00096000
+         DROP  R6                 RELEASE DISP BASE            @D64ADVB 00097000
+         DROP  RE                 RELEASE SMICR BASE           @D64ADVB 00098000
+         SPACE 5                                                        00099000
+*********************************************************************** 00100000
+*                                                                     * 00101000
+*        PROCESS INTERRUPT KEY INTERRUPTION REQUEST                   * 00102000
+*                                                                     * 00103000
+*********************************************************************** 00104000
+         SPACE                                                          00105000
+         USING EXTRTN,RE          SMICR BASE REGISTER          @D64ADOW 00106000
+         USING DISP,R6                                         @D64ADOW 00107000
+EXTOCPR  DS    0H                                              @D35IDAP 00108000
+         TM    IJBOPMOD,IJBOPREM  OPERATING REMOTE             @D36IDAP 00109000
+         BO    EXTOC010           YES, DO NOT CHANGE ANY MORE  @D31PDAP 00110000
+         TM    SYSFLAG2,IPLBIT    IS IPL IN PROCESS            @D41XXAP 00111000
+         BZ    EXTOC010           NO,                          @D41XXAP 00112000
+         OI    IJBOPMOD,IJBOPEXT  INDICATE USER FORCED LOCAL   @D31PDAP 00113000
+EXTOC010 L     RA,AERPTCB         POINTER TO ERP TCB           @D36IDAP 00114000
+         USING TCBADR,RA                                       @D36IDAP 00115000
+         L     R8,TCBSAVE         GET ERP SAVE-AREA            @D36IDAP 00116000
+         USING SVEARA,R8                                       @DM02370 00117000
+         NI    SVEPSW+D1,XFF-WAITBIT FORCE ERP OUT OF WAIT     @D149DAP 00118000
+*        SGVSEPT PROBE=14,SAVE=NO PERFORMANCE TOOL INTERCEPT            00119000
+         SGVSEPT PROBE=14,SAVE=NO PERFORMANCE TOOL INTERCEPT   @D51GDAP 00120000
+***END OF SGVSEPT MACRO                                                 00121000
+         BR    R6                      ======================> @D35IDAP 00122000
+         DROP  R8                 RELEASE SAVE AREA BASE       @D35IDAP 00123000
+         DROP  RA                 RELEASE TCB BASE             @D36IDAP 00124000
+         DROP  R6                 RELEASE DISP BASE            @D369DAP 00125000
+         DROP  RE                 RELEASE SMICR BASE           @D369DAP 00126000
+         SPACE 5                                                      ' 00127000
+*********************************************************************** 00128000
+*                                                                     * 00129000
+*        PROCESS CLOCK COMPARATOR INTERRUPT                           * 00130000
+*                                                                     * 00131000
+*********************************************************************** 00132000
+         SPACE                                                          00133000
+         USING EXTRTN,RE          SMICR BASE POINTER           @D369DAP 00134000
+         USING DISP,R6            DISP BASE POINTER            @D369DAP 00135000
+EXTCLOCK DS    0H                                              @D36IDOW 00136000
+         MVI   RID+1,SYSTEMID     HW IF PF OR PROG CHK         @D67QDOW 00137000
+         SLR   RC,RC              INDICATE NO TASK POSTED      @D61RDOW 00138000
+         L     R7,EXTCLKD1        GET ...                      @D64ADOW 00139000
+         BSM   0,R7               ... AMODE 31                 @D64ADOW 00140000
+EXTCLK10 DS    0H                                              @D64ADOW 00141000
+         STCK  CLOCK              GET CURRENT CLOCK VALUE      @D61RDOW 00142000
+         ICM   RF,15,DIE_ADDR     ANY DISABLED TIM EXIT DEF'D  @D67QDOW 00143000
+         BZ    EXTCLK20           NO. --->                     @D67QDOW 00144000
+         CLC   CLOCK,DIE_CLCK     SPECIFIED INTERVAL EXPIRED   @D67QDOW 00145000
+         BL    EXTCLK20           NO, --->                     @D67QDOW 00146000
+         LH    R7,DIE_INDX        GET INDEX                    @D67QDOW 00147000
+         BCTR  R7,0               ......... INTO DIE TABLE     @D67QDOW 00148000
+         SLL   R7,4               MULTIPLY WITH ENTY LENGTH    @D67QDOW 00149000
+         LA    R5,DIE_TAB         GET TABLE ADDR               @D67QDOW 00150000
+         AR    R5,R7                                           @D67QDOW 00151000
+         SLR   R7,R7              INIT TO                      @D67QDOW 00152000
+         BCTR  R7,0               ....... MAX TOD VALUE        @D67QDOW 00153000
+         ST    R7,DIE_CLEQ(,R5)   INITIALIZE                   @D67QDOW 00154000
+         ST    R7,DIE_CLEQ+4(,R5) ... FOR NEXT INTERRUPT       @D67QDOW 00155000
+         BASSM RE,RF              CALL DISABLED TIMER EXIT RTN @D67QDOW 00156000
+         L     RE,AEXTRTN         REESTABLISH BASE             @D67QDOW 00157000
+         LA    RF,DIE_TAB         GET DIE TABLE ADDR           @D67QDOW 00158000
+         LR    R7,RF                                           @D67QDOW 00159000
+EXTCLK17 DS    0H                                              @D67QDOW 00160000
+         LA    R7,16(,R7)         ADDR OF NEXT ENTRY           @D67QDOW 00161000
+         C     R7,DIE_TABE        OUTSIDE TABLE                @D67QDOW 00162000
+         BNL   EXTCLK19                                        @D67QDOW 00163000
+         OC    DIE_ADEQ(4,R7),DIE_ADEQ(R7) ENTRY USED          @D67QDOW 00164000
+         BZ    EXTCLK17           NO, GOTO NEXT ENTRY          @D67QDOW 00165000
+         OC    DIE_ADEQ(4,RF),DIE_ADEQ(RF) ENTRY USED          @D67QDOW 00166000
+         BZ    EXTCLK18           NO, TAKE NEW ONE             @D67QDOW 00167000
+         CLC   DIE_CLEQ(8,RF),DIE_CLEQ(R7) SELECTED LOWER      @D67QDOW 00168000
+         BNH   EXTCLK17           NO, GOTO NEXT ENTRY          @D67QDOW 00169000
+EXTCLK18 DS    0H                                              @D67QDOW 00170000
+         LR    RF,R7              NEW LOWEST TOD               @D67QDOW 00171000
+         B     EXTCLK17                                        @D67QDOW 00172000
+EXTCLK19 DS    0H                                              @D67QDOW 00173000
+         MVC   DIE_WORK,0(RF)     NEXT DIE EXIT IF ANY         @D67QDOW 00174000
+         B     EXTCLK10                                        @D67QDOW 00175000
+EXTCLK20 DS    0H                                              @D67QDOW 00176000
+         L     R8,ITREQPTR        GET FIRST IN TIMER CHAIN     @D64ADOW 00177000
+         USING TIBADR,R8                                       @D14BDAP 00178000
+*        SGVSEPT PROBE=7          PERFORMANCE TOOL INTERCEPT            00179000
+         SGVSEPT PROBE=7          PERFORMANCE TOOL INTERCEPT   @D51IDKH 00180000
+***END OF SGVSEPT MACRO                                                 00181000
+         CLC   CLOCK,TIBITREQ     HIGHER OR EQUAL LAST SET     @D64ADOW 00182000
+         BL    EXTCLK50           NO, SET UP NEW CLOCK COMP    @D61RDOW 00183000
+         LA    RC,1               AT LEAST ONE TASK POSTED     @D61RDOW 00184000
+         L     R5,TIBITCHN        DEQUEUE TASK FROM TIMER CHAIN@D64ADOW 00185000
+         ST    R5,ITREQPTR        ...                          @D64ADOW 00186000
+         SLR   RF,RF              INDICATE                     @D149DAP 00187000
+         ST    RF,TIBITCHN        ... TIB NOT IN TIMER CHAIN   @D64ADOW 00188000
+         L     RF,TIBTCB          CLEAR CLOCK VALUE            @D64ADOW 00189000
+         L     RF,TCBATCBE-TCBADR(,RF) ... TO INDICATE         @D64ADOW 00190000
+         L     RF,TCBXTQCA-TCBXADR(,RF) ... NO TIMER           @D64ADOW 00191000
+         USING EXITBLK,RF         ... INTERRUPT                @D64ADOW 00192000
+         XC    TIQOUTT,TIQOUTT    ... OUTSTANDING              @D64ADOW 00193000
+         DROP  RF                                              @D64ADOW 00194000
+         C     R8,ALCKTIB         INTERRUPT FOR LCK-TASK       @D36SDJO 00195000
+         BNE   EXTCLK30           NO,                          @D36SDJO 00196000
+         LA    R1,DISEX1          EXTERNALLY LOCKED RESOURCE   @D36SDJO 00197000
+         L     R5,ASRQTAB         GET ADDR OF RES-QUEUE TABLE  @D61RDOW 00198000
+         LA    R5,SRQRUR-SRQTAB(,R5) EXTERNAL LOCK WAIT QUEUE  @D61RDOW 00199000
+         BAL   RF,RPOST           POST WAITING TASKS           @D36SDJO 00200000
+*SGLINK  RPOST,INPUT=(R1,R5,R6,RF),WORK=(R5,RE)                @D369DAP 00201000
+         L     RE,AEXTRTN         REESTABLISH BASE             @D52VDOW 00202000
+         B     EXTCLK35                ======================> @D61RDOW 00203000
+         SPACE 1                                                        00204000
+EXTCLK30 DS    0H                                              @D14BDAP 00205000
+         C     R8,ADSPTIB         INTERRUPT FOR DSP TASK?      @D61RDOW 00206000
+         BNE   EXTCLK40           NO, --->                     @D61RDOW 00207000
+         SLR   R1,R1                                           @D61RDOW 00208000
+         L     R5,ASRQTAB         GET ADDR OF RES-QUEUE TABLE  @D61RDOW 00209000
+         LA    R5,SRQDSP-SRQTAB(,R5) DISP SYST TASK WAIT QUEUE @D61RDOW 00210000
+         BAL   RF,RPOST           POST WAITING TASKS           @D61RDOW 00211000
+*SGLINK  RPOST,INPUT=(R1,R5,R6,RF),WORK=(R5,RE)                         00212000
+         L     RE,AEXTRTN         RELOAD BASE ADDR             @D61RDOW 00213000
+EXTCLK35 DS    0H                                              @D14BDAP 00214000
+         L     RF,TIBTCB          GET TCB ADDR                 @D64ADOW 00215000
+         USING TCBADR,RF                                       @D64ADOW 00216000
+         L     RF,TCBATCBE        GET TCBX ADDR                @D64ADOW 00217000
+         USING TCBXADR,RF                                      @D64ADOW 00218000
+         XC    TCBXTQCA,TCBXTQCA  NO INTERVAL DEFINED          @D64ADOW 00219000
+         DROP  RF                                              @D64ADOW 00220000
+         B     EXTCLK10           MORE TASKS TO BE POSTED ?    @D67QDOW 00221000
+         SPACE 2                                                        00222000
+EXTCLK40 DS    0H                                              @D61RDOW 00223000
+         OI    TIBFLAG,CDELEX     DELAY TIMER INTERRUPT PROCESS@DY43757 00224000
+         BAL   RF,SETREADY        MAKE TASK READY              @D14BDAP 00225000
+*SGLINK  SETREADY,INPUT=(R6,R8,RF),WORK=RE                     @D14BDAP 00226000
+         L     RE,AEXTRTN         REESTABLISH BASE             @D52VDOW 00227000
+         B     EXTCLK10           TEST NEXT TIB IN TIMER CHAIN @D67QDOW 00228000
+         DROP  R8                                              @D61RDOW 00229000
+         SPACE 1                                                        00230000
+EXTCLK50 DS    0H                                              @D52VDOW 00231000
+         LTR   RC,RC              ANY TASK POSTED              @D61RDOW 00232000
+         BZ    EXTCLK60           NO, NO DEBUG ENTRY           @D61RDOW 00233000
+*        DEBUG EXFIELDS,XXDBGMC                                         00234000
+         DEBUG EXFIELDS,XXDBGMC                                @D61RDOW 00235000
+EXTCLK60 DS    0H                                              @D52VDOW 00236000
+         L     RD,EXTCLTIM        GET TIMEOUT APPENDAGE OF XPCC@D52VDOW 00237000
+         BASSM RC,RD              CALL APPENDAGE               @D64ADOW 00238000
+*SGLINK XPYTMOUT,INPUT=(R6,R12,R13),WORK=(R5,R8,R9,R14,R15)             00239000
+         L     RE,AEXTRTN         RELOAD BASE ADDR             @D61RDOW 00240000
+***      SET UP NEW CLOCK COMPARATOR                                    00241000
+         L     R5,ITREQPTR        1ST TIB IN TIMER CHAIN       @D64ADOW 00242000
+         L     R9,IJBTDATB        GET ADDR OF MP-COMREG        @D61RDOW 00243000
+         L     R9,0(,R9)          ...                          @D61RDOW 00244000
+         USING TDCOMREG,R9                                     @D61RDOW 00245000
+         TM    TDCFLAG2,TDCACTIV  MULTIPLE CPU'S ACTIVE        @D61RDOW 00246000
+         BNO   EXTCLK80           NO,  --->                    @D61RDOW 00247000
+EXTCLK70 DS    0H                 YES, SET CLOCK COMP INT PENDI@D61RDOW 00248000
+         LA    RB,TDCEXT          GET EXTERNAL INTERRUPT FLAG  @D61RDOW 00249000
+         L     RA,TDC2WORD        INDICATE                     @D61RDOW 00250000
+         OR    RB,RA              ... CLOCK-COMPARATOR         @D61RDOW 00251000
+         CS    RA,RB,TDC2WORD     ... INTERRUPT PENDING        @D61RDOW 00252000
+         BNE   EXTCLK70           ... (MAY BE ALREADY PENDING) @D61RDOW 00253000
+         STCK  CLOCK              GET CURRENT TOD CLOCK VALUE  @D61RDOW 00254000
+         ICM   RA,15,CLOCK+2      GET SIGNIFICANT PART         @D61RDOW 00255000
+         L     RB,AMSECS          ADDR OF MSECS VALUE          @D61RDOW 00256000
+         AL    RA,0(,RB)          ADD MSECS VALUE              @D61RDOW 00257000
+         STCM  RA,15,CLOCK+2      ... AND SAVE NEW CLOCK VALUE @D61RDOW 00258000
+         BNO   EXTCLK75           BRANCH IF NO OVERFLOW        @D61RDOW 00259000
+         ICM   RA,3,CLOCK         GET FIRST PART OF CLOCK      @D61RDOW 00260000
+         LA    RA,1(,RA)          ... AND ADD                  @D61RDOW 00261000
+         STCM  RA,3,CLOCK         ... AND SAVE INTO CLOCK      @D61RDOW 00262000
+EXTCLK75 DS    0H                                              @D61RDOW 00263000
+         USING TIBADR,R5                                       @D61RDOW 00264000
+         CLC   CLOCK,TIBITREQ     REQ CLOCK COMPARATOR SMALLER @D64ADOW 00265000
+         BL    EXTCLK85           NO,  ---------->             @D61RDOW 00266000
+EXTCLK80 DS    0H                                              @D61RDOW 00267000
+         MVC   CLOCK,TIBITREQ     TAKE CLOCK COMP FROM CHAIN   @D64ADOW 00268000
+         DROP  R5                                              @D61RDOW 00269000
+EXTCLK85 DS    0H                                              @D61RDOW 00270000
+         OC    DIE_ADDR,DIE_ADDR  ANY DISABLED TIMER APP DEF'D @D67QDOW 00271000
+         BZ    EXTCLK90           NO. --->                     @D67QDOW 00272000
+         CLC   CLOCK,DIE_CLCK     DIE VALUE SMALLER            @D67QDOW 00273000
+         BL    EXTCLK90           NO,  ---------->             @D67QDOW 00274000
+         MVC   CLOCK,DIE_CLCK     TAKE DIE VALUE               @D67QDOW 00275000
+EXTCLK90 DS    0H                                              @D67QDOW 00276000
+         SCKC  CLOCK              SET UP NEW CLOCK COMP INTERRU@D61RDOW 00277000
+         TM    TDCFLAG2,TDCACTIV  MULTIPLE CPU'S ACTIVE        @D64ADOW 00278000
+         BNOR  R6                 NO,  --->                    @D64ADOW 00279000
+EXTCLK95 DS    0H                                              @D61RDOW 00280000
+         L     RA,TDC2WORD        RESET                        @D61RDOW 00281000
+         LR    RB,RA              .... CLOCK                   @D61RDOW 00282000
+         N     RB,EXTRESEX        .... COMPARATOR              @D61RDOW 00283000
+         CS    RA,RB,TDC2WORD     .... INTERRUPT               @D61RDOW 00284000
+         BNE   EXTCLK95           .... PENDING INDICATION      @D61RDOW 00285000
+         BR    R6                 RETURN TO DISPATCHER         @D64ADVB 00286000
+         SPACE                                                          00287000
+         DS    0F                                              @D61RDOW 00288000
+EXTRESEX DC    X'FFFFFF',AL1(XFF-TDCEXT)                       @D61RDOW 00289000
+AMSECS   DC    A(MSECS)           ADDR OF MSECS VALUE          @D61RDOW 00290000
+EXTCLTIM DC    A(XPYTMOUT+X'80000000') ADDR(XPCC TIMEOUT RTN)  @D61RDOW 00291000
+EXTCLKD1 DC    A(EXTCLK10+X'80000000')                         @D64ADOW 00292000
+         SPACE                                                          00293000
+***************************************************************         00294000
+*        TABLE OF DISABLED TIMER EXIT ROUTINES                *         00295000
+***************************************************************         00296000
+         DS    0F                 ALIGNMENT                    @D67QDOW 00297000
+DIE_WORK DS    0CL16              WORKING ELEMENT              @D67QDOW 00298000
+DIE_ADDR DC    A(0)               ADDR OF DISABLED TIMER EXIT  @D67QDOW 00299000
+DIE_TOK  DC    A(0)               TOKEN (OUTPUT)               @D67QDOW 00300000
+         ORG   *-4                                             @D67QDOW 00301000
+DIE_INDX DC    H'0'               INDEX INTO TABLE             @D67QDOW 00302000
+DIE_OTID DC    H'0'               TID OF OWNER                 @D67QDOW 00303000
+***                                                                     00304000
+DIE_CLCK DC    XL8'FFFFFFFFFFFFFFFF' TOD VALUE OF NEXT ...     @D67QDOW 00305000
+***                               ..EXPECTED CLOCK-COMPARATOR INTERRUPT 00306000
+DIE_END  DS    0F                                              @D67QDOW 00307000
+***                                                                     00308000
+DIE_ADEQ EQU   DIE_ADDR-DIE_WORK                               @D67QDOW 00309000
+DIE_TOEQ EQU   DIE_TOK-DIE_WORK                                @D67QDOW 00310000
+DIE_INEQ EQU   DIE_INDX-DIE_WORK                               @D67QDOW 00311000
+DIE_OTEQ EQU   DIE_OTID-DIE_WORK                               @D67QDOW 00312000
+DIE_CLEQ EQU   DIE_CLCK-DIE_WORK                               @D67QDOW 00313000
+***                                                                     00314000
+DIE_TAB  DC    A(0),H'1',H'0',A(-1),A(-1) FIRST ENTRY          @D67QDOW 00315000
+         DC    A(0),H'2',H'0',A(-1),A(-1)                      @D67QDOW 00316000
+         DC    A(0),H'3',H'0',A(-1),A(-1)                      @D67QDOW 00317000
+DIE_TABE DC    A(*)               END OF DIE TABLE             @D67QDOW 00318000
+         DROP  R6                 RELEASE DISP BASE            @D36IDAP 00319000
+         DROP  R9                 RELEASE MP-COMREG BASE       @D61RDOW 00320000
+         DROP  RE                 RELEASE SMICR BASE           @D36IDAP 00321000
+         EJECT                                                          00322000
+*********************************************************************** 00323000
+*                                                                     * 00324000
+*     TIMER INTERRUPT PROCESSING                                      * 00325000
+*                   CALLED  AS   DISPATCHER EXIT                      * 00326000
+*                                                                     * 00327000
+*********************************************************************** 00328000
+         SPACE 3                                                        00329000
+         USING TIBADR,R8          TIB BASE                     @D36IDAP 00330000
+         USING TCBADR,RA          TCB BASE                     @D36IDAP 00331000
+         SPACE 1                                               @D64ADVB 00332000
+EXTRETRN DS    0H                                              @D36IDAP 00333000
+*SGLINK EXTRETRN,S,INPUT=(R6,R8,RA)                                     00334000
+         MVI   RID+1,REENTRID     IDENTIFY REENTRANT ROUTINE   @D36IDAP 00335000
+         L     RE,AEXTRTN         LOAD BASE ADDRESS OF EXT.IH. @D36IDAP 00336000
+         USING EXTRTN,RE          SMICR BASE POINTER           @D369DAP 00337000
+         L     R7,EXTRTA10        GET ...                      @D64ADOW 00338000
+         BSM   0,R7               ... AMODE 31                 @D64ADOW 00339000
+EXTRTL10 DS    0H                                              @D64ADOW 00340000
+         L     RC,TCBATCBE        ADDR OF TCBX                 @D64ADVB 00341000
+         USING TCBXADR,RC                                      @D64ADVB 00342000
+         L     R7,TCBXTQCA        GET ACTIVE TIQE              @D64ADOW 00343000
+         USING EXITBLK,R7                                      @D64ADOW 00344000
+         NI    TIBFLAG,XFF-CDELEX TURN OFF DELAY BIT           @D36IDAP 00345000
+EXTRTL30 DS    0H                                              @D64ADOW 00346000
+         LM    R3,R4,EXITADR      ROUTINE/TECB & SAVE AREA ADDR@D64ADJS 00347000
+         LTR   R3,R3              ROUTINE/TECB AVAILABLE       @D367DAP 00348000
+         BZ    EXTRTL40           NO, CHECK NEXT TIQE          @D64ADOW 00349000
+         LTR   R4,R4              TECB REQUEST                 @D36IDAP 00350000
+         BNZ   EXTRTL50           NO, HANDLE IT-EXIT ROUTINE   @D14BDFR 00351000
+         OI    2(R3),TRABIT       POST TECB                             00352000
+         ST    R4,EXITADR         PURGE TECB SETTIME REQUEST   @D64ADJS 00353000
+EXTRTL40 DS    0H                                              @D64ADOW 00354000
+         XC    TCBXTQCA,TCBXTQCA  NO INTERVAL DEFINED          @D64ADOW 00355000
+         L     RD,ASGEXIT         GET BASE OF                  @D64ADOW 00356000
+         L     RD,ASGTIMX-SGEXIT(,RD) ... SGTIMERX             @D64ADOW 00357000
+         USING SGTIMERX,RD        ...                          @D64ADOW 00358000
+         BAS   R9,FNDTILOW        FIND TIQE WITH LOWEST EXP TIM@D64ADOW 00359000
+*SGLINK FNDTILOW,INPUT=(R9,RA,RD),OUTPUT=(R7)                           00360000
+         LTR   R7,R7              ANY TIQE FOUND               @D64ADOW 00361000
+         BZR   R6                 NO EXIT TO DISPATCHER        @D64ADOW 00362000
+         CLC   CLOCK,TIQOUTT      INTERVAL ALSO EXPIRED        @D64ADOW 00363000
+         BL    EXTRTL45           NO, ENQ TASK IN TIMER CHAIN  @D64ADOW 00364000
+         ST    R7,TCBXTQCA        SET TIQE ACTIVE              @D64ADOW 00365000
+         XC    TIQOUTT,TIQOUTT    TIME INTERVALL EXPIRED       @D64ADOW 00366000
+         B     EXTRTL30           YES, DRIVE TIMER EXIT        @D64ADOW 00367000
+EXTRTL45 DS    0H                                              @D64ADOW 00368000
+         BAS   R9,ENQTICHN        ENQ TASK IN TIMER CHAIN      @D64ADOW 00369000
+*SGLINK ENQTICHN,INPUT=(R7,R9,RA,RD)                                    00370000
+         DROP  RD                 ...                          @D64ADOW 00371000
+         BR    R6                                              @D64ADOW 00372000
+         SPACE                                                          00373000
+EXTRTL50 CLI   TIBCNCL,ZERO       IS CANCEL IN PROGRESS        @D36IDAP 00374000
+         BNE   EXTDELAY           YES, ======================> @D61RDOW 00375000
+         TM    VTAMFLG,VTURX+VTAPP HAVE USER EXIT OR APPENDAGE @D36IDAP 00376000
+         BNZ   EXTDELAY            YES, =====================> @D61RDOW 00377000
+         TM    TIBFLAG1,TERMACT    IS TERMINATOR ACTIVE        @D36IDAP 00378000
+         BO    EXTDELAY            YES, =====================> @D61RDOW 00379000
+         CLC   TID,LTID           DOES REQUESTOR OWN LTA       @D66ODOW 00380000
+         BE    EXTDELAY           YES, ======================> @D61RDOW 00381000
+         TM    TCBFLAG6,TCBPSTAC  VENDOR P-STATE EXIT ACTIVE   @D61EDOW 00382000
+         BO    EXTDELAY           YES, ======================> @D61EDOW 00383000
+         TM    TCBEXITF,TCBPOACT+TCBEXACT ANY POST|ETXR EXIT AC@D64ADOW 00384000
+         BNZ   EXTDELAY           YES, ======================> @D64ADOW 00385000
+         TM    TCBXFLG1,TCBXFRRA  ANY FRR DEFINED BY THIS TASK @D64ADOW 00386000
+         BO    EXTDELAY           YES, ======================> @D64ADOW 00387000
+         L     RD,ASGEXIT         BASE ADDRESS OF IT-EXIT      @D51HDOW 00388000
+         USING SGEXIT,RD                                       @D51HDOW 00389000
+         B     ITROUT                  ====================>>> @D64ADOW 00390000
+*SGLINK  ITROUT,INPUT=(R3,R4,R6,R7,R8,RA,RD)                            00391000
+         DROP  RD                                              @D64ADOW 00392000
+         SPACE 1                                                        00393000
+EXTDELAY DS    0H                                              @D61RDOW 00394000
+         OI    EXITFLG,DELINT     DELAY TIMER EXIT ROUTINE     @D64ADJS 00395000
+         BR    R6                 EXIT TO DISPATCHER ======>>> @D64ADVB 00396000
+         DROP  R7                 RESET ADDR TO TIQE           @D64ADVB 00397000
+         DROP  R8                                              @D64ADOW 00398000
+         DROP  RA                                              @D64ADOW 00399000
+         DROP  RC                                              @D64ADVB 00400000
+         DROP  RE                                              @D64ADOW 00401000
+         SPACE                                                          00402000
+EXTRTA10 DC    A(EXTRTL10+X'80000000')                         @D64ADOW 00403000
+         DC    CL8'TIMERCHN'      KEEP TOGETHER WITH NEXT DC   @D64ADOW 00404000
+ITREQPTR DC    A(SNSTIB)          ... TIMER-CHAIN HEADER       @D64ADOW 00405000
+         EJECT                                                          00406000
+*********************************************************************** 00407000
+*                                                                     * 00408000
+*     TASK TIMER INTERRUPT PROCESSING   (DISPATCHER EXIT)             * 00409000
+*                                                                     * 00410000
+*********************************************************************** 00411000
+         USING TIBADR,R8                                       @DY45076 00412000
+         USING TCBADR,RA                                       @D64ADOW 00413000
+TITXEXIT DS    0H                                              @D64ADVB 00414000
+*SGLINK  TITXEXIT,INPUT=(R6:DISPAD,R8:TIB,TA:TCB) RID=REENTRANT,        00415000
+*              MODE=NOTPARALLEL,AMODE=UNDEFINED                         00416000
+         L     RE,AEXTRTN         BASE OF EXT INTERRUPT HANDLER@D64ADVB 00417000
+         USING EXTRTN,RE          SMICR BASE POINTER           @D64ADVB 00418000
+         L     RC,TCBATCBE        ADDR OF TCBX                 @D64ADVB 00419000
+         USING TCBXADR,RC                                      @D64ADVB 00420000
+         ICM   R7,B'1111',TCBXTASI GET TASK TIMER              @D64ADOW 00421000
+         BNM   EXIT                                            @D64ADOW 00422000
+         NI    TCBXTASI,XFF-TCBXTQTK HANDLE AS REAL TIMER      @D64ADVB 00423000
+***                               ... EXIT FROM NOW ON                  00424000
+         USING EXITBLK,R7         PROVIDE ADDR TO TIQE         @D64ADJS 00425000
+         STCK  TIQOUTT            FORCE IMMEDIATE INTERRUPT    @D64ADOW 00426000
+         MVI   TIQTYPE,TIQSMVS    NOW REAL STIMER TIQE         @D64ADOW 00427000
+         TM    TIBFLAG,CDELEX     INTERVAL EXPIRED AND         @DY45076 00428000
+***                               ...DISPATCHER EXIT SCHEDULED          00429000
+         BO    EXIT               YES, LET EXIT COMPLETE --->  @DY45076 00430000
+         L     RD,TCBXTQCA        GET CURRENTLY SELECTED TIMER @D64ADOW 00431000
+***                               ... EXIT ROUTINE                      00432000
+         TM    EXITADR-EXITBLK(RD),EXITACT IS EXIT ACTIVE      @D64ADOW 00433000
+         BO    EXIT               YES, WAIT FOR COMPLETION --->@D64ADOW 00434000
+         TM    EXITFLG-EXITBLK(RD),DELINT IS EXIT              @D64ADOW 00435000
+***                               ...INITIALIZATION DELAYED             00436000
+         BO    EXIT               YES, LET EXIT COMPLETE --->  @D64ADOW 00437000
+         L     RD,ASGEXIT         GET BASE OF MVS-TIMER        @D64ADOW 00438000
+         L     RD,ASGTIMX-SGEXIT(,RD) ... ROUTINES             @D64ADOW 00439000
+         USING SGTIMERX,RD                                     @D64ADOW 00440000
+         BAS   R9,DEQTICHN        REMOVE TASK FROM TIMER CHAIN @D64ADOW 00441000
+*SGLINK DEQTICHN,INPUT=(R9,RA,RD)                                       00442000
+         BAS   R9,FNDTILOW        FIND TIQE WITH LOWEST EXP TIM@D64ADOW 00443000
+*SGLINK FNDTILOW,INPUT=(R9,RA,RD),OUTPUT=(R7)                           00444000
+         BAS   R9,ENQTICHN        ENQ TASK IN TIMER CHAIN      @D64ADOW 00445000
+*SGLINK ENQTICHN,INPUT=(R7,R9,RA,RD)                                    00446000
+         DROP  RD                                              @D64ADOW 00447000
+         B     EXIT                EXIT TO DISPATCHER          @D64ADOW 00448000
+         SPACE                                                          00449000
+         DROP  R7                                              @D64ADOW 00450000
+         DROP  R8                                              @DY45076 00451000
+         DROP  RA                 RELEASE TCB BASE             @D36IDAP 00452000
+         DROP  RC                 RELEASE TCBX BASE            @D64ADVB 00453000
+         DROP  RE                 RELEASE SMICR BASE           @D369DAP 00454000
+         TITLE 'DOS SUPERVISOR    SMICR     HARDWAIT ROUTINE   '        00455000
+*********************************************************************** 00456000
+*                                                                     * 00457000
+*        HARDWAIT ROUTINE                                             * 00458000
+*                                                                     * 00459000
+*********************************************************************** 00460000
+         AGO   .NOTS015                                        @DY46195 00461490
+.NOTS010 ANOP                                                  @KXA1601 00462000
+.**      BASE REGISTER  - OTHER THAN FOLLOWING WORK REGISTERS           00463000
+.**      WORK REGISTERS - R1 R2 R3 R5 R6 R7 R8 R10 R11                  00464000
+         L     R1,ASYSCOM         GET COMREG ADDR              @KXA1601 00465000
+         L     R1,IJBTDATB-SYSCOM(,R1) GET ADDR OF TD-ADDR-TAB @KXA1601 00466000
+         L     R3,TDCPUPTR        GET ADDR OF CURRENT CPU-CB   @KXA1601 00467000
+         LR    R2,R1              COPY POINTER                 @KXA1601 00468000
+         LA    R5,10              MAX 10 CPUS POSSIBLE         @KXA1601 00469000
+HWRTN000 DS    0H                                              @KXA1601 00470000
+         LA    R2,4(,R2)          GOTO FIRST/NEXT CPU-CB       @KXA1601 00471000
+         TM    0(R2),X'80'        END OF LIST                  @KXA1601 00472000
+         BO    HWRTN220           YES, ADDR 25C IS INVALID     @KXA1601 00473000
+         C     R3,0(,R2)          OUR CPU-CB ADDR              @KXA1601 00474000
+         BE    HWRTN001           YES, TRY TO STORE STATUS     @KXA1601 00475000
+         BCT   R5,HWRTN000        LOOP FOR MAX 10 CPUS         @KXA1601 00476000
+         B     HWRTN220           YES, ADDR 25C IS INVALID     @KXA1601 00477000
+HWRTN001 DS    0H                                              @KXA1601 00478000
+         AIF   (NOT &IJBSGEN).NOTS012                          @DY46195 00478500
+         LRA   R3,0(,R3)           REAL CPU-CB ADDR OF CURR CPU@KXA1601 00479000
+         BNE   HWRTN220            NOT ACCESSIBLE SKIP STORE   @KXA1601 00480000
+***                                ... STATUS                           00481000
+         AGO   .NOTS030                                        @D64ADOW 00482000
+.NOTS012 ANOP                                                  @DY46195 00483190
+         STAP  CPUADDR             STORE CURRENT CPU ADDRESS   @DY46195 00483380
+         AGO   .NOTS040                                        @DY46195 00483570
+.NOTS015 ANOP                                                  @DY46195 00483760
+         USING *,R4                                            @D61RDOW 00484000
+HWRENTRY DS    0H                                              @D61RDOW 00485000
+         L     R3,TDCPUPTR         GET ADDR OF CURRENT CPU-CB  @D61RDOW 00486000
+         L     R1,IJBTDATB         GET ADDR OF TD-ADDR-TABLE   @D61RDOW 00487000
+.NOTS030 ANOP                                                  @KXA1601 00488000
+         L     R9,4(,R1)           CPU-CB FROM IPL CPU         @D61RDOW 00489000
+         L     R2,0(,R1)           GET ADDR OF TD-COMREG       @D61RDOW 00490000
+         USING TDCOMREG,R2                                     @D61RDOW 00491000
+         AIF   (NOT &IJBSGEN).NOTS040                          @KXA1601 00492000
+HWRTN010 DS    0H                                              @D61RDOW 00493000
+         LA    RA,1                GET LOCK-VALUE              @D61RDOW 00494000
+         SLR   R5,R5                                           @D61RDOW 00495000
+         CS    R5,RA,HWLOCKWD      IS LOCK FREE                @D61RDOW 00496000
+         BNE   HWRTN010            NO, SPIN TILL FREE          @D61RDOW 00497000
+         L     R5,HWDEBUG          GET ADDR TO STOP DEBUG      @D61RDOW 00498000
+         MVI   0(R5),X'0B'         ...CHANGE NOPR TO BSM       @D61RDOW 00499000
+         STM   RD,R1,HWFCPSAV      SAVE REGS NEEDED FOR IJBFCP @D68DDMZ 00500000
+         ICM   R1,15,HWPUBXLF      PUBX PTR OF LOCK FILE DISK  @D68DDMZ 00501290
+         BZ    HWRTNSND            LOCK FILE NOT AVAILABLE     @D68DDMZ 00501580
+         USING PBXADR,R1                                       @D68DDMZ 00502000
+         TM    PBXFLAG,PBXSCSI     LOCK FILE ON SCSI           @D68DDMZ 00503000
+         BZ    HWRTNSND            NO, CSCH RELEASED RESERVE   @D68DDMZ 00504000
+         LA    R0,8                FUNCTION CODE               @D68DDMZ 00505000
+         L     R1,PBXASCSI         USE FIRST SCSI CONNECTION   @D68DDMZ 00506000
+         DROP  R1                                              @D68DDMZ 00507000
+         L     RE,IJBAFCPA                                     @D68DDMZ 00508000
+         USING FCPTAB,RE                                       @D68DDMZ 00509000
+         ICM   RF,15,FCPAD         GET IJBFCP ROUTINE ADDRESS  @D68DDMZ 00510000
+         BZ    HWRTNSND            NOT AVAILABLE               @D68DDMZ 00511000
+         L     RD,FCPDYN1          GET ADDR OF DYN. WORK AREA  @D68DDMZ 00512000
+         LA    RD,X'10'(,RD)       POINT TO FIRST SAVE AREA    @D68DDMZ 00513000
+         DROP  RE                  RELEASE FCPTAB              @D68DDMZ 00514000
+         BASSM RE,RF               CALL IJBFCP                 @D68DDMZ 00515000
+         ST    RF,HWFCPRC          REMEMBER IJBFCP RETCODE     @D68DDMZ 00516000
+         B     HWRTNSND            CONTINUE                    @D68DDMZ 00517000
+HWFCPRC  DS    F                                               @D68DDMZ 00518000
+HWFCPSAV DS    5F                  REGS NEEDED FOR IJBFCP CALL @D68DDMZ 00519000
+HWRTNSND DS    0H                                              @D68DDMZ 00520000
+         LM    RD,R1,HWFCPSAV      RESTORE REGISTERS           @D68DDMZ 00521000
+         TM    SUPVFLAG,MPACT      MORE THAN ONE CPU ACTIVE    @D61RDOW 00522000
+         BNO   HWRTN210            NO, --->                    @D64ADOW 00523000
+.NOTS040 ANOP                                                  @KXA1601 00524000
+HWRTN020 DS    0H                                              @D61RDOW 00525000
+         LA    R1,4(,R1)           GO TO FIRST/NEXT CPU-CB ADDR@D61RDOW 00526000
+         TM    0(R1),X'80'         LAST ENTRY                  @D61RDOW 00527000
+         BO    HWRTN120            YES, --->                   @D61RDOW 00528000
+         L     RA,0(,R1)           GET CPU-CB ADDR             @D61RDOW 00529000
+         AIF   (&IJBSGEN).NOTS045                              @KXA1601 00530000
+         LRA   RA,0(,RA)           GET REAL CPU-CB ADDR        @KXA1601 00531000
+         BNE   HWRTN220            NOT ACCESSIBLE SKIP STORE   @KXA1601 00532000
+***                                ... STATUS                           00533000
+         USING TCPUADR,RA                                      @DY46195 00533200
+         CLC   TCPEYE(4),=C'TCPU'  TCPU?                       @DY46195 00533400
+         BNE   HWRTN220            OVERLAID / BAD ADDRESS      @DY46195 00533600
+         AGO   .NOTS048                                        @DY46195 00533800
+.NOTS045 ANOP                                                  @KXA1601 00534000
+         CR    R3,RA               IS THIS CURRENT CPU         @D61RDOW 00535000
+         BE    HWRTN020            YES, GOTO NEXT CPU          @D61RDOW 00536000
+         USING TCPUADR,RA                                      @D61RDOW 00537000
+.NOTS048 ANOP                                                  @DY46195 00537500
+         TM    TCPFLG2,TCPUPFX     PREFIX PAGE SET             @D61RDOW 00538000
+         BNO   HWRTN020            NO, GO TO NEXT CPU          @D61RDOW 00539000
+         LA    R8,10               LOOP COUNTER                @D61RDOW 00540000
+         LH    R7,TCPUID           GET CPU-ID                  @D61RDOW 00541000
+         AIF   (&IJBSGEN).NOTS047                              @DY46195 00541200
+         CH    R7,CPUADDR          CURRENT CPU?                @DY46195 00541400
+         BE    HWRTN020            YES, TAKE NEXT CPU          @DY46195 00541600
+.NOTS047 ANOP                                                  @DY46195 00541800
+HWRTN031 DS    0H                                              @D61RDOW 00542000
+         SIGP  R5,R7,X'0005'       STOP THIS CPU               @D61RDOW 00543000
+         BC    8,HWRTN060          ORDER ACCEPTED, CHECK STATUS@D61RDOW 00544000
+         BC    2,HWRTN031          BUSY, ONCE MORE             @D61RDOW 00545000
+         BC    1,HWRTN110          NOT OP, GO TO NEXT CPU      @D61RDOW 00546000
+*        BC    4,*+4               STATUS STORED               @D61RDOW 00547000
+         LTR   R5,R5               EQUIMENT CHECK              @D61RDOW 00548000
+         BNM   HWRTN110            IGNORE STATUS, GOTO NEXT CPU@D61RDOW 00549000
+HWRTN051 BCT   R8,HWRTN031         TRY TO STOP ONCE MORE       @D61RDOW 00550000
+         B     HWRTN110            GO TO NEXT CPU              @D61RDOW 00551000
+HWRTN060 DS    0H                                              @D61RDOW 00552000
+         TM    TCPFLG2,TCPSTAST    STATUS ALREADY SAVED        @D64ADOW 00553000
+         BO    HWRTN020            YES GO TO NEXT CPU          @D64ADOW 00554000
+         LA    R6,4095             WAIT SOME TIME              @D61RDOW 00555000
+HWRTN063 BCT   R6,HWRTN063                                     @D61RDOW 00556000
+         LA    R6,11               GET LOOP COUNTER            @D61RDOW 00557000
+HWRTN061 DS    0H                                              @D61RDOW 00558000
+         BCT   R6,HWRTN062                                     @D61RDOW 00559000
+         B     HWRTN051            TRY TO STOP ONCE MORE       @D61RDOW 00560000
+HWRTN062 DS    0H                                              @D61RDOW 00561000
+         SIGP  R5,R7,X'0001'       SENSE THE CPU               @D61RDOW 00562000
+         BC    8,HWRTN051          NO STATUS BITS, TRY TO STOP @D61RDOW 00563000
+***                                ... ONCE MORE                        00564000
+         BC    2,HWRTN062          BUSY, TRY ONCE MORE         @D61RDOW 00565000
+         BC    1,HWRTN110          NOT OP, GO TO NEXT CPU      @D61RDOW 00566000
+*        BC    4,*+4               STATUS STORED               @D61RDOW 00567000
+         LTR   R5,R5               EQUIMENT CHECK              @D61RDOW 00568000
+         BM    HWRTN061            YES, TRY ONCE MORE          @D61RDOW 00569000
+         LA    RB,X'40'            IS CPU STOPPED              @D61RDOW 00570000
+         NR    RB,R5               ...                         @D61RDOW 00571000
+         BZ    HWRTN051            NO, TRY TO STOP ONCE MORE   @D61RDOW 00572000
+         LA    R8,10               INITIALIZE LOOP CNTR        @D61RDOW 00573000
+HWRTN080 DS    0H                                              @D61RDOW 00574000
+         L     R5,TCPPRER          GET REAL ADDR OF PREFIX PAGE@D61RDOW 00575000
+         SIGP  R5,R7,X'000E'       STORE STATUS OF CPU N       @D61RDOW 00576000
+         BC    9,HWRTN110          ORDER ACCEPTED OR NOT OP -> @D61RDOW 00577000
+         BC    2,HWRTN080          BUSY, TRY ONCE MORE         @D61RDOW 00578000
+*        BC    4,*+4               STATUS STORED               @D61RDOW 00579000
+         LTR   R5,R5               EQUIMENT CHECK              @D61RDOW 00580000
+         BNM   HWRTN110            NO, GO TO NEXT CPU          @D61RDOW 00581000
+         BCT   R8,HWRTN080                                     @D61RDOW 00582000
+HWRTN110 DS    0H                                              @D61RDOW 00583000
+         OI    TCPFLG2,TCPSTAST    CPU STOPPED AND STATUS STORD@D61RDOW 00584000
+         B     HWRTN020            GOTO NEXT CPU               @D61RDOW 00585000
+         DROP  RA                                              @D61RDMZ 00586000
+HWRTN120 DS    0H                                              @D61RDOW 00587000
+         AIF   (NOT &IJBSGEN).NOTS060                          @KXA1601 00588000
+         TM    IJBFLG07,IJBUNATT   IS SYSTEM UNATTENDED ?      @D61RDOW 00589000
+         BO    HWRTN130            YES, --->                   @D61RDOW 00590000
+         TM    IJBOPMOD,IJBOPSAC   IS OPERATE SELFACTING       @D61RDOW 00591000
+         BZ    HWRTN210            NO ...                      @D61RDOW 00592000
+HWRTN130 DS    0H                                              @D61RDOW 00593000
+         USING TCPUADR,R3          ADDRESS CURRENT CPU         @D61RDOW 00594000
+         TM    TCPFLG2,TCPUIPL     IPL DONE ON THIS CPU        @D61RDOW 00595000
+         BO    HWRTN210            YES, GO TO CHECK FOR RESTART@D61RDMZ 00596000
+         DROP  R3                                              @D61RDMZ 00597000
+         USING TCPUADR,R9          ADDRESS IPL CPU             @D61RDOW 00598000
+         L     R5,TCPPREV          GET ADDR OF PREFIX PAGE     @D61RDOW 00599000
+         LA    R1,SYSERROR         ADDR FOR RESTART PSW        @D61RDOW 00600000
+         MVC   0(4,R5),HWRTFRAM    PREPARE RESTART PSW         @D61RDOW 00601000
+         ST    R1,4(,R5)           ...                         @D61RDOW 00602000
+         LH    R7,TCPUID           GET CPU-ID                  @D61RDOW 00603000
+         LA    R8,10               LOOP COUNTER                @D61RDOW 00604000
+HWRTN140 DS    0H                                              @D61RDOW 00605000
+         SIGP  R5,R7,X'0006'       RESTART IPL-CPU             @D61RDOW 00606000
+         BC    8,HWRTN170          ORDER ACCEPTED, GO TO SENSE @D61RDOW 00607000
+         BC    2,HWRTN140          BUSY, TRY ONCE MORE         @D61RDOW 00608000
+         BC    1,HWRTNFIN          NOT OPERATIONAL, FINAL HW   @D61RDOW 00609000
+*        BC    4,*+4               STATUS STORED               @D61RDOW 00610000
+         LTR   R5,R5               EQUIPMENT CHECK             @D61RDOW 00611000
+         BNM   HWRTNFIN            NO, IPL-CPU IS CURRENTLY    @D61RDOW 00612000
+***                                ... NOT USABLE FOR REIPL, FINAL HW   00613000
+         BCT   R8,HWRTN140         TRY TO RESTART ONCE MORE    @D61RDOW 00614000
+         B     HWRTNFIN            FINAL HW                    @D61RDOW 00615000
+HWRTN170 DS    0H                                              @D61RDOW 00616000
+         LA    R8,4095             GET LOOP COUNTER            @D61RDOW 00617000
+HWRTN180 BCT   R8,HWRTN180                                     @D61RDOW 00618000
+         LA    R8,11               LOOP COUNTER                @D61RDOW 00619000
+HWRTN171 DS    0H                                              @D61RDOW 00620000
+         BCT   R8,HWRTN172                                     @D61RDOW 00621000
+         B     HWRTNFIN            FINAL HW                    @D61RDOW 00622000
+HWRTN172 DS    0H                                              @D61RDOW 00623000
+         SIGP  R5,R7,X'0001'       SENSE THE CPU               @D61RDOW 00624000
+         BC    8,HWRTN200          ALL STATUS BITS ZERO,       @D61RDOW 00625000
+***                                ... IPL-CPU IS ACTIVE                00626000
+         BC    2,HWRTN172          BUSY, TRY ONCE MORE         @D61RDOW 00627000
+         BC    1,HWRTNFIN          NOT OP, FINAL HW            @D61RDOW 00628000
+*        BC    4,*+4               STATUS STORED               @D61RDOW 00629000
+         LTR   R5,R5               EQUIPMENT CHECK             @D61RDOW 00630000
+         BM    HWRTN171            YES, TRY ONCE MORE TO SENSE @D61RDOW 00631000
+         LA    RB,XFF-X'80'        EXT CALL PENDING            @D61RDOW 00632000
+         NR    RB,R5               ...ALONE                    @D61RDOW 00633000
+         BNZ   HWRTNFIN            NO, FINAL HW                @D61RDOW 00634000
+HWRTN200 DS    0H                                              @D61RDOW 00635000
+         OI    TCPFLG2,TCPUACT     SET IPL-CPU ACTIVE          @D61RDOW 00636000
+         NI    TCPFLG2,XFF-TCPSTAST RESET STATUS STORED INDICAT@D61RDOW 00637000
+HWRTN205 DS    0H                                              @D61RDOW 00638000
+         SLR   RA,RA               GET LOCK FREE VALUE         @D61RDOW 00639000
+         L     R5,HWLOCKWD         GET CURRENT LOCK VALUE      @D61RDOW 00640000
+         CS    R5,RA,HWLOCKWD      FREE THE LOCK               @D61RDOW 00641000
+         BNE   HWRTN205            LOOP UNTIL SUCCESSFUL       @D61RDOW 00642000
+         B     HWRTNFIN            ENTER HW WITH CURRENT CPU   @D61RDMZ 00643000
+***                                ... IPL CPU ENTERS HW RTN   @D61RDMZ 00644000
+         DROP  R2                                              @D61RDMZ 00645000
+         DROP  R9                                              @D61RDMZ 00646000
+HWRTN210 DS    0H                                              @D61RDOW 00647000
+         SLR   RA,RA               GET LOCK FREE VALUE         @D61RDOW 00648000
+         L     R5,HWLOCKWD         GET CURRENT LOCK VALUE      @D61RDOW 00649000
+         CS    R5,RA,HWLOCKWD      FREE THE LOCK               @D61RDOW 00650000
+         BNE   HWRTN210            LOOP UNTIL SUCCESSFUL       @D61RDOW 00651000
+.NOTS060 ANOP                                                  @KXA1601 00652000
+HWRTN220 DS    0H                                              @D61RDOW 00653000
+         AIF   (NOT &IJBSGEN).NOTS070                          @KXA1601 00654000
+         TM    IJBFLG07,IJBUNATT   IS SYSTEM UNATTENDED ?      @D31QDHB 00655000
+         BO    HWRIPLTR            YES ... TRY RE-IPL          @D31QDHB 00656000
+         TM    IJBOPMOD,IJBOPSAC   IS OPERATE SELFACTING       @D31QDHB 00657000
+         BZ    HWRTNFIN            NO ...                      @D31QDHB 00658000
+         L     RC,ADOREIPL         LOAD BASE FOR RE-IPL        @D31QDAZ 00659000
+         L     R2,ADOREOPS         ADDRESS DOREOPS             @D31QDAZ 00660000
+         BSM   0,R2                AND GO THERE                @D31QDAZ 00661000
+         SPACE 2                                               @D31QDHB 00662000
+HWRIPLTR DS    0H                  POINT TO REIPL PARAMETERS   @D61RDOW 00663000
+         L     R1,UNIPPAR          POINT TO REIPL PARAMETERS   @D61RDOW 00664000
+         L     R3,8(,R1)           ADDRESS 3. PARAMETER        @D61RDOW 00665000
+         MVC   0(64,R3),GRSAVE     PASS REGISTER FOR RE-IPL    @D61RDOW 00666000
+         LA    R0,UNATHARD         INDICATE 'HARDWAIT'         @D31QDAZ 00667000
+         L     RC,ADOREIPL         CHECK FOR RE-IPL            @D31QDAZ 00668000
+         BSM   0,RC                ======================>     @D31QDHB 00669000
+*SGLINK DOREIPL,INPUT=(R0,R1,RC)                               @D31QDAZ 00670000
+         SPACE 2                                               @D31QDHB 00671000
+HWRTNFIN DS    0H                                              @D31QDHB 00672000
+         USING TCPUADR,R3          ADDRESS CURRENT CPU         @D61RDOW 00673000
+         USING TDCOMREG,R2                                     @D61RDOW 00674000
+         MVC   FLOGA(8),ATTHWPSW   PREPARE HW-STATUS AREA      @DY45952 00675000
+         STAM  AR0,ARF,ARSAVE      ... SAVE AR REGISTER        @D61RDOW 00676000
+         STCTL CR0,CRF,CRSAVE      ... SAVE CR REGISTER        @D61RDOW 00677000
+         MVC   FLOGA+8(4),TCPPRER  PREFIX ADDR TO HW-STATUS    @D68CDOW 00678000
+***                                ... AREA                             00679000
+         OI    TCPFLG2,TCPSTAST    CPU STOPPED AND STATUS STORD@D61RDOW 00680000
+         B     HWRTNF20   KEEP FOLLOWING CODE FOR 1 RELEASE    @D68CDOW 00681000
+         ICM   RA,B'1111',TCPPREV  VIRT ADDR OF PREFIX PAGE    @D64ADOW 00682000
+         BZ    HWRTNF20            ZERO ONLY IF UNI PROCESSOR  @D64ADOW 00683000
+***                                ... MODE --->                        00684000
+         MVC   FLOGA+8(4),TCPPRER  PREFIX ADDR TO HW-STATUS    @D64ADOW 00685000
+***                                ... AREA                             00686000
+         MVC   0(256,RA),SYSS00-SYSS00 ENSURE THAT HW-PSW,REG'S@D61RDOW 00687000
+         MVC   FLOGA-SYSS00(256,RA),FLOGA-SYSS00 ... AND AR'S  @D61RDOW 00688000
+***                                ... ARE REALY CONTAINED IN VIRTUAL   00689000
+***                                IMAGE OF PREFIX PAGE                 00690000
+         LH    R1,TCPUID           CPUID OF HW-CPU AND ITS     @D64ADOW 00691000
+         L     RA,TCPPRER          ...REAL ADDR OF PREFIX PAGE @DY44364 00692000
+         DROP  R3                                              @D61RDMZ 00693000
+         USING TCPUADR,R9          ADRESS IPL CPU              @D64ADOW 00694000
+         TM    TCPFLG2,TCPUPFX     PREFIX PAGE SET?            @D64ADOW 00695000
+         BNO   HWRTNF20            NO --->                     @D61RDOW 00696000
+         L     R6,TDCSPFX          GET ADDR(ORIG PREFIX PAGE)  @D64ADOW 00697000
+         LA    R5,TDCSPFX          GET ADDR(ADDR(ORIG PREFIX PA@DY44364 00698000
+         SPX   0(R5)               REESTABLISH ORIGINAL PAGE 0 @D64ADOW 00699000
+         LA    R7,4095             COPY FROM                   @DY44364 00700000
+         LA    R7,1(,R7)           ... OLD PREFIX PAGE         @DY44364 00701000
+         LR    RB,R7               ... TO                      @DY44364 00702000
+         STNSM PSWMASK,XFF-SMDAT   ...                         @D64ADOW 00703000
+         MVCL  R6,RA               ... NEW PREFIX PAGE         @DY44364 00704000
+***                                ... (ABSOLUTE PAGE 0)                00705000
+         STC   R1,X'10B'           ... INDICATE HW-CPU         @D64ADOW 00706000
+         STOSM PSWMASK,SMDAT       ... SET DAT ON              @D64ADOW 00707000
+HWRTNF20 DS    0H                                              @D61RDOW 00708000
+         MVC   HWSAVAR(24),0       SAVE AREA DESTROYED BY DUMP @D64ADOW 00709000
+         LM    R1,RB,GRSAVE+4      RESTORE REGISTERS           @D61RDOW 00710000
+LPSW1000 LPSW  FLOGA               GO INTO HARD WAIT           @D66ADAP 00711000
+HWDEBUG  DC    A(DEBUGBAL)         BRANCH TO INACTIVATE DEBUG  @D61RDOW 00712000
+HWLOCKWD DC    A(0)                HARD WAIT LOCK WORD         @D61RDOW 00713000
+UNIPPAR  DC    A(UNATPLI)          PARAMETERLIST FOR RE-IPL    @D31QDHB 00714000
+HWRTFRAM DC    X'040C0000'                                     @D61RDOW 00715000
+         DS    0F                                                       00716000
+         DC    C'LOWCORE0'         EYE CATCHER                 @D64ADOW 00717000
+HWSAVAR  DC    XL24'00'            TO CONTAIN FIRST 24 BYTES   @D64ADOW 00718000
+***                                ... POSSIBLY DESTROYED BY DUMP       00719000
+         DROP  R2                                              @D61RDOW 00720000
+         DROP  R4                                              @D61RDOW 00721000
+         DROP  R9                                              @D64ADOW 00722000
+         AIF   (NOT &SMICR).NPRT020                            @D37DDAP 00723000
+         PRINT NOGEN                                           @D37DDAP 00724000
+.NPRT020 ANOP                                                  @D37DDAP 00725000
+.NOTS070 ANOP                                                  @KXA1601 00726000
+         MEND                                                           00727000

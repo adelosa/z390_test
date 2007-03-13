@@ -1,0 +1,686 @@
+         TITLE ' XMTEXAMP'                                              00001001
+         PUNCH ' PHASE XMTEXAMP,*'                                      00002001
+*                                                                     * 00003001
+*********************************************************************** 00004001
+*********************************************************************** 00005001
+*                                                                     * 00006001
+*    N E T W O R K  T R A N S M I T T E R  E X I T   R O U T I N E    * 00007001
+*                                                                     * 00008001
+*********************************************************************** 00009001
+*********************************************************************** 00010001
+         SPACE 2                                                        00011001
+* FUNCTION:                                                           * 00012001
+*   THIS EXIT ROUTINE PROVIDES AN EXAMPLE OF HOW A TRANSMITTER        * 00013001
+*   EXIT CAN BE USED TO                                               * 00014001
+*                                                                     * 00015001
+*             - INSERT A DATA RECORD INTO THE DATA STREAM             * 00016001
+*             - MODIFY A NETWORK CONTROL RECORD                       * 00017001
+*             - PROCESS A DATA RECORD                                 * 00018001
+*             - PROCESS A CHANGED NETWORK CONTROL RECORD              * 00019001
+*             - STOP THE TRANSMISSION OF A QUEUE ENTRY                * 00020001
+*                                                                     * 00021001
+*   DURING THE TRANSMISSION OF A QUEUE ENTRY TO ANOTHER NODE.         * 00022001
+*                                                                     * 00023001
+*   IT ALSO SHOWS THE USE OF THE TRANSMITTER EXIT WORK AREA,          * 00024001
+*   THE PARAMETER LIST AND HOW MESSAGES CAN BE WRITTEN TO THE         * 00025001
+*   OPERATOR CONSOLE USING VSE/POWER SERVICES.                        * 00026001
+*                                                                     * 00027001
+*                                                                     * 00028001
+*   SUPPOSE THE FOLLOWING NETWORKING ENVIRONMENT:                     * 00029001
+*                                                                     * 00030001
+*                 X---------->A---------->B                           * 00031001
+*                                                                     * 00032001
+*   THE TRANSMITTER EXIT IS LOADED AT LOCAL NODE X.                   * 00033001
+*   NODE X IS CONNECTED TO NODE A.                                    * 00034001
+*   NODE A IS CONNECTED TO NODE B.                                    * 00035001
+*                                                                     * 00036001
+*                                                                     * 00037001
+*   THIS TRANSMITTER EXIT ROUTINE ENSURES THAT ONLY JOBS CAN LEAVE    * 00038001
+*   THE LOCAL NODE X.                                                 * 00039001
+*   OUTPUT IS NOT ALLOWED TO LEAVE NODE X AND WILL BE QUEUED AGAIN    * 00040001
+*   IN THE XMT QUEUE WITH THE CORRESPONDING 'HOLD' DISPOSITION.       * 00041001
+*                                                                     * 00042001
+*   ASSUME THAT SEVERAL JOBS WHICH RESIDE IN THE XMT QUEUE OF NODE X  * 00043001
+*   ARE TO BE TRANSMITTED TO NODE A AND B. FOR JOBS WHOSE JOB HEADER  * 00044001
+*   SECTION CONTAINS NO USER SECTION AND WHOSE FINAL DESTINATION IS   * 00045001
+*   NODE B, THE EXIT ROUTINE PROVIDES A USER SECTION TO THEIR JOB     * 00046001
+*   HEADER RECORD. IN ADDITION, THE VSE/POWER JOB DISPOSITION IS      * 00047001
+*   SET TO 'L' AND A COMMENT RECORD IS INSERTED AFTER THE JOB HEADER  * 00048001
+*   RECORD.                                                           * 00049001
+*   JOBS WHOSE FINAL DESTINATION IS NOT NODE B ARE NOT TOUCHED        * 00050001
+*   BY THE EXIT.                                                      * 00051001
+*                                                                     * 00052001
+*   SINCE THE EXIT ROUTINE REQUIRES A WORK AREA , IT IS VERIFIED      * 00053001
+*   THAT THE WORK AREA WHICH IS SPECIFIED IN THE PLOAD COMMAND OR     * 00054001
+*   IN THE POWER MACRO IS LARGE ENOUGH.                               * 00055001
+*   IF A USER SECTION IS TO BE APPENDED TO THE JOB HEADER RECORD      * 00056001
+*   THE EXIT ROUTINE VERIFIES IF THE WORK AREA IS LARGE ENOUGH TO     * 00057001
+*   CONTAIN A COPY THE JOB HEADER RECORD AND THE USER SECTION.        * 00058001
+*   IF IT IS NOT LARGE ENOUGH THE TRANSMISSION OF THE QUEUE ENTRY     * 00059001
+*   IS STOPPED BY SETTING THE RETURN CODE TO 'FLUSH HOLD'.            * 00060001
+*   A MESSAGE IS WRITTEN TO THE OPERATOR CONSOLE, INDICATING THAT     * 00061001
+*   THE EXIT MUST BE LOADED AGAIN WITH THE REQUIRED WORK AREA SIZE.   * 00062001
+         SPACE 2                                                        00063001
+* INPUT:                                                              * 00064001
+*   - PARAMETER LIST, WHOSE LAYOUT IS DEFINED IN MACRO IPW$DTX        * 00065001
+*   - SEVERAL REGISTERS WHICH ADDRESS VSE/POWER CONTROL BLOCKS.       * 00066001
+*     SEE REGISTER USAGE BELOW FOR MORE DETAILS.                      * 00067001
+         SPACE 2                                                        00068001
+* OUTPUT:                                                             * 00069001
+*   - PARAMETER LIST.                                                 * 00070001
+*     THIS EXIT RETURNS TO VSE/POWER WITH RETURN CODES SHOWN BELOW.   * 00071001
+*                                                                     * 00072001
+*      TEXRC: X'00' - PROCESS RECORD                                  * 00073001
+*             X'08' - INSERT DATA RECORD                              * 00074001
+*             X'14' - PROCESS MODIFIED NETWORK CONTROL RECORD         * 00075001
+*             X'18' - FLUSH QUEUE ENTRY WITH 'HOLD'                   * 00076001
+         SPACE 2                                                        00077001
+* LOCATION:                                                           * 00078001
+*   THIS TRANSMITTER EXIT ROUTINE IS LOCATED WITHIN THE               * 00079001
+*                                                                     * 00080001
+*     - PAGEABLE AREA OF THE VSE/POWER PARTITION WHEN                 * 00081001
+*       LOADED AT VSE/POWER INITIALIZATION TIME BY THE                * 00082001
+*       POWER MACRO, OR IN THE                                        * 00083001
+*     - GETVIS AREA OF THE VSE/POWER PARTITION WHEN                   * 00084001
+*       LOADED AFTER INITIALIZATION BY THE 'PLOAD' COMMAND.           * 00085001
+*                                                                     * 00086001
+*       FOR DEBUGGING PURPOSES LOCATE THE PNET EXIT IN STORAGE        * 00087001
+*       BY ITS STORAGE DESCRIPTOR 'TRANSMITTER EXIT' AND BY THE       * 00088001
+*       POINTER 'PNCBTUE' OF THE PNET MASTER CONTROL BLOCK.           * 00089001
+*       THE LATTER IS ANCHORED VIA THE FIELD 'CAPN' IN THE            * 00090001
+*       THE COMMON ADDRESS TABLE (CAT) OF VSE/POWER.                  * 00091001
+        SPACE 2                                                         00092001
+* REMARKS:                                                            * 00093001
+*       THIS CODE IS AN EXAMPLE TO SHOW, HOW THE INFORMATION          * 00094001
+*       PASSED TO THE EXIT MAY BE USED TO ACCESS CONTROL DATA         * 00095001
+*       BOTH IN VSE/POWER CONTROL BLOCKS AND IN RECORDS               * 00096001
+*       BEING TRANSMITTED.                                            * 00097001
+*       YOU CAN FIND DSECTS OF OTHER VSE/POWER CONTROL BLOCKS ON THE  * 00098001
+*       OPTIONAL MATERIALS TAPE. PLEASE REFER TO THEIR DESCRIPTION    * 00099001
+*       IN THE OPTIONAL DOCUMENTATION.                                * 00100001
+*       FOR DETAILED CONTENTS OF THE NETWORK CONTROL RECORDS AND      * 00101001
+*       THE USAGE BY DIFFERENT NETWORKING COMPONENTS SEE:             * 00102001
+*       'NETWORK JOB ENTRY FORMATS AND PROTOCOLS'      SC23-0070      * 00103001
+*                                                                     * 00104001
+* REGISTER USAGE:                                                     * 00105001
+*       R0     WORK REGISTER                                          * 00106001
+*       R1     ADDRESS OF PARAMETER LIST AT ENTRY                     * 00107001
+*       R2-R7  WORK REGISTERS                                         * 00108001
+*       R8     ADDRESS OF PARAMETER LIST DURING EXIT PROCESSING       * 00109001
+*       R9     ADDRESS OF XMTEXIT WORK AREA                           * 00110001
+*       RA     ADDRESS OF COMMON ADDRESS TABLE (CAT)                  * 00111001
+*       RB     ADDRESS OF TRANSMITTER TASK CONTROL BLOCK (TCB)        * 00112001
+*       RC     USED FOR VSE/POWER PURPOSES                            * 00113001
+*       RD     NOT USED                                               * 00114001
+*       RE     RETURN ADDRESS TO VSE/POWER                            * 00115001
+*       RF     EXIT BASE REGISTER ESTABLISHED BY VSE/POWER            * 00116001
+*                                                                     * 00117001
+*********************************************************************** 00118001
+         EJECT                                                          00119001
+*        ESTABLISH ADDRESSABILITY OF BASE REGISTER AND VSE/POWER        00120001
+*        CONTROL BLOCKS. DEFINE STORAGE DESCRIPTOR FOR BETTER LOCATING  00121001
+*        THIS EXIT IN STORAGE.                                          00122001
+         SPACE 1                                                        00123001
+XMTEXAMP CSECT                         ESTABL. MAIN CONTROL SECTION     00124001
+         SPACE 1                                                        00125001
+         USING *,RF                    ESTABL. BASE REGISTER            00126001
+         USING PADS,RA                 ESTABL. ADDRESSABILITY OF CAT    00127001
+         USING TCDS,RB                 ESTABL. ADDRESSABILITY OF TCB    00128001
+         B     TEXSTART                BRANCH OVER STORAGE DESCRIPTOR   00129001
+         SPACE                                                          00130001
+         DC    CL16'TRANSMITTER EXIT'  DEFINE STORAGE DESCRIPTOR        00131001
+         SPACE 2                                                        00132001
+*        SINCE THIS EXAMPLE USES VSE/POWER MACRO IPW$WTO TO WRITE       00133001
+*        MESSAGES TO THE OPERATOR CONSOLE AND THE CONTENTS OF REGISTERS 00134001
+*        R0,R1,R2,R3 ARE DESTROYED BY THIS MACRO, THE ADDRESS OF THE    00135001
+*        PARAMETER LIST IS SAVED INTO REGISTER 8                        00136001
+         SPACE 1                                                        00137001
+TEXSTART DS    0H                      START OF ROUTINE                 00138001
+         LR    R8,R1                   SAVE ADDR. OF PARAMETER LIST     00139001
+         USING TEXDS,R8                ADDRESS PARAMETER LIST           00140001
+         SPACE 2                                                        00141001
+*        WHENEVER A WORK AREA IS USED, THE LENGTH OF THIS AREA MUST BE  00141101
+*        VERIFIED EACH TIME THE EXIT GAINS CONTROL, BECAUSE             00141201
+*        - THE EXIT MIGHT HAVE BEEN LOADED BY OPERATOR WITH A WRONG     00141301
+*          LENGTH OF ITS WORK AREA                                      00141401
+*        - A NEW VERSION OF THE EXIT MIGHT HAVE BEEN LOADED AND THE     00141501
+*          PREVIOUSLY DEFINED WORK AREA IS STILL USED UNTIL THE NEXT    00141601
+*          QUEUE ENTRY BOUNDARY IS REACHED.                             00141701
+         SPACE 2                                                        00141801
+*        SINCE A WORK AREA IS REQUIRED BY THIS ROUTINE, VERIFY IF ONE   00141901
+*        IS SPECIFIED. IF NOT, THE TRANSMISSION IS STOPPED.             00142001
+         SPACE 1                                                        00143001
+         ICM   R9,15,TEXWA             WORK AREA SPECIFIED ?            00144001
+         BZ    TEXMS1                  ..NO, ISSUE MESSAGE AND          00145001
+*                                      FLUSH TRANSMISSION               00146001
+         SPACE 2                                                        00147001
+*        THE WORK AREA EXISTS AND CAN NOW BE ADDRESSED. TEST IF         00148001
+*        THE WORK AREA IS LARGE ENOUGH. IF NOT, THE TRANSMISSION        00149001
+*        IS STOPPED.                                                    00150001
+         SPACE 1                                                        00151001
+         USING WADSECT,R9              MAKE WORK AREA ADDRESSABLE       00152001
+         L     R2,WALNGTH              GET SPECIFIED WORK AREA SIZE     00153001
+         LA    R3,WALEN                GET REQU. SIZE OF WORK AREA      00154001
+         CR    R2,R3                   WORK AREA TOO SHORT ?            00155001
+         BL    TEXMS2                  ..YES, GO TO ISSUE MESSAGE       00156001
+         SPACE 2                                                        00157001
+*        OUTPUT DATA MUST NOT LEAVE LOCAL NODE X AND THE TRANSMISSION   00158001
+*        OF THE QUEUE ENTRY IS STOPPED BY SETTING RETURN CODE           00159001
+*        'FLUSH HOLD'                                                   00160001
+         SPACE 1                                                        00161001
+TEX050   DS    0H                                                       00162001
+         CLI   WAFLG3,X'00'            ENTERED FOR THE FIRST TIME ?     00163001
+         BNE   TEX100                  ..NO, BYPASS JOB TEST            00164001
+         MVI   WAFLG3,X'01'            SET FIRST TIME BYTE              00165001
+         TM    TEXOT,TEOJOB            JOB TYPE DATA STREAM ?           00166001
+         BO    TEX100                  ..YES, GO AHEAD                  00167001
+         B     TEXMS4                  GO TO ISSUE MESSAGE              00168001
+         SPACE 2                                                        00169001
+*        PROCESS JOB TYPE DATA STREAM. USE THE EQUATES                  00170001
+*        OF THE PARAMETER LIST. DECIDE WHETHER A NETWORK CONTROL        00171001
+*        RECORD OR A JOB DATA RECORD IS PASSED TO THIS EXIT             00172001
+         SPACE 1                                                        00173001
+TEX100   DS    0H                                                       00174001
+         TM    TEXRT,TERJHR            JOB HEADER RECORD ?              00175001
+         BO    TEXJHR                  ..YES, BRANCH TO HANDLE IT       00176001
+         TM    TEXRT,TERJTR            JOB TRAILER RECORD ?             00177001
+         BO    TEXJTR                  ..YES, BRANCH TO HANDLE IT       00178001
+         TM    TEXRT,TERDSHR           DATA SET HEADER RECORD ?         00179001
+         BO    TEXDSHR                 ..YES, BRANCH TO HANDLE IT       00180001
+         SPACE 1                                                        00181001
+         B     TEXDATA                 PROCESS JOB DATA RECORD          00182001
+         SPACE 3                                                        00183001
+*********************************************************************** 00184001
+*        PROCESS JOB HEADER RECORD (JHR)                              * 00185001
+*********************************************************************** 00186001
+         SPACE 1                                                        00187001
+TEXJHR   DS    0H                                                       00188001
+         SPACE 2                                                        00189001
+*        SINCE IT IS NECESSARY TO IDENTIFY THE MESSAGES WRITTEN TO THE  00190001
+*        OPERATOR CONSOLE, THE MESSAGE PREFIX IS SET UP WITH            00191001
+*        THE TASK ID, THE NAME AND THE FINAL DESTINATION OF THE         00192001
+*        CURRENTLY TRANSMITTED JOB. THE INFORMATION IS RETRIEVED FROM   00193001
+*        THE GENERAL SECTION OF THE JHR WHICH IS THE FIRST SECTION      00194001
+         SPACE 1                                                        00195001
+         MVC   WAMES(MESL+1),MES       MOVE MESSAGE INTO WORK AREA      00196001
+         MVC   WAMTID,TCTI             INSERT TASK ID INTO WORK AREA    00197001
+         L     R7,TEXRV                LOAD JHR ADDR. INTO R7           00198001
+         USING NJHDSECT,R7             ADDRESS JHR                      00199001
+         MVC   WAMQEN,NJHGJNAM         GET NAME OF QUEUE ENTRY          00200001
+         MVC   WAMEX,NJHGXEQN          GET EXEC. NODE NAME              00201001
+         MVC   WAEXND,WAMEX            COPY EXECUTION NODE NAME         00202001
+         CLC   WAEXND,NODEB            JOB FOR NODE B ?                 00203001
+         BNE   TEXPRC                  ..NO, PROCESS JOB DATA           00204001
+         SPACE 2                                                        00205001
+*        SET UP REGISTER 1 WITH THE ACTUAL SECTION ADDRESS OF THE JHR   00206001
+*        AND LET REGISTER 0 POINT TO THE END OF THE JHR                 00207001
+         SPACE 1                                                        00208001
+         LR    R0,R7                   COPY ADDRESS OF JHR              00209001
+         AH    R0,NJHLEN               POINT BEHIND JHR                 00210001
+         LA    R1,NJHG                 GET FIRST SECTION OF JHR         00211001
+         DROP  R7                      RELEASE JHR ADDRESSABILITY       00212001
+         SPACE 2                                                        00213001
+*        VERIFY WHETHER A USER SECTION IS ALREADY APPENDED TO           00214001
+*        THE JHR AND IDENTIFY DIFFERENT KINDS OF JHR SECTIONS.          00215001
+*        SINCE THE VARIOUS SECTIONS OF THE JHR CAN OCCUR IN AN          00216001
+*        ARBITRARY SEQUENCE, EXCEPT FOR THE GENERAL SECTION             00217001
+*        WHICH IS THE FIRST, THE JOB HEADER RECORD IS                   00218001
+*        EXAMINED FROM SECTION TO SECTION.                              00219001
+*        REGISTER 1 CONTAINS ADDRESS OF NEXT JHR SECTION AND            00220001
+*        REGISTER 0 POINTS BEHIND THE END OF THE JHR                    00221001
+         SPACE 1                                                        00222001
+JHRLOOP  DS    0H                       LOOP THROUGH JHR SECTIONS       00223001
+         CR    R1,R0                    END OF JHR REACHED ?            00224001
+         BNL   JHREND                   ..YES, LEAVE LOOP               00225001
+         SPACE 2                                                        00226001
+*        DETERMINE KIND OF JHR SECTION USING EQUATES OF IPW$DNR         00227001
+         SPACE 1                                                        00228001
+         CLI   NJHGTYPE-NJHG(R1),NTYPPOWR POWER SECTION ?               00229001
+         BE    PRCPW                      ..YES, BRANCH AND PROCESS IT  00230001
+         TM    NJHGTYPE-NJHG(R1),NTYPUSER USER SECTION ?                00231001
+         BO    PRCUS                      ..YES, BRANCH AND PROCESS IT  00232001
+         B     CONT                       OTHERWISE PREPARE LOOP        00233001
+*                                         CONTINUATION                  00234001
+         SPACE 2                                                        00235001
+PRCUS    DS    0H                       PROCESS USER SECTION            00236001
+         MVI   WAFLG2,X'01'             INDICATE USER SECTION FOUND     00237001
+         B     CONT                     PREPARE LOOP CONTINUATION       00238001
+         SPACE 2                                                        00239001
+PRCPW    DS    0H                       PROCESS VSE/POWER SECTION       00240001
+         LA    R2,NJHPDISP-NJHP(R1)     GET ADDRESS OF JOB DISPOS.      00241001
+         ST    R2,WAPWRPT               SAVE ADDRESS OF JOB DISP.       00242001
+         L     R3,TEXRV                 GET JHR ADDRESS                 00243001
+         SR    R2,R3                    COMPUTE OFFSET OF JOB DISP.     00244001
+         ST    R2,WAPWROF               SAVE OFFSET OF JOB DISP.        00245001
+         SPACE 2                                                        00246001
+CONT     DS    0H                       PREPARE LOOP CONTINUATION       00247001
+         AH    R1,NJHGLEN-NJHG(R1)      GET NEXT SECTION ADDRESS        00248001
+         B     JHRLOOP                  CONTINUE LOOP                   00249001
+         SPACE 2                                                        00250001
+JHREND   DS    0H                                                       00251001
+         CLI   WAFLG2,X'01'             USER SECTION ALREADY PRESENT?   00252001
+         BE    JHRUPD                   ..YES, BRANCH AND UPDATE JHR    00253001
+         SPACE 2                                                        00254001
+*        SINCE A USER SECTION DID NOT APPEAR AND DESTINATION            00255001
+*        ADDRESS IS NODE B, A USER SECTION WILL BE APPENDED AT THE      00256001
+*        END OF THE JHR. FIRST, VERIFY WHETHER THE WORK AREA IS         00257001
+*        LARGE ENOUGH TO CONTAIN THE EXTENDED JHR.                      00258001
+         SPACE 1                                                        00259001
+         L     R2,TEXRL                 GET LENGTH OF JHR               00260001
+         LA    R3,NJHULL                GET LENGTH OF USER SECTION      00261001
+         AR    R2,R3                    COMPUTE NEW JHR LENGTH          00262001
+         ST    R2,WAJHRL                SAVE NEW LENGTH OF JHR          00263001
+         LA    R3,WAJHRLEN              GET LENGTH OF JHR W.A.          00264001
+         CR    R2,R3                    ENOUGH SPACE IN W.A. ?          00265001
+         BH    TEXMS3                   ..NO, BRANCH TO FLUSH           00266001
+         SPACE 2                                                        00267001
+*        SINCE THE LENGTH OF THE JHR WILL BE ALTERED, THE OLD           00268001
+*        JHR HAS TO BE COPIED INTO THE WORK AREA                        00269001
+         SPACE 1                                                        00270001
+         L     R2,TEXRV                 GET FROM ADDRESS OF JHR         00271001
+         L     R3,TEXRL                 GET FROM LENGTH OF JHR          00272001
+         LA    R4,WANJHR                GET TO ADDRESS OF WORK AREA     00273001
+         LR    R5,R3                    COPY LENGTH OF JHR              00274001
+         MVCL  R4,R2                    COPY JHR INTO WORK AREA         00275001
+         SPACE 2                                                        00276001
+*        APPEND USER SECTION TO JHR IN WORK AREA. RESPECT THAT R4       00277001
+*        POINTS TO FIRST STORAGE LOCATION JUST BEHIND JHR DUE TO        00278001
+*        THE PRECEDING MVCL INSTRUCTION                                 00279001
+         SPACE 1                                                        00280001
+         LA    R2,NJHULN                GET ADDRESS OF USER SECTION     00281001
+         LA    R3,NJHULL                GET LENGTH OF USER SECTION      00282001
+         LR    R5,R3                    COPY LENGTH OF USER SECTION     00283001
+         MVCL  R4,R2                    MOVE USER SECTION INTO W.A.     00284001
+         SPACE 2                                                        00285001
+*        UPDATE LENGTH OF JHR WITHIN THE COPY AND SET VSE/POWER         00286001
+*        JOB DISPOSITION TO 'L'                                         00287001
+         SPACE 1                                                        00288001
+         LA    R3,WANJHR                GET ADDRESS OF WORK AREA        00289001
+         L     R2,WAPWROF               GET OFFSET OF JOB DISPOS.       00290001
+         AR    R3,R2                    COMPUTE ADDRESS OF JOB          00291001
+*                                       DISPOSITION FIELD IN WORK AREA  00292001
+         MVI   0(R3),C'L'               SET VSE/POWER JOB DISP. TO 'L'  00293001
+         L     R2,WAJHRL                GET NEW LENGTH OF JHR           00294001
+         STH   R2,WANJHR                SET NEW LENGTH OF JHR           00295001
+         SPACE 2                                                        00296001
+*        INDICATE THAT AT RECEIPT OF THE NEXT RECORD, A RECORD          00297001
+*        MUST BE INSERTED.                                              00298001
+*        UPDATE PARAMETER LIST; SINCE LENGTH AND ADDRESS OF THE         00299001
+*        JHR WERE ALTERED, SET UP RETURN CODE 'MODIFY'                  00300001
+         SPACE 1                                                        00301001
+         MVI   WAFLG,X'01'              INDICATE: RECORD TO INSERT      00302001
+         LA    R2,WANJHR                GET WORK AREA ADDRESS           00303001
+         ST    R2,TEXRV                 SAVE INTO PARAMETER LIST        00304001
+         L     R3,WAJHRL                GET LENGTH OF NEW JHR           00305001
+         ST    R3,TEXRL                 SAVE INTO PARAMETER LIST        00306001
+         MVI   TEXRC,TERMOD             SET RETURN CODE: MODIFY         00307001
+         B     TEXEND                   GO TO END OF ROUTINE            00308001
+         SPACE 2                                                        00309001
+*        A USER SECTION IS ALREADY CONTAINED IN THE JHR. THE            00310001
+*        VSE/POWER JOB DISPOSITION IS SET TO 'L' WITHIN THE             00311001
+*        VSE/POWER SECTION OF THE JOB HEADER RECORD                     00312001
+         SPACE 1                                                        00313001
+JHRUPD   DS    0H                       UPDATE TOTAL LENGTH OF JHR      00314001
+         L     R2,WAPWRPT               GET ADDRESS OF JOB DISP.        00315001
+         MVI   0(R2),C'L'               SET VSE/POWER JOB DISP. TO 'L'  00316001
+         SPACE 2                                                        00317001
+*        SINCE LENGTH OR ADDRESS OF THE JHR WAS NOT CHANGED             00318001
+*        NORMAL PROCESSING IS INDICATED IN THE PARAMETER LIST           00319001
+         SPACE 1                                                        00320001
+         B     TEXPRC                   GO TO NORMAL PROCESSING         00321001
+         SPACE 3                                                        00322001
+*********************************************************************** 00323001
+*        PROCESS DATA SET HEADER RECORD (DSHR)                        * 00324001
+*********************************************************************** 00325001
+         SPACE 1                                                        00326001
+TEXDSHR  DS    0H                                                       00327001
+         SPACE 2                                                        00328001
+*        SINCE A DSHR MAY APPEAR AFTER A JHR, DETERMINE                 00329001
+*        IF THE PRECEDING JHR HAD BEEN MODIFIED AND IF A COMMENT        00330001
+*        RECORD HAD BEEN INSERTED ALREADY                               00331001
+         SPACE 1                                                        00332001
+         CLI   WAFLG,X'00'             NOTHING ALTERED IN JHR OR        00333001
+*                                      RECORD ALREADY INSERTED ?        00334001
+         BE    TEXPRC                  ..YES, PROCESS DSHR              00335001
+         BAL   R5,INSUB                BRANCH TO INSERTION ROUTINE      00336001
+         B     TEXEND                  GO TO END OF ROUTINE             00337001
+         SPACE 3                                                        00338001
+*********************************************************************** 00339001
+*        PROCESS JOB TRAILER RECORD                                   * 00340001
+*********************************************************************** 00341001
+         SPACE 1                                                        00342001
+TEXJTR   DS    0H                                                       00343001
+         SPACE 2                                                        00344001
+*        INSERT YOUR CODE IF YOU WANT TO DO SOMETHING                   00345001
+*        WITH A JOB TRAILER RECORD                                      00346001
+         SPACE 1                                                        00347001
+         B     TEXPRC                  PROCESS RECORD                   00348001
+         SPACE 3                                                        00349001
+*********************************************************************** 00350001
+*        PROCESS JOB DATA RECORD                                      * 00351001
+*********************************************************************** 00352001
+         SPACE 1                                                        00353001
+TEXDATA  DS    0H                                                       00354001
+         SPACE 2                                                        00355001
+*        SINCE A JOB RECORD NORMALLY APPEARS AFTER A JHR, DETERMINE     00356001
+*        IF THE PRECEDING JHR HAD BEEN MODIFIED AND A COMMENT RECORD    00357001
+*        HAD BEEN INSERTED ALREADY                                      00358001
+         SPACE 1                                                        00359001
+         CLI   WAFLG,X'00'             NOTHING ALTERED IN JHR OR        00360001
+*                                      RECORD ALREADY INSERTED ?        00361001
+         BE    TEXPRC                  ..YES, PROCESS DATA RECORD       00362001
+         BAL   R5,INSUB                BRANCH TO INSERTION ROUTINE      00363001
+         B     TEXEND                  GO TO END OF ROUTINE             00364001
+         SPACE 2                                                        00365001
+*********************************************************************** 00366001
+*        PROCESS CURRENT RECORD                                       * 00367001
+*********************************************************************** 00368001
+         SPACE 1                                                        00369001
+TEXPRC   DS    0H                                                       00370001
+         MVI   TEXRC,TEROK             SET RETURN CODE: PROCESS         00371001
+         B     TEXEND                  GO TO END OF ROUTINE             00372001
+         SPACE 2                                                        00373001
+*********************************************************************** 00374001
+*        ISSUE MESSAGE TO INDICATE WORK AREA MISSING. TRANSMISSION    * 00375001
+*        OF THE CURRENTLY PROCESSED QUEUE ENTRY IS STOPPED.           * 00376001
+*********************************************************************** 00377001
+         SPACE 1                                                        00378001
+TEXMS1   DS    0H                                                       00379001
+         SPACE 1                                                        00380001
+         LA    R7,TXMSG4               GET ADDRESS OF TEXMSG4           00381001
+         BAL   R6,SUBWTO               ISSUE TEXMSG4                    00382001
+         SPACE 2                                                        00383001
+         LA    R7,TXMSG2               GET ADDRESS OF TEXMSG2           00384001
+         BAL   R6,SUBWTO               ISSUE TEXMSG2                    00385001
+         SPACE 2                                                        00386001
+         LA    R7,TXMSG3               GET ADDRESS OF TEXMSG3           00387001
+         BAL   R6,SUBWTO               ISSUE TEXMSG3                    00388001
+         SPACE 1                                                        00389001
+         MVI   TEXRC,TERFLSH           SET RETURN CODE: FLUSH HOLD      00390001
+         B     TEXEND                  GO TO END OF ROUTINE             00391001
+         SPACE 2                                                        00392001
+*********************************************************************** 00393001
+*        ISSUE MESSAGE TO INDICATE WRONG SIZE OF WORK AREA.           * 00394001
+*        TRANSMISSION OF THE CURRENTLY PROCESSED QUEUE ENTRY IS       * 00395001
+*        STOPPED.                                                     * 00396001
+*********************************************************************** 00397001
+         SPACE 1                                                        00398001
+TEXMS2   DS    0H                                                       00399001
+         SPACE 1                                                        00400001
+         LA    R7,TXMSG1               GET ADDRESS OF TEXMSG1           00401001
+         BAL   R6,SUBWTO               ISSUE TEXMSG1                    00402001
+         SPACE 2                                                        00403001
+         LA    R7,TXMSG2               GET ADDRESS OF TEXMSG2           00404001
+         BAL   R6,SUBWTO               ISSUE TEXMSG2                    00405001
+         SPACE 2                                                        00406001
+         LA    R7,TXMSG3               GET ADDRESS OF TEXMSG3           00407001
+         BAL   R6,SUBWTO               ISSUE TEXMSG3                    00408001
+         SPACE 1                                                        00409001
+         MVI   TEXRC,TERFLSH           SET RETURN CODE: FLUSH HOLD      00410001
+         B     TEXEND                  GO TO END OF ROUTINE             00411001
+         SPACE 2                                                        00412001
+*********************************************************************** 00413001
+*        A JHR APPEARED BUT THE WORK AREA IS NOT LARGE ENOUGH TO      * 00414001
+*        CONTAIN A COPY OF THE EXTENDED JHR.                          * 00415001
+*        THE OPERATOR IS INFORMED AND THE TRANSMISSION OF THE         * 00416001
+*        CURRENTLY PROCESSED QUEUE ENTRY IS STOPPED.                  * 00417001
+*        THE DSECT OF THE WORK AREA MUST BE EXTENDED TO CONTAIN THE   * 00418001
+*        DATA OF THE EXTENDED JOB HEADER RECORD.                      * 00419001
+*        THE EXIT MUST BE ASSEMBLED ANEW AND LOADED AGAIN WITH THE    * 00420001
+*        APPROPRIATE WORK AREA SIZE                                   * 00421001
+*********************************************************************** 00422001
+         SPACE 1                                                        00423001
+TEXMS3   DS    0H                                                       00424001
+         MVC   WAMFIELD,TEXMSGA        MOVE MESS. INTO MESSAGE FIELD    00425001
+         L     R1,WAJHRL               GET LENGTH OF NEW JHR            00426001
+         LA    R2,WALN                 GET LENGTH OF WORK AREA IN       00427001
+*                                      FRONT OF JHR SAVE AREA           00428001
+         AR    R1,R2                   COMPUTE REQUIRED W.A. LENGTH     00429001
+         CVD   R1,WAOUTF               CONVERT SIZE TO PACKED DECIMAL   00430001
+         UNPK  WAMFIELD+24(5),WAOUTF   MAKE IT PRINTABLE                00431001
+         OI    WAMFIELD+28,X'F0'       AND REMOVE SIGN                  00432001
+         MVI   TEXRC,TERFLSH           SET RETURN CODE: FLUSH HOLD      00433001
+         SPACE 1                                                        00434001
+         LA    R7,WAMES                GET ADDRESS OF UPDATED TEXMSGA   00435001
+         BAL   R6,SUBWTO               ISSUE TEXMSGA                    00436001
+         SPACE 2                                                        00437001
+         B     TEXEND                  GO TO END OF ROUTINE             00438001
+         SPACE 2                                                        00439001
+*********************************************************************** 00440001
+*        TRANSMISSION OF OUTPUT DATA IS NOT ALLOWED. A MESSAGE IS     * 00441001
+*        WRITTEN TO THE OPERATOR CONSOLE AND THE TRANSMISSION OF      * 00442001
+*        THE CURRENTLY PROCESSED QUEUE ENTRY IS STOPPED               * 00443001
+*********************************************************************** 00444001
+         SPACE 1                                                        00445001
+TEXMS4   DS    0H                                                       00446001
+         SPACE 1                                                        00447001
+         LA    R7,TXMSG7               GET ADDRESS OF TEXMSG7           00448001
+         BAL   R6,SUBWTO               ISSUE TEXMSG7                    00449001
+         SPACE 2                                                        00450001
+         MVI   TEXRC,TERFLSH           SET RETURN CODE: FLUSH HOLD      00451001
+         B     TEXEND                  GO TO END OF ROUTINE             00452001
+         SPACE 2                                                        00453001
+**********************************************************************  00454001
+*        SUBROUTINE FOR INSERTION OF DATA RECORDS. THIS ROUTINE IS   *  00455001
+*        CALLED WHEN A DATA RECORD IS TO BE INSERTED AFTER A         *  00456001
+*        PRECEDING JOB HEADER RECORD. REGISTER 5 POINTS BACK TO      *  00457001
+*        THE CALLING ROUTINE.                                        *  00458001
+**********************************************************************  00459001
+         SPACE 1                                                        00460001
+INSUB    DS    0H                                                       00461001
+         SPACE 2                                                        00462001
+*        A JOB DATA RECORD IS TO BE INSERTED. GET ADDRESS AND LENGTH    00463001
+*        OF THIS RECORD AND UPDATE PARAMETER LIST                       00464001
+         SPACE 1                                                        00465001
+         LA    R2,TEXIREC              GET ADDRESS OF INSERT. RECORD    00466001
+         ST    R2,TEXRV                SET RECORD ADDRESS               00467001
+         MVC   TEXRL,TEXIRECL          SET RECORD LENGTH                00468001
+         MVI   TEXCC,X'00'             SET CARRIAGE CONTROL             00469001
+         MVI   TEXRT,TERNCD            SET RECORD TYPE                  00470001
+         MVI   TEXDT,TEDJRNC           SET DATA RECORD TYPE             00471001
+         MVI   TEXRC,TERINS            SET RETURN CODE: INSERT          00472001
+         MVI   WAFLG,X'00'             INDICATE: INSERTION DONE         00473001
+         SPACE 2                                                        00474001
+*        PREPARATION FOR MESSAGE TEXMSG9                                00475001
+         SPACE 1                                                        00476001
+         MVC   WAMFIELD,TEXMSG9        INSERT MESSAGE                   00477001
+         SPACE 1                                                        00478001
+         LA    R7,WAMES                GET ADDRESS OF UPDATED TEXMSG9   00479001
+         BAL   R6,SUBWTO               ISSUE TEXMSG9                    00480001
+         SPACE 1                                                        00481001
+         BR    R5                      RETURN TO CALLER                 00482001
+         SPACE 2                                                        00483001
+*********************************************************************** 00484001
+*        LEAVE TRANSMITTER EXIT                                       * 00485001
+*********************************************************************** 00486001
+         SPACE 2                                                        00487001
+TEXEND   DS    0H                                                       00488001
+         BR    RE                      RETURN TO CALLER                 00489001
+         SPACE                                                          00490001
+         EJECT                                                          00491001
+*********************************************************************** 00492001
+*        SUBROUTINE TO ISSUE MESSAGE ON OPERATOR CONSOLE              * 00493001
+*                                                                     * 00494001
+* USAGE OF VSE/POWER MACRO IPW$WTO:                                   * 00495001
+*       THIS MACRO, TOGETHER WITH SOME INDICATIONS SET IN THE TCB,    * 00496001
+*       CAN BE USED TO DISPLAY A MESSAGE ON THE CENTRAL OPERATOR      * 00497001
+*       CONSOLE.                                                      * 00498001
+*       THE USAGE OF THIS MACRO DESTROYS THE REGISTER R0 - R3.        * 00499001
+*       THE MESSAGE TO BE DISPLAYED SHOULD CONTAIN ALPHAMERIC         * 00500001
+*       CHARACTERS ONLY.                                              * 00501001
+*                                                                     * 00502001
+*********************************************************************** 00503001
+         SPACE 2                                                        00504001
+SUBWTO   DS    0H                                                       00505001
+         STCM  R7,7,TCMW+1             PASS MESSAGE ADDRESS             00506001
+         MVI   TCMW,X'00'              CLEAR OPTION BYTE                00507001
+         OI    TCMW,TCPCOP             FORCE MESSAGE TO CONSOLE         00508001
+         OI    TCMW,TCDNMM             SUPPRESS MESSAGE MODIFICATION    00509001
+         SPACE                                                          00510001
+         IPW$WTO TCMW                  ISSUE MESSAGE                    00511001
+         SPACE                                                          00512001
+         MVI   TCMW,X'00'              CLEAR OPTION BYTE                00513001
+         BR    R6                      RETURN TO CALLER                 00514001
+         SPACE 5                                                        00515001
+         DROP  R8,R9,RA,RB             RELEASE ADDRESSABILITY           00516001
+*                                      OF PARAMETER LIST, WORK AREA,    00517001
+*                                      CAT AND TCB                      00518001
+         EJECT                                                          00519001
+**********************************************************************  00520001
+*                                                                    *  00521001
+*                D A T A  D E F I N I T I O N S                      *  00522001
+*                                                                    *  00523001
+**********************************************************************  00524001
+         SPACE 2                                                        00525001
+**********************************************************************  00526001
+*                                                                    *  00527001
+*                       M E S S A G E S                              *  00528001
+*                                                                    *  00529001
+*  GENERAL FORM:                                                     *  00530001
+*                                                                    *  00531001
+*  TASK-ID|TO-NODE|ENTRYNAME:  ....................................  *  00532001
+*  |<--4--1---8---1----8----3>|                                   |  *  00533001
+*  |<----------25------------>|<----------------40--------------->|  *  00534001
+*  |<----MESSAGE PREFIX------>|<--------------MESSAGE------------>|  *  00535001
+*                                                                    *  00536001
+**********************************************************************  00537001
+         SPACE 1                                                        00538001
+*        LAYOUT OF MESSAGE PREFIX                                       00539001
+         SPACE 1                                                        00540001
+MES      DC    AL1(MESL)              LENGTH OF MESSAGE                 00541001
+MTID     DC    CL4' '                 TASK ID                           00542001
+         DC    C'|'                   SEPARATOR                         00543001
+         DC    CL8' '                 EXECUTION NODE ID                 00544001
+         DC    C'|'                   SEPARATOR                         00545001
+         DC    CL8' '                 QUEUE ENTRY NAME                  00546001
+         DC    CL3':  '               SEPARATOR                         00547001
+         DC    CL40' '                MESSAGE FIELD                     00548001
+MESL     EQU   *-MTID                 LENGTH OF MESSAGE DATA            00549001
+         DS 0F                                                          00550001
+TXMSG1   DC AL1(TXMSGL1-TXMSG1-1)                                       00551001
+TEXMSG1  DC CL40'XMTEXIT: WORK AREA SIZE NOT CORRECT !'                 00552001
+TXMSGL1  EQU *                                                          00553001
+TXMSG2   DC AL1(TXMSGL2-TXMSG2-1)                                       00554001
+TEXMSG2  DC CL40'XMTEXIT: 670 BYTES OF WORK AREA NEEDED'                00555001
+TXMSGL2  EQU *                                                          00556001
+TXMSG3   DC AL1(TXMSGL3-TXMSG3-1)                                       00557001
+TEXMSG3  DC CL40'XMTEXIT: LOAD XMTEXIT AGAIN USING PLOAD'               00558001
+TXMSGL3  EQU *                                                          00559001
+TXMSG4   DC AL1(TXMSGL4-TXMSG4-1)                                       00560001
+TEXMSG4  DC CL40'XMTEXIT: WORK AREA NOT SPECIFIED !'                    00561001
+TXMSGL4  EQU *                                                          00562001
+TXMSG7   DC AL1(TXMSGL7-TXMSG7-1)                                       00563001
+TEXMSG7  DC CL40'XMTEXIT: XMISSION OF OUTPUT NOT ALLOWED'               00564001
+TXMSGL7  EQU *                                                          00565001
+TXMSG9   DC AL1(TXMSGL9-TXMSG9-1)                                       00566001
+TEXMSG9  DC CL40'COMMENT RECORD INSERTED AFTER JHR'                     00567001
+TXMSGL9  EQU *                                                          00568001
+TXMSGA   DC AL1(TXMSGLA-TXMSGA-1)                                       00569001
+TEXMSGA  DC CL40'NEW WORK AREA REQUIRED (NNNNN BYTES) !  '              00570001
+TXMSGLA  EQU *                                                          00571001
+         SPACE 2                                                        00572001
+*********************************************************************** 00573001
+*                                                                     * 00574001
+*                     U S E R  S E C T I O N                          * 00575001
+*                    OF THE JOB HEADER RECORD                         * 00576001
+*                                                                     * 00577001
+*********************************************************************** 00578001
+         SPACE 1                                                        00579001
+NJHULN   DC    AL2(NJHULL)            LENGTH OF USER SECTION            00580001
+         DS    0AL2                   USER SECTION FLAG                 00581001
+         DC    AL1(NTYPU)             ID FOR USER SECTION               00582001
+         DC    AL1(NJH$M)             MODIFIER                          00583001
+NTYPU    EQU   B'11000000'            VALUE FOR USERSECTION ID          00584001
+NJH$M    EQU   B'00000000'            VALUE FOR MODIFIER                00585001
+NJHUDATA DC    C'+-----------------------------------------------+'     00586001
+         DC    C'|                                               |'     00587001
+         DC    C'|         >> DEPENDS ON YOUR CHOICE <<          |'     00588001
+         DC    C'|         >> DEPENDS ON YOUR CHOICE <<          |'     00589001
+         DC    C'|                                               |'     00590001
+         DC    C'+-----------------------------------------------+'     00591001
+NJHULL   EQU   *-NJHULN               LENGTH OF USER SECTION            00592001
+         SPACE 2                                                        00593001
+*********************************************************************** 00594001
+*                                                                     * 00595001
+*                  L O C A L  C O N S T A N T S                       * 00596001
+*                                                                     * 00597001
+*********************************************************************** 00598001
+         SPACE 1                                                        00599001
+         DS    0F                                                       00600001
+NODEB    DC    CL8'JEC1'              NAME OF NODE B                    00601001
+TEXIREC  DC    CL80'* >>>> USER SECTION APPENDED TO JOB HEADER <<<<'    00602001
+TEXIRECL DC    A(L'TEXIREC)           LENGTH OF TEXIREC                 00603001
+         SPACE 2                                                        00604001
+         EJECT                                                          00605001
+*********************************************************************** 00606001
+*                                                                     * 00607001
+*                           LAYOUT OF THE                             * 00608001
+*        T R A N S M I T T E R   E X I T  W O R K  A R E A            * 00609001
+*                                                                     * 00610001
+*********************************************************************** 00611001
+         SPACE 1                                                        00612001
+WADSECT  DSECT                        BEGIN OF WORK AREA                00613001
+WALNGTH  DS    F                      LENGTH OF WA                      00614001
+WAJHRL   DS    F                      LENGTH OF EXTENDED WORK AREA      00615001
+WAFLG    DS    X                      RECORD INSERTION INDICATOR        00616001
+WAFLG2   DS    X                      USER SECTION FLAG BYTE            00617001
+WAFLG3   DS    X                      FIRST TIME FLAG BYTE              00618001
+         DS    X                      NOT USED                          00619001
+WAEXND   DS    CL8                    NAME OF EXECUTION NODE            00620001
+         SPACE 2                                                        00621001
+*        FIELDS WHICH CONTAIN THE POINTER AND THE OFFSET OF THE         00622001
+*        JOB DISPOSITION FIELD WITHIN THE VSE/POWER SECTION OF THE JHR  00623001
+         SPACE 1                                                        00624001
+WAPWRPT  DS    F                      POINTER TO VSE/POWER JOB DISP.    00625001
+WAPWROF  DS    F                      OFFSET OF VSE/POWER JOB DISP.     00626001
+         SPACE 2                                                        00627001
+*        LAYOUT OF MESSAGE TO BE ISSUED                                 00628001
+         SPACE 1                                                        00629001
+WAMES    DS    AL1                    LENGTH OF MESSAGE                 00630001
+WAMTID   DS    CL4                    TASK ID                           00631001
+         DS    C                      SEPARATOR                         00632001
+WAMEX    DS    CL8                    EXECUTION NODE ID                 00633001
+         DS    C                      SEPARATOR                         00634001
+WAMQEN   DS    CL8                    QUEUE ENTRY NAME                  00635001
+         DS    CL3                    SEPARATOR                         00636001
+WAMFIELD DS    CL40                   MESSAGE FIELD                     00637001
+WAOUTF   DS    D                      FIELD FOR DATA CONVERSION         00638001
+WALN     EQU   *-WADSECT              LENGTH OF WORK AREA IN FRONT OF  *00639001
+                                      JHR SAVE AREA                     00640001
+         SPACE 2                                                        00641001
+*        THE FOLLOWING SPACE IS USED TO CONTAIN ALL POSSIBLE SECTIONS   00642001
+*        OF THE JOB HEADER RECORD.                                      00643001
+         SPACE 1                                                        00644001
+WANJHR   DS    0F                     BEGIN OF JHR SAVE AREA            00645001
+         DS    4X                     ..SPACE FOR PREFIX SECTION        00646001
+         DS    0F                     ..BEGIN OF JHR SECTIONS           00647001
+         ORG   *+562                  ..SPACE FOR JHR SECTIONS          00648001
+WAJHRLEN EQU   *-WANJHR               LENGTH OF JHR WORK AREA           00649001
+WALEN    EQU   *-WADSECT              LENGTH OF ENTIRE WORK AREA        00650001
+         EJECT                                                          00651001
+*********************************************************************** 00652001
+*                                                                     * 00653001
+*             LAYOUT OF VSE/POWER CONTROL BLOCKS AND                  * 00654001
+*                   NETWORK CONTROL RECORDS                           * 00655001
+*                                                                     * 00656001
+*********************************************************************** 00657001
+         SPACE 2                                                        00658001
+         IPW$DTX                      TRANSMITTER EXIT PARAMETER LIST   00659001
+         SPACE 2                                                        00660001
+         IPW$EQU ,                    REGISTER EQUATES                  00661001
+         SPACE 2                                                        00662001
+         IPW$DPA ,                    VSE/POWER PERMANENT AREA (CAT)    00663001
+         SPACE 2                                                        00664001
+         IPW$DTC NET=YES              VSE/POWER TASK CONTROL BLOCK      00665001
+         SPACE 2                                                        00666001
+         IPW$DQC ,                    VSE/POWER DISK MANAGEMENT BLOCK   00667001
+         SPACE 2                                                        00668001
+         IPW$DQR ,                    LAYOUT OF INTERNAL QUEUE RECORD   00669001
+         SPACE 2                      ADDRESSED BY TCQV OF TCB          00670001
+         IPW$DPN ,                    VSE/POWER PNET MAST.CNTRL.BLOCK   00671001
+         SPACE 2                                                        00672001
+         IPW$DNR JHR=YES,JTR=YES,DHR=YES,OUT=YES NETWORK CONTROL RECS   00673001
+         SPACE 2                                                        00674001
+         IPW$DNC ,                    VSE/POWER NODE CONTROL BLOCK      00675001
+         SPACE 2                                                        00676001
+*        END                      NOT REQ. FOR '.A' COPY BOOK           00677001

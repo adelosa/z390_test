@@ -1,0 +1,145 @@
+         MACRO                                                                  
+&NAME DFHSNT &EXTSEC=,                                                 X        
+               &OPPRTY=0,                                              X        
+               &OPNAME=,                                               X        
+               &OPIDENT=,                                              X        
+               &OPCLASS=,                                              X        
+               &NAMFORM=,                                              X        
+               &PASSWRD=,                                              X        
+               &RSLKEY=,                                               X        
+               &SCTYKEY=(1),                                           X        
+               &TIMEOUT=,                                              X        
+               &TYPE=ENTRY,                                            X        
+               &USERID=,                                               X        
+               &DUMMY=DUMMY                                                     
+         GBLB  &BIMSECI,&BIMSECE                                                
+         LCLC  &CA,&CB,&CC                                                      
+         LCLA  &AA,&AB,&AC                                                      
+         AIF   ('&TYPE' EQ 'INITIAL').INIT                                      
+         AIF   ('&TYPE' EQ 'ENTRY').ENTRY                                       
+         AIF   ('&TYPE' EQ 'FINAL').FINAL                                       
+         MNOTE 12,'INVALID TYPE - MACRO IGNORED'                                
+         MEXIT                                                                  
+.*                                                                              
+.*  BUILD BUILD A HEADER ENTRY OF SOME TYPE                                     
+.*                                                                              
+.INIT    ANOP                                                                   
+         AIF   (&BIMSECI).INITE1                                                
+         AIF   (&BIMSECE).INITE2                                                
+&BIMSECI SETB  1                                                                
+         DC    C'BIMSECURITY '                                                  
+         MEXIT                                                                  
+.INITE1  MNOTE 16,'MORE THAN ONE TYPE=INITIAL ENRY FOUND, TABLE GENERATI        
+               ION IN ERROR'                                                    
+         MEXIT                                                                  
+.INITE2  MNOTE 16,'TYPE=INITIAL CANNOT FOLLOW TYPE=FINAL, TABLE GENERATI        
+               ION IN ERROR'                                                    
+         MEXIT                                                                  
+.*                                                                              
+.*  BUILD SECURITY ENTRIES                                                      
+.*                                                                              
+.ENTRY   ANOP                                                                   
+         AIF   (NOT &BIMSECI).ENTRYE1                                           
+         AIF   (&BIMSECE).ENTRYE6                                (2.1B) 971007M 
+         AIF   (T'&USERID EQ 'O').ENTRYE3                                       
+         DC    AL2(BIM&SYSNDX.X-*)                                              
+         DC    X'00'                                                            
+         DC    X'00'                                                            
+&AA      SETA  K'&PASSWRD                                                       
+&AB      SETA  1                                                                
+         AIF   ('&PASSWRD'(1,1) NE '''').PRELP                                  
+&AA      SETA  &AA-2                                                            
+&AB      SETA  2                                                                
+.PRELP   ANOP                                                                   
+         DC    X'0B0B0B0B0B0B0B0B'                                              
+         ORG   *-8                                                              
+         AIF   (&AA LT 9).LOOP                                                  
+&AA      SETA  8                                                                
+.LOOP    ANOP                                                                   
+&CA      SETC  '&PASSWRD'(&AB,1)                                                
+         DC    AL.4(C'&CA'-(15-((255-C'&CA')/16))*16,(255-C'&CA')/16)           
+&AB      SETA  &AB+1                                                            
+&AA      SETA  &AA-1                                                            
+         AIF   (&AA GT 0).LOOP                                                  
+         ORG   ,                                                                
+         DC    A(0)                                                             
+&CA      SETC  '11111111111111111111111111111111'                               
+&CA      SETC  '&CA.&CA'                                                        
+         AIF   (T'&SCTYKEY(1) EQ 'O').LOOPSDA                                   
+         AIF   ('&SCTYKEY(1)' EQ 'ALL').LOOPSD                                  
+.LOOPSDA ANOP                                                                   
+&CA      SETC  '00000000000000000000000000000000'                               
+&CA      SETC  '&CA.&CA'                                                        
+&AA      SETA  N'&SCTYKEY                                                       
+.LOOPS   ANOP                                                                   
+         AIF   (&AA EQ 0).LOOPSD                                                
+         AIF   (T'&SCTYKEY(&AA) EQ 'O').ENTRYE4                                 
+         AIF   (T'&SCTYKEY(&AA) NE 'N').ENTRYE5                                 
+&AB      SETA  &SCTYKEY(&AA)                                                    
+         AIF   (&AB GT 64).ENTRYE5                                              
+         AIF   (&AB LT 1).ENTRYE5                                               
+&CA      SETC  '&CA'(1,65-&AB-1).'1'.'&CA'(65-&AB,&AB-1)                        
+.LOOPSDN ANOP                                                                   
+&AA      SETA  &AA-1                                                            
+         AGO   .LOOPS                                                           
+.LOOPSD  ANOP                                                                   
+         DC    B'&CA'                                                           
+         DC    XL7'00'                                                          
+         DC    CL3'&OPIDENT '                                                   
+         DC    X'00'                                                            
+&CA      SETC  ' '                                                              
+&AA      SETA  K'&USERID                                                        
+         AIF   (T'&USERID EQ 'O').PRELPA                                        
+&CA      SETC  '&USERID'                                                        
+         AIF   ('&USERID'(1,1) NE '''').PRELPA                                  
+&AA      SETA  &AA-2                                                            
+&CA      SETC  ' '                                                              
+         AIF   (&AA LT 1).PRELPA                                                
+&CA      SETC  '&USERID'(2,&AA)                                                 
+.PRELPA  ANOP                                                                   
+         DC    AL1(&AA)                                                         
+         DC    CL8'&CA '                                                        
+         DC    H'0'                                                             
+&AA      SETA  1                                                                
+&CA      SETC  ' '                                                              
+         AIF   (K'&OPNAME EQ 0).PRELPB                                          
+&AA      SETA  K'&OPNAME                                                        
+&CA      SETC  '&OPNAME'                                                        
+         AIF   ('&OPNAME'(1,1) NE '''').PRELPB                                  
+&AA      SETA  &AA-2                                                            
+&CA      SETC  '&OPNAME'(2,&AA)                                                 
+.PRELPB  ANOP                                                                   
+         DC    AL1(&AA-1)                                                       
+         DC    C'&CA'                                                           
+BIM&SYSNDX.X DS 0F                                                              
+         MEXIT                                                                  
+.ENTRYE1 MNOTE 16,'TYPE=INITIAL MUST PRECEDE TYPE=ENTRY, TABLE GENERATIX        
+               ON IN ERROR'                                                     
+         MEXIT                                                                  
+.ENTRYE2 MNOTE 16,'TYPE=INITIAL CANNOT FOLLOW TYPE=FINAL, TABLE GENERATI        
+               ION IN ERROR'                                                    
+         MEXIT                                                                  
+.ENTRYE3 MNOTE 16,'USERID= IS A REQUIRED OPPERAND, TABLE GENERATION IN X        
+               ERROR'                                                           
+         MEXIT                                                                  
+.ENTRYE4 MNOTE 4,'SCTYKEY PARM &AA OMMITTED, WILL BE IGNORED'                   
+         AGO   .LOOPSDN                                                         
+.ENTRYE5 MNOTE 4,'SCTYKEY=(&SCTYKEY(&AA).) INVALID, WILL BE IGNORED'            
+         AGO   .LOOPSDN                                                         
+.ENTRYE6 MNOTE 16,'TYPE=ENTRY   CANNOT FOLLOW TYPE=FINAL, TABLE GENERATI971007A 
+               ION IN ERROR'                                     (2.1B) 971007A 
+         MEXIT                                                   (2.1B) 971007A 
+.*                                                                              
+.*  FLAG THE END OF THE TABLE                                                   
+.*                                                                              
+.FINAL   ANOP                                                                   
+         AIF   (NOT &BIMSECI).FINALE1                                           
+         AIF   (&BIMSECE).FINALE2                                               
+&BIMSECE SETB  1                                                                
+         DC    F'-1'                                                            
+         MEXIT                                                                  
+.FINALE1 MNOTE 16,'TYPE=INITIAL MUST PRECEDE TYPE=FINAL, TABLE GENERATIX        
+               ON IN ERROR'                                                     
+         MEXIT                                                                  
+.FINALE2 MNOTE 16,'TYPE=FINAL IS DUPLICATED, TABLE GENERATION IN ERROR'         
+         MEND                                                                   

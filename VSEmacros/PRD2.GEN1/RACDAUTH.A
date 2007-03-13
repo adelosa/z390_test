@@ -1,0 +1,202 @@
+* START OF SPECIFICATIONS ********************************************* 00050000
+*                                                                       00100000
+* $MAC(RACDAUTH) COMP(SC1BN) PROD(RACF):                                00150000
+*                                                                       00200000
+* DESCRIPTIVE NAME:                                                     00250000
+*   Directed Authorization Checking Interface                           00300000
+*                                                                       00350000
+*  **PROPRIETARY_STATEMENT********************************************  00387500
+*                                                                    *  00425000
+*                                                                    *  00462500
+*   LICENSED MATERIALS - PROPERTY OF IBM                             *  00500000
+*   THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                      *  00537500
+*   5655-068 (C) COPYRIGHT IBM CORP. 1989, 1993                      *  00575000
+*   SEE COPYRIGHT INSTRUCTIONS                                       *  00612500
+*                                                                    *  00650000
+*   STATUS= HBB5510                                                  *  00687500
+*                                                               @L2C *  00725000
+*  **END_OF_PROPRIETARY_STATEMENT*************************************  00762500
+*                                                                       00800000
+* FUNCTION:                                                             00850000
+*   This macro allows the caller to check a receiver's authorization    00900000
+*   to a sent message.                                                  00950000
+*                                                                       01000000
+* INVOCATION:                                                           01050000
+*   This macro is internal to and must be called by RACROUTE.           01100000
+*   Direct invocations of this macro are not supported.                 01150000
+*                                                                       01200000
+* CHANGE ACTIVITY:                                                      01250000
+*   $L0= MVSB1    RACF/190 880328 PDTGB1: MVS B1 Security          @L0A 01300000
+*   $P1= PGW0002  RACF/190 880428 PDV_Z1: Support for PGW0002      @P2C 01350000
+*   $P2= PGW0010  RACF/190 880504 PDTGB1: Support for PGW0010      @P2A 01400000
+*   $L1= RELID    RACF/192 900904 PDAHW1: Support for RACF 1.9.2   @L1A 01450000
+*   $P3= PJA0029  RACF/192 910524 PDPSB1: Support for PJA0029      @P3A 01475000
+*   $L2= OW04015  RACF/210 930427 PDKAF1: Support for RACF 2.1     @L2A 01500000
+*   $L3= OW10709  RACF/220 940509 PDJMV1: Support for RACF 2.2     @L3A 01525000
+*                                                                       01550000
+* CHANGE DESCRIPTIONS:                                                  01600000
+*   A - 000000-999999 Original code in support of MVS B1 Security  @L0A 01650000
+*   A - MF=M support for MVS B1 Security                           @P1A 01700000
+*   D - Register bounds checking                                   @P2A 01750000
+*   C - Allow RACF release 1.9.2 to be specified                   @L1A 01800000
+*   C - Status to correctly correspond to MVS level                @P3A 01825000
+*   A - Allow RACF release 2.1 to be specified                     @L2A 01850000
+*   A - Allow RACF release 2.2 to be specified                     @L3A 01875000
+*                                                                       01900000
+* END OF SPECIFICATIONS *********************************************** 01950000
+         MACRO                                                          02000000
+&SYMBOL  RACDAUTH &RTOKEN=,&LOG=,&RELEASE=,&MF=S                        02050000
+.******* DEFINE LOCAL SET SYMBOLS                                       02100000
+         LCLA  &BIT0,&BIT1,&OFFSET                                      02150000
+.******* DEFINE GLOBAL SET VARIABLES                                    02200000
+         GBLB  &ICHRAC            Indicates that this macro is being   +02250000
+                                  invoked internally by RACROUTE        02300000
+         GBLC  &ICHL              Sets addressability to the RACROUTE  +02350000
+                                  parameter list                        02400000
+&OFFSET  SETA  12                 Length of RACDAUTH parameter list     02450000
+.*                                                                      02500000
+.******* VALIDATE THAT CALL CAME THROUGH RACROUTE                       02550000
+         AIF   (NOT &ICHRAC).ERR00                                      02600000
+.*                                                                      02650000
+.******* PERFORM PARAMETER DIAGNOSIS                                    02700000
+.*                                                                      02750000
+.******* VALIDATE RELEASE PARAMETER                                     02800000
+.RLVL01  ANOP                                                           02850000
+         AIF   (N'&RELEASE GT 1).ERLVL1 Invalid RELEASE parameter       02900000
+         AIF   ('&RELEASE(1)' NE '1.9' AND                             +02930000
+                '&RELEASE(1)' NE '1.9.2' AND                           +02960000
+                '&RELEASE(1)' NE '2.1'  AND                            +02990000
+                '&RELEASE(1)' NE '2.2').ERLVL1 Unsupported Release @L3C 03020000
+.ERLVL1R ANOP                                                           03050000
+.******* VALIDATE REQUIRED RTOKEN PARAMETER ON STANDARD FORM            03100000
+         AIF   ('&RTOKEN' EQ '' AND '&MF' EQ 'S' ).ERR01                03150000
+.ERTN01  ANOP                                                           03200000
+.******* VALIDATE LOG PARAMETER                                         03250000
+         AIF   ('&LOG' EQ 'ASIS' OR '&LOG' EQ 'NOFAIL'                 +03300000
+                OR '&LOG' EQ '').ERTN02                                 03350000
+         AGO   .ERR02                                                   03400000
+.ERTN02  ANOP                                                           03450000
+.******* VALIDATE MF PARAMETER                                          03500000
+         AIF   ('&MF' NE 'S' AND '&MF' NE 'L' AND '&MF'(1,2) NE        +03550000
+               '(E' AND '&MF'(1,2) NE '(M').ERR03                  @P1C 03600000
+.ERTN03  ANOP                                                           03650000
+.*                                                                      03700000
+.******* REGISTER SPECIFICATION OF ADDR TYPE PARAMETERS NOT ALLOWED     03750000
+.******* WITH LIST FORM                                                 03800000
+.*                                                                      03850000
+         AIF   ('&MF' NE 'L').ERTN04                              3@P1D 03900000
+         AIF   ('&RTOKEN' EQ '').ERTN04                                 03950000
+         AIF   ('&RTOKEN'(1,1) EQ '(').ERR04                            04000000
+.ERTN04  ANOP                                                     9@P2D 04050000
+.*                                                                      04100000
+.******* PRODUCE LIST FORM                                              04150000
+.*                                                                      04200000
+         AIF   ('&MF' NE 'L').RDAU400                                   04250000
+&SYMBOL  DS    0F                                                       04300000
+.RDAU100 ANOP                                                           04350000
+ICH0&SYSNDX EQU *                                                       04400000
+.******* PRODUCE FLAG BYTE WITH LOG PARAMETER                           04450000
+&BIT0    SETA  0                                                        04500000
+&BIT1    SETA  0                                                        04550000
+         AIF   ('&LOG' EQ '').RDAU120                                   04600000
+         AIF   ('&LOG'(1,1) EQ '(').RDAU130                             04650000
+         AIF   ('&LOG' NE 'ASIS').RDAU110                               04700000
+&BIT0    SETA  1                                                        04750000
+         AGO   .RDAU130                                                 04800000
+.RDAU110 ANOP                                                           04850000
+         AIF   ('&LOG' NE 'NOFAIL').RDAU130                             04900000
+&BIT1    SETA  1                                                        04950000
+         AGO   .RDAU130                                                 05000000
+.RDAU120 ANOP                                                           05050000
+&BIT0    SETA  1                                                        05100000
+.RDAU130 ANOP                                                           05150000
+&ICHL    DC    B'&BIT0&BIT1.000000' - LOG Value                         05200000
+.******* RESERVED FIELD - 3 BYTES                                       05250000
+         DC    3X'00'               - Reserved                          05300000
+.******* PRODUCE RTOKEN ADDRESS                                         05350000
+         AIF   ('&RTOKEN' EQ '').RDAU150                                05400000
+         AIF   ('&RTOKEN'(1,1) EQ '(').RDAU150                          05450000
+         DC    A(&RTOKEN)  RTOKEN Address                               05500000
+         AGO   .RDAU160                                                 05550000
+.RDAU150 ANOP                                                           05600000
+         DC    A(0)                 - RTOKEN Address                    05650000
+.RDAU160 ANOP                                                           05700000
+.******* LIST FORM COMPLETE                                             05750000
+         AGO   .RMEXIT                                                  05800000
+.*                                                                      05850000
+.******* TEST FOR STANDARD FORM OR EXECUTE FORM OF MACRO                05900000
+.*                                                                      05950000
+.RDAU400 ANOP                                                           06000000
+         AIF   ('&MF(1)' NE 'S').RDAU600                                06050000
+.*                                                                      06100000
+.******* STANDARD FORM REQUESTED                                        06150000
+.*                                                                      06200000
+&SYMBOL  DS    0H                                                       06250000
+.******* PRODUCE INSTRUCTIONS TO MODIFY IN-LINE LIST FORM               06300000
+.******* WITH REGISTER ADDRS                                            06350000
+         AIF   ('&LOG' EQ '').RDAU410                                   06400000
+         AIF   ('&LOG'(1,1) NE '(').RDAU410                             06450000
+         STC   &LOG(1),ICH0&SYSNDX+0   Store LOG value                  06500000
+.RDAU410 ANOP                                                           06550000
+         AIF   ('&RTOKEN' EQ '').RDAU420                                06600000
+         AIF   ('&RTOKEN'(1,1) NE '(').RDAU420                          06650000
+         ST    &RTOKEN(1),ICH0&SYSNDX+4   Store RTOKEN address          06700000
+.RDAU420 ANOP                                                           06750000
+.******* LIST FORM MODIFICATION COMPLETE - PRODUCE                      06800000
+.******* LIST FORM WITH BAL AROUND                                      06850000
+         CNOP  0,4                                                      06900000
+         BAL   1,*+&OFFSET           Point Register 1 to parameter list 06950000
+         AGO   .RDAU100       GO TO PRODUCE LIST                        07000000
+.*                                                                      07050000
+.RMEXIT  ANOP                                                           07100000
+         MEXIT                                                          07150000
+.*                                                                      07200000
+.******* EXECUTE FORM REQUESTED                                         07250000
+.*                                                                      07300000
+.RDAU600 ANOP                                                           07350000
+.******* PICK UP THE ADDRESS OF THE DIRAUTH PARAMETER LIST FROM THE     07400000
+.******* RACROUTE PARAMETER LIST                                        07450000
+         A     1,36(1)         Point Register 1 to RACDAUTH list        07500000
+.******* HANDLE LOG PARAMETER                                           07550000
+         AIF   ('&LOG' EQ '').RDAU620                              @P1C 07600000
+         AIF   ('&LOG' NE 'ASIS').RDAU610                               07650000
+         MVI   0(1),X'80'    - Set for ASIS logging                     07700000
+         AGO   .RDAU620                                            @P1C 07750000
+.RDAU610 ANOP                                                           07800000
+         AIF   ('&LOG' NE 'NOFAIL').RDAU620                             07850000
+         MVI   0(1),X'40'    - Set for NOFAIL logging             3@P1D 07900000
+.RDAU620 ANOP                                                           07950000
+.******* HANDLE RTOKEN PARAMETER                                        08000000
+         AIF   ('&RTOKEN' EQ '').RDAU650                                08050000
+         AIF   ('&RTOKEN'(1,1) NE '(').RDAU640                          08100000
+         ST    &RTOKEN,4(1)  - Store RTOKEN address                     08150000
+         AGO   .RDAU650                                                 08200000
+.RDAU640 ANOP                                                           08250000
+         LA    0,&RTOKEN     - Copy RTOKEN address into parameter list  08300000
+         ST    0,4(1)                                                   08350000
+.RDAU650 ANOP                                                           08400000
+.******* MODIFICATION COMPLETE                                          08450000
+         AGO   .RMEXIT                                                  08500000
+.*                                                                      08550000
+.******* DIAGNOSTICS                                                    08600000
+.*                                                                      08650000
+.ERR00   ANOP                                                           08700000
+         MNOTE 12,'*** RACDAUTH MUST BE INVOKED VIA RACROUTE REQUEST=DI+08750000
+               RAUTH ***'                                               08800000
+         AGO   .RMEXIT                                                  08850000
+.ERR01   ANOP                                                           08900000
+         MNOTE 8,'*** RTOKEN PARAMETER REQUIRED ***'                    08950000
+         AGO   .ERTN01                                                  09000000
+.ERR02   ANOP                                                           09050000
+         MNOTE 8,'*** INVALID LOG PARAMETER SPECIFIED ***'              09100000
+         AGO   .ERTN02                                                  09150000
+.ERR03   ANOP                                                           09200000
+         MNOTE 8,'*** INVALID MF PARAMETER SPECIFIED ***'               09250000
+         AGO   .ERTN03                                                  09300000
+.ERR04   ANOP                                                           09350000
+         MNOTE 8,'*** REGISTER ADDRESS SPECIFICATION NOT ALLOWED WITH L+09400000
+               IST FORM ***'                                            09450000
+         AGO   .ERTN04                                            3@P2D 09500000
+.ERLVL1  MNOTE 8,'*** INVALID RELEASE PARAMETER SPECIFIED ***'          09550000
+         AGO   .ERLVL1R                                                 09600000
+         MEND                                                           09650000

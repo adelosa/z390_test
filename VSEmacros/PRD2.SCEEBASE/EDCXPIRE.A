@@ -1,0 +1,657 @@
+*/****************** Start of Specifications *************************/ 00001000
+*/*  :module                                                         */ 00002000
+*/*     EDCXPIRE - generate an SVC 50 to abend.                      */ 00003000
+*/*  :emodule                                                        */ 00004000
+*/*                                                                  */ 00005000
+*/*  :security                                                       */ 00006000
+*/*                                                                  */ 00007000
+*/*     LICENSED MATERIALS - PROPERTY OF IBM                         */ 00008000
+*/*     THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  */ 00009000
+*/*     5686-066 (C) Copyright IBM Corporation 1991,  1997           */ 00010000
+*/*     SEE COPYRIGHT INSTRUCTIONS                                   */ 00011000
+*/*                                                                  */ 00012000
+*/*  :esecurity                                                      */ 00013000
+*/*                                                                  */ 00014000
+*/*  :status                                                         */ 00015000
+*/*     LE/VSE Version 1 Release 4 Modification 1                    */ 00016000
+*/*  :estatus                                                        */ 00017000
+*/*                                                                  */ 00018000
+*/*  :function                                                       */ 00019000
+*/*                                                                  */ 00020000
+*/*     EDCXPIRE IS A COPY OF CEEXPIRE. ONLY THE TEXT OF THE         */ 00021000
+*/*     OUTPUT MESSAGES HAS BEEN CHANGED.                            */ 00022000
+*/*                                                                  */ 00023000
+*/*     EDCXPIRE is a substitute for the MVS ABEND macro and is      */ 00024000
+*/*     used by the VSE SPC support.                                 */ 00025000
+*/*                                                                  */ 00026000
+*/*     If a work area was supplied, the macro will save the         */ 00027000
+*/*     registers at entry and restore them before abending, to      */ 00028000
+*/*     supply the user with the original regs at abend (except for  */ 00029000
+*/*     R1).                                                         */ 00030000
+*/*     If no workarea was supplied, the macro will generate a       */ 00031000
+*/*     GETVIS to obtain one, unless the RC and REASON code are      */ 00032000
+*/*     supplied as constants and DUMP=Undefined was specified.      */ 00033000
+*/*                                                                  */ 00034000
+*/*     Register values at abend for different calls to EDCXPIRE:    */ 00035000
+*/*     1. workarea supplied:                                        */ 00036000
+*/*        R5 address of workarea                                    */ 00037000
+*/*        R6 zero                                                   */ 00038000
+*/*     2. workarea supplied but RC and REASON supplied in regs:     */ 00039000
+*/*        R3 contains REASON at abend                               */ 00040000
+*/*        R4 contains RC at abend                                   */ 00041000
+*/*        R5 address of workarea                                    */ 00042000
+*/*        R6 zero                                                   */ 00043000
+*/*     3. no workarea supplied:                                     */ 00044000
+*/*        R0 length of workarea                                     */ 00045000
+*/*        R1 destroyed                                              */ 00046000
+*/*        R5 address of workarea                                    */ 00047000
+*/*        R6 zero                                                   */ 00048000
+*/*        R15 return code from GETVIS                               */ 00049000
+*/*     4. no workarea supplied but RC and REASON supplied in regs:  */ 00050000
+*/*        R0 length of workarea                                     */ 00051000
+*/*        R1 destroyed                                              */ 00052000
+*/*        R3 contains REASON at abend                               */ 00053000
+*/*        R4 contains RC at abend                                   */ 00054000
+*/*        R5 address of workarea                                    */ 00055000
+*/*        R6 zero                                                   */ 00056000
+*/*        R15 return code from GETVIS                               */ 00057000
+*/*     5. no workarea supplied but RC and REASON supplied as        */ 00058000
+*/*        constants and DUMP=Undefined:                             */ 00059000
+*/*        R3 contains REASON at abend                               */ 00060000
+*/*        R4 contains RC at abend                                   */ 00061000
+*/*        R6 contains zero                                          */ 00062000
+*/*     6. no workarea supplied but RC and REASON supplied as        */ 00063000
+*/*        constants:                                                */ 00064000
+*/*        R0 destroyed by GETFLD/STXIT                              */ 00065000
+*/*        R1 destroyed by GETFLD/STXIT                              */ 00066000
+*/*        R2 destroyed by GETFLD                                    */ 00067000
+*/*        R3 contains REASON at abend                               */ 00068000
+*/*        R4 contains RC at abend                                   */ 00069000
+*/*        R6 contains zero                                          */ 00070000
+*/*        R15 return code from GETFLD/STXIT                         */ 00071000
+*/*     7. no workarea supplied and no storage available from GETVIS:*/ 00072000
+*/*        - see registers listed under point 3 and 4 plus           */ 00073000
+*/*        R3 contains REASON at abend                               */ 00074000
+*/*        R4 contains RC at abend                                   */ 00075000
+*/*        R6 one                                                    */ 00076000
+*/*        R15 return code from GETVIS                               */ 00077000
+*/*                                                                  */ 00078000
+*/*  :efunction                                                      */ 00079000
+*/*                                                                  */ 00080000
+*/*  :notes - Dependencies, Restrictions and unusual characteristics */ 00081000
+*/*                                                                  */ 00082000
+*/*     Dependencies -                                               */ 00083000
+*/*                                                                  */ 00084000
+*/*        assembler macro                                           */ 00085000
+*/*                                                                  */ 00086000
+*/*     Restrictions -                                               */ 00087000
+*/*                                                                  */ 00088000
+*/*     A T T E N T I O N !!!!!!!!!!!!!                              */ 00089000
+*/*                                                                  */ 00090000
+*/*     This macro will, depending on the parameters supplied,       */ 00091000
+*/*     destroy register 0 through 6 and register 15 (see :function  */ 00092000
+*/*     for details).                                                */ 00093000
+*/*                                                                  */ 00094000
+*/*     Make sure that none of these registers is used as a base     */ 00095000
+*/*     register when EDCXPIRE is called.                            */ 00096000
+*/*                                                                  */ 00097000
+*/*  :enotes                                                         */ 00098000
+*/*                                                                  */ 00099000
+*/*  :regs - Register Conventions                                    */ 00100000
+*/*                                                                  */ 00101000
+*/*  :eregs                                                          */ 00102000
+*/*                                                                  */ 00103000
+*/*  :entry -                                                        */ 00104000
+*/*                                                                  */ 00105000
+*/*    Assembler                                                     */ 00106000
+*/*                                                                  */ 00107000
+*/*            EDCXPIRE DUMP=Y|N|U                           KLE0023 */ 00108000
+*/*                     RC=return code                               */ 00109000
+*/*                     REASON=reason code                           */ 00110000
+*/*                     PSW=psw                                      */ 00111000
+*/*                     USER=Y|N                                     */ 00112000
+*/*                     WKAREA=work area pointer                     */ 00113000
+*/*                                                                  */ 00114000
+*/*         Input -                                                  */ 00115000
+*/*                                                                  */ 00116000
+*/*            RC     - abend return code                            */ 00117000
+*/*                     may be a numeric constant, a variable        */ 00118000
+*/*                     defined as half-,fullword or a register.     */ 00119000
+*/*                     If the register notation is used, the reg    */ 00120000
+*/*                     must be enclosed in parentheses              */ 00121000
+*/*                     e.g. REASON=(R1).                            */ 00122000
+*/*                     Only halfword value will be used.            */ 00123000
+*/*                                                                  */ 00124000
+*/*            REASON - abend reason code (optional)                 */ 00125000
+*/*                     may be a numeric constant, a variable        */ 00126000
+*/*                     defined as half-,fullword or a register.     */ 00127000
+*/*                     If the register notation is used, the reg    */ 00128000
+*/*                     must be enclosed in parentheses              */ 00129000
+*/*                     e.g. REASON=(R1).                            */ 00130000
+*/*                     Only halfword value will be used.            */ 00131000
+*/*                                                                  */ 00132000
+*/*            PSW    - psw at abend (optional)                      */ 00133000
+*/*                     8 character variable                         */ 00134000
+*/*                                                                  */ 00135000
+*/*                     if EDCXPIRE is called directly, make sure    */ 00136000
+*/*                     the register which is used to address the    */ 00137000
+*/*                     PSW is a register between R7 and R13         */ 00138000
+*/*                                                                  */ 00139000
+*/*            DUMP   - Y = produce dump with abend,                 */ 00140000
+*/*                     N = no dump.                                 */ 00141000
+*/*                     U = undefined. DUMP depends on STXIT setting.*/ 00142000
+*/*                         Nothing is altered. If no STXIT was set  */ 00143000
+*/*                         up, abend will produce a dump.   KLE0023 */ 00144000
+*/*                     Default is Dump(Y)                           */ 00145000
+*/*                                                                  */ 00146000
+*/*            USER   - Y = user abend,                              */ 00147000
+*/*                     N = system abend.                            */ 00148000
+*/*                     Default is user(Y)                           */ 00149000
+*/*                                                                  */ 00150000
+*/*            WKAREA - address of a storage area, obtained via      */ 00151000
+*/*                     GETVIS with a minimum length of 200.         */ 00152000
+*/*                     Optional.                                    */ 00153000
+*/*                     Can be either a fullword or a register       */ 00154000
+*/*                     containing the address of the work area.     */ 00155000
+*/*                     If the register notation is used, the reg    */ 00156000
+*/*                     must be enclosed in parentheses              */ 00157000
+*/*                     e.g. REASON=(R1).                            */ 00158000
+*/*                                                                  */ 00159000
+*/*         Output -                                                 */ 00160000
+*/*            WTO specifying abend code etc.                        */ 00161000
+*/*            SVC 50 to abend.                                      */ 00162000
+*/*  :eentry                                                         */ 00163000
+*/*                                                                  */ 00164000
+*/*  :exit - Label(s) and description(s) of exit point(s)            */ 00165000
+*/*     None.                                                        */ 00166000
+*/*  :eexit                                                          */ 00167000
+*/*                                                                  */ 00168000
+*/*  :retcode - Return code(s) and meaning(s)                        */ 00169000
+*/*      0 - No macro-detected errors.                               */ 00170000
+*/*     12 - wrong parameter.                                        */ 00171000
+*/*  :eretcode                                                       */ 00172000
+*/*                                                                  */ 00173000
+*/*  :external - List of external routines used by this module       */ 00174000
+*/*     None.                                                        */ 00175000
+*/*  :eexternal                                                      */ 00176000
+*/*                                                                  */ 00177000
+*/*  :data - Major data areas, control blocks, tables, etc.          */ 00178000
+*/*     None                                                         */ 00179000
+*/*  :edata                                                          */ 00180000
+*/*                                                                  */ 00181000
+*/*  :macros - Macros defined in and used by this module             */ 00182000
+*/*     Macros defined in this module                                */ 00183000
+*/*                                                                  */ 00184000
+*/*       EDCXPIRE - Cause abend with given return/reason codes.     */ 00185000
+*/*                                                                  */ 00186000
+*/*     Macros used by this module                                   */ 00187000
+*/*                                                                  */ 00188000
+*/*       GETVIS   - get work area, if not supplied                  */ 00189000
+*/*       GETFLD   - retrieve STXIT-address, STXIT save area and     */ 00190000
+*/*                  AMODE                                           */ 00191000
+*/*       STXIT    - reestablish current exit when option DUMP is    */ 00192000
+*/*                  specified                                       */ 00193000
+*/*                                                                  */ 00194000
+*/*       None.                                                      */ 00195000
+*/*  :emacros                                                        */ 00196000
+*/*                                                                  */ 00197000
+*/*  :include - List of datasets INCLUDEd in this module             */ 00198000
+*/*     None.                                                        */ 00199000
+*/*  :einclude                                                       */ 00200000
+*/*                                                                  */ 00201000
+*/*  :messages - Messages issued and condition codes raised          */ 00202000
+*/*     None.                                                        */ 00203000
+*/*  :emessages                                                      */ 00204000
+*/*                                                                  */ 00205000
+*/*  :history - History of changes to this module                    */ 00206000
+*/*                                                                  */ 00207000
+*/*  MM/DD/YY  Who   Description                                     */ 00208000
+*/*  --------------------------------------------------------------  */ 00209000
+*/*  07/06/94  BIH   Module Created for VSE as a substitute for the  */ 00210000
+*/*                  MVS ABEND macro.                                */ 00211000
+*/*  09/27/94  BIH   Insert missing commas in STXIT AB macro         */ 00212000
+*/*                  and change messages to upper case.      KLE0009 */ 00213000
+*/*  10/26/94  BIH   Get getvis storage in location of caller,       */ 00214000
+*/*                  introduce new dump-option UNDEFINED,            */ 00215000
+*/*                  inseet severity indicator C in message and      */ 00216000
+*/*                  check for MSGONLY in STXIT setting.     KLE0023 */ 00217000
+*/*                                                                  */ 00218000
+*/*  :ehistory                                                       */ 00219000
+*/*                                                                  */ 00220000
+*/*  :pseudocode - Freeform pseudocode for this module               */ 00221000
+*/*                                                                  */ 00222000
+*/*     do parameter checking                                        */ 00223000
+*/*                                                                  */ 00224000
+*/*     if work area not supplied or RC and REASON are not constants */ 00225000
+*/*       or DUMP parameter is not Undefined                         */ 00226000
+*/*       issue GETVIS                                               */ 00227000
+*/*                                                                  */ 00228000
+*/*     address work area                                            */ 00229000
+*/*                                                                  */ 00230000
+*/*     if user-abendcode                                            */ 00231000
+*/*       issue WTO specifying user-abend code and reason code (and  */ 00232000
+*/*         PSW if supplied)                                         */ 00233000
+*/*                                                                  */ 00234000
+*/*     else (system cancel code)                                    */ 00235000
+*/*       issue WTO specifying cancel code and interrupt code (and   */ 00236000
+*/*         PSW if supplied)                                         */ 00237000
+*/*                                                                  */ 00238000
+*/*     issue GETFLD to retrieve STXIT address, STXIT save-area and  */ 00239000
+*/*       AMODE                                                      */ 00240000
+*/*                                                                  */ 00241000
+*/*     if LE-extended save-area (TRAP(ON) and eyecatcher)           */ 00242000
+*/*       store cancel/user-abend code and interrupt/reason code     */ 00243000
+*/*         in save-area                                             */ 00244000
+*/*                                                                  */ 00245000
+*/*     if DUMP option on STXIT doesn't match with supplied option   */ 00246000
+*/*       reissue STXIT with supplied DUMP option                    */ 00247000
+*/*                                                                  */ 00248000
+*/*     SVC 50                                                       */ 00249000
+*/*                                                                  */ 00250000
+*/*  :epseudocode                                                    */ 00251000
+*/*                                                                  */ 00252000
+*/*  :vsechange                                                      */ 00253000
+*/*                                                                  */ 00254000
+*/*     new macro (substitute for MVS ABEND)                         */ 00255000
+*/*                                                                  */ 00256000
+*/*  :evsechange                                                     */ 00257000
+*/*                                                                  */ 00258000
+*/*  :epls                                                           */ 00259000
+*/********************************************************************/ 00260000
+* /*                                                                    00261000
+         MACRO                                                          00262000
+&LABEL   EDCXPIRE &RC=,&REASON=0,&PSW=,&DUMP=Y,&USER=Y,&WKAREA=         00263000
+         SPLEVEL SET=3                                                  00264000
+         LCLC  &RTN                                                     00265000
+         LCLC  &ACODE                                                   00266000
+         LCLC  &AREASON                                                 00267000
+         LCLC  &FLAGRC                                                  00268000
+         LCLC  &FLAGRS                                                  00269000
+         LCLC  &ADUMP                                                   00270000
+         LCLC  &FLAGWTO                                      KLE0023    00271000
+         LCLA  &WRK                                                     00272000
+&FLAGWTO SETC  'N'                                           KLE0023    00273000
+&RTN     SETC  '&SYSNDX'                                                00274000
+.*--------------------------------------------------------------------- 00275000
+.* Check if work area parameter is needed but not supplied              00276000
+.* (not needed if only RC and/or REASON is specified (no PSW)           00277000
+.* and both are supplied as num constants                               00278000
+.*--------------------------------------------------------------------- 00279000
+&ACODE   SETC  '&RC'                                                    00280000
+&AREASON SETC  '&REASON'                                                00281000
+&ADUMP   SETC  '&DUMP'                                                  00282000
+         AIF   (T'&RC EQ 'O').ERRRC                                     00283000
+         LA     6,0              set r6 to 0, (workarea flag)           00284000
+         AIF   (T'&WKAREA NE 'O').SETWA                                 00285000
+         AIF   ('&ACODE'(1,1) EQ '(').CHKRC                             00286000
+         AIF   ('&AREASON'(1,1) EQ '(').CHKRS                           00287000
+         AIF   (T'&RC NE 'N').GETWA                                     00288000
+         AIF   (T'&REASON NE 'N').GETWA                                 00289000
+         AIF   (T'&PSW NE 'O').GETWA                                    00290000
+.*--------------------------------------------------------------------- 00291000
+.* print out hardcoded WTO                                              00292000
+.*--------------------------------------------------------------------- 00293000
+         AIF   ('&USER' EQ 'N').SYSRC                                   00294000
+         AIF   ('&USER' EQ 'n').SYSRC                                   00295000
+.*                                                            KLE0023   00296000
+         WTO  'SPC EXECUTION ABNORMALLY TERMINATED WITH ABEND CODE &ACO-00297000
+                DE AND REASON CODE &AREASON.',ROUTCDE=(11),DESC=(7)     00298000
+               C=(7)                                          KLE0023   00299000
+         AGO   .STORCC                                                  00300000
+.SYSRC   ANOP                                                           00301000
+.*                                                            KLE0023   00302000
+         WTO   'SPC EXECUTION FAILED WITH VSE CANCEL CODE &ACODE AND IN-00303000
+               TERRUPTION CODE &AREASON.',ROUTCDE=(11),DESC=(7)         00304000
+.STORCC  ANOP                                                           00305000
+         LA    4,&ACODE                                                 00306000
+         LA    3,&AREASON                                               00307000
+&FLAGWTO SETC  'Y'                                            KLE0023   00308000
+         AIF    ('&ADUMP' EQ 'U').GETFLD  option undefined    KLE0023   00309000
+         AIF    ('&ADUMP' EQ 'u').GETFLD  option undefined    KLE0023   00310000
+.*--------------------------------------------------------------------- 00311000
+.* now try to get workarea for register saves and MFG area              00312000
+.*--------------------------------------------------------------------- 00313000
+.GETWAC  ANOP                                                           00314000
+         LA     0,200             try to get 200 bytes workarea         00315000
+         GETVIS ADDRESS=(1),LENGTH=(0),LOC=RES               KLE0023    00316000
+         LTR    15,15                                                   00317000
+         BZ     SREG&RTN                                                00318000
+         LA     6,1              set r6 to 1, storage problem - abend   00319000
+         B      GETF&RTN                                                00320000
+SREG&RTN DS     0H                                                      00321000
+         STM    2,0,132(1)       save regs                              00322000
+         LR     5,1              load work area address in R5           00323000
+         AGO   .GETFLD           continue with STXIT processing         00324000
+.*--------------------------------------------------------------------- 00325000
+.* workarea needed but not supplied. Check for reg notation first       00326000
+.* to avoid destroying the RC and REASON code. GETVIS wil use reg 0,1,F 00327000
+.*--------------------------------------------------------------------- 00328000
+.CHKRC   ANOP                                                           00329000
+&FLAGRC  SETC   '1'                                                     00330000
+&WRK     SETA   1                                                       00331000
+.LRCS    ANOP                                                           00332000
+         AIF    ('&ACODE'(&WRK,1) EQ ')').LRCE                          00333000
+&WRK     SETA   &WRK+1                                                  00334000
+         AIF    (&WRK GT 15).ERRRC                                      00335000
+         AGO    .LRCS                                                   00336000
+.LRCE    ANOP                                                           00337000
+&ACODE   SETC   '&ACODE'(2,&WRK-2)                                      00338000
+         AIF    ('&ACODE' EQ '4').CHKRS                                 00339000
+         LR     4,&ACODE                                                00340000
+.CHKRS   ANOP                                                           00341000
+         AIF    ('&REASON'(1,1) NE '(').GETWA                           00342000
+&FLAGRS  SETC   '1'                                                     00343000
+&WRK     SETA   1                                                       00344000
+.LRSS    ANOP                                                           00345000
+         AIF    ('&AREASON'(&WRK,1) EQ ')').LRSE                        00346000
+&WRK     SETA   &WRK+1                                                  00347000
+         AIF    (&WRK GT 15).ERRRS                                      00348000
+         AGO    .LRSS                                                   00349000
+.LRSE    ANOP                                                           00350000
+&AREASON SETC   '&AREASON'(2,&WRK-2)                                    00351000
+         AIF    ('&AREASON' EQ '3').GETWA                               00352000
+         LR     3,&AREASON                                              00353000
+.*--------------------------------------------------------------------- 00354000
+.* now try to get workarea                                              00355000
+.*--------------------------------------------------------------------- 00356000
+.GETWA   ANOP                                                           00357000
+         LA     0,200             try to get 200 bytes workarea         00358000
+         GETVIS ADDRESS=(1),LENGTH=(0),LOC=RES               KLE0023    00359000
+         LTR    15,15                                                   00360000
+         BZ     SWA&RTN                                                 00361000
+         LA     6,1               set r6 to 1, storage problem - abend  00362000
+         B      GETF&RTN                                                00363000
+         AGO    .SWA2                                                   00364000
+.*--------------------------------------------------------------------- 00365000
+.* Check WKAREA parameter                                               00366000
+.*--------------------------------------------------------------------- 00367000
+.SETWA   ANOP                                                           00368000
+         AIF    ('&WKAREA'(1,1) NE '(').SWA                             00369000
+         LCLC   &AWKAREA                                                00370000
+&AWKAREA SETC   '&WKAREA'                                               00371000
+&WRK     SETA   1                                                       00372000
+.LWAS    ANOP                                                           00373000
+         AIF    ('&AWKAREA'(&WRK,1) EQ ')').LWAE                        00374000
+&WRK     SETA   &WRK+1                                                  00375000
+         AIF    (&WRK GT 15).ERRWK                                      00376000
+         AGO    .LWAS                                                   00377000
+.LWAE    ANOP                                                           00378000
+&AWKAREA SETC   '&AWKAREA'(2,&WRK-2)                                    00379000
+         LR     1,&AWKAREA                                              00380000
+         AGO    .SWA2                                                   00381000
+.ERRWK   ANOP                                                           00382000
+         MNOTE  12,'WKAREA parameter has wrong format'                  00383000
+         MEXIT                                                          00384000
+.SWA     ANOP                                                           00385000
+         L      1,&WKAREA                                               00386000
+.SWA2    ANOP                                                           00387000
+SWA&RTN  DS     0H                                                      00388000
+         STM    2,0,132(1)        save regs                             00389000
+         LR     5,1               use r5 to address workarea            00390000
+.*--------------------------------------------------------------------- 00391000
+.* Check Abend code                                                     00392000
+.* The check of the register format is done down here a second time,    00393000
+.* because if we always checked it at the beginning we would always     00394000
+.* lose the original contents of r3 and r4, even if a workarea was      00395000
+.* supplied                                                             00396000
+.*--------------------------------------------------------------------- 00397000
+.RC      ANOP                                                           00398000
+         AIF    ('&FLAGRC' EQ '1').REASON                               00399000
+         AIF    ('&ACODE'(1,1) EQ '(').STRRC                            00400000
+         AIF    (T'&RC EQ 'F').STFRC                                    00401000
+         AIF    (T'&RC EQ 'H').STHRC                                    00402000
+         AIF    (T'&RC EQ 'N').NUMRC                                    00403000
+.ERRRC   ANOP                                                           00404000
+         MNOTE  12,'RC (return code) keyword missing or invalid.'       00405000
+         MEXIT                                                          00406000
+.STRRC   ANOP                                                           00407000
+&WRK     SETA   1                                                       00408000
+.LRCS2   ANOP                                                           00409000
+         AIF    ('&ACODE'(&WRK,1) EQ ')').LRCE2                         00410000
+&WRK     SETA   &WRK+1                                                  00411000
+         AIF    (&WRK GT 15).ERRRC                                      00412000
+         AGO    .LRCS2                                                  00413000
+.LRCE2   ANOP                                                           00414000
+&ACODE   SETC   '&ACODE'(2,&WRK-2)                                      00415000
+         AIF    ('&ACODE' EQ '4').REASON                                00416000
+         LR     4,&ACODE              store abend code (register)       00417000
+         AGO    .REASON                                                 00418000
+.STFRC   ANOP                                                           00419000
+         L      4,&RC                 store abend code (fullword)       00420000
+         AGO    .REASON                                                 00421000
+.STHRC   ANOP                                                           00422000
+         SR     4,4                   clean it out                      00423000
+         LH     4,&RC                 store abend code (halfword)       00424000
+         AGO    .REASON                                                 00425000
+.NUMRC   ANOP                                                           00426000
+         LA     4,&RC                 store abend code (constant)       00427000
+.*--------------------------------------------------------------------- 00428000
+.* Check Reason code                                                    00429000
+.* The check of the register format is done down here a second time,    00430000
+.* because if we always checked it at the beginning we would always     00431000
+.* lose the original contents of r3 and r4, even if a workarea was      00432000
+.* supplied                                                             00433000
+.*--------------------------------------------------------------------- 00434000
+.REASON  ANOP                                                           00435000
+         AIF    ('&FLAGRS' EQ '1').CONV                                 00436000
+         AIF    ('&AREASON'(1,1) EQ '(').STRRS                          00437000
+         AIF    (T'&REASON EQ 'F').STFRS                                00438000
+         AIF    (T'&REASON EQ 'H').STHRS                                00439000
+         AIF    (T'&REASON EQ 'N').STCRS                                00440000
+.ERRRS   ANOP                                                           00441000
+         MNOTE  12,'REASON code has wrong format'                       00442000
+         MEXIT                                                          00443000
+.STRRS   ANOP                                                           00444000
+&WRK     SETA   1                                                       00445000
+.LRSS2   ANOP                                                           00446000
+         AIF    ('&AREASON'(&WRK,1) EQ ')').LRSE2                       00447000
+&WRK     SETA   &WRK+1                                                  00448000
+         AIF    (&WRK GT 15).ERRRS                                      00449000
+         AGO    .LRSS2                                                  00450000
+.LRSE2   ANOP                                                           00451000
+&AREASON SETC   '&AREASON'(2,&WRK-2)                                    00452000
+         AIF    ('&AREASON' EQ '3').CONV                                00453000
+         LR     3,&AREASON               store reason code (register)   00454000
+         AGO    .CONV                                                   00455000
+.STFRS   ANOP                                                           00456000
+         L      3,&REASON                store reason code (fullword)   00457000
+         AGO    .CONV                                                   00458000
+.STHRS   ANOP                                                           00459000
+         SR     3,3                                                     00460000
+         LH     3,&REASON                store reason code (halfword)   00461000
+         AGO    .CONV                                                   00462000
+.STCRS   ANOP                                                           00463000
+         LA     3,&REASON                store reason code (constant)   00464000
+.*--------------------------------------------------------------------- 00465000
+.* Convert codes into printable characters and move into WTO area       00466000
+.*--------------------------------------------------------------------- 00467000
+.CONV    ANOP                                                           00468000
+         AIF   ('&USER' EQ 'N').CONVS    system abend?                  00469000
+         AIF   ('&USER' EQ 'n').CONVS                                   00470000
+         MVC    20(WTOLU,5),WTOU         Move message into workarea     00471000
+         CVD    4,0(5)                   convert r4 to decimal          00472000
+         UNPK   91(4,5),0(8,5)           unpack rc into msg   KLE0023   00473000
+         OI     94(5),X'F0'              change sign          KLE0023   00474000
+         CVD    3,0(5)                   convert r3 to decimal          00475000
+         UNPK   112(4,5),0(8,5)          unpack rs into msg   KLE0023   00476000
+         OI     115(5),X'F0'             change sign          KLE0023   00477000
+         AGO    .WRITE                                                  00478000
+.CONVS   ANOP                                                           00479000
+         MVC    20(WTOLS,5),WTOS         Move message into workarea     00480000
+         ST     4,0(5)                   move rc into workarea          00481000
+         UNPK   8(9,5),0(5,5)            unpack the rc                  00482000
+         TR     8(8,5),TTAB-240          translate                      00483000
+         MVC    81(2,5),14(5)            unpack rc into msg   KLE0023   00484000
+         ST     3,0(5)                   move rs into workarea          00485000
+         UNPK   8(9,5),0(5,5)            unpack the rs                  00486000
+         TR     8(8,5),TTAB-240          translate                      00487000
+         MVC    106(2,5),14(5)           unpack rs into msg   KLE0023   00488000
+.WRITE   ANOP                                                           00489000
+         LA     2,28(5)                  set WTOLIST address for execut 00490000
+         WTO    MF=(E,(2))               issue WTO execute form         00491000
+.*--------------------------------------------------------------------- 00492000
+.* Check PSW and change it into printable characters, if supplied       00493000
+.*--------------------------------------------------------------------- 00494000
+.PSW     ANOP                                                           00495000
+         AIF    (T'&PSW EQ 'O').GETFLD                                  00496000
+.STPSW   ANOP                                                           00497000
+         XC     0(100,5),0(5)            cleanout workarea              00498000
+         MVC    20(WTOLP,5),WTOP         Move message into workarea     00499000
+         MVC    0(8,5),&PSW              store PSW in wkarea            00500000
+         UNPK   8(9,5),0(5,5)            unpack first half              00501000
+         TR     8(8,5),TTAB-240          translate                      00502000
+         MVC    61(8,5),8(5)             move 1st half of PSW KLE0023   00503000
+         UNPK   8(9,5),4(5,5)            unpack second half             00504000
+         TR     8(8,5),TTAB-240          translate                      00505000
+         MVC    70(8,5),8(5)             move 2nd half of PSW KLE0023   00506000
+         LA     2,28(5)                  set WTOLIST addressfor execute 00507000
+         WTO    MF=(E,(2))               issue WTO execute form         00508000
+.*--------------------------------------------------------------------- 00509000
+.* Get STXIT information                                                00510000
+.*--------------------------------------------------------------------- 00511000
+.GETFLD  ANOP                                                           00512000
+GETF&RTN DS     0H                                                      00513000
+         GETFLD FIELD=ABEXIT1                                           00514000
+         LTR    0,0                                                     00515000
+         BZ     CAN&RTN                  no STXIT there                 00516000
+         LTR    1,1                                                     00517000
+         BZ     SVC&RTN                  no savearea, something's wrong 00518000
+         CLC    216(8,1),=C'LE-STXIT'    is it LE's STXIT?              00519000
+         BNE    NOLE&RTN                                                00520000
+.*--------------------------------------------------------------------- 00521000
+.* save abend info in LE's STXIT save area                              00522000
+.*--------------------------------------------------------------------- 00523000
+         STH    4,224(1)                 store RC in LE STXIT save area 00524000
+         STH    3,226(1)                 store REASON in LE STXIT sa    00525000
+         AIF    ('&USER' EQ 'N').NUSER   system abend?                  00526000
+         AIF    ('&USER' EQ 'n').NUSER   system abend?                  00527000
+         MVI    232(1),X'80'             flag user abend                00528000
+         AGO    .ACTCHCK                                                00529000
+.NUSER   ANOP                                                           00530000
+         MVI    232(1),X'00'             flag system abend              00531000
+.ACTCHCK ANOP                                                           00532000
+NOLE&RTN DS     0H                                                      00533000
+         AIF    ('&ADUMP' EQ 'U').SVC    option undefined    KLE0023    00534000
+         AIF    ('&ADUMP' EQ 'u').SVC    option undefined    KLE0023    00535000
+         LTR    6,6                      workarea there?                00536000
+         BNZ    ABND&RTN                 storage problem     KLE0023    00537000
+         ST     1,76(,5)                 save address of save area      00538000
+         LR     3,0                      save reg 0                     00539000
+         N      3,=X'80000000'           check if exit is active        00540000
+         BNZ    SVC&RTN                  exit active, just abend        00541000
+         LR     3,2                      save abexit1 settings          00542000
+         N      3,=X'00000002'           check if exit early            00543000
+         BNZ    SVC&RTN                  yes, just abend                00544000
+         AIF    ('&ADUMP' EQ 'N').NDUMP   no dump requested?            00545000
+         AIF    ('&ADUMP' EQ 'n').NDUMP   no dump requested?            00546000
+.*--------------------------------------------------------------------- 00547000
+.* Make sure option DUMP is set on STXIT                                00548000
+.*--------------------------------------------------------------------- 00549000
+         LR     3,2                      save abexit1 settings          00550000
+         N      3,=X'00000005'           MSGONLY/NODUMP?     KLE0023    00551000
+         BZ     SVC&RTN                  DUMP set, just abend           00552000
+         N      2,=X'00000008'           AMODE ANY?                     00553000
+         BZ     NAD&RTN                                                 00554000
+         STXIT AB,(0),(1),AMODE=ANY,MFG=(5)                             00555000
+         B      SVC&RTN                                                 00556000
+NAD&RTN  DS     0H                                                      00557000
+         BALR   3,0                                                     00558000
+         LTR    3,3                                                     00559000
+         BP     NAD2&RTN                                                00560000
+         LA     3,NAD2&RTN               switch to amode 24             00561000
+         BSM    2,3                                                     00562000
+NAD2&RTN DS     0H                                                      00563000
+         STXIT AB,(0),(1)                                    KLE0009    00564000
+         AGO    .SVC                                                    00565000
+.*--------------------------------------------------------------------- 00566000
+.* Make sure option NODUMP is set on STXIT                              00567000
+.*--------------------------------------------------------------------- 00568000
+.NDUMP   ANOP                                                           00569000
+         LR     3,2                      save abexit1 settings          00570000
+         N      3,=X'00000005'           MSGONLY/NODUMP?     KLE0023    00571000
+         BNZ    SVC&RTN                  NODUMP set, just abend         00572000
+         N      2,=X'00000008'           AMODE ANY?                     00573000
+         BZ     NA&RTN                                                  00574000
+         STXIT AB,(0),(1),OPTION=NODUMP,AMODE=ANY,MFG=(5)               00575000
+         B      SVC&RTN                                                 00576000
+NA&RTN   DS     0H                                                      00577000
+         BALR   3,0                                                     00578000
+         LTR    3,3                                                     00579000
+         BP     NA2&RTN                                                 00580000
+         LA     3,NA2&RTN                switch to amode 24             00581000
+         BSM    2,3                                                     00582000
+NA2&RTN  DS     0H                                                      00583000
+         STXIT AB,(0),(1),OPTION=NODUMP,MFG=(5)              KLE0009    00584000
+.*--------------------------------------------------------------------- 00585000
+.* Now abend and restore regs, if we had a workarea provided            00586000
+.*--------------------------------------------------------------------- 00587000
+.SVC     ANOP                                                           00588000
+SVC&RTN  DS     0H                                                      00589000
+         AIF    ('&ADUMP' EQ 'U').SVC0  no wkarea for Undefined KLE0023 00590000
+         AIF    ('&ADUMP' EQ 'u').SVC0  no wkarea for Undefined KLE0023 00591000
+         AGO    .SVC1                                           KLE0023 00592000
+.SVC0    ANOP                                                   KLE0023 00593000
+         AIF    ('&FLAGWTO' EQ 'Y').SVC2    we do not need defs KLE0023 00594000
+.SVC1    ANOP                                                   KLE0023 00595000
+         LTR    6,6                      workarea there?                00596000
+         BP     ABND&RTN                 storage problem                00597000
+         LR     1,5                                                     00598000
+         LM     2,0,132(5)               restore registers              00599000
+         L      10,76(,1)                load save area address in R10  00600000
+.SVC2    ANOP                                                   KLE0023 00601000
+         SVC    50                                                      00602000
+.*--------------------------------------------------------------------- 00603000
+.* CANCEL, because we don't want a dump and have no STXIT               00604000
+.*--------------------------------------------------------------------- 00605000
+CAN&RTN  DS     0H                                                      00606000
+         AIF    ('&ADUMP' EQ 'U').CANSVC0 no wa for Undefined   KLE0023 00607000
+         AIF    ('&ADUMP' EQ 'u').CANSVC0 no wa for Undefined   KLE0023 00608000
+         AGO    .CANSVC1                                        KLE0023 00609000
+.CANSVC0 ANOP                                                   KLE0023 00610000
+         AIF    ('&FLAGWTO' EQ 'Y').CANSVC  we do not need defs KLE0023 00611000
+.CANSVC1 ANOP                                                   KLE0023 00612000
+         LTR    6,6                      workarea there?                00613000
+         BP     ABND&RTN                 storage problem                00614000
+         LR     1,5                                                     00615000
+         LM     2,0,132(5)               restore registers              00616000
+         L      10,76(,1)                load save area address in R10  00617000
+         AIF    ('&ADUMP' EQ 'N').CAN2   no dump requested?             00618000
+         AIF    ('&ADUMP' EQ 'n').CAN2   no dump requested?             00619000
+.CANSVC  DS     0H                                            KLE0023   00620000
+         SVC    50                                                      00621000
+         AGO    .MACEND                                                 00622000
+.CAN2    ANOP                                                           00623000
+         CANCEL                                                         00624000
+.MACEND  ANOP                                                           00625000
+         AIF    ('&ADUMP' EQ 'U').ADEF1 no wkarea for Undefined KLE0023 00626000
+         AIF    ('&ADUMP' EQ 'u').ADEF1 no wkarea for Undefined KLE0023 00627000
+         AGO    .ADEF2                                                  00628000
+.ADEF1   ANOP                                                           00629000
+         AIF    ('&FLAGWTO' EQ 'Y').AROUND  we do not need defs KLE0023 00630000
+.ADEF2   ANOP                                                           00631000
+ABND&RTN DS     0H                                                      00632000
+.*                                                             KLE0023  00633000
+         WTO  'SPC ABEND PROCESSING TERMINATED DUE TO INSUFFICIENT GETV-00634000
+               IS STORAGE.',ROUTCDE=(11),DESC=(7)                       00635000
+         DC  H'0'                                                       00636000
+         DC  C'ABEND U4040-01'                                          00637000
+.*       ABEND 4040,REASON=01       no storage available via GETVIS     00638000
+.*--------------------------------------------------------------------- 00639000
+.* Definitions                                                          00640000
+.*--------------------------------------------------------------------- 00641000
+.WDEF   ANOP                                                   KLE0023  00642000
+        AIF    (D'WTOU).AROUND                                          00643000
+        AIF    ('&FLAGWTO' EQ 'Y').AROUND  we do not need defs KLE0023  00644000
+.*                                                             KLE0023  00645000
+WTOU    WTO  'SPC EXECUTION ABNORMALLY TERMINATED WITH ABEND CODE nnnn -00646000
+               AND REASON CODE nnnn.',ROUTCDE=(11),DESC=(7)             00647000
+WTOLU   EQU   *-WTOU                                                    00648000
+WTOS    WTO  'SPC EXECUTION FAILED WITH VSE CANCEL CODE nn AND INTERRUP-00649000
+               TION CODE nn.',ROUTCDE=(11),DESC=(7)           KLE0023   00650000
+WTOLS   EQU   *-WTOS                                                    00651000
+WTOP    WTO  'SPC PSW AT ABEND nnnnnnnn nnnnnnnn.',ROUTCDE=(11),DESC=(7-00652000
+               )                                              KLE0023   00653000
+WTOLP   EQU   *-WTOP                                                    00654000
+TTAB    DC    CL16'0123456789ABCDEF'                                    00655000
+.AROUND ANOP                                                            00656000
+        MEND                                                            00657000

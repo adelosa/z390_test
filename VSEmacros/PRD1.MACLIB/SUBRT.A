@@ -1,0 +1,193 @@
+         MACRO                                                          00001000
+&LABEL SUBRT &TYPE=,&RC=0,&BASE=12,&BASE2=,&SAVE=,&BASE3=,             X00002000
+               &CATALR=YES,&SVA=NO,&COPYR=1998,&PHASE=NO,              X00003000
+               &VRM=01.00.00,&INFO=YES,&TRACE=TRACE,&AMODE=24,         X00004000
+               &RMODE=24                                                00005000
+ GBLB &DEBUG                                                            00006000
+ GBLB &EQATFLG                                                          00007000
+ GBLC &SUBPASS                                                          00008000
+         LCLC     &TEMP                                                 00009000
+.DOFIRST ANOP                                                           00010000
+         AIF   ('&TYPE' EQ 'BEGIN').BEGIN                               00011000
+         AIF   ('&TYPE' EQ 'CSECT').BEGIN                               00012000
+         AIF   ('&TYPE' EQ 'INITIAL').BEGIN                             00013000
+         AIF   ('&TYPE' EQ 'END').DOLAST                                00014000
+         AIF   ('&TYPE' EQ 'RETURN').DOLAST                             00015000
+         AIF   ('&SUBPASS' EQ 'X').DOLAST                               00016000
+.BEGIN   ANOP                                                           00017000
+         AIF   (&EQATFLG).NOCAT                                         00018000
+         AIF   ('&CATALR' EQ 'NO').NOCAT                                00019000
+         AIF   ('&LABEL'(1,6) EQ '$JOBEX').SVA                          00020000
+         AIF   ('&SVA' EQ 'YES').SVA                                    00021000
+         AIF   ('&PHASE' EQ 'YES').NOCAT                                00022000
+&TEMP    SETC  ' CATALOG '.'&LABEL'.'.OBJ REP=Y'                        00023000
+         PUNCH '&TEMP'                                                  00024000
+         AGO   .NOCAT                                                   00025000
+.SVA     ANOP                                                           00026000
+         PUNCH ' PHASE &LABEL,*,SVA'                                    00027000
+.NOCAT   ANOP                                                           00028000
+         AIF   ('&PHASE' EQ 'NO').NOPHASE                               00029000
+         PUNCH ' PHASE &LABEL,*'                                        00030000
+.NOPHASE ANOP                                                           00031000
+&LABEL   CSECT ,                                                        00032000
+         AIF   ('&RMODE' NE 'ANY').NORMOD                               00033000
+&LABEL   RMODE ANY                                                      00034000
+         AGO   .USING                                                   00035000
+.NORMOD  ANOP                                                           00036000
+&LABEL   AMODE &AMODE                                                   00037000
+.USING   ANOP                                                           00038000
+         USING &LABEL,15                                                00039000
+.*       AIF   ('&SAVE' EQ '').OLDSAV1                                  00040000
+         MVC   $S2&SYSNDX.(72),0(13)     COPY THE SAVEAREA              00041000
+         LA    13,$S2&SYSNDX            ELIMINATE MULTI-CSECT PROBS     00042000
+.OLDSAV1 ANOP                                                           00043000
+         SAVE  (14,12)                  SAVE INCOMING REGS              00044000
+         LR    12,13                    SAVE ORIGINAL ADDRESS           00045000
+.*       AIF   ('&SAVE' EQ '').OLDSAV2                                  00046000
+         LA    13,$S1&SYSNDX            POINT TO THE NEW SAVEAREA       00047000
+.OLDSAV2 ANOP                                                           00048000
+         ST    13,8(12)                 SAVE BACKWARD POINTER           00049000
+         ST    12,4(13)                 SAVE FORWARD POINTER            00050000
+         LR    &BASE,15                 SETUP THE BASE                  00051000
+         DROP  15                                                       00052000
+         AIF   ('&BASE2' EQ '').CONST                                   00053000
+         AIF   ('&BASE3' EQ '').BAS2                                    00054000
+         USING &LABEL,&BASE,&BASE2,&BASE3                               00055000
+         LA    &BASE2,4095(&BASE)    POINT TO THE END OF 1ST BASE       00056000
+         LA    &BASE2,1(&BASE2)      AND THE START OF NEXT BASE         00057000
+         LA    &BASE3,4095(&BASE2)   POINT TO THE END OF 2ND BASE       00058000
+         LA    &BASE3,1(&BASE3)      AND THE START OF NEXT BASE         00059000
+         AGO   .DOSAVE                                                  00060000
+.BAS2    ANOP                                                           00061000
+         USING &LABEL,&BASE,&BASE2   ADDRESS THE PROGRAM                00062000
+         LA    &BASE2,4095(&BASE)    POINT TO THE END OF 1ST BASE       00063000
+         LA    &BASE2,1(&BASE2)      AND THE START OF NEXT BASE         00064000
+         AGO   .DOSAVE                                                  00065000
+.CONST   ANOP                                                           00066000
+         USING &LABEL,&BASE             AND ADDRESSABILITY              00067000
+.DOSAVE  ANOP                                                           00068000
+         AIF   ('&PHASE' NE 'YES').EXIT                                 00069000
+         CLR   1,15         WAS A PARM PASSED ?                         00070000
+         BZ    A$&SYSNDX    NO... USE DEFAULT                           00071000
+         TM    0(1),X'80'   IS THE AREA OKAY ?                          00072000
+         BZ    A$&SYSNDX    NO... USE DEFAULT                           00073000
+         L     4,0(1)       YES... GET THE EPARM ADDR                   00074000
+         B     B$&SYSNDX    AND PROCEED                                 00075000
+A$&SYSNDX DS   0H                                                       00076000
+         LA    4,=F'0'      POINT TO THE DEFAULT                        00077000
+B$&SYSNDX DS 0H                                                         00078000
+.EXIT    ANOP                                                           00079000
+         B     S$&SYSNDX                SKIP OVER CONSTANT              00080000
+         DS    0D                                                       00081000
+.NOAD    ANOP                                                           00082000
+         AIF   ('&INFO' NE 'YES').NOPARM                                00083000
+         AIF   ('&CATALR' EQ 'NO').NOPARM                               00084000
+         AIF   ('&PHASE' EQ 'YES').PGM                                  00085000
+         AIF   ('&SVA' NE 'YES').BYP2                                   00086000
+.PGM     ANOP                                                           00087000
+         DC    CL8'PROGRAM'             HEADER                          00088000
+         AGO   .BYP4                                                    00089000
+.BYP2    ANOP                                                           00090000
+         DC    CL8'ROUTINE'             HEADER                          00091000
+.BYP4    ANOP                                                           00092000
+         DC    CL10'&LABEL'           CSECT NAME                        00093000
+         AIF   ('&COPYR' EQ '').BYP5                                    00094000
+         AIF   ('&COPYR' EQ 'NO').BYP5                                  00095000
+         DC    C'(C) &COPYR Connectivity Systems  ALL RIGHTS RESERVED'  00096000
+.BYP5    ANOP                                                           00097000
+         DC    CL2' '                                                   00098000
+         DC    C'VERS='            HEADER                               00099000
+         DC    C'&VRM'               VERSION/RELEASE INFO               00100000
+         DC    CL2' '                                                   00101000
+         DC    C'DATE: &SYSDATE'    DATE ASSEMBLED (HLASM)              00102000
+         DC    CL2' '                              (HLASM)              00103000
+         DC    C'TIME: &SYSTIME'    TIME ASSEMBLED (HLASM)              00104000
+.NOPARM  ANOP                                                           00105000
+.*       AIF   ('&SAVE' EQ '').NOSAV                                    00106000
+$S1&SYSNDX DS   9D                                                      00107000
+$S2&SYSNDX DS   9D                                                      00108000
+         AIF   ('&SAVE' EQ '').NOSAV                                    00109000
+&SAVE    EQU   $S1&SYSNDX                                               00110000
+.NOSAV   ANOP                                                           00111000
+         AIF   ('EQU' EQ 'NO').NOEQU                                    00112000
+         AIF   (&EQATFLG).NOEQU                                         00113000
+&EQATFLG SETB     1                                                     00114000
+R0       EQU   0                                                        00115000
+R1       EQU   1                                                        00116000
+R2       EQU   2                                                        00117000
+R3       EQU   3                                                        00118000
+R4       EQU   4                                                        00119000
+R5       EQU   5                                                        00120000
+R6       EQU   6                                                        00121000
+R7       EQU   7                                                        00122000
+R8       EQU   8                                                        00123000
+R9       EQU   9                                                        00124000
+R10      EQU   10                                                       00125000
+R11      EQU   11                                                       00126000
+R12      EQU   12                                                       00127000
+R13      EQU   13                                                       00128000
+R14      EQU   14                                                       00129000
+R15      EQU   15                                                       00130000
+RA       EQU   10                                                       00131000
+RB       EQU   11                                                       00132000
+RC       EQU   12                                                       00133000
+RD       EQU   13                                                       00134000
+RE       EQU   14                                                       00135000
+RF       EQU   15                                                       00136000
+AR0      EQU   0                                                        00137000
+AR1      EQU   1                                                        00138000
+AR2      EQU   2                                                        00139000
+AR3      EQU   3                                                        00140000
+AR4      EQU   4                                                        00141000
+AR5      EQU   5                                                        00142000
+AR6      EQU   6                                                        00143000
+AR7      EQU   7                                                        00144000
+AR8      EQU   8                                                        00145000
+AR9      EQU   9                                                        00146000
+AR10     EQU   10                                                       00147000
+AR11     EQU   11                                                       00148000
+AR12     EQU   12                                                       00149000
+AR13     EQU   13                                                       00150000
+AR14     EQU   14                                                       00151000
+AR15     EQU   15                                                       00152000
+.NOEQU   ANOP                                                           00153000
+S$&SYSNDX DS    0H                                                      00154000
+&SUBPASS SETC  'X'                                                      00155000
+         AIF   (&DEBUG).TRACE                                           00156000
+         MEXIT                                                          00157000
+.TRACE   ANOP                                                           00158000
+         AIF ('&PHASE' EQ 'YES').NOTR                                   00159000
+         AIF ('&LABEL' EQ 'TRACE').NOTR                                 00160000
+         AIF ('&TRACE' EQ 'NO').NOTR                                    00161000
+         AIF ('&TRACE' EQ 'OFF').NOTR                                   00162000
+         ST     R9,H$&SYSNDX                                            00163000
+         LA     R9,=CL8'&LABEL'                                         00164000
+         L   R15,=A(&TRACE)                                             00165000
+         BASSM R14,R15                                                  00166000
+         B      X$&SYSNDX                                               00167000
+H$&SYSNDX DS    F                                                       00168000
+X$&SYSNDX DS    0H                                                      00169000
+         L      R9,H$&SYSNDX                                            00170000
+.NOTR    ANOP                                                           00171000
+         MEXIT                                                          00172000
+.DOLAST  ANOP                                                           00173000
+         AIF   ('&LABEL' EQ '').NOL                                     00174000
+&LABEL   DS    0H                                                       00175000
+.NOL     ANOP                                                           00176000
+         AIF   ('&SAVE' EQ '').NOLA                                     00177000
+         LA    R13,&SAVE                                                00178000
+.NOLA    ANOP                                                           00179000
+         L     13,4(R13)                                                00180000
+         AIF   ('&RC'(1,1) NE '(').NORM                                 00181000
+         LA    15,0&RC                                                  00182000
+         AGO   .SKP                                                     00183000
+.NORM    ANOP                                                           00184000
+         LA    15,&RC                                                   00185000
+.SKP     ANOP                                                           00186000
+         ST    15,16(13)                                                00187000
+         LM    14,12,12(13)                                             00188000
+         TM    577(0),X'02'             XA ACTIVE ?                     00189000
+         BZR   14                       NO...RETURN                     00190000
+         BSM   0,14                     YES...RETURN SETTING MODE       00191000
+         LTORG ,                                                        00192000
+         MEND                                                           00193000

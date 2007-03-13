@@ -1,0 +1,1051 @@
+         MACRO                                                          00010020
+         SGSYSD                                                         00020020
+*********************************************************************** 00030020
+*                                                                     * 00040020
+*        LICENSED MATERIALS - PROGRAM PROPERTY OF IBM                 * 00050020
+*        "RESTRICTED MATERIALS OF IBM"                                * 00060020
+*        5686-066                                                     * 00070020
+*        (C) COPYRIGHT IBM CORP. 1993, 2001                           * 00080020
+*                                                                     * 00090020
+*********************************************************************** 00100020
+         GBLB  &BGDEBUG         DEBUG OPTION                            00110020
+         GBLB  &SGSYSD          COMPONENT NAME FOR PRINT OPTION         00120020
+.** START OF SPECIFICATIONS ******************************************* 00130020
+.*                                                                      00140020
+.*01* MODULE-TYPE = MACRO                                               00150020
+.*                                                                      00160020
+.*01* DESCRIPTIVE NAME = DATA SPACES SUPERVISOR SERVICES                00170020
+.*                                                                      00180020
+.*   ENTRY POINT: SVC122                                                00190020
+.*                                                                      00200020
+.*   CHANGE ACTIVITY                                                    00210020
+.*      MORE THAN 255 TASKS                                    @D66ODOW 00220020
+.*                                                                      00230020
+.** END OF SPECIFICATIONS ********************************************* 00240020
+         AIF   (NOT &BGDEBUG OR NOT &SGSYSD).NOPRINT                    00250020
+         PRINT GEN                                                      00260020
+.NOPRINT ANOP                                                           00270020
+         DC    CL8'SGSYSD  '                                            00280020
+         DC    CL10'03/05/2001'    LAST APAR/DEVELOPMENT CHANGE         00290020
+ TITLE 'DOS SUPERVISOR      SGSYSD       SUPERVISOR CALL 122'           00300020
+*************************************************************           00310020
+*                                                                       00320020
+*                                                                       00330020
+*                                                                       00340020
+*************************************************************           00350020
+*                                                                       00360020
+*   ENTRY POINTS                                                        00370020
+*                                                                       00380020
+*         SVC122    INPUT FROM SYSDEF SVC                               00390020
+*                                                                       00400020
+*   REGISTER ON INPUT                                                   00410020
+*                                                                       00420020
+*         R1 POINTER TO THE PARAMETER LIST                              00430020
+*         R6 DISPATCHER                                                 00440020
+*         R8 TIB POINTER                                                00450020
+*         RA TCB POINTER                                                00460020
+*         RB SAVE AREA ADDR                                             00470020
+*         RC BASE REGISTER                                              00480020
+*                                                                       00490020
+*   REGISTER USAGE                                                      00500020
+*                                                                       00510020
+*         R2 SYSCOM BASE POINTER, COMREG BASE POINTER                   00520020
+*         RE POINTER TO PASSED STORAGE BLOCK                            00530020
+*                                                                       00540020
+*   REGISTER ON OUTPUT                                                  00550020
+*                                                                       00560020
+*         RF CONTAINS THE RETURN CODE                                   00570020
+*            X'00' : SYSDEF SVC RETURNS OK                              00580020
+*            X'04' : PASSED STORAGE AREA INSUFFICIENT                   00590020
+*            X'08' : REQUIRED INPUT MISSING                             00600020
+*            X'10' : SYSTEM IS NOT ESA                                  00610020
+*            X'14' : INPUT CONTROL BLOCK NOT IN VALID STORAGE           00620020
+*            X'18' : CONTENTS OF INPUT CONTROL BLOCK INCORRECT          00630020
+*            X'1C' : UNABLE TO GETVIS PFIXED WORK AREA                  00640020
+*                                                                       00650020
+         SPACE 3                                                        00660020
+         USING DSPSYSDF,R1                                              00670020
+         USING DISP,R6                                                  00680020
+         USING TCBADR,RA                                                00690020
+         USING SVEARA,RB                                                00700020
+         USING SVC122,RC                                                00710020
+SVC122   DS    0H                 ENTRY FOR DATA AND LIBRARY            00720020
+         TM    TCBEXFLG,TCBEXAM   SEE IF CALLER WAS RUNNING IN 31-BIT   00730020
+         BNO   SVC12224           MODE. IF NOT, WE STAY IN 24-BIT.      00740020
+*        AMODESW SET,AMODE=31,SAVE=(R0),WR=(RE) ELSE RUN IN 31-BIT MODE 00750020
+         AMODESW SET,AMODE=31,SAVE=(R0),WR=(RE)                         00760020
+SVC12224 DS    0H                                                       00770020
+*************************************************************           00780020
+*                                                                       00790020
+* FIRST SEE IF USER MAY EXECUTE THIS SVC                                00800020
+*                                                                       00810020
+*************************************************************           00820020
+         XR    R2,R2                                                    00830020
+         ST    R2,SVER0F           CLEAR THE RETURN CODE                00840020
+         CLC   TID(2),ARTIDH       CHECK CALLER:                        00850020
+         BL    SDEFRC0C            ...SYSTEM TASK ---> RETURN CODE      00860020
+         BE    SDEFVAL1            ...ATT ROUTINE ---> OK               00870020
+         L     R2,CRADDR           ...USER PARTITION ---> CONT CHECK    00880020
+         USING COMREG,R2                                                00890020
+         TM    JCSW5,JCLACTIV      JOB CONTROL ACTIVE                   00900020
+         DROP  R2                                                       00910020
+         BO    SDEFVAL1            YES, ---> OK                         00920020
+         L     R9,PCBPTR           GET CURRENT PCB PTR         @D64ADOW 00930020
+         USING PCBADR,R9                                       @D64ADOW 00940020
+         TM    PCBSSFLG,CICS       IS IT CICS PARTITION        @D64ADOW 00950020
+         DROP  R9                                              @D64ADOW 00960020
+         BO    SDEFVAL1            YES, ---> OK                @D64ADOW 00970020
+         TM    TCBFLAG3,TCBVEND    IS IT A VENDOR PRODUCT               00980020
+         BNO   SDEFRC0C            NO, ---> RETURN CODE                 00990020
+SDEFVAL1 DS    0H                                                       01000020
+*************************************************************           01010020
+*                                                                       01020020
+* VALIDATE THE INPUT PARAMETER LIST                                     01030020
+*                                                                       01040020
+*************************************************************           01050020
+         L     R9,CRADDR          COMREG PTR IN R9 REQ'RED FOR VALID    01060020
+         LR    R3,R1              SAVE INPUT CONTROL BLOCK ADDRESS      01070020
+         DROP  R1                                                       01080020
+         USING DSPSYSDF,R3                                              01090020
+         LA    R2,DSPSDLEN-1(R1)  END OF INPUT CONTROL BLOCK            01100020
+         BAL   R8,VALIDSVA        VALIDATE                              01110020
+*SGLINK VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2),OUTPUT=(R5)              01120020
+*************************************************************           01130020
+*                                                                       01140020
+* VALIDATE THE PASSED GETVIS BLOCK                                      01150020
+*                                                                       01160020
+*************************************************************           01170020
+         LR    R3,R1              R3 ADDRESS CONFORMS TO CALLERS AMODE  01180020
+         ICM   RE,15,DSPSDDAD     GET POINTER TO USER SUPPLIED GETVIS   01190020
+         BZ    SDEFRC08           IF ZERO, THEN INPUT IS MISSING        01200020
+         LA    RE,0(,RE)          BLANK OUT ALL NON-ADDRESS BITS        01210020
+         USING SDEFGVHD,RE                                              01220020
+*                                                                       01230020
+         ICM   R2,15,DSPSDDLN     CHECK IF USER SUPPLIED GETVIS AREA    01240020
+         BZ    SDEFRC08           REALLY HAS MORE THAN 0 BYTES          01250020
+         CLI   DSPSDDLN,X'00'     LENGTH CAN NOT EXCEED 16MB-1          01260020
+         BNE   SDEFRC08                                                 01270020
+*                                                                       01280020
+         LA    R8,SDEFQFIN        GET THE END OF THE HEADER INFORMATION 01290020
+         SR    R8,RE              AND SEE IF AT LEAST THIS FITS INTO    01300020
+         CR    R8,R2              THE PASSED STORAGE AREA.              01310020
+         BP    SDEFRC04           IF NOT PASS RC=4             @D61NDOW 01320020
+         LR    R1,RE                                                    01330020
+         AR    R2,R1              SUBTRACT ONE TO POINT TO LAST BYTE IN 01340020
+         BCTR  R2,0               THE PASSED STORAGE AREA               01350020
+         BAL   R8,VALIDSVA        VALIDATE                              01360020
+*SGLINK VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2),OUTPUT=(R5)              01370020
+         DROP  R6                                                       01380020
+         ST    R1,DSPSDDAD        VALID WILL RETURN THE 24-BIT ADDRESS  01390020
+         LR    RE,R1                                           @D52SDPP 01400020
+*                                 WITH THE HIGH-ORDER BYTE CLEARED      01410020
+*************************************************************           01420020
+*                                                                       01430020
+* RUN THIS SERVICE IN THE 31-BIT MODE AFTER VALIDATION IS DONE          01440020
+*                                                                       01450020
+*************************************************************           01460020
+         MVI   SDEFQOPT,X'00'      CLEAR OPTION BITS                    01470020
+*        AMODESW SET,AMODE=31,SAVE=(R0),WR=(R8)                         01480020
+         AMODESW SET,AMODE=31,SAVE=(R0),WR=(R8)                         01490020
+*************************************************************           01500020
+*                                                                       01510020
+* THE INPUT PLIST AND THE GETVIS AREA ARE NOT NECESSARILY IN            01520020
+* PFIXED STORAGE, SO GET SGETVIS PFIX AND COPY THE INPUT                01530020
+* CONTROL BLOCK AND ADAPT DSPSDDAD                                      01540020
+*                                                                       01550020
+*************************************************************           01560020
+         LA    R2,DSPSDLEN(,0)    GET THE LENGTH OF THE INPUT CONTROL   01570020
+         LA    R2,16(,R2)         BLOCK AND ADD FOUR POINTERS PLUS      01580020
+         A     R2,DSPSDDLN        LENGTH OF THE GETVIS BLOCK IN R2      01590020
+         BO    SDEFRC08           GETVIS PLUS INPUT CONTROL BLOCK PLUS  01600020
+         LR    R0,R2              A SHORT HEADER EXCEED 2GB BOUNDARY    01610020
+         LA    R9,SDEFQSAV-16                                           01620020
+         SGETVIS LENGTH=(R0),ADDRESS=(R1),SAVE=(R9),PFIX=YES,SPID=SDEFS*01630020
+               PID                                                      01640020
+         LTR   RF,RF                                                    01650020
+         BNZ   SDEFRC1C                                                 01660020
+         ST    R3,0(,R1)          STORE POINTER TO INPUT PLIST          01670020
+         ST    R2,4(,R1)          STORE LENGTH OF PFIXED GETVIS AREA    01680020
+         ST    RE,8(,R1)          STORE ADDRESS OF USER GEVIS AREA      01690020
+         L     R9,DSPSDDLN        GET LENGTH OF USER GETVIS AREA        01700020
+         ST    R9,12(,R1)         AND STORE IT IN GETVIS HEADER         01710020
+         MVC   16(DSPSDLEN,R1),0(R3)  COPY THE INPUT PLIST              01720020
+         LA    RE,DSPSDLEN+16(,R1) GET THE BEGINNING OF GETVIS COPY     01730020
+         DROP  R3                                                       01740020
+         LA    R1,16(,R1)                                               01750020
+         LR    R3,R1                                                    01760020
+         USING DSPSYSDF,R1        USE THE PFIXED INPUT PARAMETER LIST   01770020
+         ST    RE,DSPSDDAD        AND STORE THE ADDRESS OF PFIXED GV IN 01780020
+*************************************************************           01790020
+*                                                                       01800020
+* AND FINALLY VALIDATE THE REQUEST AND PREPARE TO PROCESS IT            01810020
+*                                                                       01820020
+*************************************************************           01830020
+         CLI   DSPSDSRV,DSPSDQRY  SEE IF A QUERY SERVICE IS REQUESTED   01840020
+         BE    SDEFCHK1           PROCESS IT, IF SO. ELSE SEE IF        01850020
+         CLI   DSPSDSRV,DSPSDDEF  IT IS A SYSDEF REQUEST. IF SO, THEN   01860020
+         BE    SDEFCHK2           PROCESS IT. ELSE, IT IS A BAD PARA-   01870020
+         B     SDEFRC18           METER LIST.                           01880020
+*************************************************************           01890020
+* HERE ARE ALL QUERY SERVICES                                           01900020
+*************************************************************           01910020
+SDEFCHK1 DS    0H                                                       01920020
+         TM    DSPSDPRM,X'FF'-(DSPSDSID+DSPSDALL+DSPSDNAM+DSPSDOWN)     01930020
+         BNZ   SDEFRC18           IF NOT, THEN IT IS INVALID            01940020
+*                                                                       01950020
+         CLI   DSPSDBSF,X'00'     IS NO VALID REQUEST SPECIFIED ?       01960020
+         BE    SDEFRC18           IF SO, THEN IT IS INVALID             01970020
+         CLI   DSPSDBSF,DSPSDQLP  IS IT THE REQUEST FOR MORE SPECI-     01980020
+         BE    SDEFQRXX           FIC INFORMATION ON DATA SPACES        01990020
+         CLI   DSPSDBSF,DSPSDQDS  IS IT THE REQUEST TO GET DATASPACE    02000020
+         BE    SDEFQD00           DEFAULT VALUES?                       02010020
+         CLI   DSPSDBSF,DSPSDQAC  IS IT THE REQUEST TO GET DATASPACE    02020020
+         BE    SDEFQA00           ACTUAL VALUES?                        02030020
+         CLI   DSPSDBSF,DSPSDQPN  IS IT THE REQUEST TO GET NUMBER       02040020
+         BE    SDEFQR00           OF DATASPACES FOR ALL PARTITIONS      02050020
+         B     SDEFRC18           NOT RECOGNIZED                        02060020
+*************************************************************           02070020
+* HERE ARE ALL SYSDEF SERVICES                                          02080020
+*************************************************************           02090020
+SDEFCHK2 DS    0H                                                       02100020
+         CLI   DSPSDBSF,X'00'     NO BITS MUST BE SET IN THIS FIELD     02110020
+         BNE   SDEFRC18                                                 02120020
+         B     SDEFSD00           SET SYSTEM DEFAULTS                   02130020
+*************************************************************           02140020
+*                                                                       02150020
+* GET DATA SPACES INFORMATION BLOCKS                                    02160020
+*                                                                       02170020
+*************************************************************           02180020
+SDEFQR00 DS    0H                 INDICATE THAT WE WANT TO COUNT        02190020
+***                               PARTMAX AS WELL TO PASS ACTUALS       02200020
+         MVI   SDEFQOPT,SDEFQS01                                        02210020
+         L     R8,IJBDSICB                                              02220020
+         USING DSINFOTB,R8                                              02230020
+         MVC   DSPSVSIZ(DSSALGTH),DSSAVSIZ AFTER THE LOOP, COPY         02240020
+         DROP  R8                      THE ACTUALS                      02250020
+SDEFQRXX DS    0H                  INITIALIZE THE AREA POINTERS         02260020
+         L     R8,DSPSDDLN         ... IN THE WORK AREA                 02270020
+         ST    R8,SDEFGVLN                                              02280020
+         LA    R8,SDEFQFIN                                              02290020
+         ST    R8,SDEFGVSA                                              02300020
+         ST    R8,SDEFGVSE                                              02310020
+         L     R3,IJBCLIM                                               02320020
+         USING CLIM,R3                                                  02330020
+         LH    R8,CAPART                                                02340020
+         LA    R8,2(R8,R8)                                              02350020
+         DROP  R3                                                       02360020
+         A     R8,SDEFGVSA                                              02370020
+         ST    R8,SDEFGVUA                                              02380020
+         ST    R8,SDEFGVUE                                              02390020
+*                                                                       02400020
+* CALL THE SUBROUTINE TO CALCULATE THE RECORDS                          02410020
+*                                                                       02420020
+         BAL   R8,SDEFXENT           CALL THE LARGE LOOP TO BUILD AND   02430020
+*                                                                       02440020
+         TM    SDEFQOPT,SDEFQS01                                        02450020
+         BNO   SDEFQRXY                                                 02460020
+         L     R8,IJBDSICB                                              02470020
+         USING DSINFOTB,R8                                              02480020
+         MVC   DSPSVSIZ(DSSALGTH),DSSAVSIZ                              02490020
+         DROP  R8                                                       02500020
+SDEFQRXY DS    0H                                                       02510020
+*                                                                       02520020
+* FILL THE POINTERS TO THE RETURN INFORMATION AREAS IN INPUT PLIST      02530020
+*                                                                       02540020
+         L     R8,SDEFGVUA           START OF RECORD AREA               02550020
+         ST    R8,DSPSDDAD                                              02560020
+         L     R2,SDEFGVUE           END OF RECORD AREA                 02570020
+         SR    R2,R8                                                    02580020
+         ST    R2,DSPSDDLN                                              02590020
+         L     R8,SDEFGVSA           START OF SYSLOGID STRING           02600020
+         ST    R8,DSPSDDA2                                              02610020
+         L     R2,SDEFGVSE           END OF SYSLOGID STRING             02620020
+         SR    R2,R8                                                    02630020
+         ST    R2,DSPSDDL2                                              02640020
+         LTR   RF,RF                                                    02650020
+         BNZ   SDEFRC04                                                 02660020
+         B     SDEFRC00                                                 02670020
+*************************************************************           02680020
+*                                                                       02690020
+* CHANGE SYSTEM DEFAULTS                                                02700020
+*                                                                       02710020
+*************************************************************           02720020
+SDEFSD00 DS    0H                                                       02730020
+         LA    R3,SDEFQSAV                                              02740020
+         USING DSSADR,R3                                                02750020
+         L     R8,IJBDSICB                                              02760020
+         USING DSINFOTB,R8                                              02770020
+         MVC   DSSXVSIZ(DSSDLGTH),DSSDVSIZ                              02780020
+         DROP  R8                                                       02790020
+*                                                                       02800020
+         TM    DSPSDPRM,X'FF'-(DSPSDDSZ+DSPSDMAX+DSPSDPMX+DSPSDCMX+DSPS*02810020
+               DDFT+DSPSDVDS)                                           02820020
+         BNZ   SDEFRC14                                                 02830020
+         TM    DSPSDPRM,DSPSDDSZ DSIZE FOR DSPACES TO CHANGE            02840020
+         BNO   SDEFSD01                                                 02850020
+         L     R8,DSPSVSIZ                                    @D40322PP 02860020
+         LA    R8,31(,8)         ROUND THE VALUE UP TO        @D40233PP 02870020
+         SRL   R8,5              MULTIPLES OF 32 K            @D40322PP 02880020
+         SLL   R8,5              AND THEN STORE IT            @D40322PP 02890020
+         ST    R8,DSSXVSIZ                                    @D40322PP 02900020
+         L     R2,IJBVSIZE       GET THE VSIZE TO CHECK IF IT IS        02910020
+         CL    R2,DSSXVSIZ       SUFFICIENT FOR THIS REQUEST            02920020
+         BL    SDEFSD01          IF NOT, AN ERROR OCCURED               02930020
+         XI    DSPSDPRM,DSPSDDSZ                                        02940020
+SDEFSD01 DS    0H                                                       02950020
+         TM    DSPSDPRM,DSPSDMAX MAXIMUM NUMBER OF DATA SPACES          02960020
+         BNO   SDEFSD02                                                 02970020
+         MVC   DSSXMAX(4),DSPSMAX                                       02980020
+         ICM   R8,15,DSPSMAX     GET MAXIMUM NUMBER OF DATA SPACES      02990020
+         BZ    SDEFSD02                                                 03000020
+         SRL   R8,16             IT IS SMALLER THEN 65535 ( 16 BIT )    03010020
+         LTR   R8,R8             THEN ALL IS OK, ELSE WE HAVE AN        03020020
+         BNZ   SDEFSD02          ERROR                                  03030020
+         XI    DSPSDPRM,DSPSDMAX CLEAR THIS ERROR                       03040020
+SDEFSD02 DS    0H                                                       03050020
+         TM    DSPSDPRM,DSPSDPMX MAX NUMBER OF DSPS PER PARTITION       03060020
+         BNO   SDEFSD03                                                 03070020
+         MVC   DSSXPTMX(4),DSPSPTMX                                     03080020
+         ICM   R8,15,DSPSPTMX    GET MAXIMUM NUMBER OF DATA SPACES      03090020
+         BZ    SDEFSD03                                                 03100020
+         CL    R8,DSSXMAX        FROM WORK AREA AND COMPARE IT TO       03110020
+         BH    SDEFSD03          THE MAX PER PART. IF SMALLER, IT IS AN 03120020
+         CL    R8,SDEFLMT1       ERROR                                  03130020
+         BH    SDEFSD03                                                 03140020
+         XI    DSPSDPRM,DSPSDPMX NO ERROR, O.K.                         03150020
+SDEFSD03 DS    0H                                                       03160020
+         TM    DSPSDPRM,DSPSDCMX MAX ALLOCATION FOR COMMON DSPS         03170020
+         BNO   SDEFSD04                                                 03180020
+         L     R8,DSPSCOMX       SEE IF CALLER WANTS TO DECREASE THE    03190020
+         C     R8,DSSXCOMX       COMMAX VALUE, WHICH IS NOT ALLOWED     03200020
+         BL    SDEFSD04                                                 03210020
+         MVC   DSSXCOMX(4),DSPSCOMX                                     03220020
+         CL    R8,DSSXMAX        GET MAXIMUM NUMBER OF DATA SPACES FROM 03230020
+         BH    SDEFSD04          ARE ALLOWED. IT IS AN ERROR THEN.      03240020
+         A     R8,DSSXVDSK                                              03250020
+         CL    R8,SDEFLMT2       COMPARE TO VSE COMMAX UPPER BOUNDARY   03260020
+         BH    SDEFSD04                                                 03270020
+         BAL   R8,SDEFQ90                                               03280020
+         B     SDEFSD04          IF THERE ARE PRIVATE ENTRIES, THEN     03290020
+         XI    DSPSDPRM,DSPSDCMX REJECT, ELSE IT IS ACCEPTED            03300020
+SDEFSD04 DS    0H                                                       03310020
+         TM    DSPSDPRM,DSPSDDFT DEFAULT SIZE OF DATA SPACE             03320020
+         BNO   SDEFSD05                                                 03330020
+         ICM   R8,15,DSPSDFSZ    IF USER WANTS TO SET         @D40322PP 03340020
+         BZ    SDEFSD05          DEFAULT SIZE TO 0 IT IS AN ERROR       03350020
+         LA    R8,31(,8)         ROUND THE VALUE UP TO        @D40322PP 03360020
+         SRL   R8,5              MULTIPLES OF 32 K            @D40322PP 03370020
+         SLL   R8,5              AND THEN STORE IT            @D40322PP 03380020
+         ST    R8,DSSXDFSZ                                    @D40322PP 03390020
+         CL    R8,SDEF2GB                                     @D40322PP 03400020
+         BH    SDEFSD05                                       @D40322PP 03410020
+         XI    DSPSDPRM,DSPSDDFT                                        03420020
+SDEFSD05 DS    0H                                                       03430020
+         CLI   DSPSDPRM,X'00'      SEE IF AT LEAST ONE ERROR OCCURED    03440020
+         BNE   SDEFRC18            AND IF SO, DO NOT ACTIVATE THE NEW   03450020
+         L     R8,IJBDSICB                                              03460020
+         USING DSINFOTB,R8                                              03470020
+         MVC   DSSDVSIZ(24),DSSXVSIZ DEFAULTS. OTHERWISE, ACTIVATE THEM 03480020
+         DROP  R8                                                       03490020
+         B     SDEFRC00                                                 03500020
+         DROP  R3                                                       03510020
+*************************************************************           03520020
+*                                                                       03530020
+* GET SYSTEM DEFAULTS                                                   03540020
+*                                                                       03550020
+*************************************************************           03560020
+SDEFQD00 DS    0H                                                       03570020
+         L     R8,IJBDSICB                                              03580020
+         USING DSINFOTB,R8                                              03590020
+         MVC   DSPSVSIZ(DSSALGTH),DSSDVSIZ                              03600020
+         DROP  R8                                                       03610020
+         B     SDEFRC00                                                 03620020
+*************************************************************           03630020
+*                                                                       03640020
+* GET SYSTEM ACTUALS                                                    03650020
+*                                                                       03660020
+*************************************************************           03670020
+* PARTMAX IS CALCULATED BY CALLING THE SUBROUTINE                       03680020
+SDEFQA00 DS    0H                                                       03690020
+         L     R8,IJBDSICB                                              03700020
+         USING DSINFOTB,R8                                              03710020
+         MVC   DSPSVSIZ(DSSALGTH),DSSAVSIZ                              03720020
+         DROP  R8                                                       03730020
+         MVI   SDEFQOPT,SDEFQS01   ARE WE TRYING TO CALCULATE PARTMAX?  03740020
+         B     SDEFQRXX            CALL THE LARGE LOOP TO COUNT         03750020
+*************************************************************           03760020
+*                                                                       03770020
+* RETURN FROM SYSDEF SVC                                                03780020
+*                                                                       03790020
+*************************************************************           03800020
+SDEFRC00 DS    0H                                                       03810020
+         MVI   SVER0F+3,SDEFOK                                          03820020
+         B     SDEFRCXX                                                 03830020
+SDEFRC04 DS    0H                                                       03840020
+         MVI   SVER0F+3,SDEFGVIS                                        03850020
+         B     SDEFRCXX                                                 03860020
+SDEFRC08 DS    0H                                                       03870020
+         MVI   SVER0F+3,SDEFINPM                                        03880020
+         B     SDEFRET2                                                 03890020
+SDEFRC0C DS    0H                                                       03900020
+         MVI   SVER0F+3,SDEFAUTH                                        03910020
+         B     SDEFRET2                                                 03920020
+SDEFRC14 DS    0H                                                       03930020
+         MVI   SVER0F+3,SDEFNVAL                                        03940020
+         B     SDEFRCXX                                                 03950020
+SDEFRC18 DS    0H                                                       03960020
+         MVI   SVER0F+3,SDEFCBWR                                        03970020
+         B     SDEFRCXX                                        @D61NDOW 03980020
+SDEFRC1C DS    0H                                              @D61NDOW 03990020
+         MVI   SVER0F+3,SDEFPFIX                                        04000020
+         B     SDEFRET2                                                 04010020
+         DROP  R1                                                       04020020
+         SPACE 2                                                        04030020
+*************************************************************           04040020
+*                                                                       04050020
+* THE INPUT PARAMETER LIST AND THE GETVIS AREA ARE NOT                  04060020
+* CORRECT. RECONSTRUCT INPUT FIELDS AND FREEVIS THE AREA                04070020
+*                                                                       04080020
+*************************************************************           04090020
+SDEFRCXX DS    0H                                                       04100020
+         S     R1,SDEF16         POINT WITH R1 TO BEGINNING OF GETVIS   04110020
+         LR    R9,R1             SAVE POINTER TO PFIXED GETVIS AREA     04120020
+         L     R3,0(,R1)         GET THE ADDRESS OF THE ORIGINAL PLIST  04130020
+         L     RE,8(,R1)         RESTORE POINTER TO USER SUPPLIED GVIS  04140020
+         L     R5,12(,R1)        SUPPLID GETVIS AREA AND ITS LENGTH     04150020
+         MVC   0(DSPSDLEN,R3),16(R1) COPY THE PLIST                     04160020
+* PREPARE EVERYTHING FOR MVCL                                           04170020
+         LR    R4,RE             EXTRACT THE ADDRESS OF THE USER        04180020
+         LA    R6,DSPSDLEN+16(,R1) GET START ADDRESS OF PFIXED GETVIS   04190020
+         LR    R7,R5             AND COPY THE LENGTH INTO R7            04200020
+         MVCL  R4,R6             COPY THE GETVIS AREA                   04210020
+* ADJUST SOME FIELDS FROM GETVIS AREA                                   04220020
+         LR    R4,RE             POINT TO USER SUPPLIED GETVIS AREA     04230020
+         LA    R1,DSPSDLEN+16(,R1) POINT TO TEMPORARY PFIXED VERSION    04240020
+*                                                                       04250020
+SDEFADJ0 DS    0H                                                       04260020
+         ICM   R2,15,SDEFGVUA                                           04270020
+         BZ    SDEFADJ1                                                 04280020
+         SR    R2,R1                                                    04290020
+         AR    R2,R4                                                    04300020
+         ST    R2,SDEFGVUA                                              04310020
+*                                                                       04320020
+SDEFADJ1 DS    0H                                                       04330020
+         ICM   R2,15,SDEFGVUE                                           04340020
+         BZ    SDEFADJ2                                                 04350020
+         SR    R2,R1                                                    04360020
+         AR    R2,R4                                                    04370020
+         ST    R2,SDEFGVUE                                              04380020
+*                                                                       04390020
+SDEFADJ2 DS    0H                                                       04400020
+         ICM   R2,15,SDEFGVSA                                           04410020
+         BZ    SDEFADJ3                                                 04420020
+         SR    R2,R1                                                    04430020
+         AR    R2,R4                                                    04440020
+         ST    R2,SDEFGVSA                                              04450020
+*                                                                       04460020
+SDEFADJ3 DS    0H                                                       04470020
+         ICM   R2,15,SDEFGVSE                                           04480020
+         BZ    SDEFADJ4                                                 04490020
+         SR    R2,R1                                                    04500020
+         AR    R2,R4                                                    04510020
+         ST    R2,SDEFGVSE                                              04520020
+*                                                                       04530020
+         USING DSPSYSDF,R3           R3 POINTS TO USER-SUPPLIED PLIST   04540020
+SDEFADJ4 DS    0H                                                       04550020
+         L     R8,SDEFGVUA           START OF RECORD AREA               04560020
+         ST    R8,DSPSDDAD                                              04570020
+         L     R2,SDEFGVUE           END OF RECORD AREA                 04580020
+         SR    R2,R8                                                    04590020
+         ST    R2,DSPSDDLN                                              04600020
+         L     R8,SDEFGVSA           START OF SYSLOGID STRING           04610020
+         ST    R8,DSPSDDA2                                              04620020
+         L     R2,SDEFGVSE           END OF SYSLOGID STRING             04630020
+         SR    R2,R8                                                    04640020
+         ST    R2,DSPSDDL2                                              04650020
+         DROP  R3                                                       04660020
+*                                                                       04670020
+         LR    R1,R9             RESTORE THE ADDRESS OF GETVIS AREA     04680020
+         L     R2,4(,R9)         GET LENGTH OF GETVIS AREA              04690020
+         LR    R0,R2             INTO R0 FOR FREEVIS                    04700020
+         LA    R9,SDEFQSAV-16    AND SUPPLY A SAVE AREA                 04710020
+*        SFREEVIS ADDRESS=(R1),LENGTH=(R0),SAVE=(R9)                    04720020
+         SFREEVIS ADDRESS=(R1),LENGTH=(R0),SAVE=(R9)                    04730020
+*************************************************************           04740020
+SDEFRET2 DS    0H                                                       04750020
+         L     R6,DISPAD         RESTORE R6 AND BRANCH TO THE DISP      04760020
+         BR    R6                                                       04770020
+         DROP  RA                                                       04780020
+         DROP  RB                                                       04790020
+*************************************************************           04800020
+*                                                                       04810020
+*   HERE IS THE BIG SUBROUTINE TO BE CALLED                             04820020
+*                                                                       04830020
+*************************************************************           04840020
+*                                                                       04850020
+*   REGISTER USAGE ON LOOP                                              04860020
+*                                                                       04870020
+*        R0 : ALE COUNTER                                               04880020
+*        R1 : POINTER TO INPUT PARAMETER LIST                           04890020
+*        R2 : POINTER IN PCBATABX                                       04900020
+*        R3 : POINTER TO PCBX                                           04910020
+*        R4 : POINTER TO DSCBX                                          04920020
+*        R5 : COUNTER OF TASKS WITHIN PCBX                              04930020
+*        R6 : POINTER TO TCBX                                           04940020
+*        R7 : POINTER TO TDSEX                                          04950020
+*        R8 : RETURN ADDRESS                                            04960020
+*        R9 : POINTER IN PCBATABY                                       04970020
+*        RA : POINTER TO PCBY                                           04980020
+*        RB : POINTER TO THE ALE / TCBY                                 04990020
+*        RC : MACRO BASE ADDRESS                                        05000020
+*        RD : COUNTER OF TASKS WITHIN PCBY                              05010020
+*        RF : RETURN CODE OF SUBROUTINE                                 05020020
+*             AND TEMPORARY POINTERS                                    05030020
+*                                                                       05040020
+*   THIS LOOP IS USED FOR AN INTERNAL SERVICES AS WELL. THIS            05050020
+*   SERVICE IS:                                                         05060020
+*                                                                       05070020
+*   - INTERNAL SERVICE                                                  05080020
+*                                                                       05090020
+*     DO NOT CREATE RECORDS. JUST SCAN ALL PCBS TO FIND THE NUMBER      05100020
+*     OF DATA SPACES, THAT ARE OWNED BY THE PARTITION OWNING THE MOST   05110020
+*     DATA SPACES                                                       05120020
+*                                                                       05130020
+*************************************************************           05140020
+         USING DSPSYSDF,R1                                              05150020
+SDEFXENT DS    0H                                                       05160020
+         MVC   SDEFGVID(4),SDEFID EYE-CATCHER                           05170020
+         MVC   SDEFGVTI(2),TID    STORE THE TID OF REQUESTING TASK      05180020
+         L     R4,IJBDSICB                                              05190020
+         USING DSINFOTB,R4                                              05200020
+         XR    R2,R2                NUMBER OF DATA SPACES OWNED BY PART 05210020
+         ST    R2,DSSAPTMX          WITH MOST DATA SPACES IN SYSTEM     05220020
+         DROP  R4                                                       05230020
+         L     R4,SDEFGVSE                                              05240020
+         MVC   0(2,R4),SDEFSPCS     FILL IN THE SYSLOGID IN THE STRING  05250020
+         LA    R4,2(,R4)            POINT TO THE NEXT FREE ENTRY        05260020
+         ST    R4,SDEFGVSE                                              05270020
+*                                                                       05280020
+* SCAN OVER ALL PCBX                                                    05290020
+*                                                                       05300020
+         L     R2,APCBATAB                                              05310020
+         B     SDEFX020                                                 05320020
+SDEFX010 DS    0H                                                       05330020
+         LA    R2,4(,R2)                                                05340020
+SDEFX020 DS    0H                                                       05350020
+         XR    R3,R3                                                    05360020
+         ST    R3,SDEFQNPP          NO DATA SPACES FOR THIS PARTITION   05370020
+         ICM   R3,15,0(R2)          GET THE ENTRY AND SEE IF IT IS      05380020
+         BZ    SDEFX010             EMPTY.                              05390020
+         BM    SDEFXEND                                                 05400020
+         USING PCBADR,R3            WE NOW LOOK INTO                    05410020
+         L     RF,PCEPIB            THE PARTITION PIB TO FIND OUT,      05420020
+         USING PIBADR,RF            IF SO, WE PROCEED TO THE NEXT       05430020
+         CLI   PIBFLG,INACT         PARTITION, ELSE, WE PROCESS         05440020
+         BE    SDEFX010             THE CURRENT ONE.                    05450020
+         DROP  RF                                                       05460020
+*                                                                       05470020
+         L     RF,SDEFGVSE                                              05480020
+         MVC   0(2,RF),PCELID       FILL IN THE SYSLOGID IN THE STRING  05490020
+         LA    RF,2(,RF)            POINT TO THE NEXT FREE ENTRY        05500020
+         ST    RF,SDEFGVSE                                              05510020
+*                                                                       05520020
+         TM    DSPSDPRM,DSPSDNAM+DSPSDOWN SEE IF BOTH OWNER AND NAME    05530020
+         BNO   SDEFX030                   ARE SPECIFIED. IF NOT, LOOP   05540020
+         CLC   PCELID(2),DSPSDDOW         ALL, ELSE ONLY TAKE THE       05550020
+         BNE   SDEFX010                   OWNING PCBX BY SKIPPING THIS  05560020
+SDEFX030 DS    0H                                                       05570020
+*                                                                       05580020
+* SCAN OVER ALL TCBX                                                    05590020
+*                                                                       05600020
+         SLR   R5,R5                INDICATE HIGHEST PRTY-TASK @D66ODOW 05610020
+SDEFX040 DS    0H                                                       05620020
+*        DISPMAC FUNC=TIB,SFUNC=NEXTLOW,INP1=R5,INP2=R3,ERREXIT=SDEFHW  05630020
+         DISPMAC FUNC=TIB,SFUNC=NEXTLOW,INP1=R5,INP2=R3,ERREXIT=SDEFHW X05640020
+                                                               @D66ODOW 05641020
+         LTR   R5,R5                ALL TASKS PROCESSED        @D66ODOW 05642020
+         BZ    SDEFX240             YES,                       @D6666OW 05643020
+         USING TIBADR,R5                                       @D66ODOW 05644020
+         MVC   SDEFGVTO(2),TIBRTID  TID OF THE OWNING TASK     @D66ODOW 05645020
+         DROP  R3                                                       05646020
+         L     R6,TIBTCB                                                05647020
+         DROP  R5                                              @D66ODOW 05648020
+*                                                                       05649020
+* SCAN OVER ALL DSCBX                                                   05650020
+*                                                                       05660020
+         USING TCBADR,R6                                                05670020
+         ICM   R7,15,TCBTDSE      IF THERE IS NO TDSE, THEN...          05680020
+         BZ    SDEFX235           TAKE NEXT TCBX               @DY45845 05690020
+         DROP  R6                                                       05700020
+         USING TDSEADR,R7                                               05710020
+         ICM   R4,15,TDSESCB      IF THERE IS NO DSCB, THEN...          05720020
+         BZ    SDEFX235           TAKE NEXT TCBX               @DY45845 05730020
+SDEFX050 DS    0H                                                       05740020
+         USING SCBADR,R4                                                05750020
+         L     R9,SDEFQNPP       COUNT NUMBER OF DATA SPACES            05760020
+         LA    R9,1(,R9)                                                05770020
+         L     RA,IJBDSICB                                              05780020
+         USING DSINFOTB,RA                                              05790020
+         C     R9,DSSAPTMX       SEE IF IT IS NEW MAXIMUM               05800020
+         BNH   SDEFX060          IF NOT, NOTHING TO DO                  05810020
+         ST    R9,DSSAPTMX       ELSE, IT IS THE NEW MAXIMUM            05820020
+         DROP  RA                                                       05830020
+SDEFX060 DS    0H                                                       05840020
+         ST    R9,SDEFQNPP                                              05850020
+         CLI   DSPSDBSF,DSPSDQPN    PARTITION COUNTING REQUESTED?       05860020
+         BE    SDEFX230             IF SO, ONLY COUNT - NOTHING MORE    05870020
+         TM    SDEFQOPT,SDEFQS01   ARE WE TRYING TO CALCULATE PARTMAX?  05880020
+         BO    SDEFX230            IF SO, WE DON'T NEED TO LOOP ALS     05890020
+         TM    DSPSDPRM,DSPSDNAM    SEE IF NAME PARAMETER GIVEN         05900020
+         BNO   SDEFX070             AND IF SO, COMPARE THE NAMES        05910020
+         CLC   DSCBNAME,DSPSDDNM    IN CASE, THEY DO NOT MATCH, SKIP    05920020
+         BNE   SDEFX230             THIS DSCB                           05930020
+SDEFX070 DS    0H                                                       05940020
+*                                                                       05950020
+* SCAN OVER ALL PCBY                                                    05960020
+*                                                                       05970020
+         L     R9,APCBATAB                                              05980020
+SDEFX080 DS    0H                                                       05990020
+         ICM   RA,15,0(R9)       GET THE ENTRY AND SEE IF IT IS         06000020
+         BZ    SDEFX220          EMPTY.                                 06010020
+         BM    SDEFX230                                                 06020020
+*                                                                       06030020
+* SCAN THE PASN-AL FOR PCBY                                             06040020
+*                                                                       06050020
+         NI    SDEFQOPT,X'FF'-SDEFQCRE-SDEFQDAL-SDEFQPAL                06060020
+         USING PCBADR,RA                                                06070020
+         L     RF,PCEPIB            THE PARTITION PIB TO FIND OUT,      06080020
+         USING PIBADR,RF            IF SO, WE PROCEED TO THE NEXT       06090020
+         CLI   PIBFLG,INACT         PARTITION, ELSE, WE PROCESS         06100020
+         BE    SDEFX220             THE CURRENT ONE.                    06110020
+         DROP  RF                                                       06120020
+         TM    DSPSDPRM,DSPSDSID SEE IF SYSLOG ID WAS SPECIFIED         06130020
+         BNO   SDEFX090          AND IF SO, MATCHES IT TO PCBY?         06140020
+         DROP  RA               ID OF OWNER? IF YES, PROCESS IT         06150020
+         USING PCBADR,R3            IF SO, WE PROCEED TO THE NEXT       06160020
+         CLC   DSPSDDLG,PCELID  MATCHES THE SPECIFIED SYSLOGID          06170020
+         DROP  R3               ID OF OWNER? IF YES, PROCESS IT         06180020
+         BE    SDEFX090                                                 06190020
+         USING PCBADR,RA                                                06200020
+         CLC   DSPSDDLG,PCELID  ELSE SEE IF THE SYSLOGID MATCHES ID OF  06210020
+         BNE   SDEFX220         ACCESSOR. IF NOT, SKIP THIS PCBY        06220020
+SDEFX090 DS    0H                DATA SPACE IS NOT ACCESSED             06230020
+         CR    RA,R3             SEE IF PCBY OWNS THIS DATA SPACE       06240020
+         BNE   SDEFX100                                                 06250020
+         OI    SDEFQOPT,SDEFQCRE IF SO, A RECORD IS CREATED, EVEN IF    06260020
+SDEFX100 DS    0H                DATA SPACE IS NOT ACCESSED             06270020
+         ICM   R0,15,PCBVRTAL       GET VIRTUAL ADDRESS OF PASN-AL      06280020
+         BZ    SDEFX130          IF THERE IS NONE, THEN CHECK DU_AL     06290020
+         ICM   RB,15,PCBASTE     GET POINTER TO ASTE                    06300020
+         DROP  RA                                                       06310020
+         USING DUCT,RB                                                  06320020
+         BZ    SDEFX130          THERE IS NO PASN STE, SO CHECK DU-AL   06330020
+         ICM   RB,15,DUCTALD     GET POINTER TO PASN-AL                 06340020
+         BZ    SDEFX130          THERE IS NO PASN-AL, THEN CHECK DU-AL  06350020
+         SLL   RB,25             BLANK OUT THE ORIGIN AND BIT31         06360020
+         SRL   RB,25             AND GET THE LENGTH                     06370020
+         LR    RF,R0                                                    06380020
+         LR    R0,RB             EXCHANGE RF AND RB                     06390020
+         LR    RB,RF                                                    06400020
+         A     R0,F1             CALCULATE NUMBER OF ENTRIES FROM       06410020
+         SLL   R0,3              NUMBER OF 128 BYTE BLOCKS              06420020
+         DROP  RB                                                       06430020
+*                                                                       06440020
+* SCAN ALL ALES FROM PASN-AL FROM PCBY                                  06450020
+*                                                                       06460020
+         USING ALE,RB                                                   06470020
+SDEFX110 DS    0H                                                       06480020
+         TM    ALEB0,ALEI           SEE IF THIS ALE IS INVALID          06490020
+         BO    SDEFX120             IF SO, TRY THE NEXT ONE             06500020
+         L     RF,ALEASTEV                                              06510020
+         SRL   RF,6                 BLANK OUT THE ASTE SEQUENCE NUMBER  06520020
+         SLL   RF,6                                                     06530020
+         USING ASTE,RF                                                  06540020
+         CLC   ASTESN(4),ALEASTSN   SEE IF THE SEQUENCE NUMBERS         06550020
+         BNE   SDEFX120             MATCH                               06560020
+         L     RF,ASTESCB                                               06570020
+         DROP  RF                                                       06580020
+         USING SCBADR,RF                                                06590020
+         CR    RF,R4                IS IT THE SAME DSCB ?               06600020
+         BNE   SDEFX120             DON'T WORRY, IF NOT                 06610020
+         OI    SDEFQOPT,SDEFQPAL    BUT IF, ADDRESSIBLE BY PASN-AL      06620020
+         B     SDEFX130                                                 06630020
+         DROP  RF                                                       06640020
+*                                                                       06650020
+* NEXT ALE FROM PASN-AL FROM PCBY                                       06660020
+*                                                                       06670020
+SDEFX120 DS    0H                                                       06680020
+         LA    RB,ALELEN(,RB)    POINT TO NEXT ACCESS LIST ENTRY        06690020
+         DROP  RB                                                       06700020
+         BCT   R0,SDEFX110       IF WE ARE BEHIND LAST ONE, THEN STOP   06710020
+*                                                                       06720020
+* SCAN OVER ALL TCBY                                                    06730020
+*                                                                       06740020
+SDEFX130 DS    0H                                                       06750020
+         USING PCBADR,RA                                                06760020
+         SLR   RB,RB             INDICATE HIGHEST PRTY-TASK    @D66ODOW 06770020
+SDEFX140 DS    0H                                                       06780020
+*        DISPMAC FUNC=TIB,SFUNC=NEXTLOW,INP1=RB,INP2=RA,ERREXIT=SDEFHW  06790020
+         DISPMAC FUNC=TIB,SFUNC=NEXTLOW,INP1=RB,INP2=RA,ERREXIT=SDEFHW X06800020
+                                                               @D66ODOW 06810020
+         LTR   RB,RB                                                    06820020
+         BZ    SDEFX180          ALL TASKS PROCESSED           @D66ODOW 06830020
+         USING TIBADR,RB                                       @D66ODOW 06840020
+         MVC   SDEFGVTA(2),TIBRTID                             @D66ODOW 06850020
+         L     RD,TIBTCB                                                06860020
+*                                                                       06870020
+* SCAN THE DU-AL FOR TCBY                                               06880020
+*                                                                       06890020
+         USING TCBADR,RD                                       @D66ODOW 06900020
+         ICM   RD,15,TCBTDSE     GET TDSE ADDR                 @D66ODOW 06910020
+         BZ    SDEFX170          NOT AVAILABLE --->            @DY45845 06920020
+         USING TDSEADR,RD                                      @D66ODOW 06930020
+         ICM   RD,B'1111',TDSEADUC HAS TASK DUMMY ACC LIST     @D66ODOW 06940020
+         BZ    SDEFX170          YES, GOTO NEXT TASK           @DY45845 06950020
+         USING DUCT,RD                                                  06960020
+         L     R0,DUCTALD        GET ACC LIST DESIGNATION      @D64ADOW 06970020
+         L     RD,DUCTVALE       GET VIRTUAL ADDRESS OF DUAL   @D66ODOW 06980020
+         USING ALE,RD                                          @D66ODOW 06990020
+         SLL   R0,25             BLANK OUT THE ORIGIN          @D64ADOW 07000020
+         SRL   R0,25             AND GET THE LENGTH            @D64ADOW 07010020
+         A     R0,F1             NUMBER OF 128-BYTE BLOCKS              07020020
+         SLL   R0,3              NUMBER OF AL ENTRIES                   07030020
+*                                                                       07040020
+* SCAN ALL ALES FROM DU-AL FROM TCBY                                    07050020
+*                                                                       07060020
+SDEFX150 DS    0H                                                       07070020
+         TM    ALEB0,ALEI           SEE IF THIS ALE IS INVALID          07080020
+         BO    SDEFX160             IF SO, TRY THE NEXT ONE             07090020
+         L     RF,ALEASTEV                                              07100020
+         SRL   RF,6                 BLANK OUT THE ASTE SEQUENCE NUMBER  07110020
+         SLL   RF,6                                                     07120020
+         USING ASTE,RF                                                  07130020
+         CLC   ASTESN(4),ALEASTSN   SEE IF THE SEQUENCE NUMBERS         07140020
+         BNE   SDEFX160             MATCH                               07150020
+         L     RF,ASTESCB                                               07160020
+         DROP  RF                                                       07170020
+         USING SCBADR,RF                                                07180020
+         CR    RF,R4                IS IT THE SAME DSCB ?               07190020
+         BNE   SDEFX160             DON'T WORRY, IF NOT                 07200020
+         OI    SDEFQOPT,SDEFQDAL    BUT IF, ADDRESSIBLE BY DU-AL        07210020
+         B     SDEFX180             WE ARE READY FOR THIS PCBY          07220020
+         DROP  RF                                                       07230020
+*                                                                       07240020
+* NEXT ALE FROM DU-AL FROM TCBY                                         07250020
+*                                                                       07260020
+SDEFX160 DS    0H                                                       07270020
+         LA    RD,ALELEN(RD)                                   @D66ODOW 07280020
+         DROP  RD                                                       07290020
+         BCT   R0,SDEFX150                                              07300020
+SDEFX170 DS    0H                                                       07310020
+         CLI   TIBRQID,NOTACT         CHECK IF PROCESSED TASK  @DY45845 07320020
+***                                   ... IS ACTIVE                     07330020
+         BNE   SDEFX140               YES, CHECK FOR NEXT TASK @DY45845 07340020
+***                                   NO,  THIS IS AN INDICATION THAT   07350020
+***                                       THAT WE PROCESSED A MAINTASK  07360020
+***                                       OF A STOPPED PARTITION        07370020
+         DROP  RB                                                       07380020
+SDEFX180 DS    0H                                                       07390020
+         TM    SDEFQOPT,SDEFQCRE+SDEFQDAL+SDEFQPAL                      07400020
+         BZ    SDEFX220               SKIP IF NOT                       07410020
+*                                                                       07420020
+* CREATE THE RECORD FOR THE PARTITION PAIR PCBX AND PCBY                07430020
+*                                                                       07440020
+         L     RF,SDEFGVUE            SEE IF THE END OF THE RECORD TO   07450020
+         LA    RF,DSPQRYL1-1(RF)      BE CREATED WOULD EXCEED THE END   07460020
+         S     RF,DSPSDDAD            OF THE PASSED STORAGE AREA AND IF 07470020
+         S     RF,DSPSDDLN            SO, RETURN WITH RC=4 TO THE MAIN  07480020
+         BP    SDEFXERR               ROUTINE, WHICH WILL THEN RETURN   07490020
+*                                                                       07500020
+         L     RF,SDEFGVUE                                              07510020
+         USING DSPQRYDS,RF                                              07520020
+         MVI   DSPQRFLG,X'00'                                           07530020
+         DROP  RA                                                       07540020
+         USING PCBADR,R3              USE PCBX                          07550020
+         MVC   DSPQROWN(2),PCELID     COPY SYSLOGID OF OWNING PARTITION 07560020
+         DROP  R3                     RELEASE PCBX                      07570020
+         USING PCBADR,RA              USE PCBY                          07580020
+         MVC   DSPQRARE(2),PCELID     COPY SYSLOGID OF ACCESSING PART.  07590020
+         DROP  RA                     RELEASE PCBY                      07600020
+         USING SCBADR,R4              USE DSCBX                         07610020
+         MVC   DSPQRNAM(8),DSCBNAME   PUT DATA SPACE NAME INTO RECORD   07620020
+         MVC   DSPQRFLG(1),SDEFQOPT   COPY THE ACCESS FLAGS             07630020
+         NI    DSPQRFLG,DSPQRDUL+DSPQRPAL AND ONLY THEM                 07640020
+         TM    DSCBFLG1,DSCBSSNG      IS IT SCOPE=SINGLE?               07650020
+         BO    SDEFX210                                                 07660020
+         TM    DSCBFLG1,DSCBSALL      IS IT SCOPE=ALL?                  07670020
+         BNO   SDEFX190                                                 07680020
+         OI    DSPQRFLG,DSPQRSCA                                        07690020
+         B     SDEFX210                                                 07700020
+SDEFX190 DS    0H                                                       07710020
+         OI    DSPQRFLG,DSPQRSCC                                        07720020
+         CLC   DSPQRARE(2),DSPQROWN   SEE IF PCBY=PCBX=OWNER            07730020
+         BE    SDEFX200                                                 07740020
+         TM    DSPSDPRM,DSPSDSID      SEE IF A SYSLOGID WAS SPECIFIED   07750020
+         BNO   SDEFX220               IF NOT, NO RECORD IS CREATED      07760020
+         CLC   DSPQRARE(2),DSPSDDLG   SEE IF PCBY=SPECIFIED PARTITION   07770020
+         BNE   SDEFX220                                                 07780020
+         B     SDEFX210               ELSE A RECORD IS CREATED          07790020
+SDEFX200 DS    0H                                                       07800020
+         TM    DSPSDPRM,DSPSDSID      SEE IF A SYSLOGID WAS SPECIFIED   07810020
+         BO    SDEFX210               IF YES, PRINT AREA PARAMETER      07820020
+         MVC   DSPQRARE(2),SDEFSPCS   CLEAR SYSLOGID OF ACCESSING PART. 07830020
+SDEFX210 DS    0H                                                       07840020
+         MVC   DSPQRSIZ(4),SCBCUSZ    COPY CURRENT SIZE                 07850020
+         MVC   DSPQRMAX(4),SCBPASZ    AND MAXIMUM SIZE INTO RECORD      07860020
+         LA    RF,DSPQRYL1(RF)                                          07870020
+         ST    RF,SDEFGVUE                                              07880020
+         DROP  RF                                                       07890020
+*                                                                       07900020
+* NEXT PCBY                                                             07910020
+*                                                                       07920020
+SDEFX220 DS    0H                                                       07930020
+         LA    R9,4(,R9)                                                07940020
+         B     SDEFX080                                                 07950020
+*                                                                       07960020
+* NEXT DSCBX                                                            07970020
+*                                                                       07980020
+SDEFX230 DS    0H                                                       07990020
+         CLC   SCBFWPT(4),TDSESCB                                       08000020
+         BE    SDEFX235           TCBX                         @DY45845 08010020
+         DROP  R7                                                       08020020
+         L     R4,SCBFWPT                                               08030020
+         DROP  R4                                                       08040020
+*                                                                       08050020
+* NEXT TCBX                                                             08060020
+*                                                                       08070020
+         B     SDEFX050                                                 08080020
+*                                                                       08090020
+* NEXT TIB                                                              08090120
+*                                                                       08090220
+SDEFX235 DS    0H                                              @DY45845 08090320
+         USING TIBADR,R5                                       @DY45845 08090420
+         CLI   TIBRQID,NOTACT         CHECK IF PROCESSED TASK  @DY45845 08090520
+***                                   ... IS ACTIVE                     08090620
+         BNE   SDEFX040               YES, CHECK FOR NEXT TASK @DY45845 08090720
+***                                   NO,  THIS IS AN INDICATION THAT   08090820
+***                                       THAT WE PROCESSED A MAINTASK  08090920
+***                                       OF A STOPPED PARTITION        08091020
+*                                                                       08092020
+* NEXT PCBX                                                             08093020
+*                                                                       08094020
+SDEFX240 DS    0H                                                       08095020
+         CLI   DSPSDBSF,DSPSDQPN    SEE IF PARTITION COUNTING REQUESTED 08096020
+         BNE   SDEFX010             IF SO, ONLY COUNT - NOTHING MORE    08097020
+*                                                                       08098020
+* CREATE THE RECORD FOR THE PARTITION DATA SPACE COUNTING OPTION        08099020
+*                                                                       08100020
+*                                                                       08110020
+         L     RF,SDEFGVUE            SEE IF THE END OF THE RECORD TO   08120020
+         LA    RF,DSPQRYL2-1(RF)      BE CREATED WOULD EXCEED THE END   08130020
+         S     RF,DSPSDDAD            OF THE PASSED STORAGE AREA AND IF 08140020
+         S     RF,DSPSDDLN            SO, RETURN WITH RC=4 TO THE MAIN  08150020
+         BP    SDEFXERR               ROUTINE, WHICH WILL THEN RETURN   08160020
+*                                                                       08170020
+         L     RF,SDEFGVUE                                              08180020
+         USING DSPQRYND,RF                                              08190020
+         USING PCBADR,R3                                                08200020
+         MVC   DSPQRSID(2),PCELID   FILL IN THE SYSLOGID                08210020
+         DROP  R3                                                       08220020
+         MVC   DSPQRNUM(4),SDEFQNPP FILL IN THE NUMBER OF DATA SPACES   08230020
+         LA    RF,DSPQRYL2(RF)                                          08240020
+         ST    RF,SDEFGVUE                                              08250020
+         B     SDEFX010                                                 08260020
+         DROP  RF                                                       08270020
+SDEFXERR DS    0H                                                       08280020
+         LA    RF,8(0,0)            SET RETURN CODE RC=8 AND LEAVE THE  08290020
+         B     SDEFXRET             SUBROUTINE, RETURNING TO THE CALLER 08300020
+SDEFXEND DS    0H                                                       08310020
+         XR    RF,RF                CLEAR THE RETURN CODE REGISTER      08320020
+*                                                                       08330020
+* RETURN FROM LOOP AND FILL THE USERS PARAMETER LIST                    08340020
+*                                                                       08350020
+SDEFXRET DS    0H                                                       08360020
+         L     RA,TCBPTR                                                08370020
+         USING TCBADR,RA                                                08380020
+         L     RB,TCBSAVE             RESTORE SAVE AREA ADDR            08390020
+         BR    R8                                                       08400020
+         SPACE                                                          08410020
+SDEFHW   DS    0H                                              @D66ODOW 08420020
+         STCM  R5,15,SDEFHWR5                                  @DY45845 08430020
+         BAS   R5,SYSERROR                                     @D66ODOW 08440020
+SDEFHWR5 DC    X'00000000'                                     @DY45845 08450020
+         DC    C'INCONSISTENT CONTROL BLOCK STRUCTURE'         @D66ODOW 08460020
+         DROP  R1                                                       08470020
+         DROP  RA                                                       08480020
+*********************************************************************** 08490020
+*                                                                       08500020
+* THE SUBROUTINE EXAMINES, IF PRIVATE ENTRIES IN ANY PASN-AL EXIST.     08510020
+*                                                                       08520020
+*********************************************************************** 08530020
+*  LINKAGE:  BAL  R8,SDEFQ90                                            08540020
+*                                                                       08550020
+*  RETURN :  R8+0, IF A PRIVATE ENTRY EXISTS                            08560020
+*            R8+4, IF NO PRIVATE ENTRY EXISTS                           08570020
+*                                                                       08580020
+*    R0:  ALE COUNTER                                                   08590020
+*    R2:  PCBATAB POINTER                                               08600020
+*    R4:  WORK                                                          08610020
+*    R5:  PCB                                                           08620020
+*    R7:  SAVE REGISTER FOR RE, WHICH IS BASE FOR WORK AREA             08630020
+*    R8:  RETURN ADDRESS                                                08640020
+*    RB:  ADDRESS OF ALE                                                08650020
+*    RC:  MACRO BASE ADDRESS                                            08660020
+*    RF:  WORK, PIB                                                     08670020
+*                                                                       08680020
+*********************************************************************** 08690020
+SDEFQ90  DS    0H                                                       08700020
+         L     R2,APCBATAB    GET THE ADDRESS OF THE PCBATAB, WHICH     08710020
+         B     SDEFQ91        CONTAINS POINTERS TO THE PCBS.            08720020
+SDEFQ92  DS    0H                                                       08730020
+         LA    R2,4(,R2)      PROCEED TO THE NEXT TABLE ENTRY, I.E.     08740020
+SDEFQ91  DS    0H             THE NEXT PCB                              08750020
+         ICM   R5,15,0(R2)    GET THE ADDRESS OF THE PCB                08760020
+         BZ    SDEFQ92        A ZERO ENTRY IS UNUSED, SO TAKE NEXT ONE  08770020
+         BM    SDEFQ9E        A NEGATIVE ENTRY INDICATES THE END OF     08780020
+         USING PCBADR,R5      THE LIST.                                 08790020
+         L     RF,PCEPIB      GET THE PIB POINTER OUT OF THE PCB        08800020
+         USING PIBADR,RF      AND CHECK, IF THE PARTITION IS ACTIVE     08810020
+         CLI   PIBFLG,INACT   OR STOPPED.                               08820020
+         DROP  RF                                                       08830020
+         BE    SDEFQ92        FOR INACTIVE PARTITIONS, PROCEED TO NEXT  08840020
+         ICM   R0,15,PCBVRTAL PCB. ELSE GET THE VIRTUAL ADDRESS OF THE  08850020
+         BZ    SDEFQ92        ACCESS LIST IN R0 AND VIA THE ASTE        08860020
+         ICM   RB,15,PCBASTE  GET THE ALD INTO RB. THE ALD CONTAINS     08870020
+         BZ    SDEFQ92        THE REAL ADDRESS OF THE ACCESS LIST AND   08880020
+         DROP  R5                                                       08890020
+         L     R5,IJBDSICB                                              08900020
+         USING DSINFOTB,R5                                              08910020
+         C     R0,DSSGVMAL    IF THE ACCESS LIST IS THE MODEL PASN_AL   08920020
+         BE    SDEFQ92        THEN PROCEED TO THE NEXT PARTITION        08930020
+         USING DUCT,RB        THE NUMBER OF BLOCKS IN THE ACCESS LIST   08940020
+         ICM   RB,15,DUCTALD  ZERO POINTERS LEAD TO PROCEED TO THE      08950020
+         DROP  RB             NEXT ENTRY IN THE PCBATAB.                08960020
+         BZ    SDEFQ92                                                  08970020
+         SLL   RB,25          BLANK OUT THE REAL ADDRESS OF THE ACCESS  08980020
+         SRL   RB,25          LIST                                      08990020
+         LR    RF,R0                                                    09000020
+         LR    R0,RB          EXCHANGE THE CONTENTS OF R0 AND RB        09010020
+         LR    RB,RF                                                    09020020
+         A     R0,F1          ADD 1 TO THE NUMBER OF THE BLOCKS         09030020
+         SLL   R0,3           AND MULTIPLY WITH 8 TO GET ALE NUMBER     09040020
+         LA    RF,3           CALCULATE IN RF START ENTRY NUMBER OF     09050020
+         A     RF,DSSDCOMX    PRIVATE ENTRIES IN THE PASN_AL.           09060020
+         A     RF,DSSDVDSK    IT IS 3 ENTRIES FOR PRIM,SEC,HOME         09070020
+         DROP  R5                                                       09080020
+         SR    R0,RF          R0 CONTAINS NUMBER OF PRIVATE ENTRIES     09090020
+         LA    R4,ALELEN(,0)  PLUS SUM OF COMMON DSPS AND VDISKS        09100020
+         LR    R7,RE          SAVE RE IN R7, SINCE                      09110020
+         MR    RE,R4          RE WILL BE DESTROYED DUE TO MULTIPLY OP   09120020
+         LR    RE,R7          RESTORE RE                                09130020
+         AR    RB,RF          POINT WITH RB TO FIRST PRIVATE ENTRY      09140020
+         USING ALE,RB         ACCESS LIST ENTRIES.                      09150020
+SDEFQ93  DS    0H                                                       09160020
+         TM    ALEB0,ALEI     CHECK, IF THE ACCESS LIST ENTRY IS        09170020
+         DROP  RB                                                       09180020
+         BNO   SDEFQ9X        IF NOT, THEN WE HAVE FOUND A PRIVATE      09190020
+SDEFQ94  DS    0H             ENTRY AND RETURN                          09200020
+         LA    RB,ALELEN(,RB) PROCEED TO THE NEXT ALE                   09210020
+         BCT   R0,SDEFQ93     AND SEE, IF IT EXISTS. IF NOT,            09220020
+         B     SDEFQ92        WE TAKE THE NEXT PARTITION                09230020
+SDEFQ9E  DS    0H                                                       09240020
+         LA    R8,4(,R8)      WE RETURN WITHOUT HAVING FOUND AN ENTRY   09250020
+SDEFQ9X  DS    0H                                                       09260020
+         L     RA,TCBPTR                                       @D64ADOW 09270020
+         USING TCBADR,RA                                       @D64ADOW 09280020
+         L     RB,TCBSAVE     RELOAD SAVE AREA ADDR                     09290020
+         BR    R8                                                       09300020
+         DROP  RA                                                       09310020
+*************************************************************           09320020
+*                                                                       09330020
+* DATA SECTION                                                          09340020
+*                                                                       09350020
+*************************************************************           09360020
+SDEF16   DC    F'16'                                                    09370020
+SDEF2GB  DC    XL4'00200000'                                            09380020
+SDEFID   DC    CL4'SDEF'                                                09390020
+SDEFSPCS DC    CL2'  '                                                  09400020
+SDEFLMT1 DC    F'512'                                                   09410020
+SDEFLMT2 DC    F'253'                                                   09420020
+SDEFSPID CRSPID NAME=IJBSDF          SUBPOOL FOR SGSYSD REQUESTS        09430020
+         DROP  RC                                                       09440020
+         DROP  RE                                                       09450020
+*************************************************************           09460020
+*                                                                       09470020
+* DSECTS AND EQUATES                                                    09480020
+*                                                                       09490020
+*************************************************************           09500020
+         SPACE 3                                                        09510020
+         SYSDEF ID=DSECT                                                09520020
+         SPACE 3                                                        09530020
+         MAPQRYDS                                                       09540020
+         SPACE 3                                                        09550020
+         MAPDSSIB DSECT=YES                                             09560020
+         SPACE 3                                                        09570020
+*                                                                       09580020
+* SYSDEF   EQUATES FOR SVC RETURN CODES                                 09590020
+*                                                                       09600020
+SDEFOK   EQU   X'00'          SYSDEF SVC RETURNED O.K.                  09610020
+SDEFGVIS EQU   X'04'          PROBLEMS TO ALLOCATE OR FREE GVIS         09620020
+SDEFINPM EQU   X'08'          REQUIRED INPUT MISSING                    09630020
+SDEFAUTH EQU   X'0C'          USER NOT AUTHORIZED TO USE THIS SVC       09640020
+SDEFNVAL EQU   X'14'          INPUT CONTROL BLOCK IS IN INVALID STORAGE 09650020
+SDEFCBWR EQU   X'18'          CONTENTS OF INPUT CONTROL BLOCK INCORRECT 09660020
+SDEFPFIX EQU   X'1C'          UNABLE TO GETVIS PFIXED WORK AREA         09670020
+*                                                                       09680020
+*********************************************************************** 09690020
+*                                                                       09700020
+* THIS IS A MAPPING OF THE GETVIS AREAS IN THE SVA                      09710020
+*                                                                       09720020
+*********************************************************************** 09730020
+*                                                                       09740020
+* HEADER OF THE GETVIS BLOCK                                            09750020
+*                                                                       09760020
+SDEFGVHD DSECT ,                   GETVIS HEADER INFORMATION            09770020
+         DS    0F                                                       09780020
+SDEFGVID DS    CL4                                                      09790020
+*                                                                       09800020
+* LENGTH OF GETVIS BLOCK                                                09810020
+*                                                                       09820020
+SDEFGVLN DS    F                   THE LENGTH IS USED FOR OVERFLOW      09830020
+*                                                                       09840020
+* THE FOLLOWING POINTERS CONTAIN INFORMATION ABOUT THE RECORDS          09850020
+*                                                                       09860020
+SDEFGVUA DS    F                   ADDRESS OF RECORDS TO BE RETURNED    09870020
+SDEFGVUE DS    F                   END OF AREA WITH RECORDS             09880020
+*                                                                       09890020
+* THE FOLLOWING POINTERS CONTAIN INFORMATION ABOUT THE SYSLOGID         09900020
+* STRING                                                                09910020
+*                                                                       09920020
+SDEFGVSA DS    F                   START OF SYSLOGID STRING             09930020
+SDEFGVSE DS    F                   END OF SYSLOGID STRING               09940020
+*                                                                       09950020
+SDEFGVTI DS    H                   TID OF SERVICE REQUESTOR             09960020
+SDEFGVTO DS    H                   TID OF DSPACE OWNING TASK            09970020
+SDEFGVTA DS    H                   TID OF DSPACE ACCESSING TASK         09980020
+         DS    H                   RESERVED                             09990020
+*                                                                       10000020
+SDEFQNPP DS    F                   COUNTER OF DATA SPACES PER PARTITION 10010020
+*                                                                       10020020
+SDEFQOPT DS    X                                                        10030020
+SDEFQCRE EQU   X'80'     CREATE A RECORD                                10040020
+SDEFQCMX EQU   X'40'     COUNT DATA SPACES OF PART. WITH MOST DSPS      10050020
+SDEFQDAL EQU   X'20'     ACCESSIBLE VIA DU-AL                           10060020
+SDEFQPAL EQU   X'10'     ACCESSIBLE VIA PASN-AL                         10070020
+*        EQU   X'08'     RESERVED                                       10080020
+SDEFQLTS EQU   X'04'     CREATE RECORD FOR LAST OR ONLY TASK            10090020
+SDEFQS02 EQU   X'02'     INTERNAL SERVICE NUMBER TWO                    10100020
+SDEFQS01 EQU   X'01'     INTERNAL SERVICE NUMBER ONE                    10110020
+*                                                                       10120020
+         DS    3X        RESERVED                                       10130020
+*                                                                       10140020
+SDEFQSAV DS    16F                                                      10150020
+SDEFQFIN EQU   *                                                        10160020
+*                                                                       10170020
+* END OF DSECT AREA                                                     10180020
+*                                                                       10190020
+&SYSECT  CSECT                                                          10200020
+         AIF   (NOT &BGDEBUG OR NOT &SGSYSD).PRINT                      10210020
+         PRINT NOGEN                                                    10220020
+.PRINT   ANOP                                                           10230020
+         MEND                                                           10240020

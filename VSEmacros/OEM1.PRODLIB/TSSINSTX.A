@@ -1,0 +1,473 @@
+TSSINSTX TITLE 'TOP SECRET SECURITY VERSION 3 - SITE SECURITY EXIT'     00001000
+*--------------------------------------------------------------------*  00002000
+*                                                                    *  00003000
+*                                                                    *  00004000
+*     MODULE  -  TSSINSTX        VERSION 3.0     09/SEP/98           *  00005000
+*                                                                    *  00006000
+*                                                                    *  00007000
+*   FUNCTION  -  TOP SECRET SECURITY / INSTALLATION EXIT             *  00008000
+*                ALLOWS SITE TO INTERFACE WITH TOP SECRET            *  00009000
+*                SECURITY VALIDATION INVOKED FROM SECURITY           *  00010000
+*                SVC'S CALLS. FRACHECK CALL ONLY VALID FOR           *  00011000
+*                THE VIOLATION ENTRY.                                *  00012000
+*                                                                    *  00013000
+*                                                                    *  00014000
+*     METHOD  -  EXIT IS CALLED FOR SPECIFIC FUNCTION IF THAT        *  00015000
+*                FUNCTION IS ACTIVE. BYTE-MATRIX OF ACTIVE FUNCTIONS *  00016000
+*                MUST BE MAINTAINED BY THE CUSTOMER AT THE LABEL     *  00017000
+*                'MATRIX'. IF THE RESPECTIVE FUNCTION BYTE IS SET    *  00018000
+*                TO ZERO (######NO) THEN THE EXIT WILL NOT BE CALLED *  00019000
+*                TO PROCESS THAT FUNCTION.                           *  00020000
+*                                                                    *  00021000
+*                                                                    *  00022000
+*     INPUTS  -  REGISTER 1 POINTS TO PARAMETER LIST (SEE BELOW)     *  00023000
+*                                                                    *  00024000
+*                                                                    *  00025000
+*     OUTPUT  -  REGISTER 15 CONTAINS RETURN CODE    (SEE BELOW)     *  00026000
+*                REGISTERS 2-12 MUST BE RESTORED PRIOR TO EXITTING   *  00027000
+*                                                                    *  00028000
+*                                                                    *  00029000
+*    LINKAGE  -  REGISTER 13 -> 72 BYTE SAVEAREA & 100 BYTE WORKAREA *  00030000
+*                REGISTER 14 -> RETURN ADDRESS                       *  00031000
+*                REGISTER 15 -> TSSINSTX EPA                         *  00032000
+*                                                                    *  00033000
+*                                                                    *  00034000
+* ATTRIBUTES  -  ENTERED KEY ZERO, SUPERVISOR STATE (BE CAREFUL !)   *  00035000
+*                                                                    *  00036000
+*                                                                    *  00037000
+*      A-MODE -  DEPENDENT UPON THE CALLER. CAN BE ENTERED IN BOTH   *  00038000
+*                24- AND 31-BIT MODE ON AN MVS/XA SYSTEM.            *  00039000
+*                                                                    *  00040000
+*                                                                    *  00041000
+*      R-MODE -  BELOW THE 24-BIT LINE.                              *  00042000
+*                                                                    *  00043000
+*                                                                    *  00044000
+*      NOTES  -  1. MODULE SHOULD RESIDE IN TOP SECRET LIBRARY       *  00045000
+*                2. F TSS,EXIT( OFF|ON )   (DE)ACTIVATES THIS CODE   *  00046000
+*                3. CAN ISSUE ANY SVC INCLUDING RACHECK              *  00047000
+*                4. FESTAE IN CONTROL TO TRAP ABENDS                 *  00048000
+*                5. RUNNING UNDER SVC FOR RACINIT/RACHECK/RACDEF     *  00049000
+*                6. RUNNING IN REQUESTOR'S ADDRESS SPACE             *  00050000
+*                7. ESTABLISH REG 13 SAVEAREA AS REQUIRED            *  00051000
+*                                                                    *  00052000
+*                                                                    *  00053000
+*                                                                    *  00054000
+*--------------------------------------------------------------------*  00055000
+         EJECT                                                          00056000
+*--------------------------------------------------------------------*  00057000
+* INPUT          | FOR A DESCRIPTION OF THE INCOMING PARAMETER LIST  *  00058000
+*                | SEE THE DSECT BELOW.                              *  00059000
+*                |                                                   *  00060000
+*                |                                                   *  00061000
+*--------------------------------------------------------------------*  00062000
+         EJECT                                                          00063000
+*-----------------------------------------------------------------*     00064000
+*                 TSSINSTX RETURN CODES                           *     00065000
+*-----------------------------------------------------------------*     00066000
+         SPACE                                                          00067000
+*-----------------------------------------------------------------*     00068000
+* OUTPUT         | REGISTER 15 MUST CONTAIN A VALID RETURN CODE   |     00069000
+*                | (RC) THAT WILL INDICATE FURTHER ACTION         |     00070000
+*                | TO BE PERFORMED BY TOP SECRET:                 |     00071000
+*                | FOR JOB INIT CHECKS:                           |     00072000
+*                |         RC=00  CONTINUE NORMAL VALIDATION      |     00073000
+*                |         RC=04  FAIL INITIATION                 |     00074000
+*                |         RC=08  BYPASS SECURITY FOR JOB         |     00075000
+*                |         RC=12  CONTINUE WITHOUT FURTHER CHECKS |     00076000
+*                |         RC=16  RETRY REQUEST (UNDEFINED ONLY)  |     00077000
+*                |         RC=20  CONTINUE WITHOUT PASSWORD CHECK |     00078000
+*                |         RC=24  RESERVED                        |     00079000
+*                |         RC=28  RESERVED                        |     00080000
+*                | FOR VOLUME, DATASET & RESOURCE CHECKS:         |     00081000
+*                |         RC=00  CONTINUE WITH NORMAL CHECKING   |     00082000
+*                |         RC=04  FAIL THE ATTEMPT                |     00083000
+*                |         RC=08  ACCESS GRANTED; DO NOT PERFORM  |     00084000
+*                |                ANY FURTHER CHECKING            |     00085000
+*                | FOR TSS COMMAND CHECKS:                        |     00086000
+*                |         RC=00  CONTINUE WITH NORMAL CHECKING   |     00087000
+*                |         RC=04  FAIL THE ATTEMPT                |     00088000
+*                | FOR INTERNAL READER SUBMISSION CHECKS:         |     00089000
+*                |         RC=00  CONTINUE WITH NORMAL CHECKING   |     00090000
+*                |         RC=04  FAIL THE ATTEMPT                |     00091000
+*----------------+------------------------------------------------+     00092000
+         EJECT                                                          00093000
+* NOTE THAT THE EXIT WILL NOT BE ACTIVATED IF THE FIRST SECTION HAS     00094000
+* BEEN INCORRECTLY MODIFIED. DO NOT INSERT OR DELETE STATEMENTS         00095000
+* FROM THIS POINT UNTIL LABEL 'PREINIT'. ONLY CHANGE THE MATRIX.        00096000
+*                                                                       00097000
+TSSINSTX CSECT                  DO NOT INSERT OR DELETE STATEMENTS HERE 00098000
+         B     START-TSSINSTX(R15) NOT INSERT OR DELETE STATEMENTS HERE 00099000
+*                               DO NOT INSERT OR DELETE STATEMENTS HERE 00100000
+         DC    AL1(24)          DO NOT INSERT OR DELETE STATEMENTS HERE 00101000
+         DC    C'TSSINSTX'      DO NOT INSERT OR DELETE STATEMENTS HERE 00102000
+         DC    C'V3L0M000'      DO NOT INSERT OR DELETE STATEMENTS HERE 00103000
+         DC    C'&SYSDATE'      DO NOT INSERT OR DELETE STATEMENTS HERE 00104000
+*                                                                       00105000
+         MNOTE *,'ACTIVATE EXIT FUNCTIONS BY CHANGING NO TO YES IN MATR.00106000
+               IX BELOW'                                                00107000
+*                                                                       00108000
+MATRIX   DC    CL8'MATRIX'      DO NOT INSERT OR DELETE STATEMENTS HERE 00109000
+*                                                                       00110000
+#####YES EQU   255              FUNCTION IS ACTIVE                      00111000
+######NO EQU   000              FUNCTION IS NOT ACTIVE                  00112000
+*                                                                       00113000
+         DC    AL1(######NO) 00 PRE-INIT                                00114000
+         DC    AL1(######NO) 04 VOLUME ACCESS VALIDATION                00115000
+         DC    AL1(######NO) 08 DATASET VALIDATION                      00116000
+         DC    AL1(######NO) 12 RESOURCE VALIDATION                     00117000
+         DC    AL1(######NO) 16 TSS COMMAND                             00118000
+         DC    AL1(######NO) 20 ADDRESS SPACE TERMINATION               00119000
+         DC    AL1(######NO) 24 POST-INIT                               00120000
+         DC    AL1(######NO) 28 UNDEFINED ACID                          00121000
+         DC    AL1(######NO) 32 NEW PASSWORD VERIFICATION               00122000
+         DC    AL1(######NO) 36 TERMINAL I/O                            00123000
+         DC    AL1(######NO) 40 SESSION TERMINATION                     00124000
+         DC    AL1(######NO) 44 ONLINE (INTRDR) JOB SUBMISSION          00125000
+         DC    AL1(######NO) 48 SECURITY FILE CHANGE                    00126000
+         DC    AL1(######NO) 52 ACTION(EXIT)                            00127000
+         DC    AL1(######NO) 56 MESSAGE EDITTING                        00128000
+         DC    AL1(######NO) 60 RESERVED-0                              00129000
+         DC    AL1(######NO) 64 VIOLATION NOTIFICATION                  00130000
+         DC    AL1(######NO) 68 SITE VIA RACHECK CLASS='INSTEXIT'       00131000
+         DC    AL1(######NO) 72 COMMAND BEING SENT TO REMOTE TSS        00132000
+         DC    AL1(######NO) 76 RESERVED-2                              00133000
+         DC    AL1(######NO) 80 RESERVED-3                              00134000
+         DC    AL1(######NO) 84 RESERVED-4                              00135000
+         DC    AL1(######NO) 88 RESERVED-5                              00136000
+         DC    AL1(######NO) 92 RESERVED-6                              00137000
+         DC    AL1(######NO) 96 RESERVED-7                              00138000
+         EJECT                                                          00139000
+START    STM   R14,R12,12(R13)  PRESERVE REGISTERS IN PROVIDED SAVEAREA 00140000
+         LR    R12,R15        ESTABLISH ADDRESSABILITY                  00141000
+         USING TSSINSTX,R12   FOR INSTALLATION EXIT                     00142000
+         LR    R9,R1          ESTABLISH ADDRESSABILITY                  00143000
+         USING TSSXPARM,R9    WITH INCOMING PARAMETERS                  00144000
+         LA    R10,84(R13)    ESTABLISH ADDRESSABILITY                  00145000
+         USING WORKAREA,R10   WITH WORKAREA (MAX LEN 100 BYTES)         00146000
+         SPACE 3                                                        00147000
+         MNOTE *,'REGISTER 13 CANNOT BE USED AS A SAVEAREA ASIS'        00148000
+         SPACE 3                                                        00149000
+         L     R1,TXAFUNC     PICK UP ...                               00150000
+         L     R1,0(R1)       FUNCTION CODE                             00151000
+         B     *+4(R1)        PROCESS ACCORDING TO FUNCTION:            00152000
+         B     PREINIT     00 JOB/SESSION PRE-INITIATION                00153000
+         B     VOLUME      04 VOLUME ACCESS VALIDATION                  00154000
+         B     DATASET     08 DATASET ACCESS VALIDATION                 00155000
+         B     RESOURCE    12 RESOURCE ACCESS VALIDATION                00156000
+         B     COMMAND     16 TSS COMMAND USE VALIDATION                00157000
+         B     TERM        20 JOB (ADDRESS SPACE) TERMINATION           00158000
+         B     POSTINIT    24 JOB/SESSION INITIATION COMPLETE           00159000
+         B     UNDEFIND    28 UNDEFINED ACID ENTRY                      00160000
+         B     PASSWORD    32 PASSWORD CHANGE ENTRY                     00161000
+         B     IO          36 VOICE OR DIGITIZED IMAGE REQUEST          00162000
+         B     SESSEND     40 SESSION (USER) TERMINATION                00163000
+         B     SUBMIT      44 INTERNAL READER SUBMISSION                00164000
+         B     CHANGE      48 SECURITY FILE CHANGE                      00165000
+         B     ACTION      52 PERMIT ACTION(EXIT)                       00166000
+         B     MESSAGE     56 MESSAGE EDITING                           00167000
+         B     EXIT0       60 FUTURE USE                                00168000
+         B     VIOLATN     64 VIOLATION DETECTED                        00169000
+         B     SITE        68 RACHECK CLASS=INSTEXIT                    00170000
+         B     CPF         72 CMD BEING SENT TO REMOTE TSS     V4L3M000 00171000
+         B     EXIT0       76 FUTURE USE                                00172000
+         B     EXIT0       80 FUTURE USE                                00173000
+         B     EXIT0       84 FUTURE USE                                00174000
+         B     EXIT0       88 FUTURE USE                                00175000
+         B     EXIT0       92 FUTURE USE                                00176000
+         B     EXIT0       96 FUTURE USE                                00177000
+         EJECT                                                          00178000
+*                                                                       00179000
+* EXIT POINTS                                                           00180000
+*                                                                       00181000
+EXIT0    SLR   R15,R15        CONTINUE NORMALLY                         00182000
+         B     EXIT                                                     00183000
+EXIT4    LA    R15,4          FAIL REQUEST                              00184000
+         B     EXIT                                                     00185000
+EXIT8    LA    R15,8          CONTINUE WITHOUT FURTHER CHECKING         00186000
+         B     EXIT                                                     00187000
+EXIT12   LA    R15,12         BYPASS                                    00188000
+         B     EXIT                                                     00189000
+EXIT16   LA    R15,16         RETRY UNDEFINED WITH NEW ACID             00190000
+         B     EXIT                                                     00191000
+EXIT20   LA    R15,20         CONTINUE WITHOUT PASSWORD CHECK           00192000
+         B     EXIT                                                     00193000
+EXIT24   LA    R15,24         RESERVED                                  00194000
+         B     EXIT                                                     00195000
+EXIT28   LA    R15,28         RESERVED                                  00196000
+         B     EXIT                                                     00197000
+EXIT32   LA    R15,32         RESERVED                                  00198000
+         B     EXIT                                                     00199000
+*                                                                       00200000
+* STANDARD TERMINATION IF REGISTER 13 HAS NOT BEEN ALTERED              00201000
+*                                                                       00202000
+EXIT     L     R14,12(R13)                                              00203000
+         LM    R0,R12,20(R13)                                           00204000
+         BR    R14                                                      00205000
+         SPACE 5                                                        00206000
+         MNOTE *,'SITE-WRITTEN CODE GOES ANYWHERE AFTER THIS POINT'     00207000
+         EJECT                                                          00208000
+*---------------------------------------------------------------------* 00209000
+* PROCESS JOB/SESSION PRE-INITIATION                                  * 00210000
+*---------------------------------------------------------------------* 00211000
+         SPACE                                                          00212000
+PREINIT  DS    0H                                                       00213000
+* USER CODE GOES HERE TO INTERPRET INITIATION                           00214000
+* THIS IS INVOKED PRIOR TO OBTAINING ACID SECURITY RECORD FROM TSS      00215000
+* ONLY JOBNAME, ACID, TERMINAL, PASSWORD(S), INSTDATA, MODE,            00216000
+* MAY BE CHANGED                                                        00217000
+         B     EXIT0                                                    00218000
+         EJECT                                                          00219000
+*---------------------------------------------------------------------* 00220000
+* PROCESS JOB/SESSION POST-INITATION                                  * 00221000
+*---------------------------------------------------------------------* 00222000
+         SPACE                                                          00223000
+POSTINIT DS    0H                                                       00224000
+* USER CODE GOES HERE TO INTERPRET INITIATION                           00225000
+* THIS IS INVOKED AFTER OBTAINING ACID SECURITY RECORD FROM TSS         00226000
+* INITIATION IS CONSIDERED COMPLETELY SUCCESSFUL AT THIS POINT          00227000
+* ONLY DETAIL ERROR REASON CODE, INSTDATA, MODE MAY BE CHANGED          00228000
+         B     EXIT0                                                    00229000
+         EJECT                                                          00230000
+*---------------------------------------------------------------------* 00231000
+* PROCESS JOB TERMINATION                                             * 00232000
+*---------------------------------------------------------------------* 00233000
+         SPACE                                                          00234000
+TERM     DS    0H                                                       00235000
+* USER CODE GOES HERE TO PROCESS TERMINATION OF ADDRESS SPACE           00236000
+* NO CHANGES ACCEPTED                                                   00237000
+         B     EXIT0                                                    00238000
+         SPACE 10                                                       00239000
+*---------------------------------------------------------------------* 00240000
+* PROCESS SESSION TERMINATION                                         * 00241000
+*---------------------------------------------------------------------* 00242000
+         SPACE                                                          00243000
+SESSEND  DS    0H                                                       00244000
+* USER CODE GOES HERE TO PROCESS ON-LINE USER SESSION SIGNOFF           00245000
+* NO CHANGES ACCEPTED                                                   00246000
+         B     EXIT0                                                    00247000
+         EJECT                                                          00248000
+*---------------------------------------------------------------------* 00249000
+* PROCESS UNDEFINED ACID                                              * 00250000
+*---------------------------------------------------------------------* 00251000
+         SPACE                                                          00252000
+UNDEFIND DS    0H                                                       00253000
+* USER CODE GOES HERE TO PROCESS UNDEFINED ACID                         00254000
+* THIS IS INVOKED AFTER CALLING TSS ADDRESS SPACE                       00255000
+* AND AFTER TRYING TO USE ANY DEFAULT ACID ASSIGNMENT                   00256000
+* ONLY JOBNAME, ACID, TERMINAL, PASSWORD(S), INSTDATA,                  00257000
+*      DETAIL ERROR REASON CODE, MODE        MAY BE CHANGED             00258000
+* SET R15=16 TO RETRY REQUEST WITH NEW ACID (CHANGE ACID)               00259000
+         B     EXIT0                                                    00260000
+         EJECT                                                          00261000
+*---------------------------------------------------------------------* 00262000
+* PASSWORD CHANGE                                                     * 00263000
+*---------------------------------------------------------------------* 00264000
+         SPACE                                                          00265000
+PASSWORD DS    0H                                                       00266000
+* USER CODE GOES HERE TO EXAMINE/VALIDATE PASSWORD                      00267000
+* YOU CANNOT ALTER PASSWORDS HERE - USE PREINIT FOR THIS FUNCTION       00268000
+* SET R15=04 TO REJECT PASSWORD AND FAIL INITIATION                     00269000
+         B     EXIT0                                                    00270000
+         EJECT                                                          00271000
+*---------------------------------------------------------------------* 00272000
+* PROCESS TERMINAL I/O OPERATIONS                                     * 00273000
+*---------------------------------------------------------------------* 00274000
+         SPACE                                                          00275000
+IO       DS    0H                                                       00276000
+* USER CODE GOES HERE TO PROVIDE VARIOUS TERMINAL CONTROL SEQUENCES     00277000
+* FOR CLEARING SCREENS, INHIBITING PRINT DISPLAY, RESTORING PRINT,      00278000
+* PROMPTING FOR DATA, BUILDING LOGON MENUS.                             00279000
+         B     EXIT0                                                    00280000
+         SPACE 5                                                        00281000
+*---------------------------------------------------------------------* 00282000
+* OBTAIN VOICE OR OTHER DIGITIZED IMAGE USER IDENTIFICATION           * 00283000
+*---------------------------------------------------------------------* 00284000
+         SPACE                                                          00285000
+VOICE    DS    0H                                                       00286000
+* USER CODE GOES HERE TO PROMPT USER FOR VOICE/IMAGE IDENTIFICATION     00287000
+* RETURN VOICE/IMAGE PATTERN IN AREA ADDRESSED BY TXAIVBFR              00288000
+* NO OTHER INPUT PARAMETERS ARE APPLICABLE                              00289000
+*                                                                       00290000
+         L     R2,TXAIVBFR          -> IMAGE RETURN AREA                00291000
+         B     EXIT0                                                    00292000
+SMARTCRD DS    0H                                                       00293000
+*                                                                       00294000
+* Additionaly, this exit point may be used to prompt users for          00295000
+* and verify "smart-cards". The return codes from this exit point       00296000
+* are:                                                                  00297000
+*                                                                       00298000
+*  $IOKAY   (Continue normally)                                         00299000
+*  $IFAIL   (Fail based upon smart-card)                                00300000
+*  $INOPWCK (Skip password validation based upon smart-card)            00301000
+*                                                                       00302000
+         ICM   R1,15,TXAIPKY        -> Physkey data                     00303000
+         BZ    EXIT0                None - Return                       00304000
+         L     R2,TXAIPKL           -> Physkey data length              00305000
+         B     EXIT0                                                    00306000
+         EJECT                                                          00307000
+*---------------------------------------------------------------------* 00308000
+* PROCESS VOLUME VALIDATION                                           * 00309000
+*---------------------------------------------------------------------* 00310000
+         SPACE                                                          00311000
+VOLUME   DS    0H                                                       00312000
+* USER CODE GOES HERE TO INTERPRET VOLUME ACCESS                        00313000
+* ONLY ACCESS, VOLSER (,DATASET) SHOULD BE CHANGED                      00314000
+         B     EXIT0                                                    00315000
+         EJECT                                                          00316000
+*---------------------------------------------------------------------* 00317000
+* PROCESS DATASET VALIDATION                                          * 00318000
+*---------------------------------------------------------------------* 00319000
+         SPACE                                                          00320000
+DATASET  DS    0H                                                       00321000
+* USER CODE GOES HERE TO INTERPRET DATASET ACCESS                       00322000
+* ONLY ACCESS, DSNAME, VOLSER SHOULD BE CHANGED                         00323000
+         B     EXIT0                                                    00324000
+         EJECT                                                          00325000
+*---------------------------------------------------------------------* 00326000
+* PROCESS RESOURCE VALIDATION                                         * 00327000
+*---------------------------------------------------------------------* 00328000
+         SPACE                                                          00329000
+RESOURCE DS    0H                                                       00330000
+* USER CODE GOES HERE TO INTERPRET RESOURCE ACCESS                      00331000
+* ONLY ACCESS, RESOURCE TYPE, RESOURCE-NAME SHOULD BE CHANGED           00332000
+         MNOTE *,'RESOURCE CHECK CALLED IN USER KEY NOT KEY 0'          00333000
+         MNOTE *,'WORKAREA IS ONLY 64 BYTES LOG FOR RESOURCE CALL'      00334000
+         B     EXIT0                                                    00335000
+         EJECT                                                          00336000
+*---------------------------------------------------------------------* 00337000
+* PROCESS TSS COMMAND VALIDATION                                      * 00338000
+*---------------------------------------------------------------------* 00339000
+         SPACE                                                          00340000
+COMMAND  DS    0H                                                       00341000
+* USER CODE GOES HERE TO INTERPRET TSS COMMAND USAGE                    00342000
+* TXACTGTS CAN BE USED TO DETERMINE THE MACHINE OF ORIGIN WHEN V4L3M000 00343000
+* CPF IS IN USE.  TXACTGTS = 0 INDICATES THE COMMAND           V4L3M000 00344000
+* ORIGINATED ON THE LOCAL MACHINE.  IF TXACTGTS > 0, THEN IT   V4L3M000 00345000
+* POINTS TO THE 8-CHAR NODE NAME OF THE ORIGINATING MACHINE.   V4L3M000 00346000
+         B     EXIT0                                                    00347000
+         EJECT                                                          00348000
+*---------------------------------------------------------------------* 00349000
+* PROCESS INTERNAL READER SUBMISSION                                  * 00350000
+*---------------------------------------------------------------------* 00351000
+         SPACE                                                          00352000
+SUBMIT   DS    0H                                                       00353000
+* USER CODE GOES HERE TO PROCESS JOB SUBMISSION.                        00354000
+* ONLY THE ACID BEING SUBMITTED MAY BE CHANGED.                         00355000
+         B     EXIT0                                                    00356000
+         EJECT                                                          00357000
+*---------------------------------------------------------------------* 00358000
+* MESSAGE EDITING                                                     * 00359000
+*---------------------------------------------------------------------* 00360000
+         SPACE                                                          00361000
+MESSAGE  DS    0H                                                       00362000
+* USER CODE GOES HERE                                                   00363000
+* CONTENTS OF MESSAGE BUFFER CAN BE CHANGED.                            00364000
+* NOTE THAT CONSOLE DESCRIPTOR & ROUTE CODES FOLLOW THE TEXT.           00365000
+* MAXIMUM LENGTH SHOULD BE 100 BYTES.                                   00366000
+         L     R2,TXA#MBUF        -> MESSAGE BUFFER IN WTO FORMAT       00367000
+         B     EXIT0                                                    00368000
+         EJECT                                                          00369000
+*---------------------------------------------------------------------* 00370000
+* PROCESS SECURITY FILE CHANGE                                        * 00371000
+*---------------------------------------------------------------------* 00372000
+         SPACE                                                          00373000
+CHANGE   DS    0H                                                       00374000
+* USER CODE GOES HERE                                                   00375000
+* CONTENTS OF CHANGE BUFFER MUST NOT BE ALTERED                         00376000
+* USE THIS EXIT CALL TO PROPOGATE CHANGES TO MULTIPLE SITES.            00377000
+         L     R2,TXA#RBUF        -> IMAGE BUFFER                       00378000
+         B     EXIT0                                                    00379000
+         EJECT                                                          00380000
+*---------------------------------------------------------------------* 00381000
+* PROCESS PERMIT ACTION(EXIT) OR RACHECK CLASS='INSTEXIT'             * 00382000
+*---------------------------------------------------------------------* 00383000
+         SPACE                                                          00384000
+ACTION   DS    0H                                                       00385000
+* USER CODE GOES HERE TO HANDLE SPECIAL REQUIREMENTS                    00386000
+         L     R2,TXA#XE          -> EXTENSION ELEMENT                  00387000
+         B     EXIT0                                                    00388000
+         EJECT                                                          00389000
+*---------------------------------------------------------------------* 00390000
+* VIOLATION DETECTED.                                                 * 00391000
+*---------------------------------------------------------------------* 00392000
+         SPACE                                                          00393000
+VIOLATN  DS    0H                                                       00394000
+* USER CODE GOES HERE TO EXAMINE VIOLATION                              00395000
+         B     EXIT0                                                    00396000
+         EJECT                                                          00397000
+*---------------------------------------------------------------------* 00398000
+* SITE RACHECK CLASS=INSTEXIT,ENTITY=CODE+DATA                        * 00399000
+*---------------------------------------------------------------------* 00400000
+         SPACE                                                          00401000
+SITE     DS    0H                                                       00402000
+* USER CODE GOES HERE FOR SPECIAL CUSTOMIZATION                         00403000
+         L     R2,TXA#DATA        -> ENTITY FROM RACHECK SVC            00404000
+         B     EXIT0                                                    00405000
+         EJECT                                                          00406000
+*---------------------------------------------------------------------* 00407000
+* PROCESS OUTBOUND COMMANDS                                    V4L3M000 00408000
+*---------------------------------------------------------------------* 00409000
+         SPACE                                                          00410000
+CPF      DC    0H'0'                                                    00411000
+* USER CODE GOES HERE TO PROCESS COMMANDS TO BE SENT TO ANOTHER TSS     00412000
+* NODE VIA CPF (COMMAND PROPOGATION FACILITY).                          00413000
+* -> TXACTGTS IDENTIFIES THE TARGETED MACHINE(S).  IT POINTS TO A CHAIN 00414000
+*    OF ELEMENTS WHOSE FORMAT IS DEFINED BY DSECT $$CPFTGT.             00415000
+*        L     REG1,TXACTGTS      GET A(TARGET DATA)                    00416000
+*        USING $$CPFTGT,REG1                                            00417000
+* -> THE USER CAN CHANGE INDIVIDUAL TARGET NODE NAMES OR CAUSE A GIVEN  00418000
+*    ENTRY TO BE IGNORED BY TURNING OFF $$CTFLG1,$$CTUSE.               00419000
+* -> THE ENTIRE COMMAND CAN BE REJECTED BY PASSING BACK RC=4.           00420000
+* -> BESIDE TXACTGTS, THE ONLY PARAMETERS THAT CONTAIN VALID DATA       00421000
+*    AT THIS CALL ARE: TXACCACI (ISSUER'S ACID NAME), TXACTYPE          00422000
+*    (ISSUER'S ACID TYPE), TXACCUBF (ADDRESS OF RAW COMMAND BUFFER),    00423000
+*    TXACFUNC (COMMAND FUNCTION).                                       00424000
+*                                                                       00425000
+         B     EXIT0                                                    00426000
+         LTORG                                                          00427000
+         EJECT    ,                                                     00428000
+*---------------------------------------------------------------------* 00429000
+*                                                              V4L3M000 00430000
+* Data Mapping Macros.                                         V4L3M000 00431000
+*                                                              V4L3M000 00432000
+* Note: All of these macros may be found in the optional       V4L3M000 00433000
+*       Materials file.                                        V4L3M000 00434000
+*                                                              V4L3M000 00435000
+*---------------------------------------------------------------------* 00436000
+         #INSTXPL ,          Installation Exit Parameter List  V4L3M000 00437000
+         #FACMATX ,          Facility Matrix Mapping           V4L3M000 00438000
+         #SMF80 ,            Mapping of Type 80 SMF Record     V4L3M000 00439000
+         #FLOG ,             Fast Log Buffer Mapping           V4L3M000 00440000
+         #RFLAGS ,           Resource Code Equates             V4L3M000 00441000
+         #DFLAGS ,           Detail Error Reason Codes (DRCs)  V4L3M000 00442000
+         #AFLAGS ,           Access Level Equates              V4L3M000 00443000
+         #FEEDBCK ,          Feedback Area Mapping             V4L3M000 00444000
+         #RECOVER ,          Recovery Record Mapping           V4L3M000 00445000
+         $$CPFTGT ,          Target Data for Commands With CPF V4L3M000 00446000
+* WORKAREA                                                              00447000
+WORKAREA DSECT                                                          00448000
+WORK     DS    D                                                        00449000
+         ORG   WORKAREA+100   LIMIT OF WORKAREA AS PROVIDED BY T/S      00450000
+R0       EQU   0                                                        00451000
+R1       EQU   1                                                        00452000
+R2       EQU   2                                                        00453000
+R3       EQU   3                                                        00454000
+R4       EQU   4                                                        00455000
+R5       EQU   5                                                        00456000
+R6       EQU   6                                                        00457000
+R7       EQU   7                                                        00458000
+R8       EQU   8                                                        00459000
+R9       EQU   9                                                        00460000
+RA       EQU   10                                                       00461000
+R10      EQU   10                                                       00462000
+RB       EQU   11                                                       00463000
+R11      EQU   11                                                       00464000
+RC       EQU   12                                                       00465000
+R12      EQU   12                                                       00466000
+RD       EQU   13                                                       00467000
+R13      EQU   13                                                       00468000
+RE       EQU   14                                                       00469000
+R14      EQU   14                                                       00470000
+RF       EQU   15                                                       00471000
+R15      EQU   15                                                       00472000
+         END                                                            00473000

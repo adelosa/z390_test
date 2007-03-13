@@ -1,0 +1,1037 @@
+         MACRO                                                          00050000
+         SGNUC                                                          00100000
+***************************************************************         00150028
+*                                                             *         00200028
+.*       IBM DISK OPERATING SYSTEM                            *         00250028
+*        SUPERVISOR - SGNUC - 5686-066-06                     *         00300028
+.*                                                            *         00350028
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00400028
+*        "RESTRICTED MATERIALS OF IBM"                        *         00450028
+*        5686-066                                             *         00500028
+*        (C) COPYRIGHT IBM CORP. 1977, 2002                   *         00510029
+*                                                             *         00600028
+***************************************************************         00650028
+.* /* START OF SPECIFICATIONS *********************************@D35EDEM 00700000
+.*                                                             @D35EDEM 00750000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                @D35EDEM 00800000
+.*                                                             @D35EDEM 00850000
+.*01* DESCRIPTIVE NAME = FIRST LEVEL INT.HANDLER ROUTINES      @D149DFR 00900000
+.*                                                             @D35EDEM 00950000
+.*01* NOTES = CHANGE ACTIVITY                                  @D35EDEM 01000000
+.*    FLIH EXTENSIONS (GENENT AND CPU TIMER ROUTINES)          @D149DFR 01050000
+.*    PRESENT CODE HAS BEEN MOVED FROM MACROS FOPT AND SGSVC   @D35EDEM 01100000
+.*    NEW MODULE - FIRST RELEASE 35                            @D35EDEM 01150000
+.*    SOFTWAIT CBFBND AFTER PAGE FAULT AND SHORTAGE OF         @DA30431 01200000
+.*    CHANNEL QUEUE ENTRIES (SECOND SAVE AREA PTR. NOT AVAIL.) @DA30431 01250000
+.*    ENTSVC: SIMULATE PROGRAM CHECK, IF SVC FROM APPENDAGE    @DA31096 01300000
+.*    SETUPSA: BITS 24 TO 39 NOT CLEARED                       @DA32257 01350000
+.*    MSG0S04I ILLEGAL SVC1C                                   @DA33641 01400000
+.*    SOFTWARE RE-IPL                                          @D31QDHB 01450000
+.*    SVCINDEX: IAF   HOOK                                     @D31ZDIS 01500000
+.*    5.1 EXTENSIONS FOR CICS                                  @D51HDOW 01550000
+.*    ESA ACCESS REGISTER SUPPORT                              @D51ADTP 01600000
+.*    MORE PARTITION SUPPORT                                   @D51IDIS 01650000
+.*    NEW INTERFACE TO PERFORMANCE MONITOR                     @D51MDKH 01700000
+.*    SECURITY MANAGER SUPPORT                                 @D51SDIS 01725001
+.*    31 BIT ADDRESSING                                        @D52VDIS 01737501
+.*    DATA SPACE SUPPORT                                       @D52GDIS 01738701
+.*    VENDOR SUPPORT                                           @D52YDIS 01739301
+.*    LINKAGE STACK SUPPORT                                    @D61PDOW 01741901
+.*    PROBLEM DETERMINATION ENHANCEMENTS (TRACE)               @D61HDOW 01743601
+.*    TRACE: SUBTASKING NOT CONSIDERED                         @KXA0065 01745301
+.*    CONSOLE SUPPORT                                          @D61CDOW 01747101
+.*    ICCF PSEUDO ENDS WITH THE EOJ FROM DUMP AFTER PDUMP      @DY43585 01748000
+.*    ESA EXPLOITATION (SS-PC)                                 @D64XDIS 01748906
+.*    MORE THAN 255 TASKS                                      @D66ODOW 01749028
+.**** END OF SPECIFICATIONS **********************************/@D35EDEM 01750000
+         GBLB  &LOLEV                                                   01950001
+         GBLB  &SGNUC             PRINT OPTION                 @D37ZDFG 02150000
+         SPACE 2                                               @D36ZDAZ 02200000
+         AIF   (NOT &SGNUC).NPRT010                                     02250001
+         PRINT GEN                                             @D37ZDFG 02300000
+.NPRT010 ANOP                                                  @D37ZDFG 02350000
+         DC    CL8'SGNUC'           MACRO NAME                 @D52VDIS 02375001
+         DC    CL10'08/28/2002'     LAST CHANGE                @D66ODOW 02426029
+         SPACE 1                                               @D14BDIS 02450000
+         ENTRY FLIH                                            @D14BDFR 02500001
+FLIH     DS    0H                                              @D36IDFR 02550000
+         EJECT ,                                               @D149DIS 02650000
+         SPACE 4                                               @D369DFR 02700000
+*********************************************************************** 02750000
+*                                                                     * 02800000
+*        NORMAL INTERFACE BETWEEN THE PROBLEM PROGRAM AND SUPERVISOR. * 02850000
+*                                                                     * 02900000
+*********************************************************************** 02950000
+*  FUNCTION: PASS CONTROL TO A SVC ROUTINE                            * 03000000
+*  INPUT   : SVC-CODE                                                 * 03050000
+*            TABLE OF SVC ROUT.ADDRESSES ETC.ETC                      * 03100000
+*            R0,R1 USER PARAMETER REGISTERS                           * 03150000
+*  OUTPUT  : R6 = DISPATCHER BASE REG.                                * 03200000
+*            RA = TCB POINTER                                         * 03250000
+*            RB = SAVEAREA POINTER                                    * 03300000
+*            RC = SVC ROUTINE ADDRESS                                 * 03350000
+*            RD = BASE ADDRESS OF SVC ROUTINE                         * 03400000
+*            RID= REENTRID                                            * 03450000
+*            R0,R1 PASSED USER PARAMETER REGISTERS                    * 03500000
+*********************************************************************** 03550000
+* ENTSVC   - SVC FIRST LEVEL INTERRUPT HANDLER                          03562500
+*            AMODE 31                                                   03575000
+*--------------------------------------------------------------         03587500
+         SPACE 2                                               @D369DFR 03600000
+ENTSVC   DS    0H                                              @D36IDFR 03650000
+         NOP   0                  TEMPORARY  ...               @KXANN25 03660000
+         NOP   0                         ...        ...        @KXANN25 03670000
+         NOP   0                         ... VENDOR ...        @KXANN25 03680000
+         NOP   0                                ... HOOK       @KXANN25 03690000
+*        DISPMAC FUNC=ENTSVC          NP LOCK AND ACCOUNTING   @D61RDIS 03700001
+         DISPMAC FUNC=ENTSVC          NP LOCK AND ACCOUNTING   @D61RDIS 03750001
+****---> SDAID HOOK <---************************************** @D65EDJS 03751024
+         L     RD,AFLIH           LOAD BASE ADDRESS            @D14BDFR 03753024
+         USING FLIH,RD                                         @D61CDIS 03754024
+         TM    IJBSDFL1,X'80'     SDAID IN PROGRESS ?          @JOCHEN@ 03755024
+         BZ    SDSVCCON           NO! CONTINUE NORMAL          @JOCHEN@ 03756024
+         L     RA,IJBSAVSD        GET ADDRESS OF SDAGDT        @D65EDJS 03758024
+         USING GDTNAME,RA                                      @D65EDJS 03759024
+         ICM   RB,15,GDTINTSV     ADDR OF SDINT ENTRY OR ZERO  @D65EDJS 03760024
+         BZ    SDSVCCON           NO! CONTINUE NORMAL          @D65EDJS 03761024
+         TM    FSTFLAGS,X'F0'     CPU DISABLED FOR SDAID ?     @JOCHEN@ 03763024
+         BNZ   SDSVCCON           YES!! --> CONTINUE NORMAL    @JOCHEN@ 03764024
+         STNSM FSTMASK,XFF-PERMASK SAVE MASK AND DISABLE PER   @D65EDJS 03766024
+         MVI   FSTFUNCD,X'00'     CLEAR FUNCTION CODE FIELD    @D65EDJS 03767024
+         OI    FSTFUNCD,FSTFCSVC  INDICATE SVC EVENT           @D65EDJS 03768024
+         BASSM RE,RB              GO TO SDAID                  @D65EDJS 03769024
+SDSVCRET DS    0H                 RETURN FROM SDAID            @D65EDJS 03769124
+         SSM   FSTMASK            RELOAD PREVIOUS MASK         @D65EDJS 03769224
+         LM    R9,R8,ERA          RELOAD REGISTERS             @D65EDJS 03769324
+         L     RD,AFLIH           LOAD BASE ADDRESS            @D14BDFR 03769424
+         DROP  RA                                              @D65EDJS 03769524
+SDSVCCON DS    0H                 CONTINUE NORMAL              @D65EDJS 03769624
+****---> END OF SDAID HOOK <---******************************* @D65EDJS 03769924
+         EJECT ,                                               @D64XDIS 03770006
+*        DEBUG SVFIELDS,XXDBGMC                                @D61NDIS 03820701
+         DEBUG SVFIELDS,XXDBGMC                                @D61NDIS 03822801
+*        L     RD,AFLIH           DELETED                      @D65EDJS 03823924
+*        USING FLIH,RD            DELETED                      @D65EDJS 03825024
+         L     RA,TCBPTR          GET SVC ISSUER               @D64XDIS 03831806
+         USING TCBADR,RA                                       @D64XDIS 03838606
+         L     RA,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D64XDIS 03845406
+         USING TCBXADR,RA                                      @D64XDIS 03852206
+         TM    TCBXFLG3,TCBXSVCX  SVC GIVEN IN X-MODE          @D64XDIS 03859006
+         BO    ENTSVCXD           YES, CANCEL                  @D64XDIS 03865817
+         TM    TCBXFLG1,TCBXFRRA  SVC GIVEN, WHEN FRR ACTIVE   @D64ADIS 03865908
+         BO    ENTSVCXD           YES, CANCEL                  @D64ADIS 03866017
+         CLI   SVCINTC+1,FASTSVC  FAST PATH SVC ?              @D14BDFR 03900000
+         BE    ENTFSVC            IF YES, TAKE FAST PATH       @D61EDIS 03931201
+         CLI   SVCINTC+1,VENDSVC  FAST PATH SVC ?              @D52YDIS 03962501
+         BE    ENTVEND            IF YES, TAKE FAST PATH       @D52YDIS 03975001
+         DROP  RA                                              @D64XDIS 03976006
+         EJECT ,                                               @D61EDIS 03977001
+*--------------------------------------------------------------         03979001
+* ENTSVCRT - RETURN, IF NOT FAST PATH SVC                               03981001
+*          - PROCESS VENDOR INTERFACE AND PERFORMANCE TOOL HOOKS        03983001
+*            AMODE 31                                                   03984008
+*--------------------------------------------------------------         03985001
+ENTSVCRT DS    0H                 RETURN, IF NO FAST PATH      @D52GDIS 03987501
+*        PRODEXIT ACTIVATE,ID=SVC ACTIVATE SVC EXITS           @D61EDIS 03991601
+         PRODEXIT ACTIVATE,ID=SVC                              @D61EDIS 03995701
+         LTR   R9,R9              CONTINUE SVC PROCESS ?       @D61EDIS 03997101
+         BNZ   ENTSVCVR           NO, PROCESS REQUESTED FUNCT. @D61EDIS 03998501
+*        SGVSEPT PROBE=4                 I/F TO PERFORM.TOOL   @D51MDKH 04000000
+         SGVSEPT PROBE=4                 I/F TO PERFORM.TOOL   @D51MDKH 04050000
+         EJECT ,                                               @D61EDIS 04060001
+*--------------------------------------------------------------         04070001
+* ENTSVCCE - SAVE STATUS OF SVC CALLER                                  04080008
+*            AMODE 31                                                   04081008
+*--------------------------------------------------------------         04090001
+ENTSVCCE DS    0H                 CALLED IN CROSS MEM. MODE    @D64XDIS 04095006
+         CLI   RID+1,USERTID      SVC IN TASKS PROCESS. ROUTINE@DA31096 04100000
+         BNE   SIMPC              NO, SIMULATE PROGRAM CHECK   @DA31096 04150000
+TTSVBAL  EQU   *                  RETURN FROM SIMPC ROUTINE    @DA31096 04200000
+         LA    RC,SVCOPSW         IDENTIFY OLD PSW             @D14BDFR 04500000
+         L     RB,SVCINF          GET SVC INTERRUPTION CODE    @D14BDFR 04550000
+         L     RA,AGENENTX        GET ADDR. OF GENENT ROUTINE  @D61CDIS 04556601
+         BASSM R9,RA              SAVE TASKS PSW AND REGISTERS @D64XDIS 04566508
+*SGLINK  GENENTX,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                  04569801
+         USING DISP,R6                                         @D61CDIS 04569908
+         USING TCBADR,RA                                       @D61CDIS 04570008
+         MVI   RID+1,REENTRID     INDICATE REENTRANT SVC       @D61CDIS 04576701
+         L     R5,TCBATCBE        GET ADDR. OF TCB EXTENSION   @D64XDIS 04595406
+         USING TCBXADR,R5                                      @D64XDIS 04596306
+         TM    TCBXFLG3,TCBXSVCX  SVC GIVEN IN X-MODE          @D64XDIS 04597206
+         BO    ENTSVCCR           YES, CANCEL                  @D64XDIS 04598106
+         TM    TCBXFLG1,TCBXFRRA  SVC GIVEN, WHEN FRR ACTIVE   @D64ADIS 04598208
+         BO    ENTSVCFR           YES, CANCEL                  @D64ADIS 04598308
+         DROP  R5                                              @D64XDIS 04599006
+         MVI   TCBEXFLG,TCBEXHPS  INDICATE HASN=PASN=SASN      @D64XDIS 04599314
+ENTSVCCG DS    0H                                              @D64XDIS 04599413
+         CLI   SVCIC,131          SIMULATED SVC ?              @D61CDIS 04603401
+         BE    ENTSVCSV           YES, PROCESS SIMULATION      @D61CDIS 04612301
+         CLI   SVCIC,132          MVS SIMULATION ?             @D61CDIS 04613701
+         BE    ENTSVCMV           YES, PROCESS SIMULATION      @D61CDIS 04615101
+         TM    IJBFLG0A,IJBLPOOL  LS SECTIONS POOL TOO SMALL   @D67CDOW 04615330
+         BO    CHK_LS_POOL        YES, ENLARGE POOL            @D67CDOW 04615430
+         LA    R5,ENTSV224        CONTINUE IN ...              @D64XDIS 04615606
+         BSM   0,R5                       ... 24 BIT MODE      @D64XDIS 04615706
+ENTSV224 DS    0H                                              @D64XDIS 04615806
+         NI    TCBMVSIS,XFF-TCBMVSSA-TCBMVSFM RESET EMULATION  @D64ADIS 04618115
+         CLI   SVCIC,(SVCTABND-SVCTAB)/4-1 ILLEGAL SVC?        @D61CDIS 04621201
+         BH    ERR21              YES, ILLEGAL SVC             @D61CDIS 04630101
+         LA    R5,VSESVCTB        GET VSE SVC TABLE ADDRESSES  @D61CDIS 04639001
+         LA    R7,INTINFO+2       POINT TO SVC CODE            @D61CDIS 04647901
+         LH    RC,0(,R7)          PICK UP SVC CODE             @D64ADIS 04648006
+         EJECT ,                                               @D52VDIS 04657101
+*--------------------------------------------------------------         04664201
+* ENTSMAIN - CHECK, IF SVC CODE EXCEEDS LIMITS                          04671301
+*          - CHECK, IF SVC ISSUER VIOLATES SVC AR/A/R MODE              04678401
+*          - CALL ICCF INTERCEPT, IF REQUIRED                           04685501
+*--------------------------------------------------------------         04692601
+ENTSMAIN DS    0H                 RETURN FROM SIMSVC ROUTINE   @D61CDIS 04714901
+.*--------------------------------------------------------------        04759601
+         USING SVEARA,RB                                       @D52VDIS 04778801
+         SLR   R4,R4              PREPARE INSERT               @D52VDIS 04798001
+         SLR   R9,R9              PREPARE INSERT               @D52VDIS 04807601
+         IC    R4,SVEPSW2         GET FIRST BYTE OF INSTR.ADDR.@D52VDIS 04817201
+         IC    R4,SVCEXTR(R4)     GET AMODE/RMODE INDICATION   @D52VDIS 04826801
+         TM    SVEPSW+2,X'80'     HOME SPACE/2NDARY SPACE MODE?@D64ADIS 04826915
+         BO    ENTSVCCN           CANCEL, IF VIOLATION         @D64ADIS 04827015
+         IC    R9,SVEPSW+2        AR MODE BIT                  @D52VDIS 04836401
+         N     R9,SVCARIND        AR MODE BIT                  @D52VDIS 04846001
+         OR    R4,R9              GET MODE OF CALLER           @D52VDIS 04855601
+         L     R8,4(,R5)          GET MODE ...                 @D61CDIS 04878001
+         IC    R9,0(RC,R8)             ... INDICATOR DEFINITION@D61CDIS 04890801
+         XR    R9,R4              CHECK FOR ...                @D52VDIS 04903601
+         NR    R9,R4                        ... MODE VIOLATION @D52VDIS 04913201
+         BNZ   ENTSVCCN           CANCEL, IF VIOLATION         @D52VDIS 04922801
+         SR    R9,R9              CLEAR FOR INSERT             @D64XDIS 04922912
+         IC    R9,TCBEXFLG        GET HPS INDICATION, IF ANY   @D64XDIS 04923012
+         OR    R4,R9              GET MODE OF CALLER           @D64XDIS 04924012
+         STC   R4,TCBEXFLG        SET MODE OF CALLER           @D64XDIS 04925012
+.*--------------------------------------------------------------        04942001
+         TM    TCBFLAGS,ICCFSVC   SVC EXIT ACTIVE              @D52VDIS 04970801
+         BO    SVCEXITX           YES,GOTO ACTIVATE EXIT       @D52VDIS 04980401
+         DROP  RD                                              @D61CDIS 05030401
+         EJECT ,                                               @D52VDIS 05688601
+*--------------------------------------------------------------         05719201
+* ENTSVCXT - ENTERING OF A SVC ROUTINE DEPENDENT ON THE                 05769201
+*            SVC CODE IN THE TCB (INTINFO OR TCBMVSIS)                  05819201
+*            OR RETURN FROM ICCF INTERCEPT                              05869201
+*--------------------------------------------------------------         06250001
+ENTSVCXT DS    0H                 RETURN POINT FROM ICCF INTERC@D61CDIS 06300001
+         L     R8,TIBPTR          LOAD TIB POINTER             @D14BDFR 06350001
+         LH    RC,0(,R7)          PICK UP SVC CODE             @D61CDIS 06400001
+         AR    RC,RC              CALCULATE                    @D14BDFR 06500000
+         AR    RC,RC               OFFSET INTO SVC TABLE       @D14BDFR 06537501
+         L     RD,0(,R5)          GET SVC TABLE ADDRESS        @D61CDIS 06575001
+         ALR   RC,RD              GET SVCTAB ENTRY             @D61CDIS 06612501
+         L     RC,0(,RC)          LOAD ADDR. OF SVC ROUTINE    @D14BDFR 06650000
+*--------------------------------------------------------------         06654501
+*          - INPUT TO SVC ROUTINE:                                      06659001
+*                   PARAMETER REGISTERS RF - R2                         06663501
+*                   R6 = DISPATCHER BASE ADDRESS                        06668001
+*                   R8 = CURRENT TIB ADDRESS (TIBPTR)                   06672501
+*                   RA = CURRENT TCB ADDRESS (TCBPTR)                   06677001
+*                   RB = TASK'S 1ST SAVE AREA ADDRESS                   06681501
+*                   RC = SVC ROUTINE ADDRESS                            06686001
+*                   RD = COMMON SVC BASE (IF DEFINED IN SVCTAB)         06690501
+*--------------------------------------------------------------         06695001
+         LTR   RD,RC              IF THERE IS NO BASE ADDRESS  @D14BDFR 06700000
+         LA    RC,0(,RC)          CLEAR HIGH ORDER BYTE        @D52VDIS 06725001
+         BPR   RC                    BRANCH DIRECT TO SVC ROUT @D14BDFR 06750000
+         SRL   RD,24              GET OFFSET OF BASE ADDR.     @D14BDFR 06800000
+         L     RD,SVCBASE(RD)     LOAD BASE ADDRESS            @D14BDFR 06850000
+         BR    RD                 BRANCH TO BASE ADDRESS       @D14BDFR 06900000
+         EJECT ,                                               @D61CDIS 06901601
+*--------------------------------------------------------------         06903201
+* SVCINDEX - ENTERED FROM DISP, IF DISPATCHER EXIT FLAG ON (RETRYSVC)   06904801
+*            FUNCTION: ENTERING OF A SVC ROUTINE DEPENDENT ON THE       06906401
+*                      SVC CODE IN THE TCB (INTINFO OR TCBMVSIS)        06908001
+*            INPUT: PARAMETER REGISTERS RF - R2                         06909601
+*                   R6 = DISPATCHER BASE ADDRESS                        06911201
+*                   R8 = TIBPTR                                         06912801
+*                   RA = TCBPTR                                         06914401
+*                   RB = SAVE AREA ADDRESS                              06916001
+*                   RD = FLIH BASE ADDRESS                              06917601
+*--------------------------------------------------------------         06919201
+         SPACE 2                                               @D61CDIS 06920801
+         USING FLIH,RD                                         @D61CDIS 06922401
+*SGLINK  SVCINDEX,S,INPUT=(R0,R1,R2,R6,R8,RA,RB,RD,RF)                  06924001
+SVCINDEX DS    0H                                              @D61CDIS 06925601
+         CLI   SVCIC,131          SIMULATED SVC ?              @D61CDIS 06927201
+         BE    SVCINDE1           YES, SIMULATE SVC            @D61CDIS 06928801
+         CLI   SVCIC,132          MVS SIMULATION ?             @D61CDIS 06929301
+         BE    SVCINDE1           YES, SIMULATE SVC            @D61CDIS 06929801
+         LA    R5,VSESVCTB        GET VSE SVC TABLE ADDRESSES  @D61CDIS 06930401
+         LA    R7,INTINFO+2       POINT TO SVC CODE            @D61CDIS 06932001
+         B     ENTSVCXT           RETURN TO MAIN PATH          @D61CDIS 06933601
+         SPACE 2                                               @D61CDIS 06935201
+*--------------------------------------------------------------         06936801
+* SVCINDE1 - SET UP MVS SVC TABLE ADDRESSES                             06938401
+*--------------------------------------------------------------         06940001
+SVCINDE1 DS    0H                                              @D61CDIS 06941601
+         LA    R5,MVSSVCTB        GET MVS SVC ADDRESS TABLES   @D61CDIS 06943201
+         LA    R7,TCBMVSIS+2      POINT TO SVC CODE            @D61CDIS 06944801
+         B     ENTSVCXT           RETURN TO MAIN PATH          @D61CDIS 06946401
+         EJECT ,                                               @D64ADIS 06958208
+*--------------------------------------------------------------         06970001
+* CHK_LS_POOL - EXTENT LS SECTION POOL                                  06990030
+*--------------------------------------------------------------         07010001
+CHK_LS_POOL DS 0H                                              @D67CDOW 07030030
+         TM    SYSFLAG4,ANCHSVA   SGETVIS POSSIBLE             @D67CDOW 07030130
+         BZ    CHK_LS_LAB5                                     @D67CDOW 07030230
+         CLC   TID,ARTIDH         SYSTEM TASK ACTIVE           @D67CDOW 07030332
+         BNH   CHK_LS_LAB5        YES,--->                     @D67CDOW 07030432
+         CLI   TCBRID,USERTID     REALLY CALLED WITH RID 8     @D67CDOW 07030532
+         BNE   CHK_LS_LAB5        NO, --->                     @D67CDOW 07030632
+         NI    IJBFLG0A,XFF-IJBLPOOL RESET INDICATOR           @D67CDOW 07030733
+*--------------------------------------------------------------         07030832
+* $IJBLSTK  - FILL-UP POOL OF LINKAGE STACK SECTIONS                    07030932
+*             INPUT:  RA - TCB ADDRESS                                  07031032
+*                     RE - RETURN ADDRESS                               07031132
+*                     RC - $IJBLSTK BASE ADDRESS                        07031232
+*                     RF - FUNCTION CODE (=28)                          07031332
+*             AMODE:  31                                                07031432
+*             RETURN WITH THE AMODE OF THE CALLER                       07031532
+*--------------------------------------------------------------         07031632
+         STM   R0,RF,SVCWORK      SAVE REGISTER                @D67CDOW 07031732
+         L     RC,ASVASVDL        PTR.TO SVA ROUT.ADDR.TABLE   @D67CDOW 07031832
+         L     RC,AIJBLSTK-SVASVDL(,RC) GET ROUTINE ADDRESS    @D67CDOW 07031932
+         LA    RF,28              SET UP FUNCTION CODE         @D67CDOW 07032032
+         BASSM RE,RC              CALL ROUTINE                 @D67CDOW 07032132
+         LM    R0,RF,SVCWORK      RESTORE REGISTER             @D67CDOW 07032232
+CHK_LS_LAB5 DS 0H                                              @D67CDOW 07032432
+         LA    R5,ENTSV224        RETURN IN 24 BIT MODE        @D67CDOW 07032532
+         BSM   0,R5                       ... TO MAINLINE      @D67CDOW 07032632
+         SPACE 2                                                        07032732
+*--------------------------------------------------------------         07032832
+* ENTSVCCN - PROCESS MODE VIOLATION                                     07032932
+*--------------------------------------------------------------         07033030
+ENTSVCCN DS    0H                                              @D52VDIS 07034030
+         SR    R9,R9              CLEAR FOR INSERT             @D64XDIS 07040012
+         IC    R9,TCBEXFLG        GET HPS INDICATION, IF ANY   @D64XDIS 07050012
+         OR    R4,R9              GET MODE OF CALLER           @D64XDIS 07060012
+         STC   R4,TCBEXFLG        SET MODE OF CALLER           @D64XDIS 07070012
+         B     ERR45              CANCEL BECAUSE OF VIOLATION  @D52VDIS 07090001
+         SPACE 2                                               @D31ZDIS 07090400
+*--------------------------------------------------------------         07090800
+* ENTSVCCR - CROSS MEMORY VIOLATION                                     07091200
+*            SPECIAL INPUT: R5 - ADDRESS OF TCB EXTENSION               07091600
+*--------------------------------------------------------------         07092000
+         USING TCBXADR,R5                                      @D64XDIS 07092109
+ENTSVCCR DS    0H                                              @D52VDIS 07092400
+         NI    TCBXFLG3,XFF-TCBXSVCX RESET INDICATION          @D62XDIS 07092509
+         L     R7,VSESVCTB+4    GET ADDR. OF EXECUTION MODE TAB@D64XDIS 07092706
+         LH    R9,INTINFO+2     GET SVC CODE                   @D64XDIS 07092806
+         LA    R9,0(R9,R7)      POINT TO SVC'S EXMODE ENTRY    @D64XDIS 07092906
+         TM    0(R9),TCBEXXMD   SVC ALLOWED IN CROSS MEM. MODE?@D64XDIS 07093006
+         BO    ENTSVCCG         YES, PROCESS SVC               @D64XDIS 07093106
+         LR    R2,R5            PREPARE INPUT FOR DSCMERR      @D64XDIS 07093206
+         L     R6,ADISPSER      ADDR OF DISP SERVICES          @D64XDIS 07093306
+         USING DISPSERV,R6                                     @D64XDIS 07093406
+         B     DSCMERR            CANCEL BECAUSE OF VIOLATION  @D64XDIS 07093606
+*SGLINK DSCMERR,INPUT=(R2,R6)                                           07093702
+         DROP  R5                                              @D64XDIS 07093809
+         SPACE 2                                               @D64ADIS 07093908
+*--------------------------------------------------------------         07094008
+* ENTSVCFR - FRR ACTIVE, THEREFORE SVC NOT ALLOWED                      07094108
+*            INPUT:  R6 - DISPATCHER BASE ADDRESS                       07094208
+*            AMODE 31                                                   07094308
+*--------------------------------------------------------------         07094408
+ENTSVCFR DS    0H                                              @D64ADIS 07094508
+         L     RC,ASGEXIT       GET SUBROUTINE'S ...           @D64ADIS 07094608
+         L     RC,AFRRISVC-SGEXIT(,RC)       ... BASE ADDRESS  @D64ADIS 07094708
+         BSM   0,RC             CALL FRR CANCEL ROUTINE        @D64ADIS 07094808
+         DROP  R6                                              @D61EDIS 07094908
+         DROP  RA                                              @D61EDIS 07098801
+         DROP  RD                                              @D61CDIS 07103301
+         EJECT ,                                               @D64ADIS 07103417
+*--------------------------------------------------------------         07103517
+* ENTSVCXD - X-MEMORY ENVIRONMENT OR FRR ACTIVE                         07103617
+*            DO ONLY ALLOW FAST PATH SVCS FOR SYSTEM ROUTINES           07103717
+*--------------------------------------------------------------         07103817
+         USING FLIH,RD                                         @D64XDIS 07103917
+ENTSVCXD DS    0H                                              @D64XDIS 07104017
+         CLI   RID+1,USERTID      SVC IN TASKS PROCESS. ROUTINE@D64XDIS 07104117
+         BE    TTSVBAL            YES, SAVE STATUS AND CANCEL  @D64XDIS 07104217
+         CLI   SVCINTC+1,FASTSVC  FAST PATH SVC ?              @D64XDIS 07104317
+         BE    ENTFSVC            IF YES, TAKE FAST PATH       @D64XDIS 07104417
+         B     SIMPC              NO, SIMULATE PROGRAM CHECK   @D64XDIS 07104517
+         DROP  RD                                              @D64XDIS 07104617
+         EJECT ,                                               @D61NDIS 07104717
+*--------------------------------------------------------------         07104801
+* ENTSVCVR - SPECIAL RETURN FROM VENDOR INTERFACES                      07104901
+*            INPUT: R9 = 1 - IGNORE SVC                                 07105001
+*                      = 2 - RID ERROR                                  07105301
+*            AMODE 31                                                   07105408
+*--------------------------------------------------------------         07105701
+         SPACE 1                                               @D61NDIS 07106101
+         USING FLIH,RD                                         @D61EDIS 07106501
+ENTSVCVR DS    0H                                              @D61EDIS 07106901
+         C     R9,F2              PROGRAM CHECK SIMULATION ?   @D61EDIS 07107301
+         BE    SIMPCVR            YES, DO IT                   @D61EDIS 07107701
+         LA    RC,SVCOPSW         IDENTIFY OLD PSW             @D61EDIS 07108901
+         L     RB,SVCINF          GET SVC INTERRUPTION CODE    @D61EDIS 07109301
+         SLR   RB,RB              CLEAR INTERRUPT INFORMATION  @D61EDIS 07109701
+         L     RA,AGENENTX        GET ADDR. OF GENENT ROUTINE  @D61CDIS 07110001
+         BASSM R9,RA              SAVE TASKS PSW AND REGISTERS @D61CDIS 07110301
+*SGLINK  GENENTX,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                  07110601
+         MVI   RID+1,REENTRID     INDICATE REENTRANT SVC       @D61EDIS 07110901
+         USING DISP,R6                                         @D61EDIS 07111301
+         USING TCBADR,RA                                       @D61EDIS 07111701
+         NI    TCBMVSIS,XFF-TCBMVSSA RESET MVS SIMULATION      @D61CDIS 07112101
+         CLI   SVCCODE,131        SIMULATED SVC ?              @D61EDIS 07112501
+         BE    ENTSVCV0           YES, PROCESS SIMULATION      @D61EDIS 07112601
+         CLI   SVCCODE,132        SIMULATED SVC ?              @D61EDIS 07112701
+         BNER  R6                 NO, RETURN TO DISPATCHER     @D61EDIS 07112901
+ENTSVCV0 DS    0H                                              @D61EDIS 07113101
+         OI    TCBMVSIS,TCBMVSSA  INDICATE MVS SIM. ACTIVE     @D61EDIS 07114101
+         B     DISPMVS            RETURN TO DISPATCHER         @D61EDIS 07114501
+         DROP  R6                                              @D61EDIS 07114901
+         DROP  RA                                              @D61EDIS 07115301
+         DROP  RD                                              @D61EDIS 07115701
+         EJECT ,                                               @D149DIS 07116601
+*--------------------------------------------------------------         07130001
+* SIMPC   - CHECK FOR VTAM, IF ROUTINE ID ¬= USERTID                    07180001
+*           FUNCTION: IF NOT VTAM THEN                                  07230001
+*                          SIMULATE PROGRAM CHECK                       07280001
+*                     ELSE RETURN TO MAIN PATH                          07330001
+*                                                                       07380001
+*           WORK    : RC = PCBPTR (RESTORED BEFORE LPSW)                07430001
+*--------------------------------------------------------------         08050001
+         SPACE 1                                               @D149DIS 08100000
+         USING FLIH,RD                                         @D61CDIS 08125001
+SIMPC    L     RC,PCBPTR          POINT TO PCB                 @DA31096 08150000
+         USING PCBADR,RC                                       @DA31096 08200000
+         TM    PCBSSFLG,VTAM      IS IT VTAM PARTITION ?       @DA31096 08250000
+         BO    TTSVBAL            YES,DO NOT CHECK RID AND SVC @DA31096 08300000
+         DROP  RC                                              @DA31096 08350000
+*--------------------------------------------------------------         08900001
+* SIMPCVR  - SIMULATE PROGRAM CHECK                                     08950001
+*--------------------------------------------------------------         09000001
+SIMPCVR  DS    0H                                              @D61EDIS 09025001
+         MVC   PCOPSW(8),SVCOPSW  SET UP PGM CHECK OLD PSW     @D61CDIS 09050001
+         MVI   PGMILC,X02         INSERT LENGTH CODE 2 (SVC)   @DA31096 09100000
+         MVI   PGMINTC+1,X01      INSERT PGM CHECK INT.CODE    @DA31096 09150000
+         OI    PGMINTC,X'80'      INDICATE PC IS SIMULATED     @D64XDIS 09175006
+         LM    R9,RD,ERA          RESTORE ENTRY REGISTERS      @DA31096 09200000
+         LPSW  PCNPSW             ENTER PROGRAM CHECK ROUTINE  @DA31096 09250000
+         DROP  RD                                              @D61CDIS 09275001
+         EJECT ,                                               @D149DIS 09300000
+*--------------------------------------------------------------         11208701
+* SVCEXITX - PROCESS ICCF INTERCEPT                                     11208901
+*            ICCF ALLOCATES A 256 BYTE SCREENING TABLE,                 11209101
+*            THAT CONTAINS INDICATORS FOR EACH SVC, IF                  11209301
+*            ICCF WANTS TO HANDEL THE SVC OR NOT                        11209501
+*            CONTENTS OF SVC BYTE:                                      11209701
+*             0 = SUPERVISOR HAS TO HANDLE THE SVC                      11209901
+*             4 = ICCF WANTS TO HANDLE THE SVC                          11210101
+*             8 = ILLEGAL SVC IN ICCF ENVIRONMENT                       11210301
+*            INPUT FOR ICCF INTERCEPT ROUTINE:                          11210401
+*                   R6 = DISPATCHER BASE ADDRESS                        11210501
+*                   RA = TCB ADDRESS                                    11210601
+*                   RC = RETURN ADDRESS                                 11210701
+*                   RD = ICCF INTERCEPT BASE ADDRESS                    11210801
+*            OUTPUT OF ICCF INTERCEPT ROUTINE:                          11210901
+*                   R6 - RC = UNCHANGED                                 11211001
+*                   RE - R5 = FROM USER SAVE AREA                       11211101
+*--------------------------------------------------------------         11211201
+         USING DISP,R6                                         @D61EDIS 11211301
+         USING TCBADR,RA                                       @D61EDIS 11211401
+         USING FLIH,RD                                         @D61CDIS 11211501
+SVCEXITX DS    0H                                              @D14BDFR 11211601
+         TM    TCBMVSIS,TCBMVSSA  MVS SIMULATION ACTIVE ?      @D61CDIS 11211901
+         BO    ENTSVCXT           YES, NO ICCF INTERCEPTION    @D61CDIS 11212001
+         CLI   SVCINTC+1,EOJSVC   EOJ?                         @DY43585 11212100
+         BNE   SVCEXITY           NO                           @DY43585 11212200
+         L     R4,TIBPTR          LOAD TIB POINTER             @DY43585 11212300
+         USING TIBADR,R4          TELL ASSEMBLER               @DY43585 11212400
+         TM    TIBFLAG1,TERMACT   EOJ FROM DUMP ROUTINE?       @DY43585 11212500
+         BO    ENTSVCXT           YES, SKIP ICCFEXIT           @DY43585 11212600
+         DROP  R4                                              @DY43585 11212700
+SVCEXITY DS    0H                                              @DY43585 11212800
+         L     R9,IJBETSS         GET ICCF VECTOR TABLE ADDRESS@D61CDIS 11212901
+         USING DTSVECDS,R9                                     @D61CDIS 11213001
+         ICM   R4,15,DTSCNTFA     GET ICCF SCREENING TABLE     @D52VDIS 11213101
+         BZ    SVCEXIT0           NOT AVAILABLE --> ERROR      @D52VDIS 11213201
+         MVC   DTSMVSSC(2),TCBMVSIS+2 PROVIDE MVS INT. CODE    @D61CDIS 11213301
+         DROP  R9                                              @D61CDIS 11213401
+         LA    R4,0(RC,R4)        GET ADDRESS OF SVC BYTE      @D52VDIS 11213501
+         LA    RC,ICCFVCX         GET RETURN ADDRESS           @D52VDIS 11213601
+         DROP  RD                                              @D52VDIS 11213701
+         L     RD,ADTSVCIC        LOAD ICCF INTERCEPT BASE     @D35ZDUL 11213801
+         TM    0(R4),DTSVC        SHOULD ICCF HANDLE ?         @D52VDIS 11213901
+         BOR   RD                 YES, GO TO ICCF INTERCEPT    @D52VDIS 11214001
+         CLI   0(R4),DTSVCIGN     SHOULD SUPERVISOR HANDLE ?   @D52VDIS 11214101
+         BER   RC                 YES, GOTO SVC ROUTINE        @D52VDIS 11214201
+         TM    0(R4),DTSVCERR     ILLEGAL SVC IN ICCF PP ?     @D52VDIS 11214301
+         BO    ERR21              YES, CANCEL TASK             @D52VDIS 11214401
+SVCEXIT0 DS    0H                                              @D14BDFR 11214501
+         B     ERR21              CODE NOT SUPPORTED -> CANCEL @D52VDIS 11215101
+         EJECT ,                                               @D61CDIS 11216401
+*--------------------------------------------------------------         11217701
+* ICCFVCX  - RETURN FROM ICCF INTERCEPT ROUTINE                         11219001
+*            OUTPUT OF ICCF INTERCEPT ROUTINE:                          11220301
+*                   R6 - RC = UNCHANGED                                 11221601
+*                   RE - R5 = FROM USER SAVE AREA                       11222901
+*--------------------------------------------------------------         11224201
+         USING FLIH,RD                                         @D61CDIS 11225501
+ICCFVCX  DS    0H                                              @D61CDIS 11226801
+         L     RD,AFLIH           LOAD BASE ADDRESS            @D31ZDIS 11228101
+         MVI   RID+1,REENTRID     INDICATE REENTRANT SVC       @D61CDIS 11228701
+         LA    R5,VSESVCTB        GET VSE SVC TABLE ADDRESSES  @D61CDIS 11232001
+         LA    R7,INTINFO+2       POINT TO SVC CODE            @D61CDIS 11233301
+         B     ENTSVCXT           RETURN TO MAIN PATH          @D61CDIS 11245001
+         DROP  RD                                              @D61CDIS 11246301
+         DROP  R6                                              @D35ZDFR 11250000
+         DROP  RA                                              @D36ZDFR 11300000
+         EJECT ,                                               @D61NDIS 11300101
+*--------------------------------------------------------------         11300201
+* ENTFSVC  - PROCESS VENDOR EXITS AND CALL FAST PATH                    11300301
+*            SERVICE ROUTINES                                           11300401
+*--------------------------------------------------------------         11300501
+         USING FLIH,RD                                         @D61EDIS 11300601
+ENTFSVC  DS    0H                                              @D61EDIS 11300701
+*        PRODEXIT ACTIVATE,ID=FSVC ACTIVATE FAST PATH EXITS    @D61EDIS 11300801
+         PRODEXIT ACTIVATE,ID=FSVC                             @D61EDIS 11300901
+         L     RC,FSVCBASE        BASE OF FAST PATH SVC        @D61EDIS 11301001
+         BSM   0,RC                          ... PATH ROUTINE  @D62ADIS 11301108
+         DROP  RD                                              @D61EDIS 11301201
+         SPACE 2                                               @D52YDIS 11301301
+*--------------------------------------------------------------         11301401
+* ENTVEND  - CHECK FOR FAST PATH SVC FOR VENDOR AUTHORIZATION           11301501
+*            INPUT: REGISTERS DEPENDENT ON FUNCTION                     11301601
+*                   RF = 0 ==> FAST PATH HAS TO BE TAKEN                11301701
+*                   RF NOT 0 ==> NORMAL SVC                             11301801
+*--------------------------------------------------------------         11301901
+         USING FLIH,RD                                         @D52VDIS 11302001
+ENTVEND  DS    0H                                              @D52YDIS 11302101
+         LTR   RF,RF              FAST PATH TO BE TAKEN ?      @D52YDIS 11302201
+         BNZ   ENTSVCRT           NO, RETURN TO ENTSVC MAIN    @D52YDIS 11302301
+         L     RC,ASVC124         BRANCH TO FAST ...           @D52YDIS 11302401
+         BSM   0,RC                          ... PATH ROUTINE  @D52YDIS 11302508
+         DROP  RD                                              @D61CDIS 11302601
+         SPACE 2                                               @D52YDIS 11302701
+ASVC124  DC    A(SVC124)          SVC ROUTINE ADDRESS          @D52YDIS 11302801
+         EJECT ,                                               @D52GDIS 11302901
+*--------------------------------------------------------------         11303001
+* ENTSVCSV - SIMULATION OF SVC BASED SERVICES PORTED FROM               11303101
+*            MVS/ESA TO VSE/ESA. THE MVS/ESA SVC CODE OF THE            11303201
+*            SVC INSTRUCTION IS USED AN INDEX INTO THE MVS/ESA          11303301
+*            SVC ROUTINE TABLE.                                         11303401
+*            INPUT: MVS/ESA SVC INSTRUCTION                             11303501
+*            CONTINUATION: THE USER CODE THAT ISSUED THE SIMULATION     11303601
+*                   SVC WILL GET CONTROL JUST BEHIND THE                11303701
+*                   MVS/ESA SVC INSTRUCTION.                            11303801
+*            EXECUTION MODE: THE EXECUTION MODE REQUIREMENTS            11303901
+*                   FOR THE SIMULATED MVS/ESA SERVICE ARE DEFINED       11304001
+*                   IN THE MVS/ESA EXECUTION MODE TABLE.                11304101
+*            AMODE 31 ON ENTRY                                          11304206
+*--------------------------------------------------------------         11304306
+         USING DISP,R6                                         @D61CDIS 11304406
+         USING TCBADR,RA                                       @D61CDIS 11304506
+         USING FLIH,RD                                         @D52VDIS 11304606
+         SPACE 2                                               @D52YDIS 11304706
+*--------------------------------------------------------------         11304806
+* ENTSVCMV - SIMULATION OF FUTURE MVS/ESA SERVICES                      11304906
+*--------------------------------------------------------------         11305006
+         USING DISP,R6                                         @D61CDIS 11305106
+ENTSVCMV DS    0H                                                       11305206
+         L     R5,PCBPTR          POINT TO PCB                 @D61NDIS 11305401
+         USING PCBADR,R5                                       @D61NDIS 11305501
+         TM    PCBFLAG,PCBMVSEM   MVS SIMULATION ACTIVE ?      @D61CDIS 11305601
+         BZ    ERR21              NO, ILLAGAL SVC              @D61CDIS 11305701
+         DROP  R5                                              @D61NDIS 11305801
+         EJECT ,                                               @D61NDIS 11305901
+*--------------------------------------------------------------         11306001
+* ENTSVCSV - SIMULATION OF VSE/ESA 2.1 - MVS/ESA SERVICES               11306101
+*--------------------------------------------------------------         11306201
+ENTSVCSV DS    0H                                              @D61CDIS 11306301
+         MVC   TCBMVSIS(3),INTINFO GET FIRST PART OF INTERR.INF@D61CDIS 11306601
+         USING SVEARA,RB                                       @D61CDIS 11306701
+         L     R5,SVEPSW2         GET CONTINUATION ADDRESS     @D61CDIS 11306801
+         DROP  RB                                              @D61CDIS 11306901
+         MVC   TCBMVSIS+3(1),5(R5) GET SVC CODE                @D61CDIS 11307201
+         LA    R5,ENTSVCSL        CONTINUE IN ...              @D64XDIS 11307306
+         BSM   0,R5                       ... 24 BIT MODE      @D64XDIS 11307406
+ENTSVCSL DS    0H                                              @D64ADIS 11307706
+         CLI   TCBMVSIS+3,(SVCMVSTE-SVCMVST)/4-1 ILLEGAL SVC?  @D61CDIS 11307801
+         BH    ERR21              YES, ILLEGAL SVC             @D61CDIS 11307901
+*        DISPMAC FUNC=MVSSVC                                   @D64ADIS 11308016
+         DISPMAC FUNC=MVSSVC                                   @D64ADIS 11308116
+         LA    R5,MVSSVCTB        GET MVS SVC ADDRESS TABLES   @D61CDIS 11308201
+         LA    R7,TCBMVSIS+2      POINT TO SVC CODE            @D61CDIS 11308301
+         LH    RC,0(,R7)          PICK UP SVC CODE             @D64ADIS 11308406
+         OI    TCBMVSIS,TCBMVSSA+TCBMVSFM IND. MVS SIM. ACTIVE @D64ADIS 11308506
+         CLI   SVCIC,132          MVS SIMULATION ?             @D64XDIS 11308706
+         BE    ENTSMAIN           NO, RETURN TO MAIN PATH      @D64ADIS 11308806
+         NI    TCBMVSIS,XFF-TCBMVSFM IND. VSE NATIVE SIMULATION@D64ADIS 11308906
+         L     R9,4(,R5)        POINT TO SVC'S ...             @D64ADIS 11309107
+         LA    R9,0(RC,R9)                 ... EXMODE ENTRY    @D64ADIS 11309207
+         TM    0(R9),TCBEXNAT   SVC ALLOWED IN NATIVE ENV. ?   @D64ADIS 11309307
+         BO    ENTSMAIN           YES, RETURN TO MAIN PATH     @D64ADIS 11309407
+         B     ERR21              SVC NOT ALLOWED IN NATIVE ENV@D64ADIS 11309507
+         DROP  R6                                              @D61CDIS 11309607
+         DROP  RA                                              @D61CDIS 11309707
+         DROP  RD                                              @D61NDIS 11309807
+         EJECT                                                 @D149DIS 11309907
+         SPACE 2                                               @D35EDFG 11310007
+*--------------------------------------------------------------         11311007
+*        EXECUTION MODE TRANSLATION TABLE                               11312401
+*           00 = AMODE/RMODE 24                                         11315501
+*           80 = AMODE 31 / RMODE 24                                    11318601
+*           A0 = AMODE 31 / RMODE 31                                    11321701
+*                CORRESPONDS TO FLAGS TCBEXAM AND TCBEXRM               11324801
+*--------------------------------------------------------------         11327901
+         SPACE 1                                               @D52VDIS 11331001
+SVCEXTR  DS    0F                                              @D52VDIS 11334101
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11337201
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11340301
+         DC    X'0000000000000000000000A000000000'             @D52VDIS 11343418
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11346501
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11349601
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11352701
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11355801
+         DC    X'00000000000000000000000000000000'             @D52VDIS 11358901
+         DC    X'80A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11362001
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11365101
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11368201
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11371301
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11374401
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11377501
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11380601
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11383701
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11386801
+         DC    X'A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0'             @D52VDIS 11389901
+SVCARIND DC    AL3(0),AL1(TCBEXARM) ACCESS REGISTER MODE IND.  @D52VDIS 11393001
+*--------------------------------------------------------------         11393201
+*        THE FOLLOWING ADDRESSES HAVE TO STAY TOGETHER !!!              11393401
+*        THE VSE ADDRESS PAIR AND THE MVS ADDRESS PAIR                  11393601
+*        ARE USED BY THE ENTSVC ROUTINE TO CHECK FOR                    11393801
+*        EXECUTION MODE VIOLATIONS AND TO DETERMINE THE                 11394001
+*        CORRESPONDING SVC ROUTINE.                                     11394201
+*--------------------------------------------------------------         11394401
+VSESVCTB DC    A(SVCTAB)         ADDRESS OF VSE'S SVC TABLE    @D61CDIS 11394601
+         DC    A(SVCMODT)        ADDR. OF VSE'S SVC EX.MODE TAB@D61CDIS 11394801
+MVSSVCTB DC    A(SVCMVST)        ADDRESS OF MVS'S SVC TABLE    @D61CDIS 11395001
+         DC    A(SVCMVSMT)       ADDR. OF VSE'S SVC EX.MODE TAB@D61CDIS 11395201
+         EJECT ,                                                        11396101
+         SPACE 4                                               @D369DFR 11400000
+*********************************************************************** 11450000
+*                                                                     * 11500000
+*        NORMAL INTERFACE BETWEEN AN MICR OPERATION, AN TIMER         * 11550000
+*        INTERRUPT OR THE OPERATOR AND THE SUPERVISOR.                * 11600000
+*                                                                     * 11650000
+*********************************************************************** 11700000
+         USING FLIH,RD                                         @D61CDIS 11725001
+         SPACE 2                                               @D369DFR 11750000
+ENTEXT   DS    0H                                              @D36IDFR 11800000
+         STM   R9,R8,ERA          SAVE ENTRY REGISTERS         @D61NDIS 11886801
+****---> SDAID HOOK <---************************************** @D65EDJS 11886924
+         L     RD,AFLIH           LOAD BASE ADDRESS            @D65EDJS 11887024
+         TM    IJBSDFL1,X'80'     SDAID IN PROGRESS ?          @JOCHEN@ 11889024
+         BZ    SDEXTCON           NO! CONTINUE NORMAL          @JOCHEN@ 11890024
+         L     RA,IJBSAVSD        GET ADDRESS OF SDAGDT        @D65EDJS 11910024
+         USING GDTNAME,RA                                      @D65EDJS 11911024
+         ICM   RB,15,GDTINTEP     ADDR OF SDINT ENTRY OR ZERO  @D65EDJS 11912024
+         BZ    SDEXTCON           NO! CONTINUE NORMAL          @D65EDJS 11912124
+         TM    FSTFLAGS,X'F0'     CPU DISABLED FOR SDAID ?     @JOCHEN@ 11912324
+         BNZ   SDEXTCON           YES!! --> CONTINUE NORMAL    @JOCHEN@ 11912424
+         STNSM FSTMASK,XFF-PERMASK SAVE MASK AND DISABLE PER   @D65EDJS 11912624
+         MVI   FSTFUNCD,X'00'     CLEAR FUNCTION CODE FIELD    @D65EDJS 11912724
+         OI    FSTFUNCD,FSTFCEXT  INDICATE SVC EVENT           @D65EDJS 11912824
+         BASSM RE,RB              GO TO SDAID                  @D65EDJS 11912924
+SDEXTRET DS    0H                 RETURN FROM SDAID            @D65EDJS 11913024
+         SSM   FSTMASK            RESET SAVED MASK             @D65EDJS 11913124
+         LM    R9,R8,ERA          RELOAD REGISTERS             @D65EDJS 11913224
+         L     RD,AFLIH           LOAD BASE ADDRESS            @D65EDJS 11913324
+SDEXTCON DS    0H                                              @D65EDJS 11913424
+         DROP  RA                                              @D65EDJS 11913524
+****---> END OF SDAID HOOK <---******************************* @D65EDJS 11913624
+         L     RA,ASYSCOM         SAVE CURRENT X'80' CONTENTS  @D61NDIS 11914001
+         LA    R9,A$Y$COM         RESTORE ...                  @D61NDIS 11935501
+         ST    R9,ASYSCOM              ... SYSCOM ADDRESS      @D61NDIS 11942601
+*        L     RD,AFLIH           DELETED                      @D65EDJS 11950024
+         LA    RC,EXOLDPSW        ADDR.OF EXT.OLD PSW          @D14BDFR 11950801
+         EJECT ,                                               @D61NDIS 11951601
+*        DISPMAC FUNC=ENTEXT,INP1=RC                           @D61RDIS 11952401
+         DISPMAC FUNC=ENTEXT,INP1=RC                           @D61RDIS 11953201
+         L     R9,AEXTRTN         SET BASE FOR EXTERNAL INT.   @D61NDIS 11953401
+         USING EXTRTN,R9                                       @D61NDIS 11953601
+         ST    RA,EXTPARWD        SAVE BREVIOUS X'80' CONTENTS @D61NDIS 11953801
+         L     R6,DISPAD                                       @D61RDIS 11954001
+         DROP  R9                                              @D61NDIS 11955201
+         EJECT ,                                               @D61NDIS 11956401
+*--------------------------------------------------------------         11957201
+*        - VENDOR INTERFACES                                            11958001
+*--------------------------------------------------------------         11958801
+*        PRODEXIT ACTIVATE,ID=EXT ACTIVATE EXT EXITS           @D61EDIS 11960001
+         PRODEXIT ACTIVATE,ID=EXT                              @D61EDIS 11970001
+         LTR   R9,R9              CONTINUE EXT PROCESS ?       @D61EDIS 11980001
+         BNZR  R6                 NO, IGNORE EXTERNAL INTERRUPT@D61RDIS 11990001
+*        SGVSEPT PROBE=11                I/F TO PERFORM.TOOL   @D51MDKH 12000000
+         SGVSEPT PROBE=11                I/F TO PERFORM.TOOL   @D51MDKH 12050000
+         AIF   (NOT &LOLEV).NOLLEV2                            @D36ZDFR 12100000
+         TM    EXOLDP+1,WAITBIT   INT.FROM ALLBOUND STATE?     @D365DFR 12150000
+         BZ    NOLLWT             NO, DO NOT CALL LOAD LEVELER @D365DFR 12200000
+         BAL   R9,CWTIME2         UPD.ALB.WAIT TIME FOR LLEV   @D36ZDFR 12250000
+NOLLWT   DS    0H                                              @D36IDFR 12300000
+.NOLLEV2 ANOP                                                  @D36ZDFR 12350000
+*--------------------------------------------------------------         12620001
+*        - PROCESS EXTERNAL INTERRUPT                                   12630001
+*--------------------------------------------------------------         12640001
+         L     RE,AEXTRTN         SET BASE FOR EXTERNAL INT.   @D14BDFR 12690001
+         BR    RE                 GO TO PROCESS INTERRUPT      @D14BDFR 12950000
+         EJECT ,                                               @D149DIS 13850000
+         SPACE 4                                               @D369DFR 13900001
+*********************************************************************** 13950000
+*                                                                     * 14000000
+*        NORMAL INTERFACE BETWEEN AN INPUT/OUTPUT OPERATION           * 14050000
+*        AND THE SUPERVISOR.                                          * 14100000
+*                                                                     * 14150000
+*********************************************************************** 14200000
+         SPACE 2                                               @D369DFR 14250000
+ENTIO    DS    0H                                              @D36ZDFR 14550000
+         STM   R9,R8,ERA          SAVE REGISTERS R9 TO RD      @D61NDIS 14600001
+         L     RD,AFLIH           LOAD BASE ADDRESS OF FLIH    @D14BDFR 14650000
+         LA    RC,IOOPSW          POINTER TO I/O OLD PSW       @D61RDIS 14653801
+*        DISPMAC FUNC=ENTIO,INP1=RC                            @D61RDIS 14657601
+         DISPMAC FUNC=ENTIO,INP1=RC                            @D61RDIS 14661401
+         L     R6,DISPAD                                       @D61RDIS 14665201
+*--------------------------------------------------------------         14688001
+*          - PROCESS I/O INTERRUPT (NP LOCK HELD)                       14691801
+*--------------------------------------------------------------         14695601
+         AIF   (NOT &LOLEV).NOLLEV1                                     14700000
+         LA    R9,NOWAIT1                                               14750001
+         TM    IOOPSW+1,WAITBIT   INT.FROM ALLBOUND STATE?              14800000
+         BZR   R9                 NO, DO NOT CALL LOAD LEVELE           14850001
+CWTIME2  CLI   RID+1,DISPID       DISPATCHER INTERRUPTED?               14900000
+         BNER  R9                 NO, DO NOT CALL LOAD LEVELE           14950001
+         USING PMGMDATA,RE        S                            @D35EDGA 15125001
+         USING LOLEV,RF           S                            @D35EDGA 15183301
+         L     RE,APMGMDAT        S MEASURE WAIT TIME FOR      @D35EDGA 15199901
+         L     RF,ALOLEV          S                            @D35EDGA 15216501
+         B     WTIME2             S LOAD LEVELER               @D35EDGA 15233101
+         DROP  RE                 S                            @D36ZDFR 15250000
+         DROP  RF                 S                            @D36ZDFR 15300000
+NOWAIT1  DS    0H                                              @D36IDFR 15350000
+.NOLLEV1 ANOP                                                  @D35EDFG 15400000
+         L     R9,AINTER          ENTRY TO I/O INT.HANDLER     @D14BDFR 15700000
+         BR    R9                 PROCESS INTERRUPT            @D61RDIS 15750001
+         EJECT ,                                               @D149DIS 15950000
+         SPACE 4                                               @D14BDFR 16000000
+*********************************************************************** 16050000
+*                                                                     * 16100000
+*        GENERAL ENTRY: INTERRUPT STATUS WILL BE SAVED HERE           * 16150000
+*                                                                     * 16200000
+*********************************************************************** 16250000
+*                                                                     * 16300000
+*  FUNCTION: SAVES INTERRUPT STATUS OF A TASK INTO A SAVEAREA         * 16350000
+*                                                                     * 16400000
+*  INPUT   : (COMMON TO MOST OF THE ENTRY POINTS:)                    * 16450000
+*            OLD PSW                                                  * 16500000
+*            REGISTERS EXCEPT R9 TO RC                                * 16550000
+*            ERA CONTAINING VALUES FOR R9 TO RC                       * 16600000
+*            RID                                                      * 16650000
+*            RC = PTR.TO OLD PSW                                      * 16700000
+*  LINKREG : R9                                                       * 16750000
+*  WORKREGS: RA,RB(,RC)                                               * 16800000
+*  OUTPUT  : UPDATED SAVEAREA                                         * 16850000
+*            RID=SYSTEMID                                             * 16900000
+*            R6 = DISP.BASE REG.                                      * 16950000
+*            RA = TCB POINTER                                         * 17000000
+*                 RID, WHEN PCGENENT ENTERED                          * 17050000
+*            RB = PTR.TO SAVEAREA WHICH HAS BEEN USED FOR STATUS SAV. * 17100000
+*                                                                     * 17150000
+*  ENTRY POINTS AND THEIR SPECIAL FUNCTIONS:                          * 17200000
+*                                                                     * 17250000
+*   GENENT   : SPECIAL INPUT:RB = INTERRUPTION CODE                   * 17300000
+*      FOR RID = USERTID IT SAVES RB TO TCBINFO FIELD AND             * 17350000
+*                IT SAVES STATUS OF TASK INTO TASKS NORMAL SAVEAREA   * 17400000
+*      FOR RID¬= USERTID IT SAVES RID TO TCBRID                       * 17450000
+*                IT ACTIVATES DISPATCHER EXIT TURNING ON SVRET FLAG   * 17500000
+*                   IN TIBFLAGS                                       * 17550000
+*                IT SAVES STATUS OF TASK INTO TASKS SPECIAL SAVEAREA  * 17600000
+*   PCGENENT : ENTERED FROM PCK.HANDLER                               * 17650000
+*   SAVERID  : ENTERED FROMPAGE FAULT HANDLER AND FROM SETUPSA        * 17700000
+*   SETUPSA  : IT SUPPORTS STATUS SAVING WHEN NO OLD PSW IS AVAILABLE.* 17750000
+*   RWAIT    : IT IS A SPECIAL ENTRY TO SETUPSA.                      * 17800000
+*              SPECIAL INPUT: R9 TO RC TO BE STORED TO ERA            * 17850000
+*                             R5= POINTER TO RESOURCE QUEUE OR ZERO   * 17900000
+*              SPECIAL OUTPUT: ERA SET UP BY CONTENT OF R9 TO RC      * 17950000
+*              CALL TO : SETUPSA,                                     * 18000000
+*                        SETBOUND IN CASE R5¬=0                       * 18050000
+*              EXIT TO : DISPATCHER                                   * 18100000
+*              AMODE: ANY                                             * 18125001
+*********************************************************************** 18150000
+         EJECT ,                                               @D52HDIS 18170001
+*--------------------------------------------------------------         18190001
+* SPGENENT - SAVE INTERRUPT STATUS, CLEAR INTERRUPTION CODE             18210001
+*--------------------------------------------------------------         18230001
+*SGLINK  SPGENENT,S,INPUT=(R9,RC,RD),OUTPUT=(R6,RA,RB)                  18250001
+SPGENENT DS    0H                 GENERAL ENTRY ROUTINE        @D14BDFR 18300001
+         SLR   RB,RB              ZERO INTERRUPTION CODE       @D14BDFR 18350000
+         SPACE 1                                               @D149DIS 18400000
+*--------------------------------------------------------------         18416601
+* GENENT   - SAVE INTERRUPT STATUS AND                                  18433201
+*            INTERRUPTION CODE GIVEN IN REGISTER B                      18449801
+*            AMODE ANY                                                  18458101
+*--------------------------------------------------------------         18466401
+*SGLINK  GENENT,S,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                 18483001
+GENENT   DS    0H                                              @D61NDIS 18494901
+         L     RA,AGENENT3        GET ADDRESS OF GENENT1 ROUT. @D61CDIS 18506801
+         LA    R9,0(,R9)          CLEAR HIGH ORDER BIT/BYTE    @D61CDIS 18518701
+         BSM   R9,RA              CALL GENENT ROUTINE          @D61CDIS 18530601
+         SPACE 2                                               @D61CDIS 18542501
+*--------------------------------------------------------------         18554801
+* GENENT1  - SAVE INTERRUPT STATUS (USERTID ONLY) AND                   18557201
+*            INTERRUPTION CODE GIVEN IN REGISTER B                      18559601
+*            AMODE ANY                                                  18562001
+*--------------------------------------------------------------         18564401
+*SGLINK  GENENT1,S,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                18569201
+GENENT1  DS    0H                                              @D61NDIS 18570601
+         L     RA,AGENENTX        GET ADDRESS OF GENENT1 ROUT. @D61CDIS 18572001
+         LA    R9,0(,R9)          CLEAR HIGH ORDER BIT/BYTE    @D61CDIS 18573401
+         BSM   R9,RA              CALL GENENT ROUTINE          @D61CDIS 18574801
+         SPACE 2                                               @D61CDIS 18576201
+AGENENTX DC    A(X'80000000'+GENENTX)                          @D61CDIS 18577601
+AGENENT3 DC    A(X'80000000'+GENENT31)                         @D61CDIS 18579001
+ASAVEOPS DC    A(X'80000000'+SAVEOPSW)                         @D61CDIS 18580401
+ASAVERI3 DC    A(X'80000000'+SAVERI31)                         @D61CDIS 18581801
+         SPACE 2                                               @D61CDIS 18583201
+*--------------------------------------------------------------         18584601
+* GENENT31 - SAVE INTERRUPT STATUS AND                                  18586001
+*            INTERRUPTION CODE GIVEN IN REGISTER B                      18587401
+*            AMODE 31                                                   18588801
+*--------------------------------------------------------------         18590201
+*SGLINK  GENENT31,S,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)               18591601
+GENENT31 CLI   RID+1,USERTID      INTERRUPT IN TASKS PROC.ROUT @D61NDIS 18593001
+         BNE   SVGENENT           BRANCH IF NOT                @D14BDFR 18594401
+         EJECT ,                                               @D61NDIS 18595801
+*--------------------------------------------------------------         18597201
+* GENENTX  - ENTRY POINT FOR ENTSVC                                     18598601
+*            AMODE 31                                                   18600001
+*--------------------------------------------------------------         18601401
+*SGLINK  GENENT1,S,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                18602801
+GENENTX  DS    0H                                              @D61CDIS 18604201
+         STM   RE,RF,ERARE        SAVE REGISTERS               @D61CDIS 18605601
+         LH    RE,RID             SAVE RID                     @D52HDIS 18608201
+         MVI   RID+1,SYSTEMID     INDICATE SYSTEM WORKING      @D14BDFR 18637501
+         L     RA,TCBPTR          LOAD TCB POINTER             @D14BDFR 18650000
+         USING TCBADR,RA                                       @D14BDFR 18700000
+         ST    RB,INTINFO         STORE IT TO TCB              @D14BDFR 18750000
+         STC   RE,TCBRID          SAVE RID IN TCB              @D61NDIS 18757901
+         L     RB,TCBARSAV        GET ACCESS REG SAVE AREA ADDR@D61HDIS 18765901
+         STAM  R0,RF,0(RB)        SAVE ACCESS REGISTERS        @D52GDIS 18778401
+         L     RB,TCBSAVE         POINTER TO TASK SAVEAREA     @D14BDFR 18800000
+         DROP  RA                 RELEASE TCB                  @D64XDIS 18825006
+         USING SVEARA,RB          SAVE AREA POINTER            @D14BDFR 18850000
+         LA    RE,0               INDICATE 1ST SAVE AREAS      @D64XDIS 18875006
+         CLC   TID,ARTIDH         USER TASK INTERRUPTED?       @D66ODOW 18900028
+         BNH   GENENTXT           NO,DO NOT SAVE FL.POINT REGS @D64XDIS 18950006
+         L     RF,TIBPTR          GET CURRENT TIB ADDRESS      @D61PDIS 19156901
+         USING TIBADR,RF                                       @D61PDIS 19163801
+         TM    TIBTFLAG,TIBTTACT  TRACE ACTIVE ?               @KXA0065 19170801
+         BZ    GENENTXT           NO, DO NOT RESET PER BIT     @D61HDIS 19179901
+         USING PSWADR,RC                                       @D61HDIS 19189001
+         NI    PSWSTATE,XFF-PERMASK DISABLE PGM EVENT RECORDING@D61HDIS 19196801
+         DROP  RF                                              @D61NDIS 19212401
+GENENTXT DS    0H                                              @D61RDIS 19213001
+*        DISPMAC FUNC=GENENT,INP1=RB,INP2=RE,WR1=RD SAVE STATUS@D64XDIS 19214006
+         DISPMAC FUNC=GENENT,INP1=RB,INP2=RE,WR1=RD SAVE STATUS@D64XDIS 19215006
+* >>>>   FUNCTION WILL NOT RETURN                              @D61RDIS 19216001
+         EJECT ,                                                        19220201
+*--------------------------------------------------------------         19228001
+* SAVEOPSW - SAVE REGISTERS INTO PROVIDED SAVE AREA                     19235801
+*            INPUT: RA - RID OR TCB ADDRESS                             19243601
+*                   RB - SAVE AREA ADDRESS                              19251401
+*                   RC - PSW ADDRESS                                    19259201
+*                   RD - FLIH BASE REGISTER                             19267001
+*            AMODE 31                                                   19274801
+*--------------------------------------------------------------         19282601
+SAVEOPSW MVC   SVEPSW(8),OLDPSW   SAVE THE OLD PSW             @D14BDFR 19300000
+         DROP  RC                                              @D14BDFR 19350000
+         LM    RE,RF,ERARE        RESTORE REGISTERS            @D61CDIS 19375001
+         MVC   SVER09(20),ERA     SAVE REGISTERS R9 TO RD      @D14BDFR 19400000
+         STM   RE,R8,SVER0E       SAVE REGISTERS RE THROUGH R8 @D14BDFR 19450000
+         L     R6,DISPAD          SET UP EXIT ADDRESS          @D51ADTP 20050000
+         BSM   0,R9               RETURN TO CALLER             @D61NDIS 20100001
+         DROP  RB                                              @D52VDIS 20175001
+         SPACE 2                                               @D61NDIS 20193701
+*--------------------------------------------------------------         20212501
+* SVGENENT - HANDLE INTERRUPT OCCURRED IN SUPERVISOR ROUTINE            20225001
+*            AMODE 31                                                   20231201
+*--------------------------------------------------------------         20237501
+SVGENENT CLI   RID+1,GATENR       GATING ROUTINE INTERRUPTED   @D14BDFR 20250000
+         BNL   SAVERI31           YES, GOTO CLOSE GATE         @D61RDIS 20283301
+*--------------------------------------------------------------         20349901
+* SVGENENT - SAVE STATUS INTO 2ND SAVE AREAS                            20366501
+*            AMODE 31                                                   20383101
+*--------------------------------------------------------------         20399701
+GENENT2  DS    0H                                              @D61NDIS 20416301
+         STM   RE,RF,ERARE        SAVE REGISTERS               @D61CDIS 20432901
+         LH    RB,RID             LOAD ROUTINE IDENTIFIER      @D14BDFR 20450000
+         MVI   RID+1,SYSTEMID     IDENTIFY NON INTERRUPTABLE R @D14BDFR 20500000
+         L     RA,TCBPTR          LOAD TCB POINTER             @D61NDIS 20516601
+         USING TCBADR,RA          INFORM ASSEMBLER             @D61NDIS 20533201
+         STC   RB,TCBRID          SAVE RID FOR NEXT DISPATCHIN @D14BDFR 20550000
+         L     RB,TCBAR2SV        GET ACCESS REG SAVE AREA ADDR@D61CDIS 20765501
+         STAM  R0,RF,0(RB)        SAVE ACCESS REGISTERS        @D52GDIS 20781001
+         L     RF,TIBPTR          LOAD TIB POINTER             @D61NDIS 20781701
+         USING TIBADR,RF                                       @D14BDFR 20782401
+         OI    TIBFLAG,CSVRET     SETUP DISPATCHER EXIT        @D14BDFR 20783101
+         L     RB,TCBSAV2         POINTER TO SPEC.SAVEAREA     @D14BDFR 21133201
+         LA    RE,1               INDICATE 2ND SAVE AREAS      @D64XDIS 21136806
+         B     GENENTXT           SAVE REGISTERS               @D64XDIS 21140406
+         DROP  RA                                              @D14BDFR 21144001
+         DROP  RF                                              @D64XDIS 21147006
+         EJECT ,                                                        21150000
+*-------------------------------------------------------------------    21175001
+* PCGENENT - ENTERED FROM PCK.HANDLER TO SAVE STATUS OF A SUPERVISOR    21200001
+*            OR A USER APPENDAGE ROUTINE IN CASE OF A PROGR.CHECK.      21225001
+*            IT SAVES TID, INT.CODE AND INT.STATUS OF TASK INTO A       21250001
+*            SPECIAL PCK.SAVEAREA. IT DOES NOT NEED RC AS INPUT.        21275001
+*            INPUT:  R9 - RETURN ADDRESS                                21300001
+*                    RD - FLIH BASE ADDRESS                             21325001
+*            OUTPUT: R6 - DISPATCHER BASE ADDRESS                       21350001
+*                    RA - RID                                           21375001
+*            WORK:   RB, RC                                             21400001
+*            AMODE: ANY                                                 21425001
+*-------------------------------------------------------------------    21450001
+*                                                                       21456200
+* MOEGLICH IN CROSS MEMORY MODE????                                     21462400
+*                                                                       21468600
+*SGLINK PCGENENT,S,INPUT=(R9,RD),WORK=(RB,RC),OUTPUT=(R6,RA)            21475001
+PCGENENT LA    RC,PCOLDPS         IDENTIFY PCK.OLD PSW         @D14NDIS 21500000
+         L     RA,PGMINF          SAVE INTERRUPTION CODE       @D14BDFR 21550000
+*SGLINK TIGENENT,S,INPUT=(R9,RA,RC,RD),WORK=(RB),OUTPUT=(R6,RA)         21575001
+TIGENENT L     RB,ASVPCSAV        POINTER OF PCK.SAVEAREA      @D14BDFR 21600000
+         USING SVPCSAVE,RB                                     @D36IDFR 21650000
+         ST    RA,SVPCINFO          FOR USE BY TERMINATOR      @D14BDFR 21700000
+         STM   RE,RF,ERARE        SAVE REGISTERS               @D61CDIS 21737501
+         L     RF,TIBPTR                                       @D61NDIS 21775001
+         USING TIBADR,RF                                       @D61NDIS 21812501
+         LH    RA,TIBRTID                                      @D14BDFR 21850000
+         STH   RA,SVPCTID         IDENTIFY OWNER BY ITS TID    @D14BDFR 21900000
+         SLL   RA,2                                            @D66ODOW 21950028
+         AL    RA,ATIBATAB                                     @D66ODOW 21960028
+         L     RF,0(,RA)          GET TIB POINTER              @D66ODOW 22000028
+         TM    TIBCNCL,XFF                                     @D36IDFR 22050000
+         BM    PCGEN1                                          @D36IDFR 22100000
+         OI    TIBFLAG2,SVPCCNCL                               @D36IDFR 22150000
+         DROP  RF                                              @D61NDIS 22200001
+PCGEN1   LH    RA,RID             SAVE RID FOR PCK HANDLER     @D14BDFR 22250000
+         STH   RA,SVPCRID         SAVE RID FOR TERMINATOR      @D36IDFR 22300000
+         MVI   RID+1,SYSTEMID     SET SYSTEM RID               @D36IDFR 22350000
+         L     RE,ASAVEOPS        GET ADDRESS OF SAVEOPSW ROUT.@D61CDIS 22375001
+         LA    R9,0(,R9)          CLEAR HIGH ORDER BIT/BYTE    @D61CDIS 22400001
+         BSM   R9,RE              CALL GENENT ROUTINE          @D61CDIS 22425001
+         DROP  RB                                              @D36IDFR 22450000
+         EJECT ,                                                        22500000
+*-------------------------------------------------------------------    22528501
+* SETUPSA  - IT SUPPORTS STATUS SAVING WHEN NO OLD PSW IS AVAILABLE.    22557001
+*            IT CREATES AN OLD PSW AND BRANCHES TO GENENT OR            22585501
+*            SAVERID DEPENDING ON THE RID VALUE.                        22614001
+*            INPUT:  R9 - RETURN ADDRESS                                22642501
+*                    RC - INSTR.ADDRESS TO BE SET INTO OLD.PSW          22671001
+*                    RD - FLIH BASE ADDRESS                             22699501
+*            OUTPUT: R6 - DISPATCHER BASE ADDRESS                       22728001
+*                    RA - ADDRESS OF CURRENT TCB                        22756501
+*            WORK:   RB, RC                                             22785001
+*            AMODE: ANY                                                 22813501
+*-------------------------------------------------------------------    22842001
+*SGLINK SETUPSA,S,INPUT=(R9,RC,RD),OUTPUT=(R6,RA),WORK=(RB,RC)          22870501
+SETUPSA  EQU   *                                                        22900000
+         LA    RC,0(,RC)          RESET HIGH ORDER BYTE        @DA32257 22950000
+         BSM   RC,0               SAVE ADDRESSING MODE         @D52VDIS 22975001
+         ST    RC,SVOLDP+4        SETUP A PSW USING SVC.OLDPSW @DA32257 23000000
+         L     RC,SETUPSW         MOVE PSW MASK ...            @DA32257 23050000
+         ST    RC,SVOLDP                    ... INTO SVC.OLDP. @DA32257 23100000
+         STOSM SVOLDP,M0          USE CURRENT SYSTEM MASK      @D36IDFR 23150000
+*-------------------------------------------------------------------    23154501
+* SETUPSAS - ENTERED FROM RLOCK (SGTINF)                                23159001
+*            INPUT:  R9 - RETURN ADDRESS                                23163501
+*                    RD - FLIH BASE ADDRESS                             23168001
+*            OUTPUT: R6 - DISPATCHER BASE ADDRESS                       23172501
+*                    RA - ADDRESS OF CURRENT TCB                        23177001
+*            WORK:   RB, RC                                             23181501
+*            AMODE: ANY                                                 23186001
+*-------------------------------------------------------------------    23190501
+*SGLINK SETUPSAS,S,INPUT=(R9,RD),OUTPUT=(R6,RA),WORK=(RB,RC)            23195001
+SETUPSAS LA    RC,SVCOPSW         LOAD ADDRESS OF SVC OLD PSW  @D14NDFG 23200000
+         CLI   RID+1,GATENR       GATING ROUTINE INTERRUPTED   @D36IDFR 23250000
+         BL    SPGENENT           NO,GOTO SAVE TASKS STATUS    @D36IDFR 23300000
+*SGLINK  SPGENENT,INPUT=(R9,RC,RD),OUTPUT=(R6,RA,RB)                    23325001
+         EJECT ,                                               @D61NDIS 23351701
+*-----------------------------------------------------------------      23378401
+* SAVERID - ENTERED FROM PAGE FAULT HANDLER AND FROM SETUPSA TO         23405101
+*           SAVE STATUS OF A GATED ROUTINE. IT CLOSES THE CORRESP.      23431801
+*           GATE SETTING TASK TO RESOURCE OWNER. IT PERFORMS GENENT     23458501
+*           WITH RID¬= USERTID.                                         23485201
+*            INPUT:  R9 - RETURN ADDRESS                                23511901
+*                    RC - ADDRESS OF OLD PSW LOCATION                   23538601
+*                    RD - FLIH BASE ADDRESS                             23565301
+*            OUTPUT: R6 - DISPATCHER BASE ADDRESS                       23592001
+*            WORK:   RA, RB, RC                                         23618701
+*            AMODE: ANY                                                 23645401
+*-----------------------------------------------------------------      23672101
+SAVERID  DS    0H                                              @D61NDIS 23692801
+         L     RA,ASAVERI3        GET ADDRESS OF GENENT1 ROUT. @D61CDIS 23694901
+         LA    R9,0(,R9)          CLEAR HIGH ORDER BIT/BYTE    @D61CDIS 23697001
+         BSM   R9,RA              CALL GENENT ROUTINE          @D61CDIS 23699101
+         SPACE 2                                               @D61CDIS 23701201
+*-----------------------------------------------------------------      23703301
+* SAVERI31 - 31 BIT ENTRY OF SAVERID ROUTINE                            23705401
+*            AMODE: 31                                                  23707501
+*-----------------------------------------------------------------      23709601
+SAVERI31 DS    0H                 LOAD ROUTINE IDENTIFIER      @D61NDIS 23711701
+         LH    RB,RID             LOAD ROUTINE IDENTIFIER      @D61NDIS 23713801
+         SLL   RB,3               DISPLACEMENT                 @D14BDFR 23750000
+         CLI   RID+1,PARTGATE     IS IT A PARTITION GATE       @D14BDFR 23800000
+         BNL   CLPGATE            YES,GATE IS LOCATED IN PCB   @D14BDFR 23850000
+         A     RB,ASRQTAB         POINTER TO RESOURCE DESCR.   @D61RDIS 23900001
+         USING RQADR,RB                                        @D14BDFR 23950000
+         TM    IJBFLG08,IJBDEBUG  DEBUG ON ?                   @D61PDIS 23983301
+         BZ    NOHWGENT           NO, CONTINUE                 @D61NDIS 24016601
+         TM    RQFLAG,SYSTQ       IS IT A SYSTEM QUEUE         @D14BDFR 24050000
+         BO    NOHWGENT           YES, IT IS OK                @D14BDFR 24100000
+         MVI   IJBHWORG,HWORG024  UNIQUE HARD WAIT ORIGINATOR  @D31QDHB 24150000
+         BAL   R5,SYSERROR        NO,HARD WAIT,IT IS AN ERROR  @D14BDFR 24200000
+         SPACE 2                                               @D61NDIS 24250001
+*-----------------------------------------------------------------      24300001
+* CLPGATE  - POINT TO PARTITION'S RESOURCE DESCRIPTOR                   24350001
+*-----------------------------------------------------------------      24400001
+CLPGATE  S     RB,DPGATE          POINT TO GATE                @D14BDFR 24500000
+         A     RB,PCBPTR             IN PCB                    @D14BDFR 24550000
+NOHWGENT DS    0H                                              @D61NDIS 24575001
+         MVC   RSCDESC,TID        RESOURCE IN USE AND SET OWNER@D66ODOW 24650028
+         B     GENENT2            GOTO ATTACH SPECIAL SAVE AREA@D14BDFR 24700000
+         DROP  RB                                              @D14BDFR 24750000
+         SPACE 2                                               @D14BDIS 24800000
+         DS    0F                                              @DA32257 24850000
+SETUPSW  DC    AL1(0),AL1(ECBIT+MCBIT),H'0' SVC OLD PSW MASK   @DA32257 24900000
+         EJECT ,                                               @D52VDIS 24903801
+**************************************************************          24907601
+* RWAITX   - SAVE STATUS IN SECOND SAVE AREA AND                        24911401
+*            SET TASK RESOURCE BOUND                                    24915201
+*            INPUT: R5 - ADDRESS OF RESOURCE DESCRIPTOR                 24919001
+*                   RC - CONTINUATION ADDRESS                           24922801
+*                   RD - FLIH BASE ADDRESS                              24926601
+*                   TEMPSAV - SAVED REGISTER 13                         24930401
+*            EXIT:  DISPATCHER                                          24934201
+*            CALLED BY RWAIT (LOW CORE)                                 24938001
+*            AMODE OF CALLER: ANY                                       24941801
+**************************************************************          24945601
+*SGLINK RWAITX,INPUT=(R5,RC,RD)                                         24949401
+RWAITX   DS    0H                                              @D52VDIS 24953201
+         STM   R9,RC,ERA           SAVE REGISTER ...           @D52VDIS 24968401
+         MVC   ERA+16(4),TEMPSAV             ... FOR GENENT    @D52VDIS 24972201
+         BAL   R9,SETUPSA          SETUP SPEC.SAVEAREA         @D52VDIS 24976001
+*SGLINK SETUPSA,INPUT=(R9,RC,RD),OUTPUT=(R6,RA),WORK=(RB,RC)            24979801
+         USING DISP,R6                                         @D52VDIS 24983601
+         LR    RF,R6               EXIT ADDR.FOR UNPOST        @D52VDIS 24987401
+         B     UNPOST              MAKE TASK UNDISPATCHABLE    @D52VDIS 24991201
+         DROP  R6                                              @D52VDIS 24995001
+         DROP  RD                                              @D36IDFR 27200000
+         AIF   (NOT &SGNUC).NPRT020                                     27250001
+         PRINT NOGEN                                           @D37ZDFG 27300000
+.NPRT020 ANOP                                                  @D37ZDFG 27350000
+         MEND                                                           27400000

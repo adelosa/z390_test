@@ -1,0 +1,1043 @@
+         MACRO                                                          00001000
+         SGAOM            &DSECT=NO                                     00002000
+         GBLB  &BGDEBUG   DEBUGGING SERVICES                            00003000
+         GBLB  &SGAOM     SGAOM   PRINT CONTROL SWITCH                  00004000
+         GBLB  &IJBSGEN   SUPVR GENERATION SWITCH                       00005000
+         GBLB  &VSE280    RELEASE SWITCH                                00005500
+         ACTR  200        LOOP CONTROL                                  00006000
+         AIF   ('&DSECT' NE 'NO').DSECT                                 00007000
+***************************************************************         00008000
+*                                                                       00009000
+*        LICENSED MATERIALS-PROPERTY OF IBM                             00010000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    00011000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 2003, 2005                    00012490
+*        SEE COPYRIGHT INSTRUCTIONS                                     00013000
+*                                                                       00014000
+***************************************************************         00015000
+.* /* START OF SPECIFICATIONS ****                                      00016000
+.*01  MODULE-TYPE = MACRO                                               00017000
+.*02    PROCESSOR = ASSEMBLER                                           00018000
+.*       RETURN CODES (RF)                                              00019000
+.*       00000018           INVALID PARAMETER LIST TOKEN                00020000
+.*       00000014           INVALID OR UNSUPPORTED DEVICE               00021000
+.*       00000010           GETVIS-31 FAILURE                           00022000
+.*       0000000C           GETVIS-24 FAILURE                           00023000
+.*       00000008           RESERVED                                    00024000
+.*       00000004           WARNING TYPE MESSAGES                       00025000
+.*                 REASON   0024 (0036) NO MOUNT PENDING                00026000
+.*       00000000           REQUEST ACCEPTED                            00027000
+.**** END OF SPECIFICATIONS ***/                                        00028000
+         AIF   (NOT &SGAOM).NPRT010                                     00029000
+         PRINT GEN                ENSURE PRINTING OF SGAOM              00030000
+.NPRT010 ANOP                                                           00031000
+         DC    CL8'SGAOM   '                                            00032000
+         DC    CL8'DY46543 '      CHANGE ACTIVITY CODE         @DY46543 00033770
+         ORG   AOMSAVAR+8         OVERLAY AOM SAVE AREA                 00034000
+         DC    X'040C0000'        FIRST PART OF PSW                     00035000
+         DC    A(AOMTASK+X'80000000') START ADDRESS                     00036000
+         DC    A(0)               REG  9                                00037000
+         DC    A(0)               REG 10                                00038000
+         DC    A(0)               REG 11                                00039000
+         DC    A(0)               REG 12                                00040000
+         DC    A(AOMTASK)         REG 13 AOMTASK BASE                   00041000
+         DC    A(0)               REG 14                                00042000
+         DC    A(0)               REG 15                                00043000
+         DC    6F'0'              REG  0 THROUGH  5                     00044000
+         DC    A(DISP)            REG  6 DISP    BASE                   00045000
+         DC    2F'0'              REG  7 THROUGH  8                     00046000
+         ORG   ,                                                        00047000
+         AIF   (&VSE280).Y280020                                        00048490
+         ORG   SVCTAB+48*4        SVC-48 ENTRY                          00049000
+         DC    A(SVCPLF)          ADDRESS OF PLF PROCESSING             00050000
+         ORG   ,                                                        00051000
+         ORG   SVCMODT+48         SVC-48 ENTRY                          00052000
+         DC    B'10100000'        ADDRESS OF PLF PROCESSING             00053000
+         ORG   ,                                                        00054000
+.Y280020 ANOP                                                           00055490
+.*                                                                      00056000
+.*       AOM ACTIVATION ROUTINES                                        00057000
+.*                                                                      00058000
+         TITLE 'VSE SUPERVISOR     SGAOM    ACTIVATE AOM-TASK FOR PLF ' 00059000
+         USING PLIMAP,R1          PLIMAP BASE POINTER                   00060000
+         USING DISP,R6            DISP BASE POINTER                     00061000
+         USING TCBADR,RA          TCB BASE POINTER                      00062000
+         USING SVCPLF,RC          PLF SERVICE ROUTINE BASE              00063000
+*SGLINK  SVCPLF ENTRY,INPUT=(R1,R6,RC,RA)                               00064000
+SVCPLF   DS    0H'0'              PERFORM LIBRARY FUNCTION              00065000
+SVC048   EQU   SVCPLF                                                   00066000
+         AMODESW SET,AMODE=31,WR=(R2) SWITCH TO 31-BIT MODE             00067000
+         CLC   PLICBID,PLICBID+PLICBLEN-1 FORCE PAGE FAULT              00068000
+PCKPLF01 EQU   *                  ERR25 ===================>>>          00069000
+         LR    RE,R1              COPY PARM-LIST ADDRESS                00070000
+         DROP  R1                 RELEASE PLIMAP BASE                   00071000
+         USING PLIMAP,RE          PLIMAP BASE POINTER                   00072000
+         LA    R2,PLICBLEN-1(R1)  END ADDRESS OF PARM LIST              00073000
+         BAL   R8,VALIDSVA        VALIDATE PARAMETER LIST               00074000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)                      00075000
+         SLR   R5,R5              INITIALIZE RETURN CODE REG.           00076000
+         SLR   RF,RF              INITIALIZE REASON CODE REG.           00077000
+         SLR   R9,R9              INDICATE NO AO$MAP ALLOCATED          00078000
+         CLC   PLICBID(3),AO#PLIID IS THIS A VALID PARM LIST            00079000
+         BNE   PLFRQE24           NO,  ======================>          00080000
+         CLC   PLIVERS(1),AO#PLVID IS THIS CORRECT VERSION-ID           00081000
+         BNE   PLFRQE24           NO,  ======================>          00082000
+         L     R1,PLIECBA         GET ECB ADDRESS                       00083000
+         LA    R2,3(,R1)          LAST BYTE OF ECB                      00084000
+         BAL   R8,VALIDSVA        VALIDATE PARAMETER LIST               00085000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)                      00086000
+         SLR   R5,R5              FORCE RETURN CODE ZERO                00087000
+         NI    2(R1),X'3F'        RESET WAIT BIT IN ECB                 00088000
+         L     R4,APBXAREA        ADDRESS OF PUBX ADDRESS TABLE         00089000
+         S     R4,F4              ADJUST FOR 1ST TIME THROUGH           00090000
+PLFRQ020 LA    R4,4(,R4)          NEXT PUBX ADDRESS                     00091000
+         ICM   R3,15,0(R4)        GET PUBX ADDRESS                      00092000
+         BM    PLFRQ400           DONE =======================>         00093000
+         USING PBXADR,R3          PUBX BASE POINTER                     00094000
+         TM    PBXFLAG,PBXDASD    IS IT A DASD DEVICE                   00095000
+         BO    PLFRQ020           YES, NOT YET SUPPORTED                00096000
+         TM    PBXFLAG,PBXTAPE    IS IT A SUPPORTED DEV.                00097000
+         BZ    PLFRQ020           NO,                                   00098000
+         CLC   PLICUU,PBXCUU      IS THIS THE RIGHT ENTRY               00099000
+         BE    PLFRQ200           YES, THEN USE IT ANYWAY               00100000
+         CLC   PLICUU,XFFFF       DID CALLER PROVIDE CUU                00101000
+         BNE   PLFRQ020           YES, THEN WE NEED A MATCH             00102000
+         ICM   R1,15,PBXLBINF     IS LIBRARY INFO PRESENT               00103000
+         BZ    PLFRQ020           NO, FIND ANOTHER DEVICE               00104000
+         USING TLMADR,R1          TLMADR BASE POINTER                   00105000
+         OC    TLMLNAME,TLMLNAME  IS DRIVE PART OF A LIBRARY            00106000
+         BZ    PLFRQ020           NO, FIND ANOTHER DEVICE               00107000
+         CLC   PLIREQ(2),PLFCNQAID IS IT LBSERV QA REQUEST              00108000
+         BE    PLFRQ060           YES, WE WANT ALL LIBRARIES            00109000
+         TM    PLILIBN,X'80'      USER PROVIDED LIB.-NAME               00110000
+         BO    PLFRQ040           YES, FIND A MATCHING DEVICE           00111000
+         L     R2,AARBUFAR        ATTENTION BUFFER ADDRESS              00112000
+         USING ARBUFFAR,R2        ATTENTION BUFFER BASE                 00113000
+         ICM   R2,15,ATTTLSTB     GET TLS GLOBAL INFO ADDRESS           00114000
+         BZ    PLFRQ060           INFORMATION NOT AVAILABLE             00115000
+         USING TLSGLOBAL,R2       TLS INFORMATION MAPPING               00116000
+         MVC   PLILIBN(8),TLSLIBID PROVIDE DEFAULT LIBRARY NAME         00117000
+         DROP  R2                 RELEASE TLSGLOBAL BASE                00118000
+PLFRQ040 CLC   TLMLNAME(8),PLILIBN IS THIS WHAT HE WANTS                00119000
+         BNE   PLFRQ020           NO, FIND ANOTHER ONE                  00120000
+         CLC   PBXSCH,XFFFF       IS DEVICE ATTACHED                    00121000
+         BE    PLFRQ0A0           NO, SAVE BUT FIND ANOTHER             00122000
+         TM    PBXFLAG2,PBXPPOFF  HAS DEVICE BEEN OFFLINED              00123000
+         BO    PLFRQ0A0           YES, SAVE BUT FIND ANOTHER            00124000
+         TM    PBXFLAG1,PBXFEAT3  IS LIBRARY ONLINE                     00125000
+         BZ    PLFRQ0A0           NO, SAVE BUT FIND ANOTHER             00126000
+         B     PLFRQ080           YES, THEN USE THIS DEVICE             00127000
+PLFRQ060 TM    PBXFLAG1,PBXFEAT3  IS LIBRARY ONLINE                     00128000
+         BZ    PLFRQ020           NO, FIND ANOTHER DEVICE               00129000
+         TM    PBXFLAG2,PBXPPOFF  HAS DEVICE BEEN OFFLINED              00130000
+         BO    PLFRQ020           YES, FIND ANOTHER DEVICEER            00131000
+         CLC   PBXSCH,XFFFF       IS DEVICE ATTACHED                    00132000
+         BE    PLFRQ020           NO, FIND ANOTHER DEVICE               00133000
+PLFRQ080 MVC   PLILIBN(8),TLMLNAME SAVE LIBRARY NAME                    00134000
+         DROP  R1                 RELEASE TLMADR BASE                   00135000
+         OC    PBXAOMMS,PBXAOMMS  IS COMMAND IN PROCESS                 00136000
+         BZ    PLFRQ200           NO, THEN USE THIS ONE                 00137000
+         CLC   PLIREQ(2),PLFCNQAID IS IT LBSERV QA REQUEST              00137300
+         BE    PLFRQ200           YES, USE IT ANYWAY                    00137600
+         LR    RF,R4              PREFER THE OPERATIONAL ONE            00138000
+PLFRQ0A0 LTR   RF,RF              DID WE FIND A 1ST MATCH               00139000
+         BNZ   PLFRQ020           YES,                                  00140000
+         LR    RF,R4              SAVE PUBX ADRESS POINTER              00141000
+         B     PLFRQ020           CHECK NEXT PUB ENTRY                  00142000
+         SPACE 1                                                        00143000
+PLFCNQAID  DC  C'QA'              CONSTANT                              00144000
+         SPACE 1                                                        00145000
+*                                                                       00146000
+*        WE FOUND A DEVICE THAT MEETS USERS SPECIFICATIONS              00147000
+*                      (COULD BE READY OR NOT OPERATIONAL)              00148000
+*                                                                       00149000
+PLFRQ200 DS    0H'0'              DEVICE FOUND PROCESSING               00150000
+         LA    R0,AO$CBLEN        GETVIS-31 WE NEED                     00151000
+.* NOTE  SGETVIS REQUIRES TCB-ADDRESS IN RA                             00152000
+         SGETVIS PFIX=YES,ADDRESS=(1),LENGTH=(0),SPID=PLFGVNAM,        X00153000
+               LOC=ANY                                                  00154000
+         LTR   RF,RF              DID WE GET THE STORAGE                00155000
+         BNZ   PLFRQE16           NO,  ======================>          00156000
+         LR    R9,R1              LOAD AO$MAP BASE POINTER              00157000
+         USING AO$MAP,R9          NEW AO$MAP BASE POINTER               00158000
+         MVC   AO$CBID(PLICBLEN),PLICBID COPY USERS DATA ONLY           00159000
+         ST    RF,AO$RET          SET RETURN CODE TO ZERO               00160000
+         ST    RF,AO$REAS         SET REASON CODE TO ZERO               00161000
+         ST    R4,AO$APBXA        ADDRESS OF PUBX ADDRESS               00162000
+         ST    RE,AO$UPARM        SAVE USERS PARM LIST ADDR.            00163000
+         LH    R1,TID             GET TASK ID                           00164000
+         STH   R1,AO$TID          SAVE IT IN PARM-LIST                  00165000
+         OI    AO$FLAG1,AO$F1PLF  INDICATE PLF REQUEST                  00166000
+         LA    R0,W$AREALN        GETVIS-24 LEN WE NEED                 00167000
+.* NOTE  SGETVIS REQUIRES TCB-ADDRESS IN RA                             00168000
+         SGETVIS PFIX=YES,ADDRESS=(1),LENGTH=(0),SPID=PLFGVNAM,        X00169000
+               LOC=BELOW                                                00170000
+         LTR   RF,RF              DID WE GET 24-BIT STORAGE             00171000
+         BNZ   PLFRQE12           NO,  ======================>          00172000
+         STM   R0,R1,AO$GVLEN     SAVE GETVIS-24 INFO                   00173000
+         L     R8,PBXAOMMS        AOM REQUEST ALREADY PENDING           00174000
+         N     R8,BIT0OFF         CLEAR ATTEN. PENDING BIT              00175000
+         BZ    PLFRQ300           NO REQUEST IS PENDING                 00176000
+         DROP  R9                 RELEASE AO$MAP-NEW BASE               00177000
+         USING AO$MAP,R8          AO$MAP-OLD BASE                       00178000
+PLFRQ220 CLC   AO$CBID,AO#PLIID   EXPECTED ID                           00179000
+         BE    PLFRQ240           YES, PROCEED MAIN LINE                00180000
+         LA    RF,4               SET REASON CODE                       00181000
+         B     PLFRQE24           CONTROL BLOCK OVERWRITE               00182000
+PLFRQ240 CLC   AO$REQ-AO$MAP(2,R9),=C'CR' CANCEL REQUESTED              00183000
+         BE    PLFRQ500           YES, HEAD-QUEUE THE CANCEL            00184000
+         CLC   AO$FUNC-AO$MAP(4,R9),F7 CANCEL REQUESTED                 00185000
+         BE    PLFRQ500           YES, HEAD-QUEUE THE CANCEL            00186000
+         LR    R1,R8              SAVE AO$MAP-OLD ADDRESS               00187000
+         ICM   R8,15,AO$FORWD     ANOTHER REQUEST CHAINED               00188000
+         BNZ   PLFRQ220           YES, FIND END OF CHAIN                00189000
+         DROP  R8                 RELEASE AO$MAP BASE                   00190000
+         ST    R9,AO$FORWD-AO$MAP(R1) MAINTAIN FORWARD PNTR.            00191000
+         ST    R1,AO$BACKW-AO$MAP(R9) MAINTAIN BACKWARD PNTR.           00192000
+         B     PLFRQ360           ACTIVATE AOM TASK NOW                 00193000
+*                                 AND UNPOST USER                       00194000
+PLFRQ300 DS    0H'0'              MAKE NEW REQUEST THE FIRST            00195000
+         L     R8,BIT0ON          GET ATTENTION PENDING MASK            00196000
+         TM    PBXAOMMS,ATTENT    ATTENTION PENDING                     00197000
+         BZ    PLFRQ340           NO,                                   00198000
+         OR    R9,R8              COPY ATTENTION PENDING MASK           00199000
+PLFRQ340 ST    R9,PBXAOMMS        SAVE PARAMETER LIST ADDRESS           00200000
+PLFRQ360 L     R8,AAOMTIB         ADDRESS OF AOM TIB                    00201000
+         USING TIBADR,R8          AOM TIB BASE                          00202000
+         CLI   TIBRQID,SYSBND     AOM TASK INACTIVE                     00203000
+         BNE   PLFRQ380           NO, IT IS ACTIVE                      00204000
+         LR    R1,RE              SAVE USERS PARM-LIST ADDRESS          00205000
+         DROP  RE                 RELEASE PLIMAP   BASE                 00206000
+         BAL   RF,POST            MAKE AOM-TASK READY                   00207000
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=RE                                  00208000
+         LR    RE,R1              RESTORE PARM-LIST ADDRESS             00209000
+         USING PLIMAP,RE          PLIMAP BASE POINTER                   00210000
+         SLR   RF,RF              RESTORE REASON CODE                   00211000
+PLFRQ380 OI    AOMTSKFL,AOMWTODO  SET WORK TO DO FLAG                   00212000
+         B     PLFRQE00                                                 00213000
+         DROP  R8                 RELEASE TIB BASE                      00214000
+PLFRQ400 DS    0H'0'              NO OPERATIONAL DEVICE FOUND           00215000
+         LTR   R4,RF              FOUND ANY SUITABLE DEVICE             00216000
+         BZ    PLFRQ440           NO, THERE IS NONE                     00217000
+         L     R3,0(,R4)          GET PUBX ENTRY ADDRESS                00218000
+         OC    PBXAOMMS,PBXAOMMS  IS COMMAND IN PROGRESS                00219000
+         BNZ   PLFRQ200           YES, BUT NO OTHER DEVICE              00220000
+         LA    RF,3140            SPECIFIED IS NOT AVAILABLE            00221000
+         CLC   PLICUU,XFFFF       DID CALLER PROVIDE CUU                00222000
+         BNE   PLFRQE08           YES, =======================>         00223000
+PLFRQ420 LA    RF,3136            NO DEVICE AVAILABLE                   00224000
+         B     PLFRQE08                =======================>         00225000
+PLFRQ440 CLC   PLICUU,XFFFF       DID CALLER PROVIDE CUU                00226000
+         BNE   PLFRQE20           YES, =======================>         00227000
+         TM    PLILIBN,X'80'      DID USER PASS A LIBRARY NAME          00228000
+         BZ    PLFRQ420           NO, NO DEVICE FOUND                   00229000
+         LA    RF,3020            LIBRARY NOT DEFINED                   00230000
+         B     PLFRQE08                =======================>         00231000
+         USING AO$MAP,R8          CURRENTLY ACTIVE AO$MAP               00232000
+PLFRQ500 DS    0H'0'              DO CANCEL PROCESSING                  00233000
+         CLC   AO$FUNC+2(2),H1    IS THE MOUNT/CMOUNT PENDING           00234490
+         BNE   PLFRQ520           NO,                                   00235000
+         TM    AO$FLAG1,AO$F1PLF  MOUNT STILL QUEUED                    00236000
+         BO    PLFRQ540           YES, DEQUEUE IT RIGHT AWAY            00237000
+         TM    AO$FLAG1,AO$F1WDR  WAITING FOR DELAYED RESPONSE          00238000
+         BO    PLFRQ540           YES, MAKE CANCEL 1ST IN CHAIN         00239000
+PLFRQ520 LA    RF,36              NO MOUNT CURRENTLY PENDING            00240000
+         B     PLFRQE04                =======================>         00241000
+PLFRQ540 ST    R8,AO$FORWD-AO$MAP(R9) MAINTAIN FORWARD PNTR.            00242000
+         ST    R9,AO$BACKW-AO$MAP(R8) MAINTAIN BACKWARD PNTR.           00243000
+         OI    AO$FLAG1,AO$F1CNL  INDICATE HAS BEEN CANCELED            00244000
+         B     PLFRQ300           MAKE NEW FIRST IN CHAIN               00245000
+         DROP  R8                 RELEASE AO$MAP BASE                   00246000
+         LTORG ,                                                        00247000
+         SPACE 1                                                        00248000
+PLFRQE24 LA    R5,4(,R5)          INVAL. PARAMETER BLK. ID              00249000
+PLFRQE20 LA    R5,4(,R5)          INVALID OR UNSUPPORTED DEVICE         00250000
+PLFRQE16 LA    R5,4(,R5)          INSUFFICIENT/WRONG GETVIS-31          00251000
+PLFRQE12 LA    R5,4(,R5)          INSUFFICIENT/WRONG GETVIS-24          00252000
+PLFRQE08 LA    R5,4(,R5)          RESERVED                              00253000
+PLFRQE04 LA    R5,4(,R5)          WARNING TYPE MESSAGES                 00254000
+         LTR   R9,R9              DID WE ALLOCATE CONTROL BLOCK         00255000
+         BZ    PLFRQE00           NO, NOTHING TO FREE                   00256000
+         USING AO$MAP,R9          AO$MAP BASE                           00257000
+         LM    R0,R1,AO$GVLEN     GET GETVIS-24 INFO                    00258000
+         LTR   R1,R1              WAS GETVIS-24 ALLOCATED               00259000
+         BZ    PLFRQFRE           NO                                    00260000
+.* NOTE  SFREEVIS REQUIRES TCB-ADDRESS IN RA                            00261000
+         SFREEVIS ADDRESS=(1),LENGTH=(0) FREE GETVIS-24                 00262000
+PLFRQFRE LA    R0,AO$CBLEN        GETVIS-31 WE REQUESTED                00263000
+         LR    R1,R9              PROVIDE GETVIS-31 ADDRESS             00264000
+.* NOTE  SFREEVIS REQUIRES TCB-ADDRESS IN RA                            00265000
+         SFREEVIS ADDRESS=(1),LENGTH=(0) FREE GETVIS-31                 00266000
+         DROP  R9                 RELEASE AO$MAP BASE                   00267000
+PLFRQE00 ST    RF,PLIREAS         RETURN THE REASON CODE                00268000
+         ST    R5,PLIRET          RETURN THE RETURN CODE                00269000
+         TM    PLIREQ,X'80'       LBSERV INTERFACE                      00270000
+         BZ    PLFRQXIT           NO, LEAVE HEX DATA                    00271000
+         CVD   RF,AOMWORK8        CONVERT TO DECIMAL                    00272000
+         UNPK  PLIREAS(4),AOMWORK8+5(3) CONVERT TO EBCDIC               00273000
+         OI    PLIREAS+3,X'F0'    CORRECT SIGN BIT                      00274000
+         CVD   R5,AOMWORK8        CONVERT TO DECIMAL                    00275000
+         UNPK  PLIRET(4),AOMWORK8+5(3) CONVERT TO EBCDIC                00276000
+         OI    PLIRET+3,X'F0'     CORRECT SIGN BIT                      00277000
+PLFRQXIT L     RB,TCBSAVE         GET SAVE AREA ADDRESS                 00278000
+         USING SVEARA,RB          SAVE AREA BASE POINTER                00279000
+         ST    R5,SVER0F          SET RETURN CODE                       00280000
+         BSM   0,R6               DISP  ===================>>>          00281000
+         SPACE 1                                                        00282000
+         DROP  R3                 RELEASE PBXADR   BASE                 00283000
+         DROP  R6                 RELEASE DISP     BASE                 00284000
+         DROP  RA                 RELEASE TCBADR   BASE                 00285000
+         DROP  RB                 RELEASE TCBSAVE  BASE                 00286000
+         DROP  RC                 RELEASE PLF-SERVICE BASE              00287000
+         DROP  RE                 RELEASE PLIMAP   BASE                 00288000
+         TITLE 'VSE SUPERVISOR     SGAOM    ACTIVATE AOM-TASK         ' 00289000
+*                                                                       00290000
+*        ACTIVATE AOM-TASK TO HAVE IT HANDEL ATTENTION INTERRUPTS       00291000
+*                          (CALLED FROM IOINTER ONLY)                   00292000
+*                           ATTENT ALREADY SET IN PBXAOMMS              00293000
+*                                                                       00294000
+         USING PBXADR,R2          PUBX BASE POINTER                     00295000
+         USING PUBADR,R3          PUB BASE POINTER                      00296000
+         USING DISP,R6            DISP BASE POINTER                     00297000
+         USING AOMACTIV,RD        AOMACTIV SUBROUTINE BASE              00298000
+*        USING LINK,RE            LINK REGISTER                         00299000
+*SGLINK  AOMACTIV ENTRY,INPUT=(R2,R3,R6,RD,RE)                          00300000
+AOMACTIV DS    0H'0'              AOM-TASK ACTIVATION ROUTINE           00301000
+         STM   RE,R0,AOMACTRE     SAVE CALLERS REGISTERS                00302000
+         LR    R0,R8              PRESERVE R8 CONTENTS                  00303000
+         LA    RF,AOMTASK         GET AOM-TASK BASE                     00304000
+         USING AOMTASK,RF         AOM-TASK BASE                         00305000
+         OI    AOMTSKFL,AOMWTODO  AOM-TASK GOT WORK-TO-DO               00306000
+         L     R8,AAOMTIB         ADDRESS OF AOM TIB                    00307000
+         USING TIBADR,R8          AOM TIB BASE POINTER                  00308000
+         CLI   TIBRQID,SYSBND     IS AOM TASK INACTIVE                  00309000
+         BNE   AOMAC010           NO, IT IS ACTIVE                      00310000
+         DROP  RF                 RELEASE AOM-TASK BASE                 00311000
+         BAL   RF,POST            MAKE AOM-TASK READY                   00312000
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=RE                                  00313000
+         B     AOMAC020           JOIN MAIN LINE                        00314000
+         SPACE 1                                                        00315000
+AOMAC010 DS    0H'0'              AOM-TASK ALREADY IN PROGRES           00316000
+         CLI   TIBRQID,WAITBND    IS AOM TASK I/O-BOUND                 00317000
+         BNE   AOMAC020           NO, ITS NOT                           00318000
+         OI    TLSWTDECB+2,TRABIT POST WORK-TO-DO ECB                   00319000
+         BAL   RF,IOPOST1         MAKE AOM-TASK READY                   00320000
+*SGLINK  IOPOST1,INPUT=(R6,R8,RF),WORK=RE                               00321000
+         DROP  R8                 RELEASE AOM-TIB BASE                  00322000
+AOMAC020 TM    PBXFLAG,PBXDASD    IS THIS THE DASD INTERFACE   @D68PGA  00323190
+         BO    AOMAC040           YES,                         @D68PGA  00323380
+         L     R8,PBXAOMMS        GET AO$MAP ADDRESS                    00323570
+         N     R8,BIT0OFF         CLEAR ATTENTION RECEIVED BIT          00324000
+         BZ    AOMAC040           NO REQUEST YET QUEUED                 00325000
+         USING AO$MAP,R8          AO$MAP BASE REGISTER                  00326000
+         ST    R8,PBXAOMMS        RESET ATTN. PENDING BIT               00327490
+         OI    AO$FLAG1,AO$F1ATT  INDICATE ATTENTION RECEIVED           00328000
+         DROP  R8                 RELEASE AO$MAP   BASE                 00329000
+AOMAC040 LR    R8,R0              RESTORE R8 CONTENTS                   00330000
+         LM    RE,R0,AOMACTRE     RESTORE CALLERS REGISTERS             00331000
+         BSM   0,RE               RETURN====================>>          00332000
+         SPACE 1                                                        00333000
+AOMACTRE DC    3A(0)              REGISTER SAVE AREA                    00334000
+         SPACE 1                                                        00335000
+         DROP  RD                 RELEASE AOMACTIV BASE                 00336000
+         DROP  R6                 RELEASE DISP     BASE                 00337000
+         DROP  R3                 RELEASE PUB  BASE                     00338000
+         DROP  R2                 RELEASE PUBX BASE                     00339000
+.*                                                                      00340000
+.*       END OF AOM ACTIVATION ROUTINE                                  00341000
+.*                                                                      00342000
+         TITLE 'VSE SUPERVISOR     SGAOM    AOM-TASK INITIATION       ' 00343000
+.*                                                                      00344000
+.*       CHECK AND GET LOAD ADDRESS OF $IJBAOM MODULE                   00345000
+.*                                                                      00346000
+*        RMODE=24,AMODE=31                                              00347000
+         USING AOMTASK,RD         AOMTASK BASE                          00348000
+         USING DISP,R6            DISPATCHER BASE                       00349000
+         USING SYSS00,R0          LOW CORE BASE                         00350000
+AOMTASK  DS    0H'0'              AOM-TASK INITIATOR ROUTINE            00351000
+         ICM   RF,15,AIJBAOM      FIRST TIME THROUGH                    00352000
+         BNZ   AOMTSK20           NO, TAKE FAST PATH                    00353000
+         CDLOAD $IJBAOM,SVA=YES,RETPNF=YES GET ENTRY POINT              00354000
+         LTR   RF,RF              DID WE FIND THE PHASE                 00355000
+         BNZ   AOMTSK40           NO, DON'T DO ANYTHING                 00356000
+         LR    RF,R1              COPY SVA ENTRY-ADDRESS                00357000
+         O     RF,BIT0OMSK        PROVIDE FOR 31-BIT MODE               00358000
+         ST    RF,AIJBAOM         SAVE ADDRESS OF $IJBAOM               00359000
+AOMTSK20 L     RD,AAOMBASE        AOMMPROC BASE ADDRESS                 00360000
+         DROP  RD                 RELEASE AOMTASK BASE                  00361000
+         SLR   R9,R9              INDICATE INITIAL CALL                 00362000
+         BSM   0,RD               AOMMPROC===================>          00363000
+         SPACE 1                                                        00364000
+         USING AOMTASK,RD         AOMTASK BASE                          00365000
+AOMTSK40 DS    0H'0'              $IJBAOM PHASE NOT FOUND               00366000
+*HERE    WE BETTER RESET PBXAOMMS INFORMATION                           00367000
+         L     RD,AAOMBASE        AOMMPROC BASE ADDRESS                 00368000
+         USING AOMMPROC,RD        AOMMPROC BASE POINTER                 00369000
+         NI    AOMTSKFL,XFF-AOMWTODO RESET AOM-TASK WORK-TO-DO          00370000
+         L     RF,AAOMTASK        AOMTASK BASE ADDRESS                  00371000
+         USING AOMTASK,RF         AOMTASK BASE POINTER                  00372000
+         B     AOMNOMOD           DEACTIVATE UNCONDITIONALLY            00373000
+         SPACE 1                                                        00374000
+         LTORG ,                                                        00375000
+         DROP  RF                 RELEASE AOMTASK  BASE                 00376000
+         DROP  RD                 RELEASE AOMMPROC BASE                 00377000
+         DROP  R6                 RELEASE DISP     BASE                 00378000
+         TITLE 'VSE SUPERVISOR     SGAOM    DEACTIVATE AOM-TASK       ' 00379000
+*                                                                       00380000
+*        DEACTIVATE AOM-TASK                                            00381000
+*                                                                       00382000
+         USING AOMTASK,RF         SGAOM   BASE                          00383000
+         USING AOMMPROC,RD        AOMMPROC BASE                         00384000
+         USING DISP,R6            DISP BASE ADDRESS                     00385000
+AOMDEACT DS    0H'0'              TRY TO DEACTIVATE AOM-TASK            00386000
+         SLR   R9,R9              ENSURE FULL PUBX-SCAN                 00387000
+         TM    AOMTSKFL,AOMWTODO  AGAIN WORK TO DO                      00388000
+         BO    AOMMPROC           YES, START IT OVER AGAIN              00389000
+         OC    TLSECBLST(16*4),TLSECBLST IS ECB LIST EMPTY              00390000
+         BNZ   AOMWAITM           NO, WE NEED TO WAIT                   00391000
+AOMNOMOD DS    0H'0'                                                    00392000
+*HERE                                                                   00393000
+         LR    R9,RF              SAVE BASE POINTER            @DAOM024 00394000
+         USING AOMTASK,R9         TEMP AOMTASK BASE POINTER    @DAOM024 00395000
+         DROP  RF                 RELEASE PERM AOMTASK BASE    @DAOM024 00396000
+AOMNO020 LA    R4,ATLSINVBUF      INVENT. BUFFER ANCHOR ADDR.  @DAOM024 00397000
+         ICM   RC,15,ATLSINVBUF   IS INVENTORY BUFFER ALLOCATED@DAOM024 00398000
+         BZ    AOM2DISP           NO, GOTO DISPATCHER          @DAOM024 00399000
+         USING INV$HDR,RC         INVENTORY BUFFER BASE        @DAOM024 00400000
+AOMNO040 L     R5,INV$CHAIN       NEXT BUFFER HDR-ADDRESS      @DAOM024 00401000
+         TM    INV$COUNT,X'80'    IS BUFFER FREE               @DAOM024 00402000
+         BZ    AOMNO060           NO,                          @DAOM024 00403000
+.*       BUFFER CAN BE FREED NOW                               @DAOM024 00404000
+         ST    R5,0(R4)           REMOVE BUFFER FROM CHAIN     @DAOM024 00405000
+         LM    R0,R1,INV$BULEN    GET LENGTH AND ADDRESS       @DAOM024 00406000
+         FREEVIS ADDRESS=(1),LENGTH=(0),SVA=YES FREE INVENT.BUF@DAOM024 00407000
+         LTR   RF,RF              FREEVIS ERROR                @DAOM024 00408000
+         BZ    AOMNO020           NO, FIND NEXT BUFFER         @DAOM024 00409000
+         DEBUG STOP,XXDBGMC       HALT THE SYSTEM              @DAOM024 00410000
+AOMNO060 LA    R4,INV$CHAIN       POINT TO ADDRESS FIELD       @DAOM024 00411000
+         LTR   RC,R5              POINT TO NEXT INVENT. BUFFER @DAOM024 00412000
+         BNZ   AOMNO040           CHECK THIS BUFFER NOW        @DAOM024 00413000
+         DROP  RC                 RELEASE INVENT. BUFFER BASE  @DAOM024 00414000
+AOM2DISP L     RB,TCBPTR          POINT TO AOM TASK TCB                 00415000
+         USING TCBADR,RB          TCB BASE POINTER                      00416000
+         L     RB,TCBSAVE         ADDRESS OF SNS SAVE AREA              00417000
+         USING SVEARA,RB          MAKE IT ADDRESSABLE                   00418000
+         ST    R9,SVER0D          RESTORE AOMTASK BASE REGISTER         00419000
+         O     R9,BIT0ON          ENSURE 31-BIT MODE                    00420000
+         ST    R9,SVEPSW2         RESTORE AOMTASK ADDR. IN PSW          00421000
+         ST    R6,SVER06          RESTORE DISP BASE POINTER             00422000
+         SGSETUP UNPOST,STASK=AOM,WR1=RB UNPOST AOM-TASK                00423000
+         BSM   0,R6               EXIT ====================>>> @DAOM024 00424000
+         DROP  R9                 RELEASE TEMP AOMTASK BASE             00425000
+         USING AOMTASK,RF         SGAOM   BASE                          00426000
+AOMWAITM LA    R1,TLSAWTDECB      ADDRESS OF TOTAL ECB LIST    @DAOM123 00427000
+         WAITM (1)                WAIT FOR OUTSTANDING I/O              00428000
+         LTR   R1,R1              IS THIS A VALID ECB ADDRESS  @DAOM123 00429000
+         BNZ   AOMWT000           YES, FIND IT IN OUR LIST     @DAOM123 00430000
+         ST    R1,0               CLEAR LOW CORE AGAIN         @DAOM123 00431000
+         B     AOMWAITM           WAIT AGAIN                   @DAOM123 00432000
+AOMWT000 LA    RE,TLSECBLST       ECB LIST BEGIN ADDRESS                00433000
+AOMWT020 C     R1,0(,RE)          IS THIS THE MATCHING ENTRY            00434000
+         BE    AOMWT060           YES,                                  00435000
+         LA    RE,4(,RE)          ADVANCE ECB ADDRESS POINTER           00436000
+         TM    0(RE),X'80'        END OF ECB-LIST                       00437000
+         BNO   AOMWT020           NO, CHECK NEXT ECB                    00438000
+         LA    RE,TLSWTDECB       WORK-TO-DO ECB                        00439000
+         CR    R1,RE              WAS IT THE WORK-TO-DO ECB             00440000
+         BE    AOMWT040           YES,                                  00441000
+         BAL   R5,SYSERROR        HARD-WAIT THE SYSTEM                  00442000
+AOMWT040 NI    2(R1),XFF-X'C0'    RESET WAIT BIT IN TLSWTDECB           00443000
+         SLR   R9,R9              ENSURE FULL PUBX SCAN                 00444000
+         BSM   0,RD               AOMMPROC===================>          00445000
+         SPACE 1                                                        00446000
+AOMWT060 XC    0(4,RE),0(RE)      DELETE ECB FROM ECBLIST               00447000
+         DROP  RF                 RELEASE AOMINSVA BASE                 00448000
+         LA    RF,W$IOCCB-W$AREA  GET CCB OFFSET IN CB                  00449000
+         LCR   RF,RF              PROVIDE FOR SUBTRACTION               00450000
+         AR    RF,R1              BEGIN OF CONTROL BLOCK                00451000
+         USING W$AREA,RF          W$AREA BASE POINTER                   00452000
+         L     R5,W$SVCREG+R5*4   GET AO$MAP BASE ADDRESS      @DAOM084 00453000
+         USING AO$MAP,R5          AO$MAP BASE POINTER          @DAOM084 00454000
+         LH    R8,AO$TID          GET TASK ID                  @DAOM084 00455000
+         SGSETUP SWOWNER,STASK=AOM,WR1=R8,WR2=R7,OPTION=SETOWNER AOM084 00456000
+         DROP  R5                 RELEASE AO$MAP BASE          @DAOM084 00457000
+         LM    R0,RF,W$SVCREG     RESTORE DOIO ROUTINE REGS             00458000
+         DROP  RF                 RELEASE W$AREA  BASE                  00459000
+         BSM   0,RE               RESUME===================>>>          00460000
+         SPACE 1                                                        00461000
+         DROP  RB                 RELEASE SAVE AREA BASE                00462000
+         DROP  R6                 RELEASE DISP BASE                     00463000
+         DROP  RD                 RELEASE AOMMPROC BASE                 00464000
+         SPACE 3                                                        00465000
+.*                                                                      00466000
+.*       END OF AOM DEACTIVATION ROUTINE                                00467000
+.*                                                                      00468000
+         SPACE 1                                                        00469000
+PLFGVNAM DC    XL8'00'                                                  00470000
+         ORG   PLFGVNAM           POINT TO SUBPOOL NAME                 00471000
+         DC    CL6'$PLFRQ'        SUBPOOL NAME                          00472000
+         ORG   ,                                                        00473000
+         TITLE 'VSE SUPERVISOR     SGAOM    MAIN PROCESSING ROUTINE   ' 00474000
+.********************************************************************** 00475000
+.*                                                                    * 00476000
+.*       GENERAL FUNCTIONS                                            * 00477000
+.*                                                                    * 00478000
+.*       THE ASYNCHRONEOUS OPERATION MANAGER (AOM) IS BEING INVOKED   * 00479000
+.*       WHENEVER AN UNSOLICITED ATTENTION TYPE INTERRUPT IS BEING    * 00480000
+.*       RECOGNIZED FOR A DEVICE THAT SUPPORTS ASYNCHRONEOUS          * 00481000
+.*       OPERATION, OR,                                               * 00482000
+.*       WHENEVER AN I/O OPERATION, TYPICALLY AN I/O-SUBSYSTEM        * 00483000
+.*       OPERATION, IS REQUIRED.                                      * 00484000
+.*       THESE TYPES OF OPERATIONS ARE EXECUTED ASYNCHRONEOUSLY       * 00485000
+.*                                                                    * 00486000
+.*                                                                    * 00487000
+.*       INPUT REGISTERS                                              * 00488000
+.*                                                                    * 00489000
+.*       R0   FUNCTION CODE                                           * 00490000
+.*            80000000 UNSOLICITED INFORMATION      CALLED BY IOINTER * 00491000
+.*            0YYY0XXX LIBRARY FUNCTION                               * 00492000
+.*            0YYY4XXX VOLUME LOADER FUNCTION                         * 00493000
+.*            0YYY8XXX PROGRAM REQUESTED INFORMATION                  * 00494000
+.*                     XXX = FUNCTION CODE                            * 00495000
+.*                     YYY = SUBFUNCTION CODE                         * 00496000
+.*       R1   PARMLIST POINTER                                        * 00497000
+.*       RE   RETURN   REGISTER                                       * 00498000
+.*       RF   SGAOM    TEMP BASE                                      * 00499000
+.*                                                                    * 00500000
+.*       GENERAL REGISTER USAGE                                       * 00501000
+.*                                                                    * 00502000
+.*       R0   FUNCTION CODE                                           * 00503000
+.*       R1   CCB      POINTER                                        * 00504000
+.*       R2   PUBX     POINTER                                        * 00505000
+.*       R3   PUB      POINTER                                        * 00506000
+.*       R4   VCTE     POINTER                                        * 00507000
+.*       R5   AO$MAP   BASE POINTER                                   * 00508000
+.*       R6   DISP     BASE POINTER                                   * 00509000
+.*       R7                                                           * 00510000
+.*       R8                                                           * 00511000
+.*       R9   PUBX ADDRESS VECTOR POINTER                             * 00512000
+.*       RA                                                           * 00513000
+.*       RB   SGAOM    SUB-SUBROUTINE BASE                            * 00514000
+.*       RC   SGAOM    SUBROUTINE BASE                                * 00515000
+.*       RD   SGAOM    COMMON BASE                                    * 00516000
+.*       RE                                                           * 00517000
+.*       RF   RETURN   CODE                                           * 00518000
+.*                                                                    * 00519000
+.********************************************************************** 00520000
+         SPACE 3                                                        00521000
+         TITLE 'VSE SUPERVISOR     SGAOM    SET UP BASE REGISTERS     ' 00522000
+*                                                                       00523000
+*        SET UP BASE POINTERS                                           00524000
+*                                                                       00525000
+         USING AOMMPROC,RD        SGAOM PERMANENT BASE                  00526000
+         USING DISP,R6            DISP BASE                             00527000
+AOMMPROC DS    0F'0'                                                    00528000
+         L     RF,AAOMTASK        AOMTASK BASE ADDRESS                  00529000
+         USING AOMTASK,RF         AOMTASK BASE POINTER                  00530000
+         LTR   R9,R9              PBXAREA POINTER PRESENT               00531000
+         BNZ   AOMMP020           YES, CONTINUE SCAN                    00532000
+         NI    AOMTSKFL,XFF-AOMWTODO RESET WORK TO DO FLAG              00533000
+         L     R9,APBXAREA        ADDRESS OF PUBX ADDRESS               00534000
+         S     R9,F4              ADJUST FOR 1ST TIME THROUGH           00535000
+AOMMP020 LA    R9,4(,R9)          NEXT PUBX ADDRESS                     00536000
+         ICM   R2,15,0(R9)        GET PUBX ADDRESS                      00537000
+         BM    AOMDEACT           DONE ======================>          00538000
+         USING PBXADR,R2          PUBX BASE POINTER                     00539000
+         TM    PBXFLAG,PBXDASD+PBXTAPE IS IT A SUPPORTED DEV.           00540000
+         BZ    AOMMP020           NO, CHECK NEXT DEVICE                 00541990
+         ICM   R5,15,PBXAOMMS     IS PARM-LIST PRESENT                  00543000
+         BZ    AOMMP020           NO, NOTHING TO DO                     00544000
+         BM    AOMMP030           ATTENTION IS PENDING                  00545190
+         TM    PBXFLAG,PBXDASD    IS THIS A DASD DEVICE                 00545380
+         BO    AOMMP020           YES, BUT NOT COMPLETE                 00545570
+         B     AOMMP060           TAPE REQUEST PENDING                  00545760
+.*                                                                      00546000
+.*       UNSOLICITED ATTENTION RECEIVED, ALLOCATE AO$MAP CSECT          00547000
+.*                                                                      00548000
+AOMMP030 LA    R0,AO$CBLEN        GETVIS-31 WE NEED                     00549490
+         L     RA,TCBPTR          GET TCB ADDRESS                       00550000
+.* NOTE  SGETVIS REQUIRES TCB-ADDRESS IN RA                             00551000
+         SGETVIS PFIX=YES,ADDRESS=(1),LENGTH=(0),SPID=PLFGVNAM,        X00552000
+               LOC=ANY                                                  00553000
+         DROP  RF                 RELEASE AOMTASK BASE                  00554000
+         LTR   RF,RF              DID WE GET THE STORAGE                00555000
+         BNZ   AOMMPROC           NO, WE NEED TO SKIP DEVICE            00556000
+         L     RF,AAOMTASK        RESTORE AOMTASK BASE                  00557000
+         USING AOMTASK,RF         AOMTASK BASE POINTER                  00558000
+         LR    R5,R1              SAVE AO$MAP ADDRESS                   00559000
+         USING AO$MAP,R5          AO$MAP BASE                           00560000
+         LA    R8,AO#PLICB        GET AOM SKELETON ADDRESS              00561000
+         MVC   AO$CBID(AO$CBLEN),0(R8) COPY SKELETON                    00562000
+         MVC   AO$CUU(2),PBXCUU   SAVE CUU ADDRESS                      00563000
+         LA    R0,W$AREALN        GETVIS-24 LEN WE NEED                 00564000
+.* NOTE  SGETVIS REQUIRES TCB-ADDRESS IN RA                             00565000
+         SGETVIS PFIX=YES,ADDRESS=(1),LENGTH=(0),SPID=PLFGVNAM,        X00566000
+               LOC=BELOW                                                00567000
+         DROP  RF                 RELEASE AOMTASK BASE                  00568000
+         LTR   RF,RF              DID WE GET 24-BIT STORAGE             00569000
+         BZ    AOMMP040           YES, PROCEED                          00570000
+         LA    R0,AO$CBLEN        GETVIS-31 THAT WE GOT                 00571000
+         LR    R1,R5              GETVIS-31 (AO$MAP) ADDRESS            00572000
+.* NOTE  SFREEVIS REQUIRES TCB-ADDRESS IN RA                            00573000
+         SFREEVIS ADDRESS=(1),LENGTH=(0)                                00574000
+         B     AOMMPROC           SKIP THIS DEVICE FOR NOW              00575000
+AOMMP040 L     RF,AAOMTASK        RESTORE AOMTASK BASE                  00576000
+         USING AOMTASK,RF         AOMTASK BASE POINTER                  00577000
+         TM    PBXFLAG,PBXDASD    IS THIS A DASD                        00578090
+         BZ    AOMMP050           NO,                                   00578180
+         L     R8,PBXAOMMS        GET PSFAT#MAP ADDRESS                 00578300
+         LA    R8,0(,R8)          CLEAR ATTENTION BIT                   00578360
+         LTR   R8,R8              IS A REQUEST PENDING                  00578460
+         BZ    AOMMP050           NO,                                   00578470
+         ST    R8,AO$ECBA         YES, SAVE PSFAT#MAP ADDRESS           00578480
+         MVC   AO$MSGID,4(R8)     SAVE MESSAGE-ID                       00578540
+         MVC   AO$TID,12(R8)      SAVE REQUESTORS TID                   00578660
+AOMMP050 ST    R5,PBXAOMMS        STORE ITS ADDRESS IN PUBX             00578720
+         STM   R0,R1,AO$GVLEN     SAVE GETVIS-24 INFORMATION            00579000
+AOMMP060 CLC   AO$CBID(3),AO#PLIID IS THIS WHAT WE EXPECT               00580000
+         BNE   AOMMPROC           NO, SKIP THIS DEVICE                  00581000
+         TM    AO$FLAG1,AO$F1ATT  ATTENTION PENDING                     00582000
+         BO    AOMMPATT           YES, CHECK IF SOLICITED               00583000
+         TM    AO$FLAG1,AO$F1PLF  WORK TO DO                            00584000
+         BZ    AOMMPROC           NO, SKIP THIS DEVICE                  00585000
+         TM    AO$FLAG1,AO$F1ACT  HAS USER REQUEST BEEN STARTED         00586000
+         BZ    AOMMPPLF           NO, GET IT STARTED                    00587000
+         TM    AO$FLAG1,AO$F1WDR  WAITING FOR DELAYED RESPONSE          00588000
+         BZ    AOMMPROC           NO, PROCESS OTHER DEVICE              00589000
+         ICM   R5,15,AO$FORWD     ANOTHER REQUEST ENQUEUED              00590000
+         BNZ   AOMMP060           YES,                                  00591000
+         B     AOMMPROC           NO,                                   00592000
+         SPACE 2                                                        00593000
+AOMMPATT DS    0H'0'              ATTENTION PROCESSING                  00594000
+         L     R0,BIT0ON          GET READ-MSG FUNC.-CODE               00595000
+         TM    AO$FLAG1,AO$F1ACT  REQUEST ALREADY ACTIVE                00596000
+         BZ    AOMMP100           NO, UNSOLICITED ATTENTION             00597000
+         TM    AO$FLAG1,AO$F1WDR  WAITING FOR DELAYED RESPONSE          00598000
+         BZ    AOMMPROC           NO,  PROCESS NEXT DEVICE              00599000
+         TM    AO$FLAG1,AO$F1IOA  IS I/O  ALREADY ONGOING               00600000
+         BO    AOMMPROC           YES, PROCESS NEXT DEVICE              00601000
+         B     AOMMP100           NO, PROCEED                           00602000
+AOMMPPLF L     R0,AO$FUNC         GET FUNCTION REQUEST                  00603000
+AOMMP100 LH    R8,AO$TID          GET TASK ID                           00604290
+         L     R3,APBXAREA        GET BEGIN ADDRESS                     00604580
+         LR    R4,R9              COPY PUBX ADDRESS POINTER             00605000
+         SR    R4,R3              OFFSET WITHIN PUBX ADDR.TAB.          00606000
+         SRL   R4,2               PUB/PUBX INDEX                        00607000
+         LR    R1,R4              SAVE PUB INDEX                        00608000
+         L     R4,PBXVCTE         GET VCTE ENTRY ADDRESS                00609000
+         LTR   R3,R4              DOES VCT ENTRY EXIST                  00610000
+         BZ    AOMMP140           NO, IJBAOM WILL HANDLE THIS           00611490
+         USING VCTEADR,R4         VCTE BASE POINTER                     00612000
+         L     R3,VCTAPUB         GET PUB ADDRESS                       00613000
+         USING PUBADR,R3          PUB BASE POINTER                      00614000
+AOMMP140 LTR   RF,R8              COPY TID                     @DY46299 00615980
+         BZ    AOMMP150           IF ZERO, HARD WAIT           @DY46299 00616170
+         SLL   RF,2               MULTIPLY WITH FOUR                    00616580
+         AL    RF,ATIBATAB        ADD TIBATAB ADDRESS                   00617370
+         ICM   RF,15,0(RF)        GET TIB POINTER                       00618160
+         BNZ   AOMMP160           IF IT EXISTS                          00618950
+AOMMP150 BAL   R5,SYSERROR        TASK HAS VANISHED                     00620890
+AOMMP160 SGSETUP SWOWNER,STASK=AOM,WR1=R8,WR2=R7,OPTION=SETOWNER        00621990
+         ST    RD,AAOMMPROC       SAVE AOMMPROC BASE POINTER            00623000
+         L     RC,AAOMSVTB        PASS ALONG ADDRESS VECTOR             00624000
+         L     RD,AIJBAOM         IJBAOM BASE POINTER                   00625000
+         DROP  RF                 RELEASE AOMTASK BASE                  00626000
+         LH    RF,XFFFF           ASSUME SEVERE ERROR                   00627000
+         BASSM RE,RD              IJBAOM====================>>>         00628000
+*SGLINK  IJBAOM,INPUT=(R0,R1,R2,R3,R4,R5,R6,RC,RD,RE)                   00629000
+*        R0    FUNCTION CODE                                            00630000
+*        R1    PUB/PUBX/PUB2      INDEX                                 00631000
+*        R2    PUBX               ADDRESS                               00632000
+*        R3    PUB                ADDRESS                               00633000
+*        R4    VCTE               ADDRESS                               00634000
+*        R5    AO$MAP             ADDRESS                               00635000
+*        R6    DISP               BASE ADDRESS                          00636000
+*        RC    AOMSVTAB           ADDRESS VECTOR ADDRESS                00637000
+*        RD    $IJBAOM            ADDRESS                               00638000
+*        RE    RETURN             ADDRESS                               00639000
+         USING *,RE               SET TEMP BASE                         00640000
+         L     RD,AAOMBASE        RESTORE OUR BASE                      00641000
+         USING AOMMPROC,RD        AOMMPROC BASE                         00642000
+         DROP  RE                 RELEASE TEMP BASE                     00643000
+         CH    RF,XFFFF           SEVERE ERROR OCCURED                  00644000
+         BNE   AOMFP020           NO,                                   00645000
+         BAL   R5,SYSERROR        END IT NOW AND HERE                   00646000
+         DC    C'PLIMAP ERROR'                                          00647000
+AOMFP020 TM    AO$FLAG1,AO$F1PLF+AO$F1ATT MORE WORK TO DO               00648580
+         BNZ   AOMMP060           YES, DO IT ALL OVER AGAIN             00649000
+         ICM   R1,15,AO$ECBA      IS ECB PRESENT                        00650000
+         BZ    AOMFP040           NO, WAS UNSOLICITED                   00651000
+         ICM   R1,15,AO$MSGID     MESSAGE-ID PRESENT                    00652000
+         BNZ   AOMMPROC           YES, PROCESS NEXT REQUEST             00653000
+AOMFP040 DS    0H'0'              NO MORE FORWARDS                      00654000
+*NEWHERE                                                                00655000
+         ICM   RE,15,AO$BACKW   WAS OUR FIRST IN CHAIN                  00656890
+         BNZ   AOMFP060         NO, IT WAS NOT                          00657780
+         MVC   PBXAOMMS,AO$FORWD MAKE NEXT REQUEST THE FIRST            00658670
+         B     AOMFP080         JOIN MAIN LINE                          00659560
+AOMFP060 MVC   AO$FORWD-AO$MAP(4,RE),AO$FORWD UNCHAIN OURS              00660450
+AOMFP080 ICM   RE,15,AO$FORWD   IS ANOTHER REQUEST ENQUEUED             00661340
+         BZ    AOMFP100         NO,                                     00662230
+         OI    AOMTSKFL,AOMWTODO REINVOKE AOM                           00663120
+         MVC   AO$BACKW-AO$MAP(4,RE),AO$BACKW UPDATE BACKWARD           00664010
+AOMFP100 DS    0H'0'                                                    00664900
+         AGO   .SKIP020                                                 00665790
+*NEWHERE                                                                00667000
+         ICM   R1,15,AO$BACKW     GET BACKWARD POINTER                  00668000
+         ICM   RE,15,AO$FORWD     IS OURS LAST IN CHAIN                 00669000
+         BNZ   AOMFP060           NO, THERE ARE MORE                    00670000
+         LTR   R1,R1              IS OURS THE ONLY ONE                  00671000
+         BZ    AOMFP100           YES,                                  00672000
+         ST    RE,AO$FORWD-AO$MAP(R1) UNCHAIN OUR ENTRY                 00673000
+         B     AOMFP120                                                 00674000
+AOMFP060 DS    0H'0'              FORWARD PRESENT PROCESSING            00675000
+         OI    AOMTSKFL,AOMWTODO  REINVOKE AOM                 @DAOM123 00676000
+         LTR   R1,R1              DOES BACKWARD ENTRY EXIST             00677000
+         BZ    AOMFP080           NO,                                   00678000
+         ST    RE,AO$FORWD-AO$MAP(R1) STORE FORW.  IN PREVIOUS          00679000
+         ST    R1,AO$BACKW-AO$MAP(RE) STORE BACKW. IN NEXT              00680000
+         B     AOMFP120                                                 00681000
+AOMFP080 ST    R1,AO$BACKW-AO$MAP(RE) STORE BACKW. IN NEXT     @DAOM024 00682000
+         LR    R1,RE              COPY FORWARD POINTER                  00683000
+AOMFP100 ST    R1,PBXAOMMS        UPDATE PBXAOMMS POINTER               00684000
+.SKIP020 ANOP                                                           00685000
+* RESTORE PSFAT#MAP IN CASE OF STILL ACTIVE FLASHCOPY REQUEST  @DY46502 00686090
+AOMFP120 ICM   R1,15,AO$ECBA      IS POINTER AVAILABLE ?       @DY46502 00686180
+         BZ    AOMFP130           NO,                          @DY46502 00686270
+         TM    PBXFLAG,PBXDASD    IS IT A DASD DEVICE          @DY46543 00686300
+         BZ    AOMFP130           NO ,                         @DY46543 00686330
+         ST    R1,PBXAOMMS        STORE IT IN PUBX             @DY46502 00686360
+AOMFP130 LM    R0,R1,AO$GVLEN     LENGTH+ADDRESS OF GETVIS-24  @DY46502 00686450
+         L     RA,TCBPTR          GET TCB ADDRESS                       00687000
+         LTR   R1,R1              STORAGE STILL ALLOCATED               00688000
+         BZ    AOMFP140           NO,                                   00689000
+.* NOTE  SFREEVIS REQUIRES TCB-ADDRESS IN RA                            00690000
+         SFREEVIS ADDRESS=(1),LENGTH=(0)                                00691000
+AOMFP140 LA    R0,AO$CBLEN        GETVIS-31 LENGTH                      00692000
+         LTR   R1,R5              GET AO$MAP ADDRESS                    00693000
+.* NOTE  SFREEVIS REQUIRES TCB-ADDRESS IN RA                            00694000
+         SFREEVIS ADDRESS=(1),LENGTH=(0)                                00695000
+         B     AOMMPROC           PROCESS NEXT REQUEST         @DAOM113 00696000
+* REMOVE FREEVIS CODE FOR DASD                                          00696190
+*OMFP200 DS    0H 0'              DASD RESPONSE PROCESSING     @DY46502 00696280
+*        LA    R0,32              GETVIS-31 LENGTH             @DY46502 00696370
+*        LTR   R1,R5              GET AO$MAP ADDRESS           @DY46502 00696460
+*        L     RA,TCBPTR          GET TCB ADDRESS              @DY46502 00696550
+.* NOTE  SFREEVIS REQUIRES TCB-ADDRESS IN RA                   @DY46502 00696640
+*        SFREEVIS ADDRESS=(1),LENGTH=(0)                       @DY46502 00696730
+*        B     AOMMPROC           PROCESS NEXT DEVICE          @DY46502 00696820
+         SPACE 1                                                        00697000
+AAOMBASE DC    A(AOMMPROC+X'80000000') BASE ADDRESS                     00698000
+AIJBAOM  DC    A(0)               ADDRESS OF IJBAOM MODULE              00699000
+AAOMSVTB DC    A(AOMSVTAB)        ADDRESS OF ADDRESS VECTOR             00700000
+         SPACE 1                                                        00701000
+* BEGIN OF AO$MAP-SKELETON                                              00702000
+AO#PLICB DC    XL(AO$CBLEN)'00'   DUMMY AO$MAP                          00703000
+         ORG   AO#PLICB+AO$CBID-AO$CBID                                 00704000
+AO#PLIID DC    CL3'PLF'           EYE CATCHER                           00705000
+AO#PLVID DC    XL1'00'            VERSION ID                            00706000
+         ORG   AO#PLICB+AO$LEN-AO$CBID                                  00707000
+         DC    AL2(AO$CBLEN)      CONTROL-BLOCK LENGTH                  00708000
+         ORG   AO#PLICB+AO$TID-AO$CBID                                  00709000
+         DC    AL2(AOMTID)        UNSOLICITED MAKE AOM OWNER            00710000
+         ORG   AO#PLICB+AO$FLAG1-AO$CBID                                00711000
+         DC    AL1(AO$F1ATT)      UNSOLICITED ATTENTION                 00712000
+         ORG   AO#PLICB+AO$FUNC-AO$CBID                                 00713000
+         DC    AL4(0+X'80000000') FUNCTION CODE (READ MSG)              00714000
+         ORG   AO#PLICB+AO$ECBA-AO$CBID                                 00715000
+         DC    AL4(0)             NO ECB PRESENT                        00716000
+         ORG   ,                                                        00717000
+* END   OF AO$MAP-SKELETON                                              00718000
+.*                                                                      00719000
+.*       ACTIVATE SERVICE TASK TO HAVE IT PROCESS CUIR                  00720000
+.*                                                                      00721000
+*SGLINK  AOMDOCUI,INPUT=(R6,R9,RD),WORK=(R7,R8,RF)                      00722000
+AOMDOCUI DS    0H'0'              YES, PASS ALONG TO SGCUIR             00723000
+         STM   RC,RF,AOMCUISV     SAVE CALLERS REGISTERS                00724000
+         L     RC,BASESERI        SGSERI BASE POINTER                   00725000
+         USING SGSERI,RC          SGSERI BASE POINTER                   00726000
+         BAL   RE,SERADDQR        ACTIVATE CUIR PROCESSING              00727000
+*SGLINK  SERADDRQ,INPUT=(R6,RC,RE),WORK=(R7,R8,RF)                      00728000
+         DROP  RC                 RELEASE SGSERI BASE                   00729000
+         LM    RC,RF,AOMCUISV     RESTPORE CALLERS REGISTERS            00730000
+         BSM   0,RE               RETRN======================>          00731000
+*SGLINK  AOMMPROC,INPUT=(R6,RD)                                         00732000
+         SPACE 1                                                        00733000
+AOMCUISV DC    4F'0'              SAVE AREA                             00734000
+         SPACE 3                                                        00735000
+         DROP  ,                                                        00736000
+.*                                                                      00737000
+.*       POST WAITING TASK I/O COMPLETE                                 00738000
+.*                                                                      00739000
+.*       ENTERED FROM IJBAOM                                            00740000
+.*                    WHENEVER AN ASYNCHRONEOUS EVENT (MOUNT,           00741000
+.*                    DEMOUNT ETC.) HAS BEEN COMPLETED                  00742000
+.*                                                                      00743000
+         USING SYSS00,R0          LOW-CORE BASE                         00744000
+         USING AO$MAP,R5          AO$MAP BASE POINTER                   00745000
+         USING DISP,R6            DISP BASE POINTER                     00746000
+*        USING LINK,RB            LINK REGISTER                         00747000
+         USING AOMMPROC,RD        AOMMPROC BASE                         00748000
+*SGLINK  AOMDOPST ENTRY,INPUT=(R5,R6,RB,RD),WORK=R8                     00749000
+AOMDOPST DS    0H'0'              POST I/O COMPLETE                     00750000
+         STM   RE,RF,AOMPSTSV     SAVE CALLERS REGISTERS                00751000
+         ICM   RF,15,AO$ECBA      IS ECB STILL PRESENT                  00752000
+         BP    AOMDOP20           YES,                                  00753000
+         BAL   R5,SYSERROR        ENTER HARD WAIT                       00754000
+AOMDOP20 LH    R8,AO$TID          GET REQUEST OWNER                     00755000
+         SGSETUP SWOWNER,STASK=AOM,WR1=R8,WR2=RE,OPTION=SETOWNER        00756000
+         ICM   RF,15,AO$UPARM     ADDRESS OF USER PARM-LIST             00756300
+         BZ    AOMDOP60           DOES NOT EXIST                        00756600
+         L     RF,AO$UPARM        ADDRESS OF USERS PARM-LIST            00757000
+         USING PLIMAP,RF          PLIMAP BASE                           00758000
+         TM    PLIREQ,X'80'       IS IT THE LBSERV INTERFACE            00759000
+         BZ    AOMDOP40           NO,                                   00760000
+.*       LBSERV SPECIFIC CODE                                           00761000
+         L     RE,AO$RET          GET RETURN CODE                       00762000
+         CVD   RE,AOMWORK8        CONVERT TO DECIMAL                    00763000
+         MVC   PLIRET,AO$RET      COPY RETURN CODE                      00764000
+         UNPK  PLIRET(4),AOMWORK8+5(3) CONVERT TO EBCDIC                00765000
+         OI    PLIRET+3,X'F0'     CORRECT SIGN BIT                      00766000
+         L     RE,AO$REAS         GET REASON CODE                       00767000
+         CVD   RE,AOMWORK8        CONVERT TO DECIMAL                    00768000
+         UNPK  PLIREAS(4),AOMWORK8+5(3) CONVERT TO EBCDIC               00769000
+         OI    PLIREAS+3,X'F0'    CORRECT SIGN BIT                      00770000
+AOMDOP40 MVC   PLIMED,AO$MED      RETURN MEDIA TYPE                     00771000
+         MVC   PLIRBLEN,AO$RBLEN  RETURN BUFFER LENGTH                  00772000
+         MVC   PLISTAT,AO$STAT    RETURN STATUS/BUFFER ADDRESS          00773000
+         MVC   PLICNT,AO$CNT      RETURN VOLUME COUNT                   00774000
+         MVC   PLILIBN,AO$LIBN    RETURN LIBRARY NAME                   00775000
+         MVC   PLIVOL1,AO$VOL1    RETURN VOLSER                         00776000
+         MVC   PLISCT,AO$SCT      RETURN SOURCE CATEGORY                00777000
+*HERE    SOME MORE FIELDS MAY HAVE TO BE PASSED BACK TO CALLER          00778000
+         DROP  RF                 RELEASE USERS PLIMAP BASE             00779000
+AOMDOP60 L     RF,AO$ECBA         GET ECB ADDRESS                       00780490
+         OI    2(RF),TRABIT       POST USERS ECB                        00781000
+         SLL   R8,2               OFFSET WITHIN TIBATAB                 00782000
+         A     R8,ATIBATAB        ADDRESS OF TIB ADDRESS                00783000
+         L     R8,0(,R8)          TIB BASE ADDRESS                      00784000
+         USING TIBADR,R8          TIB BASE POINTER                      00785000
+         BAL   RF,IOPOST1         POST I/O COMPLETE IF I/O BND          00786000
+*SGLINK  IOPOST1,INPUT=(R6,R8,RF),WORK=RE                               00787000
+         OI    AO$ECBA,X'80'      INDICATE ALREADY POSTED               00788000
+AOMDOPXT LM    RE,RF,AOMPSTSV     RESTORE CALLERS REGISTERS             00789000
+         BSM   0,RB               RETRN=====================>>>         00790000
+           SPACE 1                                                      00791000
+           DROP  ,                RELEASE PLFMAP   BASE                 00792000
+           USING SYSS00,R0        PAGE-0 BASE                           00793000
+AOMWORK8   DC    D'0'             WORK FIELD                            00794000
+AOMPSTSV   DC    2F'0'            SAVE AREA                             00795000
+           SPACE 1                                                      00796000
+AOMTSKFL   DC    XL1'00'          AOM-TASK PROCESSING FLAG-1            00797000
+AOMWTODO   EQU   X'80'            WORK-TO-DO                            00798000
+AOMTSKF2   DC    XL1'00'          AOM-TASK PROCESSING FLAG-2            00799000
+AAOMTASK   DC    A(AOMTASK)       AOMTASK BASE ADDRESS                  00800000
+.*                                                                      00801000
+.*       SUPVR ----> IJBAOM COMMUNICATION TABLE                         00802000
+.*                                                                      00803000
+AOMSVTAB   DS    0F'0'                                                  00804000
+AAOMMPROC  DC    A(0)             AOMMPROC BASE ADDRESS                 00805000
+AAOMSVCUIR DC    A(AOMDOCUI+X'80000000') CUIR  PROCESSING               00806000
+AQRSWTDCHN DC    A(QRSWTDCH)      ANCHOR OF WORK-TO-DO CHAIN            00807000
+AAOMSVPOST DC    A(AOMDOPST+X'80000000') POST  PROCESSING               00808000
+AAOMAMSG   DC    A(ARLOGOUT)      PRINT MESSAGE ROUTINE                 00809000
+AAOMAVRT   DC    A(AAVRTAB)       ADDRESS OF AVRTAB ADDRESS             00810000
+AAOMAVRC   DC    A(AVRCOUNT)      AVRCOUNT ADDRESS                      00811000
+           SPACE 1                                                      00812000
+.*                                                                      00813000
+.*         TLSGLOBAL MAPPING STARTS HERE, USED BY:                      00814000
+.*                   SGTINF, $IJBAR AND IJBEOTSK                        00815000
+.*                                                                      00816000
+TLSGLOBAL  DC    0F'0'            TLS GLOBAL AREA                       00817000
+TLSSYSID   DC    CL8' '           LOCAL_VSE_ID                          00818000
+TLSCATCNT  DC    A(32)            CATEGORY COUNT                        00819000
+ATLSINVBUF DC    A(0)             LIB.INVENTORY DATA ANCHOR             00820000
+           DC    X'00'            RESERVED                              00821000
+TLSMSGLVL  DC    C'0'             MESSAGE LEVEL                         00822000
+           DC    XL2'00'          RESERVED                              00823000
+TLSLBNAMES DC    CL16' '          LIBR MEMBER NAMES                     00824000
+           ORG   TLSLBNAMES       OVERLAY                               00825000
+TLSQRYLIB  DC    CL8' '           QUERY  INVENTORY LIBR.NAME            00826000
+TLSINVLIB  DC    CL8' '           MANAGE INVENTORY LIBR.NAME            00827000
+           ORG   ,                                                      00828000
+TLSVSEMEM  DC    CL8' '           VSE LIBRARY MEMBER                    00829000
+           DC    CL8' '           RESERVED                              00830000
+           SPACE 1                                                      00831000
+TLSLIBID   DC    CL8' '           LIBRARY-ID                            00832000
+TLSLIBDUAL DC    CL8' '           SECONDARY LIBRARY MANAGER-ID          00833000
+TLSDEFCAT  DC    CL10'SCRATCH00'  DEFAULT CAT.-ID (SCRATCH00)           00834000
+TLSINSCAT  DC    CL10'SCRATCH00'  DEFAULT INS.-ID (SCRATCH00)           00835000
+TLSLIBNEXT DC    8CL(TLSLIBNEXT-TLSLIBID)' ' MORE LIBRARIES             00836000
+           DC    XL4'FFFFFFFF'    LIBRARY LIST END INDICATOR            00837000
+TLSAWTDECB DC    A(TLSWTDECB)                                  @DAOM113 00838000
+TLSECBLST  DC    16XL4'00'        ECB LIST (CCB ADDRESSES)              00839000
+TLSECBEND  DC    A(X'80000000')   END OF LIST                           00840000
+TLSWTDECB  DC    F'0'             WORK TO DO ECB                        00841000
+           AGO   .NODSECT                                               00842000
+.DSECT     ANOP                                                         00843000
+           AIF   ('&DSECT' EQ 'IJBAR').DSEC010                          00844000
+           AIF   ('&DSECT' EQ 'IJBEOTSK').DSEC010                       00845000
+AOMSVTAB   DSECT                                                        00846000
+AAOMMPROC  DC    A(0)             AOMMPROC BASE ADDRESS                 00847000
+AAOMSVCUIR DC    A(0)             CUIR     PROCESSING                   00848000
+AQRSWTDCHN DC    A(0)             ANCHOR OF WORK-TO-DO CHAIN            00849000
+AAOMSVPOST DC    A(0)             POST     PROCESSING                   00850000
+AAOMAMSG   DC    A(0)             ARLOGOUT ROUTINE ADDRESS              00851000
+AAOMAVRT   DC    A(0)             AVRTAB   ADDRESS OF ADDRESS           00852000
+AAOMAVRC   DC    A(0)             AVRCOUNT ADDRESS                      00853000
+           SPACE 2                                                      00854000
+TLSGLOBAL  DS    0F                                                     00855000
+           AGO   .DSEC020                                               00856000
+.DSEC010   ANOP                                                         00857000
+TLSGLOBAL  DSECT                                                        00858000
+.DSEC020   ANOP                                                         00859000
+TLSSYSID   DC    CL8' '           LOCAL_VSE_ID                          00860000
+TLSCATCNT  DC    A(0)             CATEGORY COUNT                        00861000
+ATLSINVBUF DC    A(0)             LIB.INVENTORY DATA ANCHOR             00862000
+           DC    X'00'            RESERVED                              00863000
+TLSMSGLVL  DC    C'0'             MESSAGE LEVEL                         00864000
+           DC    XL2'00'          RESERVED                              00865000
+TLSLIBNAME DC    CL16' '          LIBR MEMBER NAMES                     00866000
+           ORG   TLSLIBNAME       OVERLAY                               00867000
+TLSQRYLIB  DC    CL8' '           QUERY  INVENTORY LIBR.NAME            00868000
+TLSINVLIB  DC    CL8' '           MANAGE INVENTORY LIBR.NAME            00869000
+           ORG   ,                                                      00870000
+TLSVSEMEM  DC    CL8' '           VSE LIBRARY MEMBER                    00871000
+           DC    CL8' '           RESERVED                              00872000
+           SPACE 1                                                      00873000
+TLSLIBID   DC    CL8' '           LIBRARY-ID                            00874000
+TLSLIBDUAL DC    CL8' '           SECONDARY LIBRARY MANAGER-ID          00875000
+TLSDEFCAT  DC    CL10' '          DEFAULT CATEGORY                      00876000
+TLSINSCAT  DC    CL10' '          DEFAULT INSERT CATEGORY               00877000
+TLSLIBNEXT DC    8CL(TLSLIBNEXT-TLSLIBID)' ' MORE LIBRARIES             00878000
+           DC    XL4'FFFFFFFF'    LIBRARY LIST END INDICATOR            00879000
+TLSAWTDECB DC    A(0)             WTO-ECB ADDRESS              @DAOM113 00880000
+TLSECBLST  DC    16XL4'00'        ECB LIST (CCB ADDRESSES)              00881000
+TLSECBEND  DC    A(X'80000000')   END OF LIST                           00882000
+TLSWTDECB  DC    F'0'             WORK TO DO ECB                        00883000
+.NODSECT   ANOP                                                         00884000
+*HERENEW                                                                00885000
+           SPACE 2                                                      00886000
+INV$HDR    DSECT                  INVENTORY BUFFER HEADER      @DAOM024 00887000
+INV$CHAIN  DS    A                NEXT INVENTORY BUFFER HDR.   @DAOM024 00888000
+INV$BULEN  DS    2A               INVENT. BUFFER LENGTH+ADDRESS@DAOM024 00889000
+           ORG   INV$BULEN+4      OVERLAY                      @DAOM024 00890000
+INV$BUADR  DS    A                INVENTORY BUFFER ADDRESS     @DAOM024 00891000
+INV$TID    DS    AL2              REQUESTING TASK-ID           @DAOM024 00892000
+           DS    AL2              RESERVED                     @DAOM024 00893000
+INV$COUNT  DS    A                NUMBER OF ENTRIES IN BUFFER  @DAOM024 00894000
+INV$BUEND  DS    A                END OF ENTRIES ADDRESS+1     @DAOM024 00895000
+INV$REC1ST DS    0F               FIRST INVENTORY BEGIN        @DAOM024 00896000
+           SPACE 2                                                      00897000
+           AIF   ('&DSECT' EQ 'IJBAR').NPRT999                          00898000
+           AIF   ('&DSECT' EQ 'IJBEOTSK').NPRT999                       00899000
+           AIF   ('&DSECT' EQ 'NO').CSECT10                             00900000
+           AGO   .DSEC040                                               00901000
+.CSECT10   ANOP                                                         00902000
+         TITLE 'VSE SUPERVISOR     SGAOM    DSECTS BEING USED         ' 00903000
+.*                                                                      00904000
+.*       DSECT FOR INPUT TO PERFORM LIBRARY FUNCTION                    00905000
+.*                                                                      00906000
+         MAPPLF                   CALLERS PLF MAPPING                   00907000
+         SPACE 2                                                        00908000
+.DSEC040 ANOP                                                           00909000
+*HEREOLD                                                                00910000
+AO$MAP   DSECT                    INTERNAL PLF MAPPING                  00911000
+AO$CBID  DS    XL3             0  EYECATCHER                            00912790
+AO$VERS  DS    X               3  VERSION ID                            00913580
+AO$LEN   DS    XL2             4  LENGTH OF CONTROL BLOCK               00914370
+AO$CUU   DS    XL2             6  CUU ADDRESS                           00915160
+AO$FUNC  DS    XL4             8  FUNCTION CODE                         00915950
+AO$ECBA  DS    XL4             C  POINTER TO ECB                        00916740
+         SPACE 1                  DW-BOUNDARY                           00918000
+AO$MED   DS    CL4            10  MEDIA TYPE                            00919990
+AO$RET   DS    CL4            14  RETURN CODE                           00920980
+AO$REAS  DS    CL4            18  REASON CODE                           00921970
+AO$REQ   DS    CL2            1A  REQUEST TYPE OR ZERO                  00922960
+         DS    XL2            1E  RESERVED                              00923950
+         SPACE 1                  DW-BOUNDARY                           00925000
+AO$RBLEN DS    XL4            20  ZERO OR RESPONSE BUFFER-LENGTH        00926290
+AO$STAT  DS    CL4            24  STATUS AREA                           00926580
+         ORG   AO$STAT            OVERLAY                               00927000
+AO$AREA  DC    A(0)           24  USERS RESPONSE AREA                   00929990
+         SPACE 1                  DW-BOUNDARY                           00932000
+AO$RWF   DS    XL1            28  READ/WRITE                            00933490
+AO$CNT   DS    CL5            29  COUNT OF VOLUMES                      00933980
+AO$VOL1  DS    XL6            2E  VOL1 LABEL                            00934470
+AO$LIBN  DS    CL8            34  LIBRARY NAME                          00934960
+AO$MEMB  DS    CL8            3C  LIBR MEMBER                           00935450
+AO$SCT   DS    CL10           44  SOURCE CATEGORY                       00935940
+AO$SNAME EQU   AO$SCT                                                   00937000
+         ORG   AO$SCT             OVERLAY                               00938000
+AO$SCELL DS    XL2            44  CELL-ID                               00939590
+         DS    XL8            46  RESERVED                              00940180
+         ORG   ,                                                        00941000
+         DS    XL6            4E  RESERVED                              00942990
+AO$TGT   DS    CL10           54  TARGET CATEGORY                       00943980
+AO$TNAME EQU   AO$TGT                                                   00945000
+         ORG   AO$TGT             OVERLAY                               00946000
+AO$TCELL DS    XL2            54  CELL-ID                               00947590
+         DS    XL8            56  RESERVED                              00948180
+         ORG   ,                                                        00949000
+         DS    XL6            5E  RESERVED                              00950990
+AO$FLAG1 DS    XL1            64  PROCESSING FLAG                       00951980
+AO$F1ACT EQU   X'80'              REQUEST IS IN PROGRESS                00953000
+AO$F1CNL EQU   X'40'              INDICATE REQUEST WAS CANCELED         00954000
+AO$F1PLF EQU   X'20'              PLF REQUEST                           00955000
+AO$F1ATT EQU   X'10'              ATTENTION RECEIVED                    00956000
+AO$F1IOA EQU   X'08'              I/O ACTIVE                            00957000
+AO$F1WDR EQU   X'04'              WAITING FOR DELAYED RESPONSE          00958000
+*        EQU   X'02'              RESERVED                              00959000
+*        EQU   X'01'              RESERVED                              00960000
+AO$FLAG2 DS    XL1            65  PROCESSING FLAG                       00961490
+AO$F2MID EQU   X'80'              CURRENT STATUS REQUEST                00962000
+AO$F2RTY EQU   X'40'              REQUEST CAN BE RETRIED                00963000
+AO$F2NMS EQU   X'20'              SKIP MSG IN ACTION ROUTINES           00964000
+AO$TID   DS    XL2            66  TASK ID                               00965490
+         SPACE 1                  DW-BOUNDARY                           00965980
+AO$MSGID DS    XL4            68  MESSAGE-ID                            00966470
+         SPACE 1                  DW-BOUNDARY                           00966960
+AO$GVLEN DS    2A(0)          6C  GETVIS-24 LENGTH + ADDRESS            00967450
+         ORG   AO$GVLEN+4                                               00968000
+AO$GVADR DS    A(0)           70  GETVIS-24 ADDRESS                     00969490
+         ORG   ,                                                        00970000
+         SPACE 1                  DW-BOUNDARY                           00971000
+AO$SAVE  DS    16A(0)         74  REGISTER SAVE AREA                    00972490
+         SPACE 1                  DW-BOUNDARY                           00973000
+AO$TARGT DS    XL2            B4  TARGET CATEGORY                       00974790
+AO$SOURC DS    XL2            B6  SOURCE CATEGORY                       00975580
+AO$ASRCE DS    XL2            B8  ALTERNATE SOURCE CATEGORY             00976370
+         DS    XL2            BA  RESERVED                              00977160
+         DS    XL8            BC  RESERVED                              00977950
+         SPACE 1                  DW-BOUNDARY                           00979000
+AO$APBXA DS    A(0)           C4  ADDRESS OF PUBX ADDRESS               00980790
+AO$UPARM DS    A(0)           C8  USERS PLIMAP ADDRESS                  00981580
+AO$BACKW DS    A(0)           CC  NEXT PARM-LIST ADDRESS                00982370
+AO$FORWD DS    A(0)           D0  NEXT PARM-LIST ADDRESS                00983160
+AO$CBLEN EQU   *-AO$CBID      D4  LENGTH OF DSECT                       00983950
+         SPACE 1                                                        00985000
+W$AREA   DSECT                    WORK AREA MAPPING                     00986000
+W$ALLREG DC    16F'0'             CALLERS REGISTER                      00987000
+W$SVCREG DC    16F'0'             ALL REGISTERS AT WAITM TIME           00988000
+W$IOSAVE DC    4F'0'              DOIO SAVE AREA                        00989000
+W$IOBUFL DC    2A(0)              LENGTH + ADDRESS OF BUFFER            00990000
+         ORG   W$IOBUFL+4                                               00991000
+W$IOBUFA DC    A(0)               ADDRESS OF I/O BUFFER                 00992000
+W$IOCCB  CCB   SYSRDR,0,X'9500',W$SENSE,CCW=FORMAT1                     00993000
+W$SENSE  DC    XL32'00'           SENSE DATA AREA                       00994000
+W$IOCCW0 CCW1  0,0,0,0            CCW-0                                 00995000
+W$IOCCW1 CCW1  0,0,0,0            CCW-1                                 00996000
+W$IOCCW2 CCW1  0,0,0,0            CCW-2                                 00997000
+W$IOCCW3 CCW1  0,0,0,0            CCW-3                                 00998000
+W$IOPARM DC    XL18'00'           I/O PARAMETER BYTES                   00999000
+         DC    XL4'00'            RESERVED                              01000000
+W$MSGINF DC    XL10'00'           READ MESSAGE-ID INFORMATION           01001000
+         ORG   W$MSGINF+4         OVERLAY                               01002000
+W$MSGID  DC    XL4'00'            READ MESSAGE-ID                       01003000
+         ORG   ,                                                        01004000
+W$AREALN EQU   *-W$AREA           LENGTH OF CONTROL AREA                01005000
+         AIF   ('&DSECT' NE 'NO').NPRT999                               01006000
+&SYSECT  CSECT                                                          01007000
+         AIF   (NOT &SGAOM).NPRT999                                     01008000
+         PRINT NOGEN              SUPPRESS PRINTING                     01009000
+.NPRT999 ANOP                                                           01010000
+         MEND                                                           01011000

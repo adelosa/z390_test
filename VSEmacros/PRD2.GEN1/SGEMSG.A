@@ -1,0 +1,1079 @@
+         MACRO                                                          00001000
+         SGEMSG                                                         00002000
+*********************************************************************** 00003000
+*        IBM VIRTUAL STORAGE EXTENDED (VSE)                             00004000
+*        COMPONENT: 5686-066-06                                         00005000
+* @@CPY                                                                 00006000
+*        LICENSED MATERIALS - PROPERTY OF IBM                           00007000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    00008000
+*        5686-066 (C) COPYRIGHT IBM CORP. 1979, 2005                    00009490
+*        SEE COPYRIGHT INSTRUCTIONS                                     00010000
+*                                                                       00011000
+*********************************************************************** 00012000
+*                                                                       00013000
+         GBLB  &BGDEBUG           DEBUG OPTION                          00014000
+         GBLB  &SGEMSG            SGEMSG PRINT CONTROL SWITCH           00015000
+         GBLB  &VTAM31            VTAM SPECIAL CODE                     00015500
+*                                                                       00016000
+* /* START OF SPECIFICATIONS ****************************************** 00017000
+*                                                                       00018000
+*01* MODULE-NAME = SGEMSG                                               00019000
+*                                                                       00020000
+*01* MODULE-TYPE = SYSTEM GENERATION MACRO                              00021000
+*                                                                       00022000
+*01* DESCRIPTIVE-NAME = RESIDENT ERP MESSAGE WRITER                     00023000
+*                                                                       00024000
+*01* NOTES = CHANGE ACTIVITY                                            00025000
+*    @ DENOTES CHANGE ACTIVITY FLAG. D IS SYSTEM                        00026000
+*    IDENTIFIER FOR VSE. MEANING OF THE THIRD                           00027000
+*    CHARACTER IS - A = APAR, Y = APAR                                  00028000
+*    OTHER CHARACTERS ARE FOR IBM INTERNAL USE.                         00029000
+*                                                                       00030000
+*01* CHANGE ACTIVITY = AS FOLLOWS                                       00031000
+*    RESIDENT MESSAGE WRITER                                   @D61CDJK 00032000
+*    IMPROVED CONSOLE SUPPORT - WTO/WTOR/DOM                   @D61CDJK 00033000
+*    DISPLAY SENSE BYTES IN PACKETS OF 4 BYTES                 @D61YDJK 00034000
+*    NEW MESSAGE 0P67I PPRC INFO                               @DA44407 00035000
+*    HIGHLIGHTING OF SIM AND MIM MESSAGES                      @D63HDJK 00036000
+**** END OF SPECIFICATIONS ******************************************** 00037000
+*                                                                       00038000
+*                                                                       00039000
+*********************************************************************** 00040000
+*                                                                     * 00041000
+*            RESIDENT ERP MESSAGE WRITER                              * 00042000
+*                                                                     * 00043000
+* FUNCTION:  WRITE ALL 0PXX ERP MESSAGES                              * 00044000
+*                                                                     * 00045000
+*********************************************************************** 00046000
+         AIF   (NOT &SGEMSG).NEMSG10                                    00047000
+         PRINT GEN                                                      00048000
+.NEMSG10 ANOP                                                           00049000
+*                                                                       00050000
+         DC    CL8'SGEMSG  '      MACRO NAME                            00051000
+         DC    CL8'11/03/05'      DATE                         @DY46396 00052590
+         DC    CL8'DY46396 '      /*@@LVLID*/                  @DY46396 00053180
+         EJECT                                                          00054000
+         USING EMSGERBL,RB        SGEMSG BASE ADDRESS                   00055000
+*                                                                       00056000
+*********************************************************************** 00057000
+*                                                                     * 00058000
+* ENTRY POINT 1: EMSGERBL                                             * 00059000
+*                                                                     * 00060000
+*                     CALLED BY: SGERP (SVC 5 PROCESSING)             * 00061000
+*                                RESIDENT SA TAPE ERP                 * 00062000
+*                                                                     * 00063000
+*                     INPUT REGISTERS: NONE                           * 00064000
+*                                                                     * 00065000
+*                     EXITS: RETURN TO SUPERVISOR LABEL ERPEXIT       * 00066000
+*                            WITH AN EXIT ADDRESS IN RF               * 00067000
+*                                                                     * 00068000
+*                            SYSERROR IN CASE OF AN INTERNAL ERROR    * 00069000
+*                                                                     * 00070000
+*********************************************************************** 00071000
+EMSGERBL DS    0H                 ENTRY POINT                           00072000
+         L     R2,AERBLOC         ADDRESS OF ERROR BLOCK                00073000
+         USING ERBLOC,R2          ERBLOC BASE POINTER                   00074000
+         MVC   EMSCCODE,ERQCCOD1  SAVE FAILING COMMAND CODE    @D61CDJK 00075000
+         MVC   EMSCHQA,ERQCHQA1   SAVE CHANQ ENTRY ADDRESS     @D61CDJK 00076000
+         MVC   EMSLSNS,ERQLSNS1   SAVE NUMBER OF SENSE BYTES   @D61CDJK 00077000
+         MVC   EMSPRFL,ERQPRFL1   SAVE ERP PROCESSING FLAG     @D63HDJK 00078000
+         B     EMSG0100                                        @D61CDJK 00079000
+*                                                                     * 00080000
+*********************************************************************** 00081000
+*                                                                     * 00082000
+* ENTRY POINT 2: EMSGERRE                                             * 00083000
+*                                                                     * 00084000
+*                     CALLED BY: SGTAP                                * 00085000
+*                                                                     * 00086000
+*                     INPUT REGISTERS: R5 = ADDRESS OF AN ERROR ENTRY * 00087000
+*                                      RE = RETURN ADDRESS            * 00088000
+*                                                                     * 00089000
+*                     EXITS: RETURN TO ADDRESS SPECIFIED IN RE        * 00090000
+*                                                                     * 00091000
+*                            SYSERROR IN CASE OF AN INTERNAL ERROR    * 00092000
+*                                                                     * 00093000
+*********************************************************************** 00094000
+*                                                                       00095000
+EMSGERRE DS    0H                 ENTRY POINT                  @D61CDJK 00096000
+         USING ERBLKADR,R5        ERROR ENTRY BASE POINTER     @D61CDJK 00097000
+         OI    EMSCALL,EMSSGTAP   CALLER IS SGTAP              @D61CDJK 00098000
+         ST    RE,EMSACALL        SAVE RETURN ADDRESS          @D61CDJK 00099000
+         MVC   EMSCCODE,ERRQCOMM+2  SAVE FAILING COMMAND CODE  @D61CDJK 00100000
+         MVC   EMSCHQA,ERRQCHQA   SAVE CHANQ ENTRY ADDRESS     @D61CDJK 00101000
+         MVC   EMSLSNS,ERRQLSNS   SAVE NUMBER OF SENSE BYTES   @D61CDJK 00102000
+         MVC   EMSPRFL,ERRQPRFL   SAVE ERP PROCESSING FLAG     @D63HDJK 00103000
+         LA    R5,ERRQCSW-ERBLKADR(R5)    ADJUST TO ERRQCSW    @D61CDJK 00104000
+         DROP  R5                 RELEASE ERROR ENTRY BASE     @D61CDJK 00105000
+         L     R2,AERBLOC         ADDRESS OF ERROR BLOCK       @D61CDJK 00106000
+         LA    R7,ERQCSW1-ERBLOC  ADJUST ADDRESS..             @D61CDJK 00107000
+         SR    R5,R7                TO ERROR BLOCK             @D61CDJK 00108000
+         LR    R2,R5              ADJUSTED ERBLOC BASE POINTER @D61CDJK 00109000
+*                                                                       00110000
+* ESTABLISH ADDRESSABILITY OF COMREG AND PUB DEVICE ENTRY               00111000
+*                                                                       00112000
+EMSG0100 LH    R3,ERQPUB1         ADDRESS OF ERRONEOUS PUB              00113000
+         USING PUBADR,R3          PUB BASE POINTER                      00114000
+         COMRG REG=R5             GET COMREG ADDRESS                    00115000
+         USING COMREG,R5          COMREG BASE POINTER                   00116000
+         AGO   .NOPHA10                                        @D61CDJK 00117000
+*                                                                       00118000
+* ESTABLISH ADDRESSABILITY OF SYSCOM                                    00119000
+*                                                                       00120000
+         ASYSCOM R6               GET SYSCOM ADDRESS                    00121000
+         USING SYSCOM,R6          COMREG BASE POINTER                   00122000
+         DROP  R6                 RELEASE COMREG BASE POINTER           00123000
+.NOPHA10 ANOP                                                  @D61CDJK 00124000
+*                                                                       00125000
+* ESTABLISH ADDRESSABILITY OF CHANNEL QUEUE ENTRY AND USER              00126000
+* CCB AND SAVE VIRTUAL ADDRESS OF USER'S CCB                            00127000
+*                                                                       00128000
+         SLR   R1,R1              CLEAR REGISTER               @D61CDJK 00129000
+         ICM   R1,7,ERQCCB1+1     ADDRESS OF USERS CCB         @D61CDJK 00130000
+         USING CCBADR,R1          USER CCB BASE POINTER                 00131000
+         ST    R1,EMSUCCB         SAVE VIRTUAL CCB ADDRESS              00132000
+         LTR   R1,R1              USER CCB AVAILABLE?                   00133000
+         BZ    EMSG0150           NO                                    00134000
+         TM    ERQFLG1,RECONLY    RECORDING ONLY REQUEST?      @D61CDJK 00135000
+         BO    EMSG0150           YES                          @D61CDJK 00136000
+         TM    CCBCLS,CCBCOPY     COPIED CCB                            00137000
+         BNO   EMSG0150           NO                                    00138000
+         MVC   EMSUCCB+1(3),CCBVA+1   SAVE VIRTUAL CCB ADDRESS          00139000
+EMSG0150 ICM   R4,15,EMSCHQA      CHANQ ENTRY AVAILABLE?                00140000
+         BZ    EMSG0170           NO, CONVERT MESSAGE CODE              00141000
+         USING CHQADR,R4          CHANQ BASE POINTER                    00142000
+         TM    ERQFLG1,RECONLY    RECORDING ONLY REQUEST?               00143000
+         BNO   EMSG0170           NO, CONVERT MESSAGE CODE              00144000
+         SLR   R1,R1              NO USER CCB AVAILABLE                 00145000
+         LR    R4,R1              CHANQ ENTRY NOT EXISTING              00146000
+*                                                                       00147000
+EMSG0170 CLI   ERQMSG1,ERQRECV    SOFT ERROR?                           00148000
+         BE    EMSGXIGN           YES, TAKE IGNORE EXIT                 00149000
+*                                                                       00150000
+* INITIALIZE OUTPUT LINES WITH DEFAULT VALUES                           00151000
+*                                                                       00152000
+         MVI   EMSADDR1+1,30      LENGTH OF OUTPUT LINE 1      @D61CDJK 00153000
+         MVC   EMSLINE1(L'EMSLINE1),EMSTEXT1  OUTPUT LINE 1    @D61CDJK 00154000
+         MVI   EMSADDR2+1,34      LENGTH OF OUTPUT LINE 2      @D61CDJK 00155000
+         MVC   EMSLINE2(L'EMSLINE2),EMSTEXT2  OUTPUT LINE 2    @D61CDJK 00156000
+         MVI   EMSADDR3+1,58      LENGTH OF OUTPUT LINE 3      @D61YDJK 00157000
+         MVI   EMSOSNS3,C' '      INITIALIZE OUTPUT LINE 3..   @D61CDJK 00158000
+         MVC   EMSOSNS3+1(L'EMSOSNS3-1),EMSOSNS3   WITH BLANKS @D61CDJK 00159000
+         MVI   EMSADDR4+1,58      LENGTH OF OUTPUT LINE 4      @D61YDJK 00160000
+         MVI   EMSLINE4,C' '      INITIALIZE OUTPUT LINE 4..   @D61CDJK 00161000
+         MVC   EMSLINE4+1(L'EMSLINE4-1),EMSLINE4   WITH BLANKS @D61CDJK 00162000
+*                                                                       00163000
+* CONVERT MESSAGE CODE INTO PRINTABLE FORMAT                            00164000
+*                                                                       00165000
+         XC    EMSALIGN(7),EMSALIGN     CLEAR WORK FIELD       @D61CDJK 00166000
+         MVI   EMSALIGN+7,X'0C'   SET UP WORK FIELD            @D61CDJK 00167000
+         MVO   EMSMSGNO,ERQMSG1   PICK UP MSG NUMBER                    00168000
+         CVB   RD,EMSALIGN        CONVERT TO BINARY                     00169000
+         MH    RD,EMSH10          OFFSET IN MESSAGE TEXT TABLE          00170000
+         LA    RD,EMSTEXT(RD)     POINT TO APPROPRIATE ENTRY            00171000
+         MVC   EMSOTEXT(10),0(RD) PUT MESSAGE IN OUTPUT LINE 1          00172000
+         UNPK  EMSOMSGN(3),ERQMSG1(2) SET UP MESSAGE NUMBER IN          00173000
+*                                     OUTPUT LINE1                      00174000
+*                                                                       00175000
+* SET UP LOGICAL UNIT IDENTIFIER SYSXXX IN OUTPUT LINE 1                00176000
+*                                                                       00177000
+         LTR   R1,R1              CCB AVAILABLE?                        00178000
+         BZ    EMSG0250           NO, LEAVE DEFAULT SYSXXX              00179000
+         MVC   EMSOSYS(3),EMSSCTL SET SYSCTL IN OUTPUT LINE             00180000
+         TM    CCBCLS,CCBPHYAD    PHYSICAL ADDRESSING?                  00181000
+         BO    EMSG0250           YES, LEAVE SYSCTL                     00182000
+         SLR   RF,RF              CLEAR WORK REGISTER                   00183000
+         IC    RF,CCBLNO          GET LUB NUMBER                        00184000
+         TM    CCBCLS,CCBPROGU    PROGRAMMER LOGICAL UNIT?              00185000
+         BZ    EMSG0220           NO, ITS A SYSTEM LOGICAL UNIT         00186000
+.* IT'S A PROGRAMMER LOGICAL UNIT                                       00187000
+         CVD   RF,EMSFULWD        CONVERT LUB NUMBER TO DECIMAL         00188000
+         UNPK  EMSOSYS(5),EMSFULWD+6(3) AND SET UP LOGICAL              00189000
+         MVI   EMSOSYS+3,C'='           UNIT ID IN OUTPUT LINE          00190000
+         B     EMSG0250                                                 00191000
+.* IT'S A SYSTEM LOGICAL UNIT                                           00192000
+EMSG0220 MH    RF,EMSH3           MULTIPLY LUB NUMBER BY 3              00193000
+         CH    RF,EMSH39          REGULAR UNIT?                         00194000
+         BNH   EMSG0230           YES, GET TABLE ENTRY                  00195000
+         LA    RF,EMSSLIB         POINT TO SYSLIB CONSTANT              00196000
+         B     EMSG0240                                                 00197000
+EMSG0230 LA    RF,EMSSTAB(RF)     POINT TO CORRECT TABLE ENTRY          00198000
+EMSG0240 MVC   EMSOSYS(3),0(RF)   PUT UNIT ID IN OUTPUT LINE            00199000
+*                                                                       00200000
+* SET UP PHYSICAL DEVICE ADDRESS IN OUTPUT LINE 1                       00201000
+*                                                                       00202000
+EMSG0250 CLI   ERQMSG1,EMSNOPMS   DEVICE OPERATIONAL?                   00203000
+         BNE   EMSG0260           YES, GET CUU FROM PUB                 00204000
+         CLI   ERQCSW1+5,X'FE'    EXCEPTIONAL CONDITION?                00205000
+         BNE   EMSG0260           NO, GET CUU FROM PUB                  00206000
+         LH    RF,ERQCSW1+6       GET CUU FROM ERQCSW                   00207000
+         B     EMSG0270                                                 00208000
+EMSG0260 LH    RF,PUBCHANN        GET CUU FROM PUB                      00209000
+         AGO   .NOSUP10                                        @D61CDJK 00210000
+         TM    SYSFLG06,IJBXMODE  XA MODE?                              00211000
+         BO    EMSG0270           YES                                   00212000
+         ICM   RF,2,ERQPATH1      GET FAILING PATH INFO                 00213000
+.NOSUP10 ANOP                                                  @D61CDJK 00214000
+EMSG0270 STH   RF,EMSFULWD        SAVE CUU IN WORK FIELD                00215000
+         UNPK  EMSOCUU(4),EMSFULWD(3)     SET UP CUU IN OUTPUT          00216000
+         TR    EMSOCUU(3),EMSTRTAB-X'F0'  LINE                          00217000
+*                                                                       00218000
+* SET UP COMMAND CODE AND CSW IN OUTPUT LINE 2                          00219000
+*                                                                       00220000
+         CLI   ERQMSG1,EMSNOPMS   DEVICE OPERATIONAL?                   00221000
+         BNE   EMSG0305           YES, CCSW MUST BE SET UP              00222000
+         CLI   ERQCSW1+5,X'FE'    DEVICE NOT OPERATIONAL                00223490
+         BE    EMSG0350           YES, CCSW WILL NOT BE SET             00224000
+EMSG0305 MVI   EMSOCCOD,C'0'      SET COMMAND CODE IN OUTPUT            00225000
+         MVI   EMSOCCOD+1,C'0'    LINE TO 00                            00226000
+         XC    EMSFCCW,EMSFCCW    CLEAR WORK FIELD             @D61CDJK 00227000
+         AIF   (NOT &VTAM31).NVTM020                                    00227030
+           SLR   R8,R1            IS CCB AVAILABLE             @DY46396 00227060
+           BZ    EMSG0335         NO, SKIP CMD-CODE PROCESSING @DY46396 00227090
+           SLR   R8,R8            CLEAR WORK REGISTER          @DY46396 00227120
+           IC    R8,PUBCHQPT      GET LOW ORDER CHANQ INDEX    @DY46396 00227150
+           TM    IJBIOFLG,IJBIOX80 MORE THAN 254 DEVICES       @DY46396 00227180
+           BZ    EMSGVT20         NO                           @DY46396 00227210
+           ICM   R8,2,PUBCHQPH    GET HIGH ORDER CHANQ INDEX   @DY46396 00227240
+EMSGVT20   SLL   R8,CHQSLEN       MULTIPLY WITH ENTRY LENGTH   @DY46396 00227270
+           A     R8,ACHANQ        ADDRESS OF RELATED CHANQ     @DY46396 00227300
+           ICM   R8,8,H0          CLEAR HIGH ORDER BYTE        @DY46396 00227330
+           USING CHQADR,R8        CHANQ BASE POINTER           @DY46396 00227360
+           TM    CHQGRP,CHQGRVTM  IS IT VTAM REQUEST           @DY46396 00227390
+           BZ    EMSGVTXT         NO, SKIP                     @DY46396 00227420
+           TM    CCBBY3,CCBCCWF1+CCWABOVE VTAM-31 REQUEST      @DY46396 00227450
+           BZ    EMSGVTXT         NO,                          @DY46396 00227480
+           DROP  R8               RELEASE CHQADR BASE          @DY46396 00227510
+           ICM   R8,15,ERQCSW1    GET VIRTUAL CSWCCW ADDRESS   @DY46396 00227540
+           BZ    EMSG0335         DONT HAVE CSWCCW ADDRESS     @DY46396 00227570
+           ST    R8,EMSFCCW       SAVE VIRTUAL CSWCCW ADDRESS  @DY46396 00227600
+           SH    R8,EMSH8         POINT TO FAILING CCW         @DY46396 00227630
+           ST    R8,EMSDUMMY      SAVE FAILING CCW ADDRESS     @DY46396 00227660
+           B     EMSG0320         PROCEED MAIN PATH            @DY46396 00227690
+EMSGVTXT   DS    0H'0'            END OF VTAM SPECIAL CODE     @DY46396 00227720
+.NVTM020 ANOP                                                           00227750
+         SLR   R8,R8              CLEAR WORK REGISTER                   00228000
+         ICM   R8,7,ERQCSW1+1     GET REAL CSWCCW ADDRESS               00229000
+         BZ    EMSG0335           DONT HAVE CSWCCW ADDRESS     @D61CDJK 00230000
+.* SINCE A CSWCCW ADDRESS IS AVAILABLE, A USER CCB MUST ALSO BE         00231000
+.* AVAILABLE. FOLLOWING TEST IS FOR ROBUSTNESS ONLY.                    00232000
+         ST    R8,EMSFCCW         SAVE REAL CSWCCW ADDRESS              00233000
+         LTR   R1,R1              USER CCB AVAILABLE?                   00234000
+         BZ    EMSG0335           NO, WE SHOW REAL CSWCCW ADDR.@D61CDJK 00235000
+         TM    CCBCLS,CCBCOPY     USER CCB IS COPIED?                   00236000
+         BNO   EMSG0310           NO, WE SHOW REAL CSWCCW ADDR.         00237000
+         TRANSCSW (8),(1)         GET VIRTUAL ADDR. OF USER CCW         00238000
+         ST    R0,EMSFCCW         SAVE VIRTUAL CSWCCW ADDRESS           00239000
+.* PREPARE COMMAND CODE                                                 00240000
+EMSG0310 SH    R8,EMSH8           POINT TO FAILING CCW                  00241000
+         ST    R8,EMSDUMMY        SAVE REAL FAILING CCW ADDRESS         00242000
+         SR    R0,R0              SET DISPLACEMENT TO 0                 00243000
+         LA    R8,EMSDUMMY        POINT TO DUMMY CCW                    00244000
+         GETDADR (8),(0)          GET VIRTUAL FAILING CCW ADDR.         00245000
+         LTR   R8,RF              ADDRESS IS VALID?                     00246000
+         BZ    EMSG0335           NO, LEAVE COMMAND CODE 00    @D61CDJK 00247000
+EMSG0320 LRA   RF,0(,R8)          VALID VIRTUAL ADDRESS                 00251990
+         BNZ   EMSG0335           NO, LEAVE COMMAND CODE 00    @D61CDJK 00256000
+EMSG0330 UNPK  EMSOCCOD(3),0(2,R8) UNPACK COMMAND CODE                  00257990
+EMSG0335 CLI   EMSCCODE,X'00'     COULD WE PROVIDE COMMAND CODE         00258980
+         BE    EMSG0340           NO, LEAVE COMMAND CODE                00260000
+         UNPK  EMSOCCOD(3),EMSCCODE(2)     UNPACK COMMAND CODE          00261000
+EMSG0340 UNPK  EMSOCSW(3),ERQCSW1(2)       UNPACK KEY,                  00262000
+         UNPK  EMSOCSW+2(7),EMSFCCW+1(4)   FAILING CCW ADDRESS          00263000
+         UNPK  EMSOCSW+8(9),ERQCSW1+4(5)   AND REST OF CSW              00264000
+         MVI   EMSOCSW+16,C' '             RESTORE BLANK                00265000
+         TR    EMSOCCOD(18),EMSTRTAB-X'F0' SET UP CCSW IN               00266000
+*                                          OUTPUT LINE 2                00267000
+*                                                                       00268000
+* SET UP CCB ADDRESS IN OUTPUT LINE 2                                   00269000
+*                                                                       00270000
+EMSG0350 UNPK  EMSOCCB(7),EMSUCCB+1(4)     UNPACK CCB ADDRESS           00271000
+         MVI   EMSOCCB+6,C' '              RESTORE BLANK                00272000
+         TR    EMSOCCB(6),EMSTRTAB-X'F0'   TRANSLATE CCB ADDR.          00273000
+*                                                                       00274000
+* SET UP SEEK ADDRESS OR PHYSICAL BLOCK NUMBER IN OUTPUT LINE 2         00275000
+*                                                                       00276000
+         CLI   PUBDEVTY,TFBA      FBA DEVICE?                           00277000
+         BNE   EMSG0360           NO, SET UP SEEK ADDRESS               00278000
+.* SET UP PHYSICAL BLOCK NUMBER                                         00279000
+         MVC   EMSOBNA(4),EMSPBN         SET PBN CONSTANT               00280000
+         UNPK  EMSOBLK(9),ERQSEK1(5)     SET UP PHYSICAL BLOCK          00281000
+         TR    EMSOBLK(8),EMSTRTAB-X'F0' NUMBER IN OUTPUT LINE          00282000
+         MVC   EMSOEND(3),EMSBLANK       BLANK UNUSED BYTES             00283000
+         B     EMSG0400                                                 00284000
+.* SET UP SEEK ADDRESS                                                  00285000
+EMSG0360 UNPK  EMSOSEEK(9),ERQSEK1(5)    SET UP SEEK ADDRESS            00286000
+         TR    EMSOSEEK(8),EMSTRTAB-X'F0'     IN OUTPUT LINE            00287000
+*                                                                       00288000
+* SET UP ACTION AND TARGET ID IN OUTPUT LINE 1                          00289000
+*                                                                       00290000
+.*  0P..A   : OPINT                                                     00291000
+.*  0P..I_P : PASSBK OR RECONLY                                         00292000
+.*  0P..I_I : IGNERR+SUCCESS                                            00293000
+.*  0P..I_R : RTYERR+SUCCESS                                            00294000
+.*  0P..I_C : ELSE                                                      00295000
+.*  0P..D_IR: RTYERR+IGNERR                                             00296000
+.*  0P..D_I : IGNERR                                                    00297000
+.*  0P..D_R : RTYERR                                                    00298000
+.*                                                                      00299000
+EMSG0400 TM    ERQFLG1,OPINT      OPERATOR INTERV. REQUIRED?            00300000
+         BO    EMSG0420           YES, ACTION TYPE MESSAGE              00301000
+*                                                                       00302000
+         MVI   EMSOACT,C'I'       ASSUME 0P..I_P MESSAGE                00303000
+         MVI   EMSOTARG,C'P'                                            00304000
+         TM    ERQFLG1,RECONLY    SYSTEM TASK RECONLY REQUEST?          00305000
+         BO    EMSG0800           YES, GIVE 0P..I_P MESSAGE             00306000
+*                                                                       00307000
+         MVI   EMSOTARG,C'I'      ASSUME 0P..I_I MESSAGE                00308000
+         TM    ERQFLG1,SUCCESS+IGNERR    0P..I_I MESSAGE?               00309000
+         BO    EMSG0800           YES, GIVE 0P..I_I MESSAGE             00310000
+*                                                                       00311000
+         MVI   EMSOTARG,C'R'      ASSUME 0P..I_R MESSAGE                00312000
+         TM    ERQFLG1,SUCCESS    0P..I_R MESSAGE?                      00313000
+         BO    EMSG0800           YES, GIVE 0P..I_R MESSAGE             00314000
+*                                                                       00315000
+         MVI   EMSOTARG,C'C'      ASSUME 0P..I_C MESSAGE                00316000
+         CLI   ERQMSG1,EMSNOPMS   DEVICE NOT OPERATIONAL?               00317000
+         BE    EMSG0410           YES, ACTION TYPE MESSAGE              00318000
+         CLI   ERQCSW1+5,X'FE'    EXCEPTIONAL CONDITION?                00319000
+         BE    EMSG0430           YES                                   00320000
+         TM    ERQCSW1+5,X'30'    PROGRAM OR PROTECTION CHECK?          00321000
+         BNZ   EMSG0800           YES, GIVE 0P..I_C MESSAGE             00322000
+         B     EMSG0430                                                 00323000
+*                                                                       00324000
+EMSG0410 OI    ERQFLG1,OPINT      SET INTERV. REQUIRED FLAG             00325000
+EMSG0420 MVI   EMSOACT,C'A'       SET UP 0P..A MESSAGE                  00326000
+         MVI   EMSOTARG,C' '                                            00327000
+         B     EMSG0800           GIVE 0P..A MESSAGE                    00328000
+*                                                                       00329000
+.* ON ENTRY: 0P..I_C                                                    00330000
+EMSG0430 TM    ERQFLG1,PASSBK     USER WANTS RETURN?                    00331000
+         BO    EMSG0480           YES, POST DISASTER ERROR AND          00332000
+*                                 GIVE 0P..I_P MESSAGE                  00333000
+         LTR   R1,R1              USER CCB AVAILABLE?                   00334000
+         BZ    EMSG0450           NO                                    00335000
+         TM    CCBCOM1,EMSACCUN   CCB ACCEPTS DISASTER ERROR?           00336000
+         BO    EMSG0480           YES, POST DISASTER ERROR AND          00337000
+*                                 GIVE 0P..I_P MESSAGE                  00338000
+EMSG0450 TM    ERQFLG1,IGNERR+RTYERR   RETRY OR IGNORE ALLOWED?         00339000
+         BZ    EMSG0470           NO, GIVE INFORMATION MESSAGE          00340000
+         MVI   EMSOTARG,C'I'      ASSUME 0P..I_I MESSAGE                00341000
+         LTR   R1,R1              USER CCB AVAILABLE?                   00342000
+         BZ    EMSG0800           NO, GIVE 0PI_I MESSAGE                00343000
+         MVI   EMSOACT,C'D'       ASSUME 0P..D_I MESSAGE                00344000
+         TM    ERQFLG1,IGNERR     IGNORE ALLOWED?                       00345000
+         BO    EMSG0460           YES                                   00346000
+         MVI   EMSOTARG,C' '      IT MUST BE 0P..D__R MESSAGE           00347000
+EMSG0460 TM    ERQFLG1,RTYERR     RETRY ALLOWED?                        00348000
+         BZ    EMSG0800           NO, GIVE 0P..D_I MSG                  00349000
+         MVI   EMSOTAR2,C'R'      SET UP 0P..D_IR OR                    00350000
+         B     EMSG0800           0P..D__R MESSAGE                      00351000
+*                                                                       00352000
+.* ON ENTRY: 0P..I_C                                                    00353000
+EMSG0470 LTR   R1,R1              USER CCB AVAILABLE?                   00354000
+         BZ    EMSG0490           NO, GIVE 0P..I_I MESSAGE              00355000
+*        TM    CCBCOM1,EMSACCUN   USER ACCEPTS CANCELATION?    @D61CDJK 00356000
+*        BZ    EMSG0800           YES, GIVE 0P..I_C MESSAGE    @D61CDJK 00357000
+         B     EMSG0800           GIVE 0P..I_C MESSAGE         @D61CDJK 00358000
+*                                                                       00359000
+EMSG0480 OI    CCBCOM1,DISERR     POST DISASTER ERROR IN CCB            00360000
+         MVI   EMSOTARG,C'P'      SET UP 0P..I_P MESSAGE                00361000
+         B     EMSG0800           GIVE 0P..I_P MESSAGE                  00362000
+*                                                                       00363000
+EMSG0490 MVI   EMSOTARG,C'I'      SET UP 0P..I_I MESSAGE                00364000
+*                                                                       00365000
+* DETERMINE NUMBER OF OUTPUT LINES TO BE PRINTED                        00366000
+*                                                                       00367000
+.* OUTPUT LINE 1 IS ALWAYS PRINTED WITH LINE LENGTH 30.                 00368000
+.* OUTPUT LINE 2 IS NOT PRINTED IN CASE OF AN UNEXPECTED                00369000
+.*               INTERVENTION REQUIRED CONDITION AND IN CASE            00370000
+.*               OF AN INTERVENTION REQUIRED CONDITION ON               00371000
+.*               ANOTHER DEVICE THAN A 3800 PRINTER                     00372000
+.*               THE REGULAR LINE LENGTH IS 34 BUT IS 50 IN             00373000
+.*               CASE OF UNIT CHECKS ON FBA, CKD OR ECKD                00374000
+.*               DEVICES.                                               00375000
+.* OUTPUT LINE 3 IS ALWAYS PRINTED IN CASE OF UNIT CHECK                00376000
+.*               ERRORS.                                                00377000
+.*               THE LINE LENGTH DEPENDS ON THE NUMBER OF               00378000
+.*               SENSE BYTES. THE LINE LENGTH IS 52 IN CASE             00379000
+.*               OF SENSE DATA WITH MORE THAN 24 BYTES. THE             00380000
+.*               LINE LENGTH IS 63 IN CASE OF A UNIT CHECK              00381000
+.*               ON A 3800 PRINTER.                                     00382000
+.* OUTPUT LINE 4 IS PRINTED IF THE LENGTH OF SENSE DATA                 00383000
+.*               EXCEEDS 24 BYTES                                       00384000
+.*               THE LINE LENGTH DEPENDS ON THE NUMBER OF               00385000
+.*               REMAINING SENSE BYTES.                                 00386000
+EMSG0800 OI    EMSPRTC,EMSPRT2+EMSPRT3+EMSPRT4  ASSUME PRINTING@D61CDJK 00387000
+*                                 OF OUTPUT LINES 1,2,3 AND 4  @D61CDJK 00388000
+         TM    ERQCSW1+4,X'02'    UNIT CHECK?                  @D61CDJK 00389000
+         BZ    EMSG0900           NO, JUST PRINT TWO LINES     @D61CDJK 00390000
+* CALCULATE NUMBER OF RELEVANT SENSE BYTES TO BE PRINTED       @D61CDJK 00391000
+         SLR   RF,RF              CLEAR WORK REGISTER          @D61CDJK 00392000
+         ICM   RF,3,EMSADDR3      GET LENGTH OF OUTPUT LINE 3  @D61CDJK 00393000
+         SLR   RD,RD              CLEAR WORK REGISTER                   00394000
+         ICM   RD,1,EMSLSNS       GET NUMBER OF RETRIEVED BYTES         00395000
+         BNZ   EMSG0820           SENSE DATA IS AVAILABLE               00396000
+         LA    RD,1               SET SIGNIFICANT SENSE TO 1.. @D61YDJK 00397000
+         STCM  RD,1,EMSLSNS         AND PRESERVE NEW LENGTH    @D61YDJK 00398000
+EMSG0820 ICM   R9,1,EMSLSNS       DETERMINE..                  @D61YDJK 00399000
+         SRL   R9,2                 NUMBER OF..                @D61YDJK 00400000
+         TM    EMSLSNS,X'03'        BLANKS TO..                @D61YDJK 00401000
+         BZ    EMSG0830             BE INSERTED..              @D61YDJK 00402000
+         LA    R9,1(R9)             AND OBTAIN..               @D61YDJK 00403000
+EMSG0830 LA    RD,L'EMSPRFX3(RD,RD) REQUIRED LENGTH..          @D61YDJK 00404000
+         AR    RD,R9                OF ACTUAL LINE             @D61YDJK 00405000
+         SR    RD,RF              ACTUAL LINE FITS IN LINE 3?  @D61CDJK 00406000
+         BP    EMSG0840           NO, OUTPUT LINE 4 IS NEEDED  @D61CDJK 00407000
+* PRINT ONLY 3 OUTPUT LINES                                    @D61CDJK 00408000
+         NI    EMSPRTC,X'FF'-EMSPRT4 PRINT ONLY 3 OUTPUT LINES @D61CDJK 00409000
+         AR    RD,RF              RESTORE LENGTH OF ACTUAL LINE@D61CDJK 00410000
+         STH   RD,EMSADDR3        UPDATE LENGTH OF LINE 3      @D61CDJK 00411000
+         B     EMSG0860                                        @D61CDJK 00412000
+* PRINT ALL 4 OUTPUT LINES                                     @D61CDJK 00413000
+EMSG0840 LA    RD,L'EMSPRFX3(,RD) LENGTH OF ACTUAL LINE        @D61CDJK 00414000
+         SR    RD,RF              ACTUAL LINE FITS IN LINE 4?  @D61CDJK 00415000
+         BP    EMSG0860           NO (SHOULD BE IMPOSSIBLE)    @D61CDJK 00416000
+         AR    RD,RF              RESTORE LENGTH OF ACTUAL LINE@D61CDJK 00417000
+         STH   RD,EMSADDR4        UPDATE LENGTH OF LINE 4      @D61CDJK 00418000
+EMSG0860 CLI   ERQMSG1,EMSUNXIR   UNEXPECTED INTERV. REQUIRED?          00419000
+         BE    EMSG0880           YES, PRINT ONLY 1 LINE                00420000
+         CLI   ERQMSG1,EMSINTV    INTERVENTION REQUIRED?                00421000
+         BNE   EMSG0920           NO, PRINT 3 OR 4 LINES                00422000
+         CLI   PUBDEVTY,T3800     3800 PRINTER?                         00423000
+         BE    EMSG0920           YES, PRINT 3 OR 4 LINES               00424000
+         CLI   PUBDEVTY,TUNSPZ    UNSUPPORTED DEVICE?                   00425000
+         BE    EMSG0920           YES, PRINT 3 OR 4 LINES               00426000
+* PRINT ONLY 1 OUTPUT LINE                                     @D61CDJK 00427000
+EMSG0880 NI    EMSPRTC,X'FF'-EMSPRT2-EMSPRT3-EMSPRT4           @D61CDJK 00428000
+         B     EMSG0920                                                 00429000
+* PRINT ONLY 2 OUTPUT LINES                                    @D61CDJK 00430000
+EMSG0900 NI    EMSPRTC,X'FF'-EMSPRT3-EMSPRT4                   @D61CDJK 00431000
+*                                                                       00432000
+* SET UP THE LENGTH OF OUTPUT LINE 2                                    00433000
+*                                                                       00434000
+EMSG0920 TM    EMSPRTC,EMSPRT2    PRINT 2ND LINE?              @D61CDJK 00435000
+         BZ    EMSG0950           NO, LINE LENGTH IS OK                 00436000
+         TM    ERQCSW1+4,X'02'    UNIT CHECK?                           00437000
+         BZ    EMSG0950           NO, LINE LENGTH IS OK                 00438000
+         CLI   PUBDEVTY,TFBA      FBA DEVICE?                           00439000
+         BE    EMSG0940           YES, EXTEND OUTPUT LINE 2             00440000
+         TM    PUBDEVTY,TCKD      CKD DEVICE?                           00441000
+         BNO   EMSG0950           NO, LINE LENGTH IS OK                 00442000
+         TM    PUBDEVTY,X'F0'-TCKD    ITS REALLY A CKD DEVICE?          00443000
+         BNZ   EMSG0950           NO, LINE LENGTH IS OK                 00444000
+EMSG0940 MVI   EMSADDR2+1,50      INCREASE LENGTH OF LINE 2    @D61CDJK 00445000
+*                                                                       00446000
+* IN CASE OF A-TYPE MESSAGES, CHECK IF DEVICE BECAME READY              00447000
+*                                                                       00448000
+EMSG0950 CLI   EMSOACT,C'A'       ACTION TYPE MESSAGE?                  00449000
+         BNE   EMSG1000           NO                                    00450000
+         SLR   RD,RD              CLEAR WORK REGISTER                   00451000
+         IC    RD,PUBCHQPT        GET LOW ORDER CHANQ INDEX             00452000
+         TM    IJBIOFLG,IJBIOX80  MORE THAN 254 DEVICES?                00453000
+         BZ    EMSG0960           NO                                    00454000
+         ICM   RD,2,PUBCHQPH      GET HIGH ORDER CHANQ INDEX            00455000
+EMSG0960 SLL   RD,CHQSLEN         MULTIPLY WITH ENTRY LENGTH            00456000
+         A     RD,ACHANQ          ADDRESS OF RELATED CHANQ              00457000
+         ICM   RD,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00458000
+         USING CHQADR,RD          CHANQ BASE POINTER                    00459000
+         CLM   RD,7,EMSCHQA+1     STILL OUR REQUEST QUEUED?             00460000
+         BE    EMSG0970           YES                                   00461000
+*                                                                       00462000
+         NI    CHQFLG1,X'FF'-CHQCSBSY   RESET SAVED BUSY BIT            00463000
+         DROP  RD                 RELEASE CHANQ BASE POINTER            00464000
+         B     EMSG1000                                                 00465000
+*                                                                       00466000
+EMSG0970 TM    PUBCSFLG,DEVBSY    DEVICE HAS BEEN MADE READY?           00467000
+         BO    EMSG0990           NO, INDICATE INTERV. REQUIRED         00468000
+         CLI   ERQMSG1,EMSINTV    INTERV. REQUIRED MESSAGE?             00469000
+         BNE   EMSG0990           NO, INDICATE INTERV. REQUIRED         00470000
+         CLI   PUBDEVTY,TUNSPZ    SUPPORTED DEVICE?                     00471000
+         BNE   EMSG1300           YES, DO NOT PRINT MESSAGE             00472000
+.* IT IS AN UNSUPPORTED DEVICE                                          00473000
+         MVI   EMSOACT,C'I'       SET UP 0P..I_R MESSAGE                00474000
+         MVI   EMSOTARG,C'R'                                            00475000
+         B     EMSG1000           GIVE 0PI..I_R MESSAGE                 00476000
+*                                                                       00477000
+EMSG0990 OI    PUBCSFLG,OPINTV    INDICATE INTERVENT. REQUIRED          00478000
+         NI    PUBCSFLG,X'FF'-DEVBSY    NO NEED TO HOLD BUSY            00479000
+*                                                                       00480000
+* PREPARE SENSE BYTES FOR PRINTING                                      00481000
+*                                                                       00482000
+EMSG1000 TM    EMSPRTC,EMSPRT3    PRINT 3RD LINE?              @D61CDJK 00483000
+         BZ    EMSG1100           NO                                    00484000
+         LA    RD,ERQSNS1         ADDRESS OF SENSE INFO                 00485000
+         LA    RC,EMSOSNS3        ADDRESS OF PRINT AREA        @D61CDJK 00486000
+         LA    RF,6               PROVIDE TO PRINT 24 BYTES    @D61YDJK 00487000
+         BAL   R9,EMSGUNPK        UNPACK FIRST 24 SENSE BYTES           00488000
+         LA    RF,3               PROVIDE TO PRINT 12 MORE     @D61YDJK 00489000
+         LA    RC,EMSOSNS4        ADDRESS OF PRINT AREA        @D61CDJK 00490000
+         BAL   R9,EMSGUNPK        UNPACK 12 MORE SENSE BYTES            00491000
+*                                                                       00492000
+* VERIFY LENGTH OF OUTPUT LINE 3                                        00493000
+*                                                                       00494000
+         CLI   PUBDEVTY,T3800     3800 PRINTER?                         00495000
+         BNE   EMSG1100           NO                                    00496000
+         MVI   EMSADDR3+1,69      INCREASE LENGTH OF LINE 3    @D61YDJK 00497000
+         SR    RF,RF              CLEAR WORK REGISTER                   00498000
+         ICM   RF,3,ERQSNS1+20    GET SENSE BYTES 20 + 21               00499000
+         CVD   RF,EMSALIGN        CONVERT PAGE COUNT TO DECIMAL@D61CDJK 00500000
+         UNPK  EMSLINE3+64(5),EMSALIGN+5(3)    UNPACK TO PRINT @D61YDJK 00501000
+         OI    EMSLINE3+68,C'0'                CHANGE SIGN     @D61YDJK 00502000
+         MVC   EMSLINE3+58(6),EMSPGMSG         INSERT ' PAGE=' @D61YDJK 00503000
+*                                                                       00504000
+* OVERRULE ERP IF NECCESSARY                                            00505000
+*                                                                       00506000
+EMSG1100 LTR   R1,R1              USER IS ALREADY POSTED?               00507000
+         BZ    EMSG1200           YES                                   00508000
+         TM    JCSW5,JCLACTIV     JOB CONTROL IS PROCESSING?            00509000
+         BZ    EMSG1110           NO                                    00510000
+         CLI   EMSOTARG,C'C'      ERP IS AIMING CANCEL?                 00511000
+         BNE   EMSG1110           NO                                    00512000
+         CLI   CHQSLUB,EMSLSTID   REQUEST IS FOR A UR-DEVICE?           00513000
+         BH    EMSG1110           NO                                    00514000
+         NI    JCSW1,X'DF'        INDICATE READ FROM SYSLOG             00515000
+         B     EMSG1120           OVERRULE ERP                          00516000
+*                                                                       00517000
+EMSG1110 CLI   EMSOACT,C'I'       INFORMATION TYPE MESSAGE?             00518000
+         BNE   EMSG1200           NO, PRINT MESSAGE                     00519000
+         CLI   EMSOTARG,C'C'      ERP IS AIMING CANCEL?                 00520000
+         BNE   EMSG1200           NO, PRINT MESSAGE                     00521000
+         TM    CCBCOM1,EMSACCUN   USER ACCEPTS CANCELATION?             00522000
+         BZ    EMSG1200           NO, PRINT MESSAGE                     00523000
+*                                                                       00524000
+EMSG1120 OI    CCBCOM1,DISERR     POST DISASTER ERROR IN CCB            00525000
+         MVI   EMSOTARG,C'P'      OVERRULE ERP                 @D61CDJK 00526000
+*                                                              @D61CDJK 00527000
+* PREPARE WTO MESSAGE WRITER REQUEST                           @D61CDJK 00528000
+*                                                              @D61CDJK 00529000
+EMSG1200 ST    R1,EMSUCCB         SAVE USER CCB ADDRESS        @D61CDJK 00530000
+         LA    R7,EMSADDR1        SET ADDRESS OF OUTPUT LINE 1 @D61CDJK 00531000
+*                                                              @D61CDJK 00532000
+         TM    EMSPRTC,EMSPRT2    PRINT 2ND OUTPUT LINE?       @D61CDJK 00533000
+         BNZ   EMSG1203           YES                          @D61CDJK 00534000
+         LA    R8,EMSEMPTY        TAKE LINE LENGTH..           @D61CDJK 00535000
+         LR    R9,R8                ZERO FOR OUPUT..           @D61CDJK 00536000
+         LR    RA,R8                LINES 2, 3 AND 4           @D61CDJK 00537000
+         B     EMSG1220                                        @D61CDJK 00538000
+EMSG1203 LA    R8,EMSADDR2        SET ADDRESS OF OUTPUT LINE 2 @D61CDJK 00539000
+*                                                              @D61CDJK 00540000
+         TM    EMSPRTC,EMSPRT3    PRINT 3RD OUTPUT LINE?       @D61CDJK 00541000
+         BNZ   EMSG1205           YES                          @D61CDJK 00542000
+         LA    R9,EMSEMPTY        TAKE ZERO LENGTH LINE..      @D61CDJK 00543000
+         LR    RA,R9                FOR OUTPUT LINES 3 AND 4   @D61CDJK 00544000
+         B     EMSG1220                                        @D61CDJK 00545000
+EMSG1205 LA    R9,EMSADDR3        SET UP ADDRESS OF 3RD LINE   @D61CDJK 00546000
+*                                                              @D61CDJK 00547000
+         TM    EMSPRTC,EMSPRT4    PRINT 4TH OUTPUT LINE?       @D61CDJK 00548000
+         BNZ   EMSG1210           YES                          @D61CDJK 00549000
+         LA    RA,EMSEMPTY        GET ZERO LENGTH LINE         @D61CDJK 00550000
+         B     EMSG1220                                        @D61CDJK 00551000
+EMSG1210 LA    RA,EMSADDR4        SET UP ADDRESS OF 4TH LINE   @D61CDJK 00552000
+*                                                              @D61CDJK 00553000
+* WRITE AN ACTION-TYPE MESSAGE, IF APPLICABLE                  @D61CDJK 00554000
+*                                                              @D61CDJK 00555000
+EMSG1220 CLI   EMSOACT,C'A'       ACTION TYPE MESSAGE?         @D61CDJK 00556000
+         BNE   EMSG1250           NO                           @D61CDJK 00557000
+         BAL   RC,EMSGWTO2        ISSUE WTO REQUEST            @D61CDJK 00558000
+* SAVE MESSAGE ID FOR DOM REQUEST TO BE ISSUED WHEN DEVICE     @D61CDJK 00559000
+* HAS BECOME READY                                             @D61CDJK 00560000
+         LTR   R1,R1              MESSAGE ID VALID?            @D61CDJK 00561000
+         BZ    EMSG1240           NO                           @D61CDJK 00562000
+         LR    RC,R3              COPY PUB POINTER             @D61CDJK 00563000
+         SH    RC,YPUBTAB         GET OFFSET IN PUBTAB         @D61CDJK 00564000
+         SRL   RC,1               DIVIDE BY TWO                @D61CDJK 00565000
+         A     RC,APBXAREA        ADDRESS OF PUBX ADDRESSES    @D61CDJK 00566000
+         L     RC,0(RC)           GET PUBX POINTER             @D61CDJK 00567000
+         USING PBXADR,RC          DECLARE PUBX BASE            @D61CDJK 00568000
+         ST    R1,PBXDOMID        STORE DOM MESSAGE ID IN PUBX @D61CDJK 00569000
+         DROP  RC                 RELEASE PUBX BASE            @D61CDJK 00570000
+         LR    RC,R3              COPY PUB POINTER             @D61CDJK 00571000
+         SH    RC,YPUBTAB         GET OFFSET IN PUBTAB         @D61CDJK 00572000
+         SRL   RC,PUBSLEN-2       ADJUST FOR PUB2 INDEX        @D61CDJK 00573000
+         A     RC,APB2AREA        GET PUB2 INDEX FROM TABLE    @D61CDJK 00574000
+         L     RC,0(,RC)          GET ADDRESS OF PUB2          @D61CDJK 00575000
+         USING PUB2ADR,RC         DECLARE PUB2 BASE            @D61CDJK 00576000
+         OI    P2FLAGS,P2DOMSV    ERP INTERCEPT BEFORE SIO     @D61CDJK 00577000
+         DROP  RC                 RELEASE PUB2 BASE            @D61CDJK 00578000
+*                                                              @D61CDJK 00579000
+EMSG1240 L     R1,EMSUCCB         RESTORE USER CCB ADDRESS     @D61CDJK 00580000
+         B     EMSG1300                                        @D61CDJK 00581000
+*                                                              @D61CDJK 00582000
+* WRITE AN INFORMATION-TYPE MESSAGE, IF APPLICABLE             @D61CDJK 00583000
+*                                                              @D61CDJK 00584000
+EMSG1250 CLI   EMSOACT,C'I'       INFORMATION TYPE MESSAGE?    @D61CDJK 00585000
+         BNE   EMSG1270           NO                           @D61CDJK 00586000
+         TM    EMSPRFL,ERQHIGHL   MESSAGE MUST BE HIGHLIGHTED? @D63HDJK 00587000
+         BZ    EMSG1260           NO                           @D63HDJK 00588000
+         BAL   RC,EMSGWTO2                                     @D63HDJK 00589000
+         L     R1,EMSUCCB         RESTORE USER CCB ADDRESS     @D63HDJK 00590000
+         B     EMSG1400                                        @D63HDJK 00591000
+*                                                              @D63HDJK 00592000
+EMSG1260 BAL   RC,EMSGWTO1                                     @D63HDJK 00593000
+         L     R1,EMSUCCB         RESTORE USER CCB ADDRESS     @D61CDJK 00594000
+         B     EMSG1400                                        @D61CDJK 00595000
+*                                                              @D61CDJK 00596000
+* WRITE A DECISION-TYPE MESSAGE                                @D61CDJK 00597000
+*                                                              @D61CDJK 00598000
+EMSG1270 BAL   RC,EMSGWTO1        ISSUE WTO REQUEST            @D61CDJK 00599000
+         L     R1,EMSUCCB         RESTORE USER CCB ADDRESS     @D61CDJK 00600000
+         TM    IJBOPMOD,IJBOPSAC  OPERATING SELFACTING?                 00601000
+         BZ    EMSG1275           NO, ISSUE A WTOR REQUEST              00602000
+* SYSTEM IS RUNNING IN SELFACTING MODE                                  00603000
+         MVI   EMSOACT,C'I'       SET UP 0P..I_C MESSAGE                00604000
+         MVI   EMSOTARG,C'C'                                            00605000
+         MVI   EMSOTAR2,C' '                                            00606000
+         B     EMSGXCAN                                                 00607000
+EMSG1275 CLI   EMSOTARG,C'I'      0P..D_IX MESSAGE?            @D61CDJK 00608000
+         BE    EMSG1280           YES                          @D61CDJK 00609000
+* IT'S A 0P..D__R MESSAGE                                      @D61CDJK 00610000
+         LA    R7,EMSADD5R        GET WTOR OUTPUT LINE ADDRESS @D61CDJK 00611000
+         UNPK  EMSLIN5R+2(3),ERQMSG1(2)  REPEAT MESSAGE NUMBER @D61CDJK 00612000
+         MVI   EMSLIN5R+4,C'D'           RESTORE DECISION ID   @D61CDJK 00613000
+         B     EMSG1290           ISSUE WTOR REQUEST           @D61CDJK 00614000
+EMSG1280 CLI   EMSOTAR2,C'R'      0P..D_IR MESSAGE?            @D61CDJK 00615000
+         BE    EMSG1285           YES                          @D61CDJK 00616000
+* IT'S A 0P..D_I MESSAGE                                       @D61CDJK 00617000
+         LA    R7,EMSADD5I        GET WTOR OUTPUT LINE ADDRESS @D61CDJK 00618000
+         UNPK  EMSLIN5I+2(3),ERQMSG1(2)  REPEAT MESSAGE NUMBER @D61CDJK 00619000
+         MVI   EMSLIN5I+4,C'D'           RESTORE DECISION ID   @D61CDJK 00620000
+         B     EMSG1290           ISSUE WTOR REQUEST           @D61CDJK 00621000
+* IT'S A 0P..D_IR MESSAGE                                      @D61CDJK 00622000
+EMSG1285 LA    R7,EMSADD5D        GET WTOR OUTPUT LINE ADDRESS @D61CDJK 00623000
+         UNPK  EMSLIN5D+2(3),ERQMSG1(2)  REPEAT MESSAGE NUMBER @D61CDJK 00624000
+         MVI   EMSLIN5D+4,C'D'           RESTORE DECISION ID   @D61CDJK 00625000
+EMSG1290 ST    R1,EMSUCCB         SAVE USER CCB ADDRESS        @D61CDJK 00626000
+         BAL   RC,EMSGWTOR        ISSUE WTOR RQUEST            @D61CDJK 00627000
+         L     R1,EMSUCCB         RESTORE USER CCB ADDRESS     @D61CDJK 00628000
+         B     EMSG1500                                                 00629000
+*                                                                       00630000
+* EXIT HANDLING FOR ACTION-TYPE MESSAGES                                00631000
+*                                                                       00632000
+EMSG1300 TM    ERQFLG1,PASSBK     USER WANTS RETURN?                    00633000
+         BO    EMSGXIGN           YES                                   00634000
+         B     EMSG1420           NO                                    00635000
+*                                                                       00636000
+* EXIT HANDLING FOR INFORMATION-TYPE MESSAGES                           00637000
+*                                                                       00638000
+EMSG1400 CLI   EMSOTARG,C'R'      0P..X_R MESSAGE?                      00639000
+         BE    EMSGXRTY           YES                                   00640000
+         CLI   EMSOTARG,C'C'      0P..X_C MESSAGE?                      00641000
+         BE    EMSGXCAN           YES                                   00642000
+         NI    ERQFLG1,X'FF'-RTYERR     FORCE IGNORE EXIT               00643000
+EMSG1420 TM    ERQFLG1,SUCCESS     RETRY IS ALREADY INITIATED?          00644000
+         BZ    EMSGXRTY           NO                                    00645000
+         NI    ERQCSW1+4,X'FF'-X'02'    SWITCH OFF UNIT CHECK           00646000
+         B     EMSGXIGN                                                 00647000
+*                                                                       00648000
+* EXIT HANDLING FOR DECISION-TYPE MESSAGES                              00649000
+*                                                                       00650000
+EMSG1500 CLC   EMSREPLY(6),EMSBLANK  RESPONSE WAS EOB?                  00651000
+         BZ    EMSG1510              YES                                00652000
+         OC    EMSREPLY(6),EMSBLANK  FORCE UPPER CASE CHAR.             00653000
+         CLC   EMSREPLY(5),EMSRETRY  RESPONSE WAS RETRY?                00654000
+         BNE   EMSG1520           NO                                    00655000
+* RESPONSE WAS 'RETRY' OR EOB                                           00656000
+EMSG1510 TM    ERQFLG1,RTYERR     DEVICE IS RETRIABLE?                  00657000
+         BO    EMSGXRTY           YES                                   00658000
+EMSG1520 CLC   EMSREPLY(6),EMSIGN RESPONSE WAS IGNORE?                  00659000
+         BNE   EMSG1530           NO                                    00660000
+* RESPONSE WAS 'IGNORE'                                                 00661000
+         TM    ERQFLG1,IGNERR     IGNORE IS ALLOWED?                    00662000
+         BO    EMSGXIGN           YES                                   00663000
+EMSG1530 CLC   EMSREPLY(6),EMSCANC  RESPONSE WAS CANCEL?                00664000
+         BNE   EMSG1550           NO                                    00665000
+* RESPONSE WAS 'CANCEL'                                                 00666000
+         L     RF,ACANCEL         GET CONDITIONAL CANCEL EXIT           00667000
+         SH    RF,EMSH2           USE ERR19 INSTEAD                     00668000
+         B     EMSGXTST                                                 00669000
+* ISSUE INVALID RESPONSE MESSAGE                                        00670000
+EMSG1550 UNPK  EMSLINEI+2(3),ERQMSG1(2)  REPEAT MESSAGE NUMBER @D61CDJK 00671000
+         MVI   EMSLINEI+4,C'D'           RESTORE DECISION ID   @D61CDJK 00672000
+         LA    R7,EMSADDRI        SET ADDRESS OF MESSAGE       @D61CDJK 00673000
+         B     EMSG1290           ISSUE NEW WTOR REQUEST                00674000
+*                                                                       00675000
+* COMMON EXIT HANDLING FOR ALL MESSAGES                                 00676000
+*                                                                       00677000
+EMSGXRTY LTR   R1,R1              RETRY IS POSSIBLE?                    00678000
+         BZ    EMSGXIGN           NO                                    00679000
+         L     RF,YRETRY          GET RETRY EXIT ADDRESS                00680000
+         TM    ERQFLG1,RTYERR     RETRY IS ALLOWED?                     00681000
+         BNZ   EMSGXTST           YES, TAKE RETRY EXIT                  00682000
+EMSGXIGN L     RF,YIGNORE         GET IGNORE EXIT ADDRESS      @D61CDJK 00683000
+         B     EMSGXTST           TAKE EXIT                    @D61CDJK 00684000
+EMSGXCAN L     RF,ACANCEL         GET CANCEL EXIT ADDRESS      @D61CDJK 00685000
+EMSGXTST TM    EMSCALL,EMSSGTAP   SGTAP WAS CALLER?            @D61CDJK 00686000
+         BZ    EMSGXCA2           NO, SUPERVISOR EXIT          @D61CDJK 00687000
+         NI    EMSCALL,X'FF'-EMSSGTAP     RESET CONTROL FLAG   @D61CDJK 00688000
+         L     RE,EMSACALL        RESTORE RETURN ADDRESS       @D61CDJK 00689000
+         AMODESW RETURN,AMODE=31,REG=(RE) YES, RETURN TO SGTAP @D61CDJK 00690000
+*                                                              @D61CDJK 00691000
+EMSGXCA2 MVC   X'40'(8,0),ERQCSW1 RESTORE ORIGINAL CSW         @D61CDJK 00692000
+         MVI   FTCHNM-1,C'R'      NEXT TRANSIENT TO BE FETCHED @D61CDJK 00693000
+         MVI   FTCHNM,C'A'        IS $$ABERRA                  @D61CDJK 00694000
+         MVC   X'BA'(2,0),0(3)    SET UP CUU IN LOW CORE       @D61CDJK 00695000
+         L     RC,ERPBASE         LOAD SGERP BASE POINTER      @D61CDJK 00696000
+         USING SGERP,RC           SGERP BASE POINTER           @D61CDJK 00697000
+         B     ERPEXIT                                         @D61CDJK 00698000
+         DROP  RC                 RELEASE SGERP BASE           @D61CDJK 00699000
+*                                                                       00700000
+* SUBROUTINE THAT UNPACKS 6 SENSE BYTES                                 00701000
+*                                                                       00702000
+* INPUT:  RD = ADDRESS OF 1ST SENSE BYTE TO UNPACK                      00703000
+*         RC = ADDRESS OF PRINT AREA                                    00704000
+*         RF = NUMBER OF SENSE BYTE PACKETS                             00705000
+*                                                                       00706000
+EMSGUNPK MVI   0(RC),X'40'        INSERT A BLANK CHARACTER     @D61YDJK 00707000
+         UNPK  1(9,RC),0(5,RD)    UNPK 4 SENSE BYTES           @D61YDJK 00708000
+         TR    1(8,RC),EMSTRTAB-X'F0'  TRANSLATE BYTES         @D61YDJK 00709000
+         LA    RD,4(RD)           INCREMENT SENSE BYTE POINTER @D61YDJK 00710000
+         LA    RC,9(RC)           INCREMENT PRINT LINE POINTER @D61YDJK 00711000
+         BCT   RF,EMSGUNPK        LOOP UNTIL ALL PACKETS DONE           00712000
+         BR    R9                 RETURN TO MAIN PATH                   00713000
+*                                                                       00714000
+* SUBROUTINE THAT ISSUES A WTOR REQUEST WITH DESCRIPTOR CODE 2          00715000
+* (IMMEDIATE ACTION REQUIRED - HIGHLIGHTED) AND ROUTING CODE 1          00716000
+* (MASTER CONSOLE ACTION). THE MESSAGE IS ALSO ROUTED AS INFO           00717000
+* TYPE MESSAGE TO THE PROBLEM PROGRAMMER.                               00718000
+* THIS IS ONLY APPLICABLE FOR THE OPERATOR RESPONSE LINE.               00719000
+* THE HIGHLIGHTING IS RESETTED AFTER THE OPERATOR REPLY.                00720000
+*                                                                       00721000
+* INPUT:  R7 = ADDRESS OF OUTPUT LINE                                   00722000
+*         RC = RETURN ADDRESS                                           00723000
+*                                                                       00724000
+EMSGWTOR MVC   EMSREPLY(6),EMSBLANK    CLEAR INPUT AREA        @D61CDJK 00725000
+         WTOR  TEXT=((R7),EMSREPLY,EMSRPLYL,EMSECB),           @D61CDJKX00726000
+               ROUTCDE=(1),DESC=(2)                            @D61CDJK 00727000
+         LTR   RF,RF              WTOR RETURN CODE IS 0?       @D61CDJK 00728000
+         BNZ   EMSG1700           NO, WTOR CALL WAS INCORRECT  @D61CDJK 00729000
+         WAIT  EMSECB             WAIT FOR WTOR COMPLETE       @D61CDJK 00730000
+         XC    EMSECB,EMSECB      RESET ECB                    @D61CDJK 00731000
+         BR    RC                 YES, RETURN TO MAIN PATH     @D61CDJK 00732000
+         LTORG                                                 @D61CDJK 00733000
+*                                                                       00734000
+* SUBROUTINE THAT ISSUES A WTO REQUEST WITH DESCRIPTOR CODE 3           00735000
+* (EVENTUAL ACTION REQUIRED) AND ROUTING CODES 2 AND 11 (MASTER         00736000
+* CONSOLE INFORMATION AND PROGRAMMER INFORMATION). THE MESSAGE          00737000
+* DOES NOT APPEAR HIGHLIGHTED.                                          00738000
+* THIS IS ONLY APPLICABLE FOR INFORMATION TYPE MESSAGES AND             00739000
+* THE INFORMATION PART OF A DECISION TYPE MESSAGE.                      00740000
+*                                                                       00741000
+* INPUT:  R7 = ADDRESS OF 1ST OUTPUT LINE                               00742000
+*         R8 = ADDRESS OF 2ND OUTPUT LINE                               00743000
+*         R9 = ADDRESS OF 3RD OUTPUT LINE                               00744000
+*         RA = ADDRESS OF 4TH OUTPUT LINE                               00745000
+*         RC = RETURN ADDRESS                                           00746000
+*                                                                       00747000
+EMSGWTO1 WTO   TEXT=(((R7),D),((R8),D),((R9),D),((RA),DE)),    @D61CDJKX00748000
+               ROUTCDE=(2,11),DESC=(3)                         @D61CDJK 00749000
+         CH    RF,EMSH4           RETURN CODE GREATER THAN 4?  @D61CDJK 00750000
+         BNHR  RC                 NO, RETURN TO MAIN PATH      @D61CDJK 00751000
+         B     EMSG1700           WTO WAS CALLED INCORRECTLY   @D61CDJK 00752000
+*                                                                       00753000
+* SUBROUTINE THAT ISSUES A WTO REQUEST WITH DESCRIPTOR CODE 2           00754000
+* (IMMEDIATE ACTION REQUIRED - HIGHLIGHTED) AND ROUTING CODE 1          00755000
+* (MASTER CONSOLE ACTION). THE MESSAGE IS ALSO ROUTED AS INFO           00756000
+* TYPE MESSAGE TO THE PROBLEM PROGRAMMER.                               00757000
+* THIS IS ONLY APPLICABLE FOR ACTION TYPE MESSAGES AND         @D63HDJK 00758000
+* MESSAGES FOR SIM OR MIM ERROR CONDITIONS.                    @D63HDJK 00759000
+* THE HIGHLIGHTING IS RESETTED AFTER THE OPERATOR ACTION OR    @D63HDJK 00760000
+* AFTER THE OPERATOR HAS DELETED THE MESSAGE FROM THE CONSOLE. @D63HDJK 00761000
+*                                                                       00762000
+* INPUT:  R7 = ADDRESS OF 1ST OUTPUT LINE                               00763000
+*         R8 = ADDRESS OF 2ND OUTPUT LINE                               00764000
+*         R9 = ADDRESS OF 3RD OUTPUT LINE                               00765000
+*         RA = ADDRESS OF 4TH OUTPUT LINE                               00766000
+*         RC = RETURN ADDRESS                                           00767000
+*                                                                       00768000
+EMSGWTO2 WTO   TEXT=(((R7),D),((R8),D),((R9),D),((RA),DE)),    @D61CDJKX00769000
+               ROUTCDE=(1),DESC=(2)                            @D61CDJK 00770000
+         CH    RF,EMSH4           RETURN CODE GREATER THAN 4?  @D61CDJK 00771000
+         BH    EMSG1700           YES, WTO CALL WAS INCORRECT  @D61CDJK 00772000
+         BR    RC                 NO, RETURN TO MAIN PATH      @D61CDJK 00773000
+*                                                                       00774000
+EMSG1700 DS    0H                                              @D61CDJK 00775000
+         BR    RC                 RETURN NEVERTHELESS          @D61CDJK 00776000
+*                                                                       00777000
+         AGO   .NOSUP30                                        @D61CDJK 00778000
+*                                                                       00779000
+* SYSTEM ERROR ROUTINE FOR OLD MESSAGE WRITER TRANSIENTS                00780000
+*                                                                       00781000
+EMSG1700 XC    EMSBYT0(5),EMSBYT0 CLEAR BYTE 0 THROUGH 4                00782000
+         TM    ERQFLG1,OPINT      DECISION OR ACTION MESSAGE            00783000
+         BO    EMSG1710           ACTION TYPE MESSAGE                   00784000
+         MVI   EMSBYT1,C'D'       SET DECISION TYPE MESSAGE             00785000
+         B     EMSG1740                                                 00786000
+EMSG1710 TM    PUBCSFLG,OPINTV    HAS DEVICE BEEN READIED               00787000
+         BO    EMSG1720           NO, STILL INTERV REQUIRED             00788000
+         TM    ERQFLG1,PASSBK     DOES USER WANT RETURN                 00789000
+         BZ    EMSGXRTY           NO,  ====================>>>          00790000
+         B     EMSGXIGN                ====================>>>          00791000
+*                                                                       00792000
+EMSG1720 CLI   PUBDEVTY,T1052     DEVICE TYPE 1052                      00793000
+         BNE   EMSG1730           NO, SET UP ACTION BYTE                00794000
+         MVI   FTCHNM2,C'R'       LET $$ABERRW RING THE BELL            00795000
+         MVI   FTCHNM,C'W'                                              00796000
+         SVC   5                       ====================>>>          00797000
+*                                                                       00798000
+EMSG1730 MVI   EMSBYT1,C'A'       SET ACTION TYPE MESSAGE               00799000
+EMSG1740 MVC   EMSBYT0(1),ERQMSG1 MESSAGE NUMBER TO BYTE ZERO           00800000
+         MVC   EMSBYT2(2),PUBCHANN MOVE CHANNEL AND UNIT NUMBER         00801000
+         MVI   EMSBYT4,EMSTARGR   ASSUME RESPONSE RETRY                 00802000
+         TM    ERQFLG1,RTYERR     DEVICE IS RETRYABLE?                  00803000
+         BO    EMSG1760           YES                                   00804000
+         MVI   EMSBYT4,EMSTARGI   ASSUME RESPONSE IGNORE                00805000
+EMSG1760 STNSM EMSHWPSW,X'FF'     SAVE CURRENT DAT BIT                  00806000
+         OI    EMSHWPSW,X'03'     ALLOW INTERRUPTS TO OCCUR             00807000
+         LPSW  EMSHWPSW                ====================>>>          00808000
+*                                                                       00809000
+EMSEINTR STNSM EMSMASK,EMSDISAB   FORCE DISABLED STATE                  00810000
+         XC    EMSBYT0(4),EMSBYT0 CLEAR LOW CORE BYTES 0-3              00811000
+         CLI   EMSBYT4,EMSTARGR   WAS RESPONSE RETRY                    00812000
+         BNE   EMSG1800           NO,TEST FOR IGNORE                    00813000
+         TM    ERQFLG1,RTYERR     IS DEVICE RETRYABLE                   00814000
+         BO    EMSGXRTY           YES, ====================>>>          00815000
+EMSG1800 CLI   EMSBYT4,EMSTARGI   WAS RESPONSE IGNORE                   00816000
+         BNE   EMSG1810           NO,                                   00817000
+         TM    ERQFLG1,IGNERR     IGNORE IS ALLOWED?                    00818000
+         BO    EMSGXIGN           YES, ====================>>>          00819000
+*                                                                       00820000
+EMSG1810 CLI   EMSBYT4,EMSTARGC   WAS RESPONSE CANCEL                   00821000
+         BNE   EMSG1700           NO,  ======================>          00822000
+EMSG1820 L     RF,EXCAN           GET CONDITIONAL CANCEL EXIT           00823000
+         SH    RF,EMSH2           USE ERR19 INSTEAD                     00824000
+         B     EMSGXTST                ====================>>>          00825000
+.NOSUP30 ANOP                                                  @D61CDJK 00826000
+*                                                                       00827000
+         DROP  R1                 RELEASE USER CCB BASE                 00828000
+         DROP  R2                 RELEASE ERBLOC BASE                   00829000
+         DROP  R3                 RELEASE PUB BASE                      00830000
+         DROP  R4                 RELEASE CHANQ ENTRY BASE              00831000
+         DROP  R5                 RELEASE COMREG BASE                   00832000
+         DROP  RB                 RELEASE SGEMSG BASE                   00833000
+*                                                                       00834000
+         EJECT ,                                                        00835000
+*                                                                       00836000
+         AGO   .NOSUP40                                        @D61CDJK 00837000
+EMSHWPSW DC    X'030E0000'     PSW TO CAUSE SYSTEM WAIT                 00838000
+         DC    A(EMSEINTR)     RESTART ADDRESS                          00839000
+EMSMASK  DC    X'00'           USED BY STNSM INSTRUCTION                00840000
+*                                                                       00841000
+EMSBYT0  EQU   0               LOW CORE BYTE ZERO                       00842000
+EMSBYT1  EQU   1               LOW CORE BYTE 1                          00843000
+EMSBYT2  EQU   2               LOW CORE BYTE 2                          00844000
+EMSBYT4  EQU   4               LOW CORE BYTE 4                          00845000
+EMSTARGR EQU   X'01'           TARGET RETRY                             00846000
+EMSTARGI EQU   X'02'           TARGET IGNORE                            00847000
+EMSTARGC EQU   X'03'           TARGET CANCEL                            00848000
+EMSDISAB EQU   X'FC'           DISABLE INTERRUPTS                       00849000
+.NOSUP40 ANOP                                                  @D61CDJK 00850000
+*                                                                       00851000
+EMSCCODE DC    XL1'00'         FAILING COMMAND CODE            @D61CDJK 00852000
+EMSCHQA  DC    XL4'00'         CHANQ ENTRY ADDRESS             @D61CDJK 00853000
+EMSLSNS  DC    XL1'00'         NUMBER OF SENSE BYTES           @D61CDJK 00854000
+EMSPRFL  DC    XL1'00'         ERP PROCESSING FLAG             @D63HDJK 00855000
+EMSSTAB  DC    C'RDRIPTPCHLSTLOGLNKRESSLBRLBCTLRECCLBDMPCAT'            00856000
+EMSSLIB  DC    C'LIB'                                                   00857000
+EMSSCTL  DC    C'CTL'                                                   00858000
+EMSTRTAB DC    C'0123456789ABCDEF' CHARACTERS TO BE TRANSLATED          00859000
+EMSTEXT1 DC    C'0PSNX    XXXXXXXXXX SYSXXX=XXX '              @D61CDJK 00860000
+EMSTEXT2 DC    C'CCSW=   NOT AVAILABLE   CCB=XXXXXX SK=0000CCCCHHHH '   00861000
+EMSPGMSG DC    C' PAGE='       PAGE BACKUP COUNT                        00862000
+EMSPBN   DC    C'PBN='         PHYSICAL BLOCK NUMBER IND                00863000
+EMSREPLY DC    CL6' '          WTOR REPLY AREA                 @D61CDJK 00864000
+EMSECB   DC    F'0'            WTOR ECB                        @D61CDJK 00865000
+EMSCANC  DC    C'CANCEL'       OPERATOR REPLY CANCEL                    00866000
+EMSIGN   DC    C'IGNORE'       OPERATOR REPLY IGNORE                    00867000
+EMSRETRY DC    C'RETRY '       OPERATOR REPLY RETRY                     00868000
+EMSBLANK DC    6C' '           BLANKS                                   00869000
+EMSH2    DC    H'2'            CONSTANT                                 00870000
+EMSH3    DC    H'3'            LENGTH OF LOGICAL UNIT NUMBER            00871000
+EMSH4    DC    H'4'            MAXIMUM WTO/WTOR RETURN CODE             00872000
+EMSH8    DC    H'8'            CCW LENGTH                               00873000
+EMSH10   DC    H'10'           NUMBER OF MESSAGE TEXT-BYTES             00874000
+EMSH30   DC    H'30'           WTO RETURN CODE 30                       00875000
+EMSH39   DC    H'39'           MAX SYSTEM UNITS TIMES 3                 00876000
+EMSACALL DC    F'0'            SAVE AREA FOR RETURN ADDRESS    @D61CDJK 00877000
+EMSUCCB  DC    F'0'            WORKFLD FOR UNPACK CCB ADDR.             00878000
+EMSFCCW  DC    F'0'            WORKFLD FOR UNPACK CCW ADDR.             00879000
+EMSFULWD DC    D'0'            DEVICE UNIT NUMBER                       00880000
+EMSDUMMY DC    XL6'0'          WORK FIELD FOR GETDADR                   00881000
+EMSALIGN DC    0D'0'           FOR ALIGNMENT                            00882000
+         DC    XL6'0'                                                   00883000
+EMSMSGNO DC    XL2'0'          DECIMAL MSG NUMBER              @D61CDJK 00884000
+EMSCALL  DC    X'00'           IDENTIFY CALLER                 @D61CDJK 00885000
+EMSSGTAP EQU   B'10000000'     CALLER IS SGTAP                 @D61CDJK 00886000
+EMSPRTC  DC    X'00'           PRINT CONTROL FLAG              @D61CDJK 00887000
+*        EQU   B'10000000'                                     @D61CDJK 00888000
+EMSPRT2  EQU   B'01000000'     PRINT MESSAGE LINE 2            @D61CDJK 00889000
+EMSPRT3  EQU   B'00100000'     PRINT MESSAGE LINE 3            @D61CDJK 00890000
+EMSPRT4  EQU   B'00010000'     PRINT MESSAGE LINE 4            @D61CDJK 00891000
+*                                                                       00892000
+EMSACCUN EQU   X'10'           RETURN ERRORS TO USER                    00893000
+EMSINTV  EQU   X'08'           INTERVENTION REQUIRED                    00894000
+EMSUNXIR EQU   X'47'           UNEXPECTED INTERV. REQUIRED              00895000
+EMSNOPMS EQU   X'31'           DEVICE NOT OPERATIONAL                   00896000
+EMSLSTID EQU   3               LOGICAL UNIT NUMBER FOR SYSLST           00897000
+EMSRPLYL EQU   6               LENGTH OF WTOR REPLY            @D61CDJK 00898000
+*                                                              @D61CDJK 00899000
+         DS    0H                                              @D61CDJK 00900000
+EMSADDR1 DC    AL2(0)          LENGTH OF OUTPUT LINE 1         @D61CDJK 00901000
+EMSLINE1 DC    CL31' '         OUTPUT LINE 1                   @D61CDJK 00902000
+EMSOMSGN EQU   EMSLINE1+2      MESSAGE NUMBER                  @D61CDJK 00903000
+EMSOACT  EQU   EMSLINE1+4      ACTION FIELD                    @D61CDJK 00904000
+EMSOTARG EQU   EMSLINE1+6      FIRST TARGET BYTE               @D61CDJK 00905000
+EMSOTAR2 EQU   EMSLINE1+7      SECOND TARGET BYTE              @D61CDJK 00906000
+EMSOTEXT EQU   EMSLINE1+9      MESSAGE TEXT                    @D61CDJK 00907000
+EMSOSYS  EQU   EMSLINE1+23     LOGICAL UNIT NUMBER             @D61CDJK 00908000
+EMSOCUU  EQU   EMSLINE1+27     PHYSICAL UNIT NUMBER            @D61CDJK 00909000
+*                                                              @D61CDJK 00910000
+         DS    0H                                              @D61CDJK 00911000
+EMSADDR2 DC    AL2(0)          LENGTH OF OUTPUT LINE 2         @D61CDJK 00912000
+EMSLINE2 DC    CL51' '         OUTPUT LINE 2                   @D61CDJK 00913000
+EMSOCCOD EQU   EMSLINE2+5      COMMAND CODE                    @D61CDJK 00914000
+EMSOCSW  EQU   EMSLINE2+7      CHANNEL STATUS WORD             @D61CDJK 00915000
+EMSOCCB  EQU   EMSLINE2+28     CCB ADDRESS                     @D61CDJK 00916000
+EMSOBNA  EQU   EMSLINE2+35     BN ADDRESS                      @D61CDJK 00917000
+EMSOBLK  EQU   EMSLINE2+39     BLOCK ADDRESS                   @D61CDJK 00918000
+EMSOSEEK EQU   EMSLINE2+42     SEEK ADDRESS                    @D61CDJK 00919000
+EMSOEND  EQU   EMSLINE2+47     END OF LINE-FBA                 @D61CDJK 00920000
+*                                                              @D61CDJK 00921000
+         DS    0H                                              @D61CDJK 00922000
+EMSADDR3 DC    AL2(0)          LENGTH OF OUTPUT LINE 3         @D61CDJK 00923000
+EMSLINE3 DS    0H              OUTPUT LINE 3                   @D61CDJK 00924000
+EMSPRFX3 DC    C'SNS='         PREFIX                          @D61CDJK 00925000
+EMSOSNS3 DC    CL66' '         SENSE BYTE 0                    @D61YDJK 00926000
+*                                                              @D61CDJK 00927000
+         DS    0H                                              @D61CDJK 00928000
+EMSADDR4 DC    AL2(0)          LENGTH OF OUTPUT LINE 4         @D61CDJK 00929000
+EMSLINE4 DC    CL59' '         OUTPUT LINE 4                   @D61YDJK 00930000
+EMSOSNS4 EQU   EMSLINE4+4      SENSE BYTE 24                   @D61CDJK 00931000
+*                                                              @D61CDJK 00932000
+         DS    0H              OUTPUT LINE 5 FOR 0P..D__R MSG. @D61CDJK 00933000
+EMSADD5R DC    AL2(42)         LENGTH OF OUTPUT LINE           @D61CDJK 00934000
+EMSLIN5R DC    C'0P..D REPLY CANCEL OR PRESS ENTER TO RETRY'   @D61CDJK 00935000
+*                                                              @D61CDJK 00936000
+         DS    0H              OUTPUT LINE 5 FOR 0P,,D_I MSG.  @D61CDJK 00937000
+EMSADD5I DC    AL2(28)         LENGTH OF OUTPUT LINE           @D61CDJK 00938000
+EMSLIN5I DC    C'0P..D REPLY CANCEL OR IGNORE'                 @D61CDJK 00939000
+*                                                              @D61CDJK 00940000
+         DS    0H              OUTPUT LINE 5 FOR 0P,,D_IR MSG. @D61CDJK 00941000
+EMSADD5D DC    AL2(50)         LENGTH OF OUTPUT LINE           @D61CDJK 00942000
+EMSLIN5D DC    C'0P..D REPLY CANCEL, IGNORE OR PRESS ENTER TO RETRY'    00943000
+*                                                              @D61CDJK 00944000
+         DS    0H                                              @D61CDJK 00945000
+EMSADDRI DC    AL2(22)         LENGTH OF OUTPUT LINE           @D61CDJK 00946000
+EMSLINEI DC    C'0P..D INVALID RESPONSE'                       @D61CDJK 00947000
+*                                                              @D61CDJK 00948000
+EMSEMPTY DC    AL2(0)          ZERO LENGTH LINE                @D61CDJK 00949000
+*                                                                       00950000
+EMSTEXT  EQU    *              MESSAGE QUEUE                            00951000
+         DC    C'RECOVY ERR'    0 RESERVED                              00952000
+         DC    C'          '    1 RESERVED                              00953000
+         DC    C'INV ATTACH'    2 INVALID ATTACHMENT                    00954000
+         DC    C'DEV IN USE'    3 DEVICE ASSIGNED ELSEWHERE             00955000
+         DC    C'PATH FENCE'    4 PATH FENCE                            00956000
+         DC    C'OPER INFO '    5 MESSAGE TO OPERATOR                   00957000
+         DC    C'IML REQ   '    6 IMPL IS REQUIRED                      00958000
+         DC    C'OPER VERFY'    7 VERIFY OUTPUT                         00959000
+         DC    C'INTERV REQ'    8 OPERATOR INTERVENTION REQUIRE         00960000
+         DC    C'BUSOUT CHK'    9 BUS OUT CHECK                         00961000
+         DC    C'EQUIP CHK '   10 EQUIPMENT CHECK                       00962000
+         DC    C'DATA CHECK'   11 DATA CHECK                            00963000
+         DC    C'VERIFY CHK'   12 VERIFY CHECK                          00964000
+         DC    C'END OF VOL'   13 END OF VOLUME                         00965000
+         DC    C'OVERRUN   '   14 OVERRUN                               00966000
+         DC    C'SEEK CHECK'   15 SEEK CHECK                            00967000
+         DC    C'DTA CHK CT'   16 DATA CHECK IN COUNT FIELD             00968000
+         DC    C'FILE PROT '   17 VIOLATED FILE PROTECTION              00969000
+         DC    C'COMM REJCT'   18 COMMAND REJECT                        00970000
+         DC    C'UNDET ERR '   19 UNDETERMINED ERROR                    00971000
+         DC    C'RECOVY ERR'   20 ERROR DURING ERROR RECOVERY           00972000
+         DC    C'NRF MADDMK'   21 NO RECORD FOUND/ MISS. MARKER         00973000
+         DC    C'TRACK FMT '   22 TRACK FORMAT ERROR                    00974000
+         DC    C'UNSUP FUNC'   23 UNSUPPORTED FUNCTION                  00975000
+         DC    C'PROG CHECK'   24 I/O PROGRAM CHECK                     00976000
+         DC    C'PROT CHECK'   25 STORAGE PROTECTION CHECK              00977000
+         DC    C'INVAL SEEK'   26 INVALID SEEK ADDRESS                  00978000
+         DC    C'UNKNWN DEV'   27 DEVICE NOT RECOGNIZED                 00979000
+         DC    C'CHAN DTCHK'   28 CHANNEL DATA CHECK                    00980000
+         DC    C'AT LOADPT '   29 BACKSPACE INTO LOADPOINT              00981000
+         DC    C'CONVRT CHK'   30 TAPE CONVERT CHECK                    00982000
+         DC    C'DVC NOT OP'   31 DEVICE NOT OPERATIONAL                00983000
+         DC    C'NON COMPAT'   32 NON COMPAT                            00984000
+         DC    C'UCB PARITY'   33 PARITY ERROR IN UNIV CHAR BUF         00985000
+         DC    C'NO BATCHNO'   34 BATCH NUMBERING OFF ON 1419           00986000
+         DC    C'NON RECOV '   35 NON RECOVERY ON 1285                  00987000
+         DC    C'NO REC FND'   36 NO RECORD FOUND                       00988000
+         DC    C'DISEN FAIL'   37 DISENGAGE FAILURE                     00989000
+         DC    C'INVAL FONT'   38 INVALID FONT ON 1287                  00990000
+         DC    C'BAD VOLUME'   39 UNABLE TO READ FIRST RECORD           00991000
+         DC    C'BROKN TAPE'   40 1017 BROKEN TAPE                      00992000
+         DC    C'LOAD CHECK'   41 BUFFER LOAD CHECK - 3211              00993000
+         DC    C'DSE FAILED'   42 DSE NOT SUCCESSFULLY COMPLETE         00994000
+         DC    C'TAPEVOL CH'   43 UNEXP INTERR ON OPENED TAPE           00995000
+         DC    C'ID CHECK  '   44 WRITE ID BURST FAILED                 00996000
+         DC    C'WR INHIBIT'   45 WRITE PROTECT VIOLATION 3330          00997000
+         DC    C'LOST POS''G'  46 INTERCEPT CONDITION DETECTED          00998000
+         DC    C'UNX INTERV'   47 UNEXPECTED INTERVENTION REQ.          00999000
+         DC    C'FORMAT RST'   48 ABNORMAL FORMAT RESET                 01000000
+         DC    C'PERM ERROR'   49 PERMANENT ERROR KEY                   01001000
+         DC    C'NO CHN FND'   50 NO CHAN.FOUND ON 5203 PRINTER         01002000
+         DC    C'MARK CHECK'   51 MARK CHECK                            01003000
+         DC    C'INV FORMAT'   52 INVALID FORMAT                        01004000
+         DC    C'RCP ERROR '   53 RCP ERROR                             01005000
+         DC    C'NOT ICPL''D'  54 CONTRPL PROGRAM NOT LOADED            01006000
+         DC    C'SPEC REC  '   55 SPECIAL RECORD                        01007000
+         DC    C'ALT EXHSTD'   56 FBA ALTERNATE AREA EXHAUSTED          01008000
+         DC    C'INTF DSBLD'   57 FBA ALTERN INT DISABLED COND          01009000
+         DC    C'PCH DTCHK '   58 PUNCH DATA CHECK                      01010000
+         DC    C'BLKSZE ERR'   59 FBA BLOCK SIZE EXCEPTION              01011000
+         DC    C'PATH ERROR'   60 3380 PATH IS NOT AVAILABLE            01012000
+         DC    C'          '   61 ISSUED BY SGERP                       01013000
+         DC    C'          '   62 ISSUED BY SGERP                       01014000
+         DC    C'UNRECV ERR'   63 UNRECOVERABLE ERROR                   01015000
+         DC    C'MAINT REQD'   64 MAINTENANCE REQUIRED                  01016000
+         DC    C'MEDIA ERR '   65 MEDIA ERROR                           01017000
+         DC    C'SUBSYS INF'   66 SUBSYSTEM INFORMATION                 01018000
+         DC    C'PPRC INFO '   67 PPRC INFORMATION             @DA44407 01019000
+         DC    C'          '   68 RESERVED                              01020000
+         DC    C'          '   69 ISSUED BY IJBAR                       01021000
+         AGO   .NOPHA20                                        @D61CDJK 01022000
+*****    REGISTER EQUATES         *****                                 01023000
+*                                                                       01024000
+R0       EQU   0                  PARAMETER REGISTER                    01025000
+R1       EQU   1                  CCB POINTER                           01026000
+R2       EQU   2                  ERBLOC POINTER                        01027000
+R3       EQU   3                  PUB POINTER                           01028000
+R4       EQU   4                  CHANQ POINTER                         01029000
+R5       EQU   5                  COMREG POINTER                        01030000
+R6       EQU   6                  SYSCOM POINTER                        01031000
+R7       EQU   7                  WORK REGISTER                         01032000
+R8       EQU   8                  WORK REGISTER                         01033000
+R9       EQU   9                  WORK REGISTER                         01034000
+RA       EQU   10                 WORK REGISTER                         01035000
+RB       EQU   11                 SGEMSG BASE REGISTER                  01036000
+RC       EQU   12                 WORK REGISTER                         01037000
+RD       EQU   13                 WORK REGISTER                         01038000
+RE       EQU   14                 SGTAP RETURN ADDRESS                  01039000
+RF       EQU   15                 WORK REGISTER                         01040000
+*                                                                       01041000
+SYSCOM   SYSCOM                                                         01042000
+         EJECT                                                          01043000
+ERBLOC   ERBLOC                                                         01044000
+         EJECT                                                          01045000
+         MAPCOMR                                                        01046000
+         EJECT                                                          01047000
+         MAPPUB                                                         01048000
+         SPACE 3                                                        01049000
+         MAPCCB                                                         01050000
+         EJECT                                                          01051000
+         MAPDEVTY                                                       01052000
+         EJECT                                                          01053000
+         SGCHQ                                                          01054000
+         EJECT                                                          01055000
+.NOPHA20 ANOP                                                  @D61CDJK 01056000
+         AIF   (NOT &SGEMSG).NEMSG20                                    01057000
+         PRINT NOGEN                                                    01058000
+.NEMSG20 ANOP                                                           01059000
+         EJECT ,                                                        01060000
+         MEND                                                           01061000

@@ -1,0 +1,371 @@
+         MACRO                                                          00050000
+&NAME    OVTOC &VOLSER=,&SYSNO=,&USE=,&IRIOERR=,&DLIST=,&WRKA=,&MF=     00100000
+.*A000000-999999                                               @D35XE32 00150000
+.*                                                                      00200000
+.** START OF SPECIFICATIONS ******************************************* 00250000
+.*                                                                    * 00300000
+.*  MODULE-NAME = OVTOC                                               * 00350000
+.*                                                                    * 00400000
+.*  DESCRIPTIVE-NAME = OPEN VTOC                                      * 00450000
+.*                                                                    * 00500000
+.* COPYRIGHT = 5686-007 (C) COPYRIGHT IBM CORP. 1977,1992      @D52VDAK 00550052
+.*             ALL RIGHTS RESERVED                             @U31TUJS 00600000
+.*             LICENSED MATERIALS - PROPERTY OF IBM            @U31TUJS 00650000
+.*             SEE COPYRIGHT INSTRUCTIONS, G120-2083           @U31TUJS 00700000
+.*                                                                    * 00750000
+.*  STATUS = DOS/VS RELEASE 35                                        * 00800000
+.*                                                                    * 00850000
+.*  FUNCTION = THIS MACRO IS USED TO GENERATE THE INTERFACE TO THE    * 00900000
+.*             COMMON VTOC HANDLER (CVH) FOR OPENING A VTOC.          * 00950000
+.*                                                                    * 01000000
+.*  MODULE-TYPE = MACRO                                               * 01050000
+.*                                                                    * 01100000
+.*    PROCESSOR = ASSEMBLER                                           * 01150000
+.*                                                                    * 01200000
+.*  INPUT =                                                           * 01250000
+.*                                                                    * 01300000
+.*       VOLSER OPERAND SPECIFIES THE ADDRESS OF THE 6-BYTE VOLUME    * 01350000
+.*       SERIAL NUMBER.                                               * 01400000
+.*                                                                    * 01450000
+.*       SYSNO OPERAND SPECIFIES THE ADDRESS OF THE 2-BYTE SYSTEM     * 01500000
+.*       LOGICAL UNIT NUMBER.                                         * 01550000
+.*                                                                    * 01600000
+.*       USE OPERAND SPECIFIES WHETHER THE VOLUME IS TO BE SHARED     * 01650000
+.*       DURING CVH PROCESSING OR RESERVED FOR EXCLUSIVE USE OF THE   * 01700000
+.*       INVOKING TASK.                                               * 01750000
+.*                                                                    * 01800000
+.*       IRIOERR OPERAND SPECIFIES WHETHER THE CVH SHOULD ACCEPT      * 01850000
+.*       IRRECOVERABLE I/O ERRORS OR LET THE SYSTEM HANDLE THEM.      * 01900000
+.*                                                                    * 01950000
+.*       DLIST OPERAND SPECIFIES THE ADDRESS OF AN AREA FOR THE CVH   * 02000000
+.*       TO BUILD A VOLUME DESCRIPTOR LIST.                           * 02050000
+.*                                                                    * 02100000
+.*       WRKA OPERAND SPECIFIES THE ADDRESS OF AN AREA TO USE AS THE  * 02150000
+.*       CVH WORK AREA.                                               * 02200000
+.*                                                                    * 02250000
+.*       MF OPERAND SPECIFIES WHETHER THE MACRO IS TO GENERATE LIST   * 02300000
+.*       OR EXECUTE FORMS OF THE INTERFACE.  IF NOT SPECIFIED, THE    * 02350000
+.*       STANDARD FORM IS GENERATED.                                  * 02400000
+.*                                                                    * 02450000
+.*       IN GENERAL, ADDRESSES MAY BE SPECIFIED IN REGISTER NOTATION  * 02500000
+.*       WHERE THE REGISTER NUMBER OR AN EQUATED SYMBOL IS ENCLOSED   * 02550000
+.*       IN PARENTHESES, OR IN LABEL NOTATION WHERE THE OPERAND IS    * 02600000
+.*       USED TO GENERATE AN A-TYPE ADDRESS CONSTANT OR AN RX         * 02650000
+.*       INSTRUCTION.  REGISTER NOTATION FOR ADDRESSES IS NOT         * 02700000
+.*       ALLOWED FOR THE LIST FORM.                                   * 02750000
+.*                                                                    * 02800000
+.*  OUTPUT =                                                          * 02850000
+.*                                                                    * 02900000
+.*       FOR STANDARD AND LIST FORMS, THE CVH OPEN PARAMETER LIST     * 02950000
+.*       IS GENERATED. FOR STANDARD AND EXECUTE FORMS, CODE TO INVOKE * 03000000
+.*       THE CVH IS GENERATED.  FOR THE EXECUTE FORM, CODE MAY ALSO   * 03050000
+.*       BE GENERATED TO MODIFY THE EXISTING PARAMETER LIST.          * 03100000
+.*                                                                    * 03150000
+.*  CHANGE-ACTIVITY = NONE                                            * 03200000
+.*  @D62ADWS - ADAPT TO FAMILY API                             @D62ADWS 03250000
+.** END OF SPECIFICATIONS ********************************************* 03300000
+.*                                                                      03350000
+         LCLA  &DISP                                                    03400000
+         LCLB  &B(7)                                                    03450000
+         LCLC  &X0,&X1,&X2,&X4,&X8,&X12,&X16                            03500000
+         LCLC  &P1,&P2,&P4,&P8,&P12,&P16                                03550000
+.*                                                                      03600000
+         ACTR  10000                                                    03650000
+.*                                                                      03700000
+&B(1)    SETB  ('&VOLSER' NE '')                                        03750000
+&B(2)    SETB  ('&SYSNO' NE '')                                         03800000
+&B(3)    SETB  (('&USE' NE '') AND ('&USE' NE 'SHR'))                   03850000
+&B(4)    SETB  (('&IRIOERR' NE '') AND ('&IRIOERR' NE 'NO'))            03900000
+&B(5)    SETB  ('&DLIST' NE '')                                         03950000
+&B(6)    SETB  ('&WRKA' NE '')                                          04000000
+&B(7)    SETB  ('&MF' NE '')                                            04050000
+.*                                                                      04100000
+.********************************************************************** 04150000
+.*                                                                    * 04200000
+.*****      EITHER VOLSER OR SYSNO OR BOTH MUST BE SPECIFIED      ***** 04250000
+.*                       WITH THE STANDARD FORM                       * 04300000
+.*                                                                    * 04350000
+.********************************************************************** 04400000
+.*                                                                      04450000
+         AIF   (NOT(&B(1) OR &B(2)) AND NOT(&B(7))).ERROR1              04500000
+.*                                                                      04550000
+.********************************************************************** 04600000
+.*                                                                    * 04650000
+.*****                CHECK FOR INVALID PARMATERS                 ***** 04700000
+.*                                                                    * 04750000
+.********************************************************************** 04800000
+.*                                                                      04850000
+         AIF   (NOT(&B(3))).C1         IF USE IS SHARED, GO ON          04900000
+         AIF   ('&USE' NE 'EXC').ERROR2 OTHERWISE, MUST BE EXCLUSIVE    04950000
+.*                                                                      05000000
+.C1      ANOP                                                           05050000
+         AIF   (NOT(&B(4))).C2         IF NO IRREC I/O ERROR OPTION, GO 05100000
+         AIF   ('&IRIOERR' NE 'YES').ERROR3 ON--OTHERWISE MUST BE YES   05150000
+.*                                                                      05200000
+.C2      ANOP                                                           05250000
+         AIF   (NOT(&B(7))).SLE1       IF MF NOT SPECIFIED, GO TO       05300000
+.*                                     GENERATE FIRST STATEMENT         05350000
+         AIF   ('&MF' EQ 'L').C3       GO TO CHECK FOR LIST FORM ERRORS 05400000
+         AIF   ('&MF(1)' NE 'E').ERROR4 IF NOTLIST OR EXECUTE, ERROR    05450000
+         AGO   .SLE1                   GO TO GENERATE FIRST STATEMENT   05500000
+.C3      ANOP                                                           05550000
+         AIF   (NOT(&B(1))).C4         IF VOLSER NOT GIVEN, GO ON       05600000
+         AIF   ('&VOLSER'(1,1) EQ '(').ERROR5 REG NOT ALLOWED ON L FORM 05650000
+.C4      ANOP                                                           05700000
+         AIF   (NOT(&B(2))).C5         IF SYSNO NOT GIVEN, GO ON        05750000
+         AIF   ('&SYSNO'(1,1) EQ '(').ERROR5 REG NOT ALLOWED ON L FORM  05800000
+.C5      ANOP                                                           05850000
+         AIF   (NOT(&B(5))).C6         IF DLIST NOT GIVEN, GO ON        05900000
+         AIF   ('&DLIST'(1,1) EQ '(').ERROR5 REG NOT ALLOWED ON L FORM  05950000
+.C6      ANOP                                                           06000000
+         AIF   (NOT(&B(6))).SLE1       IF WORK AREA NOT GIVEN, GO ON    06050000
+         AIF   ('&WRKA'(1,1) EQ '(').ERROR5 REG NOT ALLOWED ON L FORM   06100000
+.*                                                                      06150000
+.********************************************************************** 06200000
+.*                                                                    * 06250000
+.*** GENERATE STATEMENT COMMON TO STANDARD, LIST, AND EXECUTE FORMS *** 06300000
+.*                                                                    * 06350000
+.********************************************************************** 06400000
+.*                                                                      06450000
+.SLE1    ANOP                                                           06500000
+         CNOP  0,4                                                      06550000
+         AIF   ('&NAME' EQ '').SSLLEE1                                  06600000
+&NAME    DS    0H                                                       06650000
+.SSLLEE1 ANOP                                                           06700000
+.*                                                                      06750000
+         AIF   (&B(7)).SL1             IF NOT STD FORM, NO GENERATION   06800000
+.*                                     OF A BRANCH INSTRUCTION          06850000
+.*                                                                      06900000
+.********************************************************************** 06950000
+.*                                                                    * 07000000
+.*****  GENERATE BRANCH AROUND PARAMETER LIST FOR STANDARD FORM   ***** 07050000
+.*                                                                    * 07100000
+.********************************************************************** 07150000
+.*                                                                      07200000
+         B     *+24                    BRANCH AROUND PARAMETER LIST     07250000
+         AGO   .SL2                                                     07300000
+.SL1     ANOP                                                           07350000
+         AIF   ('&MF' NE 'L').E1       IF NOT LIST, THEN EXECUTE FORM   07400000
+.*                                                                      07450000
+.********************************************************************** 07500000
+.*                                                                    * 07550000
+.*****     GENERATE PARAMETER LIST FOR LIST AND STANDARD FORM     ***** 07600000
+.*                                                                    * 07650000
+.********************************************************************** 07700000
+.*                                                                      07750000
+.SL2     ANOP                                                           07800000
+         DC    X'8000'                 INDICATE OPEN                    07850000
+         DC    B'&B(3).&B(4).000000'   INDICATE OPTIONS                 07900000
+         DC    X'00'                   RESERVED                         07950000
+         AIF   (NOT(&B(5))).SL3        DLIST NOT GIVEN                  08000000
+         AIF   ('&DLIST'(1,1) EQ '(').SL3 DLIST ADDRESS IN A REG        08050000
+         DC    AL4(&DLIST)             ADDRESS OF VOL DESCRIPTOR LIST   08100000
+         AGO   .SL4                                                     08150000
+.SL3     ANOP                                                           08200000
+         DC    AL4(0)                  ADDRESS OF VOL DESCRIPTOR LIST   08250000
+.SL4     ANOP                                                           08300000
+         AIF   (NOT(&B(1))).SL5        VOLSER NOT GIVEN                 08350000
+         AIF   ('&VOLSER'(1,1) EQ '(').SL5 VOLSER ADDRESS IN A REG      08400000
+         DC    AL4(&VOLSER)            ADDRESS OF VOLUME SERIAL NUMBER  08450000
+         AGO   .SL6                                                     08500000
+.SL5     ANOP                                                           08550000
+         DC    AL4(0)                  ADDRESS OF VOLUME SERIAL NUMBER  08600000
+.SL6     ANOP                                                           08650000
+         AIF   (NOT(&B(2))).SL7        SYS-NUMBER NOT GIVEN             08700000
+         AIF   ('&SYSNO'(1,1) EQ '(').SL7 SYSNO ADDRESS IN A REG        08750000
+         DC    AL4(&SYSNO)             SYSTEM LOGICAL UNIT NO. ADDRESS  08800000
+         AGO   .SL8                                                     08850000
+.SL7     ANOP                                                           08900000
+         DC    AL4(0)                  SYSTEM LOGICAL UNIT NO. ADDRESS  08950000
+.SL8     ANOP                                                           09000000
+         AIF   (NOT(&B(6))).SL9        WORK AREA NOT GIVEN              09050000
+         AIF   ('&WRKA'(1,1) EQ '(').SL9 WORK AREA ADDRESS IN A REG     09100000
+         DC    AL4(&WRKA)              WORK AREA ADDRESS                09150000
+         AGO   .SL10                                                    09200000
+.SL9     ANOP                                                           09250000
+         DC    AL4(0)                  WORK AREA ADDRESS                09300000
+.SL10    AIF   (NOT(&B(7))).S1         IF STANDARD FORM, GO TO GENERATE 09350000
+.*                                     INSTRUCTIONS                     09400000
+         MEXIT                         END OF GENERATION FOR LIST FORM  09450000
+.*                                                                      09500000
+.********************************************************************** 09550000
+.*                                                                    * 09600000
+.*****        GENERATE INSTRUCTIONS FOR THE STANDARD FORM         ***** 09650000
+.*                                                                    * 09700000
+.********************************************************************** 09750000
+.*                                                                      09800000
+.S1      ANOP                                                           09850000
+&DISP    SETA  20                      SET INITIAL DISPLACEMENT FROM    09900000
+.*                                     START OF PARAMETER LIST          09950000
+         AIF   (NOT(&B(5))).S2         DLIST NOT SPECIFIED OR NOT IN A  10000000
+         AIF   ('&DLIST'(1,1) NE '(').S2 REGISTER, DO NOTHING           10050000
+         ST    &DLIST(1),*+4-&DISP     STORE DLIST ADDRESS IN LIST      10100000
+&DISP    SETA  &DISP+4                 BUMP DISPLACEMENT TO LIST        10150000
+.S2      ANOP                                                           10200000
+         AIF   (NOT(&B(1))).S3         VOLSER NOT SPECIFIED OR NOT IN   10250000
+         AIF   ('&VOLSER'(1,1) NE '(').S3 A REGISTER, DO NOTHING        10300000
+         ST    &VOLSER(1),*+8-&DISP    STORE VOLSER ADDRESS IN LIST     10350000
+&DISP    SETA  &DISP+4                 BUMP DISPLACEMENT TO LIST        10400000
+.S3      ANOP                                                           10450000
+         AIF   (NOT(&B(2))).S4         SYSNO NOT SPECIFIED OR NOT IN A  10500000
+         AIF   ('&SYSNO'(1,1) NE '(').S4 REGISTER, DO NOTHING           10550000
+         ST    &SYSNO(1),*+12-&DISP    STORE SYSTEM LOGICAL UNIT NO.    10600000
+*                                      ADDRESS IN LIST                  10650000
+&DISP    SETA  &DISP+4                 BUMP DISPLACEMENT TO LIST        10700000
+.S4      ANOP                                                           10750000
+         AIF   (NOT(&B(6))).S5         WORK AREA ADDRESS NOT SPECIFIED  10800000
+         AIF   ('&WRKA'(1,1) NE '(').S5 OR NOT IN A REGISTER, SKIP IT   10850000
+         ST    &WRKA(1),*+16-&DISP     STORE WORK AREA ADDRESS IN LIST  10900000
+&DISP    SETA  &DISP+4                 BUMP DISPLACEMENT TO LIST        10950000
+.S5      ANOP                                                           11000000
+         LA    1,*-&DISP               GET LIST ADDRESS IN REGISTER 1   11050000
+         AGO   .SE1                    GO TO GENERATE LOAD OF CVH       11100000
+.*                                                                      11150000
+.********************************************************************** 11200000
+.*                                                                    * 11250000
+.*****         GENERATE INSTRUCTIONS FOR THE EXECUTE FORM         ***** 11300000
+.*                                                                    * 11350000
+.*    NOTE THAT FOR THE EXECUTE FORM, THE FIRST TWO BITS OF THE       * 11400000
+.*    THIRD FLAG BYTE MUST BE SET EITHER ON OR OFF ONLY IF THE        * 11450000
+.*    CORRESPONDING OPERANDS ARE SPECIFIED.  THE FOLLOWING MATRIX     * 11500000
+.*    SHOWS THE OPTIMUM GENERATION FOR EACH OF THE NINE POSSIBLE      * 11550000
+.*    COMBINATIONS                                                    * 11600000
+.*                                                                    * 11650000
+.*                   |           USE           |                      * 11700000
+.*                   +-------------------------+                      * 11750000
+.*                   |   SHR  |   EXC  | NULL  |                      * 11800000
+.*    --------+------+--------+--------+-------+                      * 11850000
+.*            |  NO  | MVI 0  | MVI 80 | NI 8F |                      * 11900000
+.*            |      |        |        |       |                      * 11950000
+.*    IRIOERR | YES  | MVI 40 | MVI C0 | OI 40 |                      * 12000000
+.*            |      |        |        |       |                      * 12050000
+.*            | NULL | NI 7F  | OI 80  |  ---  |                      * 12100000
+.*            |      |        |        |       |                      * 12150000
+.*    --------+------+--------+--------+-------+                      * 12200000
+.*                                                                    * 12250000
+.********************************************************************** 12300000
+.*                                                                      12350000
+.E1      ANOP                                                           12400000
+         AIF   ('&MF(2)'(1,1) EQ '(').E2  LIST ADDR IN A REG            12450000
+&X0      SETC  ''                      SET UP LOCAL CHARACTER STRINGS   12500000
+&X1      SETC  ''                      TO DYNAMICALLY BUILD THE RIGHT   12550000
+&X2      SETC  ''                      FORM OF THE NEEDED INSTRUCTIONS  12600000
+&X4      SETC  ''                                                       12650000
+&X8      SETC  ''                                                       12700000
+&X12     SETC  ''                                                       12750000
+&X16     SETC  ''                                                       12800000
+&P1      SETC  '+1'                                                     12850000
+&P2      SETC  '+2'                                                     12900000
+&P4      SETC  '+4'                                                     12950000
+&P8      SETC  '+8'                                                     13000000
+&P12     SETC  '+12'                                                    13050000
+&P16     SETC  '+16'                                                    13100000
+         AGO   .E3                                                      13150000
+.E2      ANOP                                                           13200000
+&X0      SETC  '0'                                                      13250000
+&X1      SETC  '1'                                                      13300000
+&X2      SETC  '2'                                                      13350000
+&X4      SETC  '4'                                                      13400000
+&X8      SETC  '8'                                                      13450000
+&X12     SETC  '12'                                                     13500000
+&X16     SETC  '16'                                                     13550000
+&P1      SETC  ''                                                       13600000
+&P2      SETC  ''                                                       13650000
+&P4      SETC  ''                                                       13700000
+&P8      SETC  ''                                                       13750000
+&P12     SETC  ''                                                       13800000
+&P16     SETC  ''                                                       13850000
+.E3      ANOP                                                           13900000
+         MVI   &X0.&MF(2),X'80'        SET FLAGS TO INDICATE OPEN       13950000
+         MVI   &X1.&MF(2).&P1,X'00'    SET FLAGS TO ZERO                14000000
+         AIF   (('&USE' EQ '') AND ('&IRIOERR' EQ '')).E7 NEITHER GIVEN 14050000
+         AIF   (('&USE' EQ '') OR ('&IRIOERR' EQ '')).E4 ONE NOT GIVEN  14100000
+.*                                      ELSE BOTH ARE GIVEN, SO         14150000
+         MVI   &X2.&MF(2).&P2,B'&B(3).&B(4).000000' SET OPTION FLAGS    14200000
+         AGO   .E7                                                      14250000
+.E4      ANOP                                                           14300000
+         AIF   (NOT(&B(3) OR &B(4))).E5  IF NEITHER ARE ON, THEN NO OI  14350000
+         OI    &X2.&MF(2).&P2,B'&B(3).&B(4).000000' SET OPTIONS FLAG    14400000
+         AGO   .E7                                                      14450000
+.E5      ANOP                                                           14500000
+         AIF   ('&IRIOERR' EQ 'NO').E6  NEED TO TURN OFF IRIOERR FLAG,  14550000
+.*                                     ELSE TURN OFF SHARE OPTION FLAG  14600000
+         NI    &X2.&MF(2).&P2,X'7F'    SET SHARE OPTION TO SHARED       14650000
+         AGO   .E7                                                      14700000
+.E6      ANOP                                                           14750000
+         NI    &X2.&MF(2).&P2,X'BF'    SET I/O ERROR OPTION TO NO       14800000
+.E7      ANOP                                                           14850000
+         AIF   (NOT(&B(5))).E9         DLIST NOT GIVEN                  14900000
+         AIF   ('&DLIST'(1,1) EQ '(').E8 DLIST ADDRESS IN A REGISTER    14950000
+         LA    0,&DLIST                GET DLIST ADDRESS                15000000
+         ST    0,&X4.&MF(2).&P4        STORE DLIST ADDRESS IN LIST      15050000
+         AGO   .E9                     GO ON                            15100000
+.E8      ANOP                                                           15150000
+         ST    &DLIST(1),&X4.&MF(2).&P4 STORE DLIST ADDRESS IN LIST     15200000
+.E9      ANOP                                                           15250000
+         AIF   (NOT(&B(1))).E11        VOLSER NOT GIVEN                 15300000
+         AIF   ('&VOLSER'(1,1) EQ '(').E10 VOLSER ADDRESS IN A REGISTER 15350000
+         LA    0,&VOLSER               GET VOLSER ADDRESS               15400000
+         ST    0,&X8.&MF(2).&P8        STORE VOLSER ADDRESS IN LIST     15450000
+         AGO   .E11                    GO ON                            15500000
+.E10     ANOP                                                           15550000
+         ST    &VOLSER(1),&X8.&MF(2).&P8 STORE VOLSER ADDRESS IN LIST   15600000
+.E11     ANOP                                                           15650000
+         AIF   (NOT(&B(2))).E13        SYSNO NOT GIVEN                  15700000
+         AIF   ('&SYSNO'(1,1) EQ '(').E12 SYSNO ADDRESS IN A REGISTER   15750000
+         LA    0,&SYSNO                GET SYSNO ADDRESS                15800000
+         ST    0,&X12.&MF(2).&P12      STORE SYSNO ADDRESS IN LIST      15850000
+         AGO   .E13                    GO ON                            15900000
+.E12     ANOP                                                           15950000
+         ST    &SYSNO(1),&X12.&MF(2).&P12 STORE SYSNO ADDRESS IN LIST   16000000
+.E13     ANOP                                                           16050000
+         AIF   (NOT(&B(6))).E15        WORK AREA NOT GIVEN              16100000
+         AIF   ('&WRKA'(1,1) EQ '(').E14 WORK AREA ADDRESS IN A REG     16150000
+         LA    0,&WRKA                 GET WORK AREA ADDRESS            16200000
+         ST    0,&X16.&MF(2).&P16      STORE WORK AREA ADDRESS IN LIST  16250000
+         AGO   .E15                    GO ON                            16300000
+.E14     ANOP                                                           16350000
+         ST    &WRKA(1),&X16.&MF(2).&P16 STORE WORK AREA ADDR IN LIST   16400000
+.E15     ANOP                                                           16450000
+         AIF   ('&MF(2)'(1,1) NE '(').E16 LIST ADDRESS NOT IN A REG     16500000
+         AIF   ('&MF(2)' EQ '(1)').SE1 IF LIST ADDRESS ALREADY IN 1, GO 16550000
+.*                                     TO GENERATE LOAD                 16600000
+         LR    1,&MF(2)                GET LIST ADDRESS IN REGISTER 1   16650000
+         AGO   .SE1                    GO TO GENERATE LOAD              16700000
+.E16     ANOP                                                           16750000
+         LA    1,&MF(2)                GET LIST ADDRESS IN REGISTER 1   16800000
+.*                                                                      16850000
+.********************************************************************** 16900000
+.*                                                                    * 16950000
+.*****   GENERATE INSTRUCTIONS FOR STANDARD AND EXECUTE FORMS     ***** 17000000
+.*                                                                    * 17050000
+.********************************************************************** 17100000
+.*                                                                      17150000
+.SE1     ANOP                                                           17200000
+         STM   14,12,12(13)            SAVE REGISTERS ACROSS LOAD       17250000
+         ILOAD $IJJHCVH                LOAD THE CVH PHASE      @D62ADWS 17300000
+         LR    15,1                    GET CVH ENTRY POINT              17350000
+         LM    0,12,20(13)             RESTORE REGISTERS                17400000
+         XR    14,14               SET LENGTH CODE TO 1        @D52VDAK 17407152
+         BALR  14,0           GET NEXT INSTRUCTION ADDRESS AND @D52VDAK 17414252
+*                             SET HIGH ORDER BIT IF AMODE 31   @D52VDAK 17421352
+         LTR   14,14          RUNNING IN 24 BIT MODE ?         @D52VDAK 17428452
+         BP    8(,14)         YES,OK                           @D52VDAK 17435552
+         SVC   130            EXECUTION MODE VIOLATION         @D52VDAK 17442652
+         BALR  14,15                   CALL CVH                         17450000
+         MEXIT                                                          17500000
+.ERROR1  ANOP                                                           17550000
+         MNOTE 8,'VOLSER AND SYSNO MISSING, ONE MUST BE SPECIFIED'      17600000
+         MEXIT                                                          17650000
+.ERROR2  ANOP                                                           17700000
+         MNOTE 8,'INVALID USE PARAMETER'                                17750000
+         MEXIT                                                          17800000
+.ERROR3  ANOP                                                           17850000
+         MNOTE 8,'INVALID IRIOERR PARAMETER'                            17900000
+         MEXIT                                                          17950000
+.ERROR4  ANOP                                                           18000000
+         MNOTE 8,'INVALID MF PARAMETER'                                 18050000
+         MEXIT                                                          18100000
+.ERROR5  ANOP                                                           18150000
+         MNOTE 8,'REGISTER NOTATION NOT ALLOWED ON LIST FORM'           18200000
+         MEND                                                           18250000

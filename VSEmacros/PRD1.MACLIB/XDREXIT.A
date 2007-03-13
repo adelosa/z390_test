@@ -1,0 +1,174 @@
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *   00001000
+* Program: XDREXIT                                                  *   00002000
+*                                                                   *   00003000
+* (C) 1997 Connectivity Systems - All Rights Reserved               *   00004000
+*                                                                   *   00005000
+* Author: Leo Langevin - leo@tcpip4vse.com                          *   00006000
+*                                                                   *   00007000
+* Description: Sample XDR exit that modifies the data in a VSE      *   00008000
+*         library member "XDRDEMO.X".  All other entries will       *   00009000
+*         remain untouched.                                         *   00010000
+*                                                                   *   00011000
+* Incoming: R1 = XDR Parameter list pointer                         *   00012000
+*           R11 = IVBLOK pointer                                    *   00013000
+*           R13 = Savearea                                          *   00014000
+*           R14 = Return address                                    *   00015000
+*           R15 = Incoming base                                     *   00016000
+*                                                                   *   00017000
+* Incoming AMODE must be AMODE31 for XA or ESA systems.             *   00018000
+*                                                                   *   00019000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *   00020000
+         PUNCH ' PHASE XDREXIT,*'                                       00021000
+XDREXIT  AMODE 31                       Setup the AMODE                 00022000
+XDREXIT  CSECT ,                        Beginning of the exit           00023000
+         USING *,R15                    Addressability                  00024000
+         STM   R0,R14,SAVE              Save incoming regs              00025000
+         USING IVBLOK,R11               Map to the IVBLOK layout        00026000
+         USING XDRDSECT,R2              Map to parameter layout         00027000
+         USING FIBLOK,R5                Map to the FIBLOK layout        00028000
+         B     XDRINIT                  Skip over the constants         00029000
+*                                                                       00030000
+         DC    C'EXIT: XDREXIT   &SYSDATE &SYSTIME'                     00031000
+*                                                                       00032000
+*                                                                       00033000
+* In this example, we will modify the data going to or coming from      00034000
+* a VSE library for member XDRDEMO.X.  This will be valid for all       00035000
+* users and all libraries.                                              00036000
+*                                                                       00037000
+XDRINIT  LR   R2,R1                     Save the pointer                00038000
+         CLI  XDRREQ,XDRREAD            Read process ?                  00039000
+         BZ   XDRXREAD                  Yes...do it                     00040000
+         CLI  XDRREQ,XDRWRITE           Write request ?                 00041000
+         BZ   XDRXWRIT                  Yes...do it                     00042000
+         CLI  XDRREQ,XDRLEN             GETLRECL request ?              00043000
+         BZ   XDRXLEN                   Yes...do it                     00044000
+         B    XDREXITX                  Bad request, get out            00045000
+*                                                                       00046000
+* This area will calculate the correct record size.  For NFS, the       00047000
+* GETATTR request from the client needs the EXACT number of bytes that  00048000
+* it can expect to receive.  NFS can only handle fixed length records.  00049000
+* Because of this, this info is only requested when READing VSE data.   00050000
+* NFS will get the total number of records and multiply that times the  00051000
+* LRECL plus the end-of-record indicator for each record: X'0A' for     00052000
+* Unix clients, and X'0D0A' for other PC clients. If you are going to   00053000
+* make the record longer or shorter, you will need to modify the value  00054000
+* THAT IS IN THE XDRLRECL FIELD.                                        00055000
+*                                                                       00056000
+XDRXLEN  L    R5,XDRFIADR               Point to the FIBLOK             00057000
+         CLI  FITYPE,FITYLIBR           Is this a LIBR file ?           00058000
+         BNZ  XDREXITX                  No...don't bother               00059000
+         CLC  XDRNAME(12),=CL12'XDRDEMO.X'                              00060000
+         BNZ  XDREXITX                  No...don't bother               00061000
+         LA   R1,RECO1LEN               Get the client length           00062000
+         ST   R1,XDRLRECL               And let the user know           00063000
+         B    XDREXITX                  Return to caller                00064000
+*                                                                       00065000
+* In this section, we will modify the outgoing record by unpacking the  00066000
+* data that is stored there.  Since we won't be passing any unused      00067000
+* area back to the client, we will be saving several bytes/record in    00068000
+* transmission.  You can also pass back a bigger record of up to 32k    00069000
+* without fear of overlaying information.                               00070000
+*                                                                       00071000
+XDRXREAD L    R5,XDRFIADR               Point to the FIBLOK             00072000
+         CLI  FITYPE,FITYLIBR           Is this a LIBR file ?           00073000
+         BNZ  XDREXITX                  No...don't bother               00074000
+         CLC  XDRNAME(12),=CL12'XDRDEMO.X'                              00075000
+         BNZ  XDREXITX                  No...don't bother               00076000
+         L    R7,XDRDATA                Point to incoming record        00077000
+         USING RECIN1,R7                Map to the layout               00078000
+         MVI  WORK,C' '                 Clear the work area             00079000
+         MVC  WORK+1(L'WORK-1),WORK     To blanks                       00080000
+         LA   R6,WORK                   Point to the work field         00081000
+         USING RECOUT1,R6               Map to the layout               00082000
+         MVC  RECO1EQ(20),RECI1EQ       Get the name                    00083000
+         MVC  RECO1DES(40),RECI1DES     Get the Description             00084000
+         UNPK RECO1COS(9),RECI1COS(5)   Unpack the data                 00085000
+         OI   RECO1COS+8,C'0'           For signed bits                 00086000
+         MVC  RECI1EQ(80),RECO1EQ       Overlay that record             00087000
+         LA   R1,RECO1LEN               Get the client length           00088000
+         ST   R1,XDRLRECL               And let the user know           00089000
+         B    XDREXITX                  Return to caller                00090000
+*                                                                       00091000
+* In this section, we will modify the incoming record by packing the    00092000
+* data that is stored there.  Since a data exception in this exit will  00093000
+* also crash NFS, it is important to do numeric checking before         00094000
+* writing the data.  We can't warn the user about bad data, so all we   00095000
+* can do is replace bad data with defaults.                             00096000
+*                                                                       00097000
+XDRXWRIT L    R5,XDRFIADR               Point to the FIBLOK             00098000
+         CLI  FITYPE,FITYLIBR           Is this a LIBR file ?           00099000
+         BNZ  XDREXITX                  No...don't bother               00100000
+         CLC  XDRNAME(12),=CL12'XDRDEMO.X'                              00101000
+         BNZ  XDREXITX                  No...don't bother               00102000
+         MVI  WORK,C' '                 Clear the work area             00103000
+         MVC  WORK+1(L'WORK-1),WORK     To blanks                       00104000
+         L    R6,XDRDATA                Point to incoming layout        00105000
+         LA   R7,WORK                   Point to work area              00106000
+         MVC  RECI1EQ(20),RECO1EQ       Get the name                    00107000
+         MVC  RECI1DES(40),RECO1DES     Get the Description             00108000
+         LA   R1,RECO1COS               Point to number                 00109000
+         LA   R3,9                      Maximum length                  00110000
+         BAL  R14,FIXNUM                Make sure it's numeric          00111000
+         PACK RECI1COS(5),RECO1COS(9)   Unpack the data                 00112000
+         MVC  RECO1EQ(80),RECI1EQ       Overlay that record             00113000
+         LA   R1,RECI1LEN               Get the VSE length              00114000
+         ST   R1,XDRLRECL               And let the user know           00115000
+         DROP R6,R7                     No longer needed                00116000
+         B    XDREXITX                  Return to caller                00117000
+*                                                                       00118000
+* Basic numeric checking and fixup routine                              00119000
+*                                                                       00120000
+FIXNUM   CLI  0(R1),C'0'                Is it numeric ?                 00121000
+         BL   FIXNUM0                   No...fix it                     00122000
+         CLI  0(R1),C'9'                Is it numeric ?                 00123000
+         BH   FIXNUM0                   No...fix it                     00124000
+         B    FIXNUMNX                  Check out the next one          00125000
+FIXNUM0  MVI  0(R1),C'0'                Replace it with a number        00126000
+FIXNUMNX LA   R1,1(,R1)                 Skip a byte                     00127000
+         BCT  R3,FIXNUM                 And do the rest                 00128000
+         BR   R14                       Return to caller                00129000
+*                                                                       00130000
+* Here is where we return to the primary XDREXIT invoker.               00131000
+*                                                                       00132000
+XDREXITX LM   R0,R14,SAVE               Regain the values               00133000
+         BR   R14                       Return to caller                00134000
+* ----------------- Working Storage Section -------- *                  00135000
+WORK     DS   CL80                      Work record                     00136000
+SAVE     DS   15F                       Register save area              00137000
+* ----------------- Dummy Section ------------------ *                  00138000
+RECIN1   DSECT ,                        Input record layout             00139000
+RECI1EQ  DS   CL20                      Equipment name                  00140000
+RECI1COS DS   PL5                       Original cost (Packed)          00141000
+RECI1DES DS   CL40                      Description                     00142000
+         DS   CL15                      Unused                          00143000
+RECI1LEN EQU  *-RECIN1                  VSE record length               00144000
+*                                                                       00145000
+RECOUT1  DSECT ,                        Output record layout            00146000
+RECO1EQ  DS   CL20                      Equipment name                  00147000
+         DS   CL2                       Delimiter                       00148000
+RECO1COS DS   CL9                       Original cost (Unpacked)        00149000
+         DS   CL2                       Delimiter                       00150000
+RECO1DES DS   CL40                      Description                     00151000
+RECO1LEN EQU  *-RECOUT1                 Client record length            00152000
+*                                                                       00153000
+         XDR  DSECT=YES                 Layout of parameter             00154000
+         IVBLOK DSECT=YES               Layout of IVBLOK                00155000
+         FIBLOK DSECT=YES               Layout of FIBLOK                00156000
+*                                                                       00157000
+R0       EQU  0                                                         00158000
+R1       EQU  1                                                         00159000
+R2       EQU  2                                                         00160000
+R3       EQU  3                                                         00161000
+R4       EQU  4                                                         00162000
+R5       EQU  5                                                         00163000
+R6       EQU  6                                                         00164000
+R7       EQU  7                                                         00165000
+R8       EQU  8                                                         00166000
+R9       EQU  9                                                         00167000
+R10      EQU  10                                                        00168000
+R11      EQU  11                                                        00169000
+R12      EQU  12                                                        00170000
+R13      EQU  13                                                        00171000
+R14      EQU  14                                                        00172000
+R15      EQU  15                                                        00173000
+         END  XDREXIT                   End of the exit                 00174000

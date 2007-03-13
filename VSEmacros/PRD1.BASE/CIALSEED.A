@@ -1,0 +1,202 @@
+         MACRO                                                          00001000
+&LABEL   CIALSEED                                                      X00002000
+               &WHI,            BEGIN, END, SEED                       X00003000
+               &PHRASE=,        SEED PHRASE                            X00004000
+               &XPHRAS=,        SEED PHRASE (HEXIDECIMAL)              X00005000
+               &KEY=,           SEED KEY NUMBER                        X00006000
+               &DEFLTCI=ACSDESSH, DEFAULT CIPHER                       X00007000
+               &DEFLTKY=1         DEFAULT KEY NUMBER                    00008000
+         GBLC  &SEEDS(256),&NUMS(256),&XORC(256)                        00009000
+         GBLA  &IX                                                      00010000
+         LCLA  &JX                                                      00011000
+         AIF   ('&WHI' EQ 'BEGIN').DOBEG                                00012000
+         AIF   ('&WHI' EQ 'END').DOEND                                  00013000
+         AIF   ('&WHI' EQ 'SEED').DOSEED                                00014000
+         MNOTE 16,'MACRO TYPE INVALID'                                  00015000
+         MEXIT                                                          00016000
+.*                                                                      00017000
+.*       GENERATE THE PROGRAM                                           00018000
+.*                                                                      00019000
+.DOBEG   ANOP                                                           00020000
+&IX      SETA  1                                                        00021000
+*---------------------------------------------------------------------* 00022000
+*                                                                     * 00023000
+*        Copyright 2005 -- Connectivity Systems Incorporated          * 00024000
+*                                                                     * 00025000
+*---------------------------------------------------------------------* 00026000
+*                                                 MOVED TO THE TOP  DWD 00027000
+KEYPHRAS DSECT                                                          00028000
+KEYPHRNM DS    F                   Key number                           00029000
+KEYLPHRS DS    F                   Phrase length                        00030000
+KEY@PHRS DS    A                   Phrase address                       00031000
+         DS    XL4                 Unused                               00032000
+KEYPENTL EQU   *-KEYPHRNM          Length of 1 table entry              00033000
+*                                                                       00034000
+R0       EQU   0                                                                
+R1       EQU   1                                                        00048000
+R2       EQU   2                                                        00049000
+R3       EQU   3                                                        00050000
+R4       EQU   4                                                        00051000
+R5       EQU   5                                                        00052000
+R6       EQU   6                                                        00053000
+R7       EQU   7                                                        00054000
+R8       EQU   8                                                        00055000
+R9       EQU   9                                                        00056000
+R10      EQU   10                                                       00057000
+R11      EQU   11                                                       00058000
+R12      EQU   12                                                       00059000
+R13      EQU   13                                                       00060000
+R14      EQU   14                                                       00061000
+R15      EQU   15                                                       00062000
+RF       EQU   15                                                       00063000
+*                                                                       00064000
+ACNOTHNG EQU      0                        Use NOTHING                  00065000
+ACNULLNU EQU      4                        Use NULL-NULL                00066000
+ACNOTHSH EQU      8                        Use NULL-SHA1                00067000
+ACSDESNU EQU      12                       Use SDESCBC-NULL             00068000
+ACSDESSH EQU      16                       Use SDESCBC-SHA1             00069000
+ACSTDENU EQU      20                       Use TDESCBC-NULL             00070000
+ACSTDESH EQU      24                       Use TDESCBC-SHA1             00071000
+ACSTAENU EQU      28                       Use AES128C-NULL             00072000
+ACSTAESH EQU      32                       Use AES128C-SHA1             00073000
+*                                                                       00074000
+&LABEL   CSECT                                                          00075000
+&LABEL   AMODE 31                                                       00076000
+&LABEL   RMODE ANY                                                      00077000
+         PRINT GEN                                                      00078000
+         STM   R14,R12,12(R13)     Save callers regs                    00079000
+         LR    R12,R15             Set up base reg                      00080000
+         USING &LABEL,R12          Establish addressability             00081000
+         LR    R4,R0               Copy passed request code                     
+         LR    R5,R1               Copy passed parameter list address           
+         B     HFSK1000                                                         
+         DC    CL8'&LABEL'                                              00093000
+         DC    CL8'&SYSDATE'                                            00094000
+         DC    CL8'&SYSTIME'                                            00095000
+HFSK1000 DS    0H                                                       00096000
+         C     R4,FW9377           Get current key phrase?                      
+         BE    GCUR1000            bif yes                              00099000
+         C     R4,FW7777           Get a old key phrase?                00100000
+         BE    GOLD1000            bif yes                              00101000
+         C     R4,FW1235           Get current default cipher?          00102000
+         BE    GCIP1000            bif yes                              00103000
+         LA    R0,*-&LABEL         Error offset                         00104000
+         BAL   R1,ERRX1000         Error reason                         00105000
+RQINVALD DC    C'RQINVALD'                                              00106000
+*                                                                       00107000
+* * Get the current pass-phrase...                                      00108000
+GCUR1000 DS    0H                                                       00109000
+         LA    RF,&DEFLTKY         Current default key number           00110000
+         L     R3,@KEYPTAB         Address of key phrase table          00111000
+         USING KEYPHRAS,R3                                              00112000
+GCUR2000 DS    0H                                                       00113000
+         CL    RF,KEYPHRNM         Is this a match?                     00114000
+         BE    GCUR3000            bif yes                              00115000
+         LA    R3,KEYPENTL(,R3)    Bump to the next one                 00116000
+         CLI   0(R3),X'FF'         Is this end of the table?            00117000
+         BNE   GCUR2000            bif no                               00118000
+         LA    R0,*-&LABEL       Error offset                           00119000
+         BAL   R1,ERRX1000         Error reason                         00120000
+KEYNFGCU DC    C'KEYNFGCU'                                              00121000
+GCUR3000 DS    0H                                                       00122000
+         L     R0,KEYLPHRS         Length  of phrase                    00123000
+         L     R1,KEY@PHRS         Address of phrase                    00124000
+         L     RF,KEYPHRNM         Key number                           00125000
+         B     MAIN9000            Return to caller                     00126000
+         DROP  R3                                                       00127000
+*                                                                       00128000
+* * Get the current cipher algorithm to be used...                      00129000
+GCIP1000 DS    0H                                                       00130000
+         LA    RF,&DEFLTCI         Current default cipher               00131000
+         B     MAIN9000            Return to caller                     00132000
+*                                                                       00133000
+* * Get old pass-phrase...                                              00134000
+GOLD1000 DS    0H                                                       00135000
+         L     R3,@KEYPTAB         Address of key phrase table          00136000
+         USING KEYPHRAS,R3                                              00137000
+         L     R2,0(,R5)           @ of key phrase number to locate             
+         L     R0,0(,R2)           Key number to locate                 00139000
+GOLD2000 DS    0H                                                       00140000
+         L     RF,KEYPHRNM         Key number                           00141000
+         CLR   R0,RF               Is this a match?                     00142000
+         BE    GOLD3000            bif yes                              00143000
+         LA    R3,KEYPENTL(,R3)    Bump to the next one                 00144000
+         CLI   0(R3),X'FF'         Is this end of the table?            00145000
+         BNE   GOLD2000            bif no                               00146000
+         LA    R0,*-&LABEL         Error offset                         00147000
+         BAL   R1,ERRX1000         Error reason                         00148000
+KEYNFOND DC    C'KEYNFOND'                                              00149000
+GOLD3000 DS    0H                                                       00150000
+         L     R0,KEYLPHRS         Length  of phrase                    00151000
+         L     R1,KEY@PHRS         Address of phrase                    00152000
+         SLR   RF,RF               Tell caller it worked                00153000
+         B     MAIN9000            Return to caller                     00154000
+*                                                                       00155000
+         DROP  R3                                                       00156000
+*                                                                       00157000
+ERRX1000 DS    0H                                                       00158000
+         L     R15,FWN1            Tell caller the request failed       00159000
+         B     MAIN9000            Exit now                             00160000
+*                                                                       00161000
+MAIN9000 DS    0H                                                       00162000
+         L     R14,12(R13)         Restore callers R14                          
+         LM    R2,R12,28(R13)      Restore callers R2-R12               00177000
+         BSM   0,R14               Return to caller                     00178000
+*                                                                       00179000
+FW0      DC    F'0'                                                     00180000
+FWN1     DC    F'-1'                                                    00181000
+FW1235   DC    F'1235'                                                  00182000
+FW7777   DC    F'7777'                                                  00183000
+FW9377   DC    F'9377'                                                  00184000
+*                                                                       00185000
+@KEYPTAB DC    A(KEYPTAB)                                               00186000
+*                                                                       00187000
+         LTORG ,         MOVED THIS HERE TO MAINTAIN ADDRESSABILITY DWD 00188000
+*                                                                       00189000
+         MEXIT                                                          00190000
+.*                                                                      00191000
+.*       GENERATE PHRASE TABLE FROM MACRO TABLE                         00192000
+.*                                                                      00193000
+.DOEND   ANOP                                                           00194000
+&JX      SETA  1                                                        00195000
+         AIF   (&JX LT &IX).DOE01                                       00196000
+         MNOTE 8,'AT LEAST ONE SEED MUST BE SUPPLIED'                   00197000
+         MEXIT                                                          00198000
+.DOE01   ANOP                                                           00199000
+K&JX     DC    &XORC(&JX)&SEEDS(&JX)                                    00200000
+L&JX     EQU   *-K&JX                                                   00201000
+&JX      SETA  &JX+1                                                    00202000
+         AIF   (&JX LT &IX).DOE01                                       00203000
+&JX      SETA  1                                                        00204000
+KEYPTAB  DC    0D'0'                                                    00205000
+.DOE02   ANOP                                                           00206000
+         DC    A(&NUMS(&JX))       KEY NUMBER                           00207000
+         DC    A(L&JX)                 PHRASE LENGTH                    00208000
+         DC    A(K&JX)                 PHRASE ITSELF                    00209000
+         DC    A(0)                                                     00210000
+&JX      SETA  &JX+1                                                    00211000
+         AIF   (&JX LT &IX).DOE02                                       00212000
+         DC    F'-1'               END OF TABLE                         00213000
+         MEXIT                                                          00214000
+.*                                                                      00215000
+.*       TABLE UP PHRASE AND KEY VALUES                                 00216000
+.*                                                                      00217000
+.DOSEED  ANOP                                                           00218000
+         AIF   (T'&PHRASE NE 'O').DOS01                                 00219000
+         AIF   (T'&XPHRAS NE 'O').DOS00                                 00220000
+         MNOTE 8,'PHRASE MISSING'                                       00221000
+         MEXIT                                                          00222000
+.DOS00   ANOP                                                           00223000
+&XORC(&IX) SETC 'X'                                                     00224000
+&SEEDS(&IX) SETC '&XPHRAS'                                              00225000
+         AGO   .DOS03                                                   00226000
+.DOS01   AIF   (T'&KEY NE 'O').DOS02                                    00227000
+         MNOTE 8,'KEY MISSING'                                          00228000
+         MEXIT                                                          00229000
+.DOS02   ANOP                                                           00230000
+&XORC(&IX) SETC 'C'                                                     00231000
+&SEEDS(&IX) SETC '&PHRASE'                                              00232000
+.DOS03   ANOP                                                           00233000
+&NUMS(&IX)  SETC '&KEY'                                                 00234000
+&IX      SETA  &IX+1                                                    00235000
+         MEND                                                           00236000

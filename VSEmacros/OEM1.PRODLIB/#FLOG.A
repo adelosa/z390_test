@@ -1,0 +1,126 @@
+         MACRO                                                          00010000
+.*       #FLOG macro written         84/03/25                           00020000
+.*                   revised  HZS    89/08/01                           00030000
+&L       #FLOG &INLINE=                                                 00040000
+.*                                                                      00050000
+*---------------------------------------------------------------------* 00060000
+*                    (Fast) Logging Buffer Map                        * 00070000
+*---------------------------------------------------------------------* 00080000
+*  The FLOG is used to hold security-related logging and audit          00090000
+*  information.  A FLOG buffer (entry) is acquired by                   00100000
+*  invocation of "TSSKFLOG", then filled in, and finally                00110000
+*  recorded via a subsequent call to TSSKFLOG.  Free FLOG               00120000
+*  buffer requests are usually issued by "TSSKLOG" service              00130000
+*  routine, requests for full FLOG buffers are issued by                00140000
+*  "TSSTIMER".                                                          00150000
+*  A FLOG is appended to an SMF type-80 record and recorded in          00160000
+*  the SMF dataset and/or the Audit Tracking file.                      00170000
+*---------------------------------------------------------------------* 00180000
+.*                                                                      00190000
+.*  If &INLINE = "YES" then the FLOG block header is not                00200000
+.*  assembled                                                           00210000
+         AIF   ('&INLINE' NE 'YES').DSECT                               00220000
+&L       DS    0F            . #FLOG macro   89/08/01                   00230000
+*                                                                       00240000
+* FLOG buffer entry (SMF and AUDIT TRACKING file)                       00250000
+*                                                                       00260000
+         AGO   .START                                                   00270000
+.DSECT   ANOP                                                           00280000
+*                                                                       00290000
+* FLOG block header                                                     00300000
+*                                                                       00310000
+FLOGHDR  DSECT ,                  Flog block header                     00320000
+         SPACE 1                                                        00330000
+FLOGID   DS    CL4                Block eyecatcher                      00340000
+FLOGCORE DS    0A                 Block residency information           00350000
+FLOGSP   DS    X                  Block subpool                         00360000
+FLOGSIZE DS    AL3                Block size                            00370000
+FLOGNEXT DS    A                  Address of next Flog block            00380000
+*                                 (Zero if last block)                  00390000
+FLOGECNT DS    A                  Number of entries in block            00400000
+         SPACE 1                                                        00410000
+* The following fields require doubleword alignment as they             00420000
+* are serialized by Compare Double and Swap (CDS)                       00430000
+         SPACE 1                                                        00440000
+FLOGFREE DS    0D                 First free entry pointers             00450000
+FLOGFREA DS    A                  Address first free entry              00460000
+FLOGFREC DS    A                  Count of free entries                 00470000
+FLOGFULL DS    0D                 First full/used entry ptrs            00480000
+FLOGFULA DS    A                  Address first full entry              00490000
+FLOGFULC DS    A                  Count of full entries                 00500000
+         SPACE 1                                                        00510000
+* The following fields are doubleword aligned. (not manditory)          00520000
+         SPACE 1                                                        00530000
+FLOGCRET DS    D                  Block timestamp - getmain             00540000
+FLOGLSTT DS    D                  Block timestamp - last chain          00550000
+         SPACE 1                                                        00560000
+* End of doubleword alignment fields                                    00570000
+         SPACE 1                                                        00580000
+FLOGUCNT DS    F                  Number of times (re)chained           00590000
+         SPACE 1                                                        00600000
+FLOGRSV1 DS    XL(LFLOGBUF-(*-FLOGHDR)) Reserved (to end)               00610000
+         SPACE 1                                                        00620000
+FLOGHLEN EQU   *-FLOGHDR          Full size of header                   00630000
+         SPACE 1                                                        00640000
+*                                                                       00650000
+* MAPPING OF FAST LOG ENTRY                                             00660000
+*                                                                       00670000
+FLOG     DSECT                    * #FLOG     02Nov89                   00680000
+         SPACE ,                                                        00690000
+.START   ANOP                                                           00700000
+FLOGAREA EQU   *                                                        00710000
+FLSTCK   DS    A                  CPU time entry given                  00720000
+FLLOCK   DS    X                  Lockbyte X'FF' when in use            00730000
+FLREADY  DS    X                  X'FF' when buffer complete            00740000
+FLIND2   DS    X                  Indicator (audit reason)              00750000
+$FLI2ACT EQU   X'80'               Action audit                         00760000
+$FLI2RSC EQU   X'40'               Resource audit                       00770000
+$FLI2USR EQU   X'20'               User audit                           00780000
+$FLI2FAC EQU   X'10'               Facility audit                       00790000
+FLDATA   EQU   *                  Start of the data area                00791001
+FLEVENT  DS    X                  Security-event  (SKEVENT)             00800000
+FLMODULE DS    X                  Security module (SKLOGM)              00810000
+FLFLAGS  DS    X                  Logging indicators (SKLOGF)           00820000
+FLDATE   DS    XL3                Date (packed YYDDDF)                  00830000
+FLOGOPTS DS    X                  Copy of user's logging options        00840000
+FLTIME   DS    XL4                Time of day (HHMMSSTH)                00850000
+FLRACC   DS    XL2                Requested access                      00860000
+FLAACC   DS    XL2                Allowed access                        00870000
+FLRETCOD DS    X                  Return code                           00880000
+FLDETLRC DS    X                  Detail reason code                    00890000
+FLJOBTYP DS    X                  Jobtype                               00900000
+FLSVC    DS    X                  Calling SVC                           00910000
+FLCLASS  DS    X                  Resource class                        00920000
+FLMODE   DS    X                  User's mode                           00930000
+FLTYPNUM DS    C                  Type (S=STC,J=JOB,....)               00940000
+FLJOBNUM DS    XL2                Job number (JES format)               00950000
+FLNVIOL  DS    X                  Violation count (for session)         00960000
+FLAID    DS    XL3                Acid ID                               00970000
+FLDID    DS    XL3                Dept ID                               00980000
+FLACID   DS    CL8                Acid name                             00990000
+FLJOB    DS    CL8                Job name                              01000000
+FLGRPUID DS    CL8                VM group userid                       01010000
+FLVOLSER DS    CL6                Volume serial                         01020000
+FLPGM    DS    CL8                Program in control                    01030000
+FLIND1   DS    X                  Indicators:                           01040000
+$FLBYPSS EQU   X'80'               User is bypassing security           01050000
+$FLNOTIF EQU   X'40'               ACTION(NOTIFY)                       01060000
+$FLSUSP  EQU   X'20'               Suspend ACID                         01070000
+$FLFRAK  EQU   X'10'               FRACHECK-initiated log               01080000
+$FLRENMO EQU   X'04'               Rename old dsn data                  01090000
+$FLRENMN EQU   X'02'               Rename new dsn data                  01100000
+$FLRENM  EQU   $FLRENMO+$FLRENMN   Rename old and new                   01110000
+$FLVSAM  EQU   X'01'               VSAM catalog data                    01120000
+FLINDEV  DS    CL8                Input device (terminal/reader)        01130000
+FLATTR   DS    XL3                User attributes                       01140000
+FLCATP   DS    X                  If FLSVC=X'1A' this = CTGOPTNS        01150000
+FLRTME   DS    XL3                Reader start time                     01160000
+FLRDTE   DS    XL3                Reader start date                     01170000
+FLRESL   DS    X                  Machine length of resource            01180001
+LFLDATA  EQU   *-FLDATA           Length for data clear                 01181001
+LFLOGFIX EQU   *-FLOG             Length of fixed portion               01190000
+FLVAR    DS    0X                 Variable data                         01200000
+FLRES    EQU   FLVAR,256          Resource name                         01210001
+FLNAME   EQU   FLRES,32           Name of user (init only)              01220000
+LFLOGBUF EQU   384                Maximum length                        01230001
+         MEND                                                           01240000

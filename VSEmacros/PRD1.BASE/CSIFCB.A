@@ -1,0 +1,274 @@
+         MACRO                                                          00001000
+&NAME    CSIFCB   &ACTION,&OPTION,                                     *00002000
+               &LPI=,                      Lines per inch, 6 or 8      *00003000
+               &LINES=,                    Lines per form 2 - 256      *00004000
+               &DATA=                      Optional ID data             00005000
+.********************************************************************** 00006000
+.*       Generate FCB for TCP/IP-related processing                   * 00007000
+.*                                                                    * 00008000
+.*       Copyright 2006, Connectivity Systems Incorporated            * 00009000
+.*       All rights reserved                                          * 00010000
+.*                                                                    * 00011000
+.*       This macro is intended for use with TCP/IP for VSE           * 00012000
+.*       processing of reports designed for use with an FCB image.    * 00013000
+.*                                                                    * 00014000
+.*       It will generate a "standard" FCB image that can be          * 00015000
+.*       loaded by TCP/IP for VSE's clientd to ensure that correct    * 00016000
+.*       line control characters are generated.                       * 00017000
+.*                                                                    * 00018000
+.*       Usage:                                                       * 00019000
+.*                                                                    * 00020000
+.*   ›name® CSIFCB  action›,option®›,option®›,keyword=®               * 00021000
+.*                                                                    * 00022000
+.*       action  - BEGIN                                              * 00023000
+.*                  Must appear once and be coded on the              * 00024000
+.*                  first instance of the macro.  May                 * 00025000
+.*                  include "name". MUST include the LPI=             * 00026000
+.*                  and LINES= keyword parameters.                    * 00027000
+.*                                                                    * 00028000
+.*                 END                                                * 00029000
+.*                  Must appear once and be coded on the              * 00030000
+.*                  last instance of the macro. May include           * 00031000
+.*                  the DATA=KEYWORD or the NODATA option.            * 00032000
+.*                  May include the LIST option.                      * 00033000
+.*                                                                    * 00034000
+.*                 CHANNELx                                           * 00035000
+.*                  Coded on instances between the BEGIN and          * 00036000
+.*                  END actions.  May be repeated as many             * 00037000
+.*                  times as desired.  The value "x" must be replaced * 00038000
+.*                  by the channel designator (1 through 9 and        * 00039000
+.*                  A through C).  The line number to be assigned     * 00040000
+.*                  to the channel is specified as the option.        * 00041000
+.*                  Each value of "x" can appear multiple times.      * 00042000
+.*                  Each line number may be used only once.           * 00043000
+.*                                                                    * 00044000
+.*       name       If specified, a PUNCH statement is included       * 00045000
+.*                  to name the phase.  If omitted, the object        * 00046000
+.*                  deck will not contain a name directive for        * 00047000
+.*                  the linkage editor.                               * 00048000
+.*                                                                    * 00049000
+.*       option    NODATA                                             * 00050000
+.*                  When included with the END action, will prevent   * 00051000
+.*                  the addition of an 80-byte data string following  * 00052000
+.*                  the FCB format.  This data string is used by      * 00053000
+.*                  "real" FCB's but NOT by TCP/IP.  By default, an   * 00054000
+.*                  80-byte blank data string is supplied.  This      * 00055000
+.*                  option is mutually exclusive with the DATA=       * 00056000
+.*                  keyword.                                          * 00057000
+.*                                                                    * 00058000
+.*                 nnn                                                * 00059000
+.*                  When included with the CHANNELx action, specifies * 00060000
+.*                  the line number to contain the "channel stop".    * 00061000
+.*                                                                    * 00062000
+.*       LPI=       This keyword is required with the BEGIN action.   * 00063000
+.*                  It specifies the "lines per inch" and may be      * 00064000
+.*                  either "6" or "8".                                * 00065000
+.*                                                                    * 00066000
+.*       LINES=     This keyword is required with the BEGIN action.   * 00067000
+.*                  It specifies the total number of lines on one     * 00068000
+.*                  page.  Allowed values are 2 through 256,          * 00069000
+.*                  inclusive.                                        * 00070000
+.*                                                                    * 00071000
+.*       DATA=      If coded with the END action, this parameter      * 00072000
+.*                  specifies up to 80 characters to be included      * 00073000
+.*                  in the phase, following the FCB definition.       * 00074000
+.*                  The character string must be enclosed in          * 00075000
+.*                  apostrophes (').  If omitted (and NODATA is       * 00076000
+.*                  NOT coded), an 80-byte blank string is            * 00077000
+.*                  used.  Note that if you omit DATA= and specify    * 00078000
+.*                  the NODATA option, only the FCB will be           * 00079000
+.*                  generated.  You may manually insert text between  * 00080000
+.*                  the END action and the assembler END statement.   * 00081000
+.*                  if desired.                                       * 00082000
+.*                                                                    * 00083000
+.********************************************************************** 00084000
+         GBLB     &BEGIN                   BEGIN specified              00085000
+         GBLB     &END                     END specified                00086000
+         GBLA     &LCHAR(256)              Values for FCB positions     00087000
+         GBLA     &LINSPEC                 Total lines in FCB           00088000
+         GBLC     &LABEL                   CSECT name                   00089000
+         GBLC     &LPISPEC                 Lines per inch               00090000
+         LCLC     &CHAR                    Channel identifier           00091000
+         LCLA     &CHNUM                   Channel number               00092000
+         LCLA     &LINENUM                 Line number                  00093000
+         LCLA     &I                       Index                        00094000
+         LCLC     &TXT                     Descriptive text             00095000
+         AIF      ('&ACTION' EQ 'BEGIN').ABEG                           00096000
+         AIF      ('&ACTION' EQ 'END').AEND                             00097000
+         AIF      (K'&ACTION EQ 8).ACHAN                                00098000
+         MNOTE    8,'Invalid value for ACTION field'                    00099000
+         MEXIT                                                          00100000
+.*                                                                      00101000
+.*       ACTION "BEGIN"                                                 00102000
+.*                                                                      00103000
+.ABEG    ANOP                                                           00104000
+         AIF      (&BEGIN EQ 0).ABEG2                                   00105000
+         MNOTE    8,'The BEGIN action must be coded only once'          00106000
+         MEXIT                                                          00107000
+.ABEG2   ANOP                                                           00108000
+&BEGIN   SETB     1                                                     00109000
+         AIF      ('&NAME' EQ '').ABEG3                                 00110000
+&LABEL   SETC     '&NAME'                                               00111000
+         PUNCH    ' PHASE &NAME,*'                                      00112000
+.ABEG3   ANOP                                                           00113000
+         AIF      ('&LABEL' NE '').ABEG4                                00114000
+&LABEL   SETC     'START'                                               00115000
+.ABEG4   ANOP                                                           00116000
+         AIF      ('&LPI' EQ '6').ABEG5                                 00117000
+         AIF      ('&LPI' EQ '8').ABEG5                                 00118000
+         MNOTE    8,'LPI= not specified as "6" or "8")                  00119000
+         MEXIT                                                          00120000
+.ABEG5   ANOP                                                           00121000
+&LPISPEC SETC     '&LPI'                                                00122000
+         AIF      (T'&LINES EQ 'N').ABEG7                               00123000
+.ABEG6   ANOP                                                           00124000
+         MNOTE    8,'LINES= not specified as value 2 through 256'       00125000
+         MEXIT                                                          00126000
+.ABEG7   ANOP                                                           00127000
+&LINSPEC SETA     &LINES                                                00128000
+         AIF      (&LINES LT 2).ABEG6                                   00129000
+         AIF      (&LINES GT 256).ABEG6                                 00130000
+         MEXIT                                                          00131000
+.*                                                                      00132000
+.*       ACTION "CHANNELx"                                              00133000
+.*                                                                      00134000
+.ACHAN   ANOP                                                           00135000
+         AIF      ('&ACTION'(1,7) EQ 'CHANNEL').ACHA2                   00136000
+         MNOTE    8,'Invalid value for ACTION field'                    00137000
+         MEXIT                                                          00138000
+.ACHA2   ANOP                                                           00139000
+         AIF      (&BEGIN).ACHA3                                        00140000
+         MNOTE    8,'The BEGIN action must precede CHANNEL'             00141000
+         MEXIT                                                          00142000
+.ACHA3   ANOP                                                           00143000
+         AIF      (&END EQ 0).ACHA4                                     00144000
+         MNOTE    8,'The CHANNEL action may NOT follow END'             00145000
+         MEXIT                                                          00146000
+.ACHA4   ANOP                                                           00147000
+&CHAR    SETC     '&ACTION'(8,1)                                        00148000
+         AIF      ('&CHAR' EQ 'A').CH10                                 00149000
+         AIF      ('&CHAR' EQ 'B').CH11                                 00150000
+         AIF      ('&CHAR' EQ 'C').CH12                                 00151000
+         AGO      .CHNUM                                                00152000
+.CH10    ANOP                                                           00153000
+&CHAR    SETC     '10'                                                  00154000
+         AGO      .CHNUM                                                00155000
+.CH11    ANOP                                                           00156000
+&CHAR    SETC     '11'                                                  00157000
+         AGO      .CHNUM                                                00158000
+.CH12    ANOP                                                           00159000
+&CHAR    SETC     '12'                                                  00160000
+.CHNUM   ANOP                                                           00161000
+         AIF      (T'&CHAR EQ 'N').ACHA6                                00162000
+.ACHA5   ANOP                                                           00163000
+         MNOTE    8,'CHANNELx is not 1 - 9 or A - C'                    00164000
+         MEXIT                                                          00165000
+.ACHA6   ANOP                                                           00166000
+&CHNUM   SETA     &CHAR                                                 00167000
+         AIF      (&CHNUM LT 1).ACHA5                                   00168000
+         AIF      (&CHNUM GT 12).ACHA5                                  00169000
+.*                                                                      00170000
+         AIF      (T'&OPTION EQ 'N').ACH7                               00171000
+         MNOTE    8,'Option is not a line number'                       00172000
+         MEXIT                                                          00173000
+.ACH7    ANOP                                                           00174000
+&LINENUM SETA     &OPTION                                               00175000
+         AIF      (&LINENUM GE 1).ACH9                                  00176000
+.ACH8    ANOP                                                           00177000
+         MNOTE    8,'Line number (&LINENUM) is not between 1 and &LINSP*00178000
+               EC'                                                      00179000
+         MEXIT                                                          00180000
+.ACH9    ANOP                                                           00181000
+         AIF      (&LINENUM GT &LINSPEC).ACH8                           00182000
+.*                                                                      00183000
+         AIF      (&LCHAR(&LINENUM) EQ 0).ACH10                         00184000
+&CHAR    SETC     '123456789ABC'                                        00185000
+&CHAR    SETC     '&CHAR'(&LCHAR(&LINENUM),1)                           00186000
+         MNOTE    8,'Line &LINENUM already assigned to channel &CHAR'   00187000
+         MEXIT                                                          00188000
+.ACH10   ANOP                                                           00189000
+&LCHAR(&LINENUM) SETA &CHNUM                                            00190000
+         MEXIT                                                          00191000
+.*                                                                      00192000
+.*       ACTION "END"                                                   00193000
+.*                                                                      00194000
+.AEND    ANOP                                                           00195000
+         AIF      (&BEGIN).AEND2                                        00196000
+         MNOTE    8,'BEGIN action not previously specified'             00197000
+         MEXIT                                                          00198000
+.AEND2   ANOP                                                           00199000
+         AIF      (&END EQ 0).AEND3                                     00200000
+         MNOTE    8,'END action must be last LPRFCB instance coded.'    00201000
+         MEXIT                                                          00202000
+.AEND3   ANOP                                                           00203000
+&END     SETB     1                                                     00204000
+&CHNUM   SETA     0                                                     00205000
+         AIF      ('&LPISPEC' EQ '6').AEND4                             00206000
+&LCHAR(1) SETA &LCHAR(1)+16                                             00207000
+.AEND4   ANOP                                                           00208000
+&LCHAR(&LINSPEC) SETA &LCHAR(&LINSPEC)+16                               00209000
+&LABEL   CSECT                                                          00210000
+.*                                                                      00211000
+.*       Generate 1st byte of FCB                                       00212000
+.*                                                                      00213000
+&CHNUM   SETA     &LCHAR(1)                                             00214000
+&TXT     SETC     '6 LPI'                                               00215000
+         AIF      (&CHNUM LT 16).GEN6LPI                                00216000
+&TXT     SETC     '8 LPI'                                               00217000
+&CHNUM   SETA     &CHNUM-16                                             00218000
+GEN6LPI  ANOP                                                           00219000
+         AIF      (&CHNUM EQ 0).GENNCHN                                 00220000
+&CHAR    SETC     '123456789ABC'                                        00221000
+&CHAR    SETC     '&CHAR'(&CHNUM,1)                                     00222000
+&TXT     SETC     'Channel &CHAR, &TXT'                                 00223000
+.GENNCHN ANOP                                                           00224000
+         DC       AL1(&LCHAR(1)),0C'Line 1, &TXT'                       00225000
+&I       SETA     2                                                     00226000
+.AELP1   ANOP                                                           00227000
+&CHNUM   SETA     &LCHAR(&I)                                            00228000
+&TXT     SETC     ''                                                    00229000
+         AIF      (&CHNUM EQ 0).AEZERO                                  00230000
+         AIF      (&CHNUM GE 16).AELP1E                                 00231000
+&CHAR    SETC     '123456789ABC'                                        00232000
+&CHAR    SETC     '&CHAR'(&CHNUM,1)                                     00233000
+         DC       AL1(&LCHAR(&I)),0C'Line &I, Channel &CHAR'            00234000
+         AGO      .AENEXT                                               00235000
+.AEZERO  ANOP                                                           00236000
+         DC       AL1(0),0C'Line &I'                                    00237000
+.AENEXT  ANOP                                                           00238000
+&I       SETA     &I+1                                                  00239000
+         AIF      (&I LE 256).AELP1                                     00240000
+         AGO      .AEDATA                                               00241000
+.*                                                                      00242000
+.*       Last position in the FCB                                       00243000
+.*                                                                      00244000
+.AELP1E  ANOP                                                           00245000
+&CHNUM   SETA     &CHNUM-16                                             00246000
+&TXT     SETC     'Last line on Page'                                   00247000
+         AIF      (&CHNUM EQ 0).GENLAST                                 00248000
+&CHAR    SETC     '123456789ABC'                                        00249000
+&CHAR    SETC     '&CHAR'(&CHNUM,1)                                     00250000
+&TXT     SETC     'Channel &CHAR, &TXT'                                 00251000
+.GENLAST ANOP                                                           00252000
+         DC       AL1(&LCHAR(&I)),0C'Line &I, &TXT'                     00253000
+         AIF      (&I EQ 256).AEDATA                                    00254000
+&I       SETA     256-&I                                                00255000
+         DC       XL&I'00',0C'Pad to 256 bytes'                         00256000
+*                                                                       00257000
+.AEDATA  ANOP                                                           00258000
+         AIF      ('&OPTION' EQ 'NODATA').AEND5                         00259000
+         AIF      ('&OPTION' EQ '').AEND6                               00260000
+         MNOTE    8,'Invalid option: &OPTION'                           00261000
+         MEXIT                                                          00262000
+.AEND5   ANOP                                                           00263000
+         AIF      ('&DATA' EQ '').AENDX                                 00264000
+         MNOTE    8,'NODATA specified with DATA='                       00265000
+         MEXIT                                                          00266000
+.AEND6   ANOP                                                           00267000
+         AIF      ('&DATA' EQ '').AEND7                                 00268000
+         DC       CL80&DATA                                             00269000
+         AGO      .AENDX                                                00270000
+.AEND7   ANOP                                                           00271000
+         DC       CL80' '                                               00272000
+.AENDX   ANOP                                                           00273000
+         MEND                                                           00274000

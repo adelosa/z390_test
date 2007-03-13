@@ -1,0 +1,1004 @@
+.* IBM DISK OPERATING SYSTEM                                            00050000
+.* ISFMS - ISMOD2 - 5686-007-02-C440                           @U31TUJS 00100000
+.* COPYRIGHT = THIS MACRO IS "RESTRICTED MATERIALS OF IBM"     @D41TDKY 00150000
+.*             5686-007 (C) COPYRIGHT IBM CORP. 1977,1989      @U31TUJS 00200000
+.*             ALL RIGHTS RESERVED                             @U31TUJS 00250000
+.*             LICENSED MATERIALS - PROPERTY OF IBM            @U31TUJS 00300000
+.*             SEE COPYRIGHT INSTRUCTIONS, G120-2083           @U31TUJS 00350000
+* ISFMS - ISMOD2 - 5686-007-02-C440                            @U31TUJS 00400000
+*                                                                ENTRY. 00450000
+         AIF   (NOT &SW(15)).M61        RPS NOT SPECIFIED      @DL30SMP 00500000
+         DC    X'F041' .                SET SECTOR (ARG = 0)   @DL30SMP 00550000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 00600000
+.M61     ANOP                                                  @DL30SMP 00650000
+         DC    X'8C4B'                  SEARCH ID EQUAL.                00700000
+*CCW CONTENTS: X'31', 'IJHCSADR+3', FLAGS 40, 5.                        00750000
+         DC    X'066B'                  TIC TO *-8.                     00800000
+* CCW CONTENTS: X'08', POINTER TO *-8, FLAGS 60, 5.                     00850000
+         DC    X'B06C'                  WRITE COCR.                     00900000
+*CCW CONTENTS: X'05', 'IJHACOCR', FLAGS 60, 10.                         00950000
+         AIF   (NOT &SW(15)).M62        RPS NOT SPECIFIED      @DL30SMP 01000000
+         DC    X'F141' .                SET SECTOR             @DL30SMP 01050000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 01100000
+         DC    X'D17B'                  READ HOME ADDRESS      @DL30SMP 01150000
+* CCW CONTENTS: X'1A','IJHACTNA', FLAGS 70, 5.                 @DL30SMP 01200000
+.M62     ANOP                                                  @DL30SMP 01250000
+         DC    X'E24B'                  SEARCH ID EQUAL.                01300000
+*CCW CONTENTS: X'B1', 'IJHACTOA', FLAGS 40, 5.                          01350000
+         DC    X'066B'                  TIC TO *-8.                     01400000
+* CCW CONTENTS: X'08', POINTER TO *-8, FLAGS 60, 5.                     01450000
+         DC    X'2A45'                  WRITE KEY, DATA (POINTER).      01500000
+*CCW CONTENTS: X'0D', IOAREAL+8, FLAGS 40, KEYLEN+10.                   01550000
+         AIF   (NOT &SW(15)).M63        RPS NOT SPECIFIED      @DL30SMP 01600000
+         DC    X'F151' .                SET SECTOR             @DL30SMP 01650000
+* CCW CONTENTS: X'23', PTR TO SECTOR ARG, FLAGS 60, LNTH = 1 . @DL30SMP 01700000
+.M63     ANOP                                                  @DL30SMP 01750000
+         DC    X'824B'                  SEARCH ID EQUAL.                01800000
+*CCW CONTENTS: X'31', 'IJHACTOA', FLAGS 40, 5.                          01850000
+         DC    X'066B'                  TIC TO *-8.                     01900000
+* CCW CONTENTS: X'08', POINTER TO *-8, FLAGS 60, 5.                     01950000
+         DC    X'AA35'                                                  02000000
+*CCW CONTENTS: X'0E', IOAREAL+8, FLAGS 30, KEYLEN+10.                   02050000
+         AIF   (NOT &SW(23)).DT                                     3-4 02100000
+         AIF   (&SW(24)).DS             RDONLY SPECIFIED       @DL30SMP 02150000
+         MVI   IJHEWORK,X'41'           INDICATE WRITE TRACK INDEX  3-4 02200000
+         MVC   IJHEWORK+1(3),IJHADKEY+5 ADDRESS OF IOAREAL+8        3-4 02250000
+         AGO   .DT                                                  3-4 02300000
+.DS      ANOP                                                       3-4 02350000
+         MVI   44(13),X'41'             INDICATE WRITE TRACK INDEX  3-4 02400000
+         MVC   45(3,13),IJHADKEY+5      ADDRESS OF IOAREAL+8        3-4 02450000
+.DT      ANOP                                                       3-4 02500000
+         BAL   4,IJHAIOOP               EXCP, WAIT, ERROR TEST.         02550000
+         AIF   (NOT &SW(11)).DU                                     3-9 02600000
+         SVC   IJHSVC36                FREE INDEX TRACK             3-9 02650000
+         NI    IJHCILN,X'FF'-IJHNDXHD  CLEAR INDX TRK HELD BIT      3-9 02700000
+.DU      ANOP                                                       3-9 02750000
+         B     IJHAEMCI                 GO TO UPDATE INDICES.           02800000
+         AIF   ((&SW(4) OR &SW(3)) AND NOT (&SW(4) AND NOT &SW(8))).D3  02850000
+.*                                      (ADDRTR OR RETRVE) &   @DL30SMP 02900000
+.*                                      NOT (ADDRTR & SEQNTL)  @DL30SMP 02950000
+         AIF   (&SW(23)).DV                                         3-4 03000000
+IJHCWATB BAL   4,IJHCINIT               INITIALIZE POINTER TO DTFIS 3-4 03050000
+         TM    IJHCSTBY,X'FF'           TEST STATUS BYTE.               03100000
+         BM    IJHSER2                  IF CONDITION IS NOT NORMAL,     03150000
+*                                         RETURN TO USER.               03200000
+         BAL   4,IJHCWAIT               WAIT AND TEST FOR ERRORS.       03250000
+         B     IJHAWTNK                 BRANCH TO WRITE NEWKEY.         03300000
+         AGO   .D0                                                  3-4 03350000
+.DV      ANOP                                                       3-4 03400000
+IJHCWATB TM    IJHCSTBY,X'FF'           IF STATUS NOT NORMAL,       3-4 03450000
+         BM    IJHENOTE                   GO HERE                   3-4 03500000
+         AIF   (&SW(24)).DW             RDONLY SPECIFIED       @DL30SMP 03550000
+IJHECONT STM   2,13,IJHCSAVE            SAVE USER REGISTERS         3-4 03600000
+         AGO   .DX                                                  3-4 03650000
+.DW      ANOP                                                       3-4 03700000
+IJHECONT STM   2,13,0(13)               SAVE USER REGISTERS         3-4 03750000
+         LR    0,13                     SAVE POINTER TO SAVE AREA   3-4 03800000
+.DX      ANOP                                                       3-4 03850000
+         BAL   4,IJHCINIT               INITIALIZE DTF TABLE REGISTE3-4 03900000
+         BAL   4,IJHCWAIT               WAIT AND ERROR TEST         3-4 03950000
+         B     IJHAWTNK                 GO TO WRITE NEW KEY         3-4 04000000
+IJHENOTE TM    IJHCCCB+2,IJHERREX      IS THIS AN ERREXT DTF        3-9 04050000
+         AIF   (NOT &SW(11)).DY                                     3-9 04100000
+         BZ    IJHSER2H                NO, RETURN TO USER           3-9 04150000
+         AGO   .DZ                                                  3-9 04200000
+.DY      BZ    IJHSER2                 NO, RETURN TO USER           3-9 04250000
+.DZ      OI    IJHCILN,IJHWAITF        SET WAITF INDICATOR          3-9 04300000
+         B     IJHEUSER                 GO TO RETURN TO USER        3-4 04350000
+.D0      AIF   (NOT &SW(11)).D1                                     3-9 04400000
+IJHAA42  OI    IJHCILN,IJHNDXHD        INDICATE INDX TRK HELD       3-9 04450000
+         BAL   IJHREG7,IJHCXCPH        LINK TO EXCP/HOLD ROUTINE    3-9 04500000
+         AGO   .D2                                                  3-9 04550000
+.D1      ANOP                                                       3-9 04600000
+IJHAA42  BAL   7,IJHCEXCP               LINK TO EXCP ROUTINE.           04650000
+.D2      ANOP                                                       3-9 04700000
+         B     IJHSER2                  BRANCH TO RETURN TO USER.       04750000
+.D3      AIF   (NOT &SW(11)).D4                                     3-9 04800000
+IJHAIOPH OI    IJHCILN,IJHTRKHD        INDICATE DATA TRK HELD       3-9 04850000
+         BAL   IJHREG7,IJHCXCPH        LINK TO EXCP/HOLD ROUTINE    3-9 04900000
+         B     IJHAIOOP+4              GO TO WAIT AND TEST FOR EOF  3-9 04950000
+.D4      ANOP                                                       3-9 05000000
+IJHAIOOP BAL   7,IJHCEXCP               EXCP.                           05050000
+         TM    IJHCCCB+2,X'80'          WAIT.                           05100000
+         BO    *+6                                                      05150000
+         SVC   7                                                        05200000
+         TM    IJHCCCB+4,X'01'          IF EOF IS SENSED (DURING READ   05250000
+         BO    IJHACITF                   FROM LAST PRIME DATA TRACK),  05300000
+*                                         GO HERE.                      05350000
+         B     IJHCERRT                 BRANCH TO TEST ERROR CONDITION. 05400000
+*********************************************************************** 05450000
+*NAME: EXCHANGE ROUTINE.                                              * 05500000
+*FUNCTION: TO EXCHANGE THE CONTENTS OF TWO EQUAL LENGTH CORE AREAS.   * 05550000
+*ENTRY POINT: 'IJHAASHF'.                                             * 05600000
+*INPUT: #7 CONTAINS NUMBER OF BYTES TO BE EXCHANGED.                  * 05650000
+*       #9 & #10 POINT TO EXCHANGE AREAS.                             * 05700000
+*OUTPUT: CONTENS EXCHANGED.                                           * 05750000
+*EXIT: BR 4, RETURN TO CALLING ROUTINE.                               * 05800000
+*EXTERNAL ROUTINES: NONE.                                             * 05850000
+*REGISTER USE: #4, #7 THRU #10.                                       * 05900000
+*NOTES: NONE.                                                         * 05950000
+*********************************************************************** 06000000
+IJHAA46  XC    0(0,9),0(10)            WILL BE EXECUTED BY AN       3-4 06050000
+IJHAA47  XC    0(0,10),0(9)            EXECUTE INSTRUCTION          3-4 06100000
+IJHAASHF LA    8,256                    INITIALIZE.                     06150000
+IJHAA44  SR    IJHA7,8                  DECREMENT COUNT BY 256.         06200000
+         BC    12,IJHAA45               FOR COUNT NOT OVER 0, BRANCH.   06250000
+IJHAA43  XC    0(256,9),0(10)           EXCHANGE TWO 256 BYTE AREAS.    06300000
+         XC    0(256,10),0(9)                                           06350000
+         EX    0,IJHAA43                                                06400000
+         AR    10,8                     BUMP POINTERS AND LOOP.         06450000
+         BXH   9,8,IJHAA44                                              06500000
+IJHAA45  LA    IJHA7,255(IJHA7)         RESTORE COUNT, LESS 1.          06550000
+         EX    IJHA7,IJHAA46            EXCHANGE THE TWO AREAS.         06600000
+         EX    IJHA7,IJHAA47                                            06650000
+         EX    IJHA7,IJHAA46                                            06700000
+         BR    4                        RETURN.                         06750000
+.D5      ANOP                                                       3-9 06800000
+         AIF   (&SW(8)).GZ                                          3-4 06850000
+.D6      ANOP                                                       3-4 06900000
+         AIF   (&SW(21)).GJ                                         3-4 06950000
+.D7      ANOP                                                       3-4 07000000
+         AIF   (&SW(2)).JC                                          3-4 07050000
+.D8      ANOP                                                       3-4 07100000
+         AIF   (NOT &SW(9)).FS          IF NO SEQRTR, SKIP.         3-9 07150000
+IJHSGET  EQU   *                       GET ROUTINE                  3-4 07200000
+         AIF   (NOT &SW(24)).D9        RDONLY NOT SPECIFIED    @DL30SMP 07250000
+         XR    13,0                    INTERCHANGE POINTER TO       3-3 07300000
+         XR    0,13                       SAVE AREA AND CONTENTS    3-3 07350000
+         XR    13,0                          OF REG 13              3-3 07400000
+.D9      ANOP                                                       3-3 07450000
+IJHSGET1 BAL   7,IJHSBHIN              GO TO INIT-ROUTINE           3-3 07500000
+         OI    IJHADDR,IJHGETSW        INDICATE GET ISSUED              07550000
+         AIF   (NOT &SW(25) AND &SW(11)).FU1                   @DA01015 07600000
+         AIF   (&SW(25) AND &SW(11)).FU1                       @DA01015 07650000
+         TM    IJHCNTSW,X'04'          FIRST GET OVFLO ERROR   @DA01015 07700000
+         BO    IJHCRENT                                        @DA01015 07750000
+.FU1     ANOP                                                  @DA01015 07800000
+         TM    IJHSINIT+1,X'02'        WAS LAST RECORD IN OVERFLOW AREA 07850000
+         AIF   (NOT &SW(25)).EB                                     3-4 07900000
+         BZ    *+12  NO, BRANCH                                     3-4 07950000
+         TM    IJHCSTBY,X'01'  IS USER RECORD OVERFLOW RECORD       3-4 08000000
+.EB      ANOP                                                       3-4 08050000
+         BO    IJHSOTR                 YES, GO TO HANDLE                08100000
+         LH    9,IJHCBFAC              PICK UP BLOCKINGFACTOR           08150000
+         CR    9,6                     ARE ALL RECORDS IN BLOCK PROCESD 08200000
+         BNE   IJHSBH12                NO, GO TO DEBLOCK                08250000
+         BAL   11,IJHSINT              TO TO CHECK IF PUT ISSUED    3-3 08300000
+         AIF   (NOT &SW(25)).EC                                     3-4 08350000
+IJHSREDO TM    IJHSINIT+1,X'02'  WAS LAST RECORD IN OVERFLOW AREA   3-4 08400000
+         BO    IJHSOTR  YES, GO TO HANDLE                           3-4 08450000
+.EC      ANOP                                                       3-4 08500000
+         CLI   IJHCPDDV,X'02'          IF PD DEVICE NOT A 2321      4-0 08550000
+         BNE   IJHSNO                  BRANCH                       4-0 08600000
+         MVI   IJHSLMIT+4,9             INITIALIZE STRIP UPPER LIMIT.   08650000
+         CLI   IJHSCADR+3,19            IF NOT LAST SUBCELL,            08700000
+         BNE   IJHSNO                     GO HERE.                      08750000
+         MVI   IJHSLMIT+4,5             SET NEW LIMIT.                  08800000
+IJHSNO   EQU   *                                                        08850000
+         AIF   (NOT &SW(25)).ED                                     3-4 08900000
+         TM    IJHCOPT,X'01'  ARE THERE 2 I/O AREAS                 3-4 08950000
+         BZ    IJHSNOWT                NO, BRANCH                   3-4 09000000
+         TM    IJHCRTR,X'08'           FIRST TIME THROUGH           3-4 09050000
+         BZ    IJHSNOWT                YES, BRANCH                  3-4 09100000
+         BAL   4,IJHCWAIT              WAIT                         3-4 09150000
+IJHSWOR  MVC   IJHSCOVF(8),IJHSCADR     SAVE ADDR FOR PUT           3-6 09200000
+.ED      ANOP                                                       3-4 09250000
+IJHSNOWT CLC   IJHSCADR+7(1),IJHSLMIT+7 CHECK IF END OF TRACK       3-4 09300000
+         BE    IJHSEOTR                YES, GO TO HANDLE                09350000
+IJHSRETB BAL   4,IJHSEOT               NO,GO TO ADD ONE TO RECORD #     09400000
+         AIF   (NOT &SW(11)).EE                                     3-9 09450000
+         CLC   IJHCSADR(IJHDL7),IJHSCADR DID WE GO TO A NEW TRACK   3-9 09500000
+         BE    IJHSRETC                NO, CONTINUE                 3-9 09550000
+         MVC   IJHCSADR(IJHDL8),IJHSCADR YES, HOLD NEXT TRACK       3-9 09600000
+         MVC   IJHCSADR+6(IJHDL2),IJHSTICU SET UP INDEX ADDRESS     3-9 09650000
+         BAL   IJHREG4,IJHSBILD        BUILD NOP CHAIN FOR HOLD     3-9 09700000
+         DC    X'0300'                 CONSTANTS FOR BUILDER        3-9 09750000
+         AIF   (NOT &SW(15)).ED1       RPS NOT SPECIFIED       @DL30SMP 09800000
+         ST    IJHREG6,IJHVTRS         SAVE REGISTER 6         @DL30SMP 09850000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 09900000
+         XC    IJHCCCW+IJHVD24(IJHVL1),IJHSLMIT+IJHVD1 .CLEAR  @DL30SMP 09950000
+* .                                    UNBLOCKED READ BIT      @DL30SMP 10000000
+         L     IJHREG6,IJHVTRS         RESTORE REGISTER 6      @DL30SMP 10050000
+         AGO   .ED2                                            @DL30SMP 10100000
+.ED1     ANOP                                                  @DL30SMP 10150000
+         XC    IJHCCCW+16(IJHDL1),IJHSLMIT+1 CLEAR UNBLKED READ BIT 3-9 10200000
+.ED2     ANOP                                                  @DL30SMP 10250000
+         BAL   IJHREG4,IJHCXWTH        GO TO EXCP/HOLD FOR INDEX    3-9 10300000
+         MVC   IJHCSADR(IJHDL8),IJHSCADR GET NEW PRIME TRACK ADDR   3-9 10350000
+         BAL   IJHREG4,IJHCXWTH        EXCP AND HOLD DATA TRACK     3-9 10400000
+         MVC   IJHCSADR+6(IJHDL2),IJHSTICU SET UP INDEX ADDRESS     3-9 10450000
+         SVC   IJHSVC36                FREE INDEX TRACK             3-9 10500000
+IJHSRETC EQU   *                                                    3-9 10550000
+.EE      ANOP                                                       3-9 10600000
+         MVC   IJHCSADR(8),IJHSCADR    MOVE CURR. ADDR. TO SEEKADDR.    10650000
+         BAL   12,IJHSGET2             GO TO GET ROUTINE                10700000
+         AIF   (NOT &SW(25)).EF                                     3-4 10750000
+         TM    IJHCSTBY,X'01'          OVERFLOW WITH 2 I/O AREAS    3-4 10800000
+         BZ    IJHSBH11                NO, BRANCH                   3-4 10850000
+         LA    5,10(5)                 YES, ADD 10 TO IOAREA        3-4 10900000
+         B     IJHSBH13                                             3-4 10950000
+.EF      ANOP                                                       3-4 11000000
+IJHSBH11 LA    6,1                     SET RECORDCOUNTER TO 1           11050000
+         AIF   (NOT &SW(24)).EG        RDONLY NOT SPECIFIED    @DL30SMP 11100000
+IJHSBH13 XR    13,0                    INTERCHANGE POINTER TO       3-3 11150000
+         XR    0,13                       SAVE AREA AND CONTENTS    3-3 11200000
+         XR    13,0                          OF REG 13              3-3 11250000
+         BAL   4,IJHSWORK  GO TO WORK AREA ROUTINE                  3-3 11300000
+         LR    0,13  RESTORE REGISTER                               3-3 11350000
+         AGO   .EH                                                  3-3 11400000
+.EG      ANOP                                                       3-3 11450000
+IJHSBH13 BAL   4,IJHSWORK  GO TO WORK AREA ROUTINE                  3-3 11500000
+.EH      ANOP                                                       3-3 11550000
+IJHSBH17 STH   6,IJHSRCNT              STORE RECORDCOUNTER              11600000
+         ST    5,IJHSDB1               STORE IOAREA                     11650000
+         AIF   (&SW(24)).EI             RDONLY SPECIFIED       @DL30SMP 11700000
+         LR    0,1                      RESTORE USER'S REGISTERS,       11750000
+         LR    1,2                        LOAD USER'S I/O REGISTER,     11800000
+         LM    2,14,IJHCSAVE              AND RETURN TO USER.           11850000
+         AGO   .EJ                                                  3-3 11900000
+.EI      ANOP                                                       3-3 11950000
+         LR   13,0   RESTORE R13 TO POINT TO USER SAVE AREA         3-3 12000000
+         LR    0,1                     RESTORE USER'S REGISTERS     3-3 12050000
+         LR    1,2                       LOAD USER'S I/O REGISTER   3-3 12100000
+         LM    IJHREG2,IJHREG12,0(IJHREG13) AND RETURN TO USER      3-9 12150000
+         L     IJHREG14,IJHDL48(IJHREG13)                           3-9 12200000
+.EJ      ANOP                                                       3-3 12250000
+         EX    0,28(1)                                                  12300000
+         LR    1,0                                                      12350000
+         AIF   (NOT &SW(15)).EJ1       RPS NOT SPECIFIED       @DL30SMP 12400000
+         SH    IJHREG13,IJHVC184 .     POINT TO DTF EXTENSION  @DL30SMP 12450000
+         L     IJHREG13,IJHVD172(IJHREG13) .RESTORE USER REG 13@DL30SMP 12500000
+.EJ1     ANOP                                                  @DL30SMP 12550000
+         BR    14                      RETURN TO USER                   12600000
+IJHSESTL BAL   7,IJHSBHIN              GO TO INIT-ROUTINE           3-4 12650000
+         NI    IJHADDR,X'FF'-IJHGETSW  RESET GET SWITCH             3-9 12700000
+         EX    0,IJHCERRT                                           3-4 12750000
+         BAL   11,IJHSINT              GO TO CHECK IF PUT ISSUED    3-4 12800000
+         AIF   (NOT &SW(25)).EK                                     3-4 12850000
+         NI    IJHCRTR,X'D7'        SET 1ST TIME, RESET OVFLO  @DA01113 12900000
+         NI    IJHCOPT,X'FD'           RESTORE I/O AREA SWITCH      3-4 12950000
+         CLC   IJHZER0(4),IJHCCCB+12   IF NO I/O HAS BEEN ISSUED    3-9 13000000
+         BE    IJHSER2                 RETURN TO USER               3-9 13050000
+         TM    IJHCCCB+2,X'80'          WAIT                        3-6 13100000
+         BO    *+6                                                  3-6 13150000
+         SVC   7                                                    3-6 13200000
+.EK      AIF   (NOT &SW(11)).EL                                     3-9 13250000
+         SVC   IJHSVC36                FREE HELD TRACK              3-9 13300000
+.EL      AIF   (&SW(24)).EM            RDONLY SPECIFIED        @DL30SMP 13350000
+         B     IJHSER2                 RETURN TO USER               3-4 13400000
+         AGO   .EN                                                  3-4 13450000
+.EM      ANOP                                                       3-4 13500000
+         B     IJHSER21                RETURN TO USER               3-4 13550000
+.EN      ANOP                                                       3-4 13600000
+IJHSPUT  BAL   7,IJHSBHIN              GO TO INIT ROUTINE           3-4 13650000
+         TM    IJHADDR,IJHGETSW        WAS A GET ISSUED             3-9 13700000
+         BO    IJHGETOK                YES,                         3-5 13750000
+         SVC   50                                                   3-5 13800000
+IJHGETOK NI    IJHADDR,X'FF'-IJHGETSW  RESET GET SWITCH             3-9 13850000
+         TM    IJHCNTSW,X'04'                                  @DA01015 13900000
+         BO    IJHSBH17                                        @DA01015 13950000
+         OI    IJHCRTR,X'04'           SET BIT TO TELL WORKROUT.OF PUT  14000000
+         BAL   4,IJHSWORK              GO TO WORKAREA ROUTINE           14050000
+         AIF   (NOT &SW(24)).EO        RDONLY NOT SPECIFIED    @DL30SMP 14100000
+         LR    0,13           SAVE ADDRESS OF USERS SAVEAREA        3-4 14150000
+.EO      ANOP                                                       3-4 14200000
+         NI    IJHCRTR,X'FB'           SET SAME BIT OF                  14250000
+         TM    IJHCOPT,X'08'           TEST IF BLOCKED FILE             14300000
+         BO    IJHSBH18                YES BRANCH                       14350000
+IJHSBH19 BAL   12,IJHSPUT2             NO WRITE RECORD                  14400000
+         B     IJHSBH17                RETURN OVER GET-EXIT             14450000
+         AIF   (&SW(25)).EP                                         3-4 14500000
+IJHSBH18 TM    IJHSINIT+1,X'02'        IS RECORD IN OVFL-AREA           14550000
+         AGO   .EQ                                                  3-4 14600000
+.EP      ANOP                                                       3-4 14650000
+IJHSBH18 TM    IJHCSTBY,X'01'  IS RECORD IN OVERFLOW AREA           3-4 14700000
+.EQ      ANOP                                                       3-4 14750000
+         BO    IJHSBH19                YES, BRANCH                      14800000
+         OI    IJHCRTR,X'01'           NO ,SET BIT THAT PUT WAS ISSUED  14850000
+         B     IJHSBH17                RETURN OVER GET-EXIT             14900000
+         AIF   (&SW(25)).ER                                         3-4 14950000
+IJHSPUT2 MVC   IJHCSADR(8),IJHSCADR    MOVE CURR.ADDR. TO SEEKADDR.     15000000
+         TM    IJHSINIT+1,X'02'                                         15050000
+         BZ    *+10                                                     15100000
+         MVC   IJHCSADR(8),IJHSCOVF                                     15150000
+         AGO   .EU                                                  3-4 15200000
+.ER      ANOP                                                       3-4 15250000
+IJHSPUT2 TM    IJHCSTBY,X'01'           IF OVERFLOW RECORD          3-6 15300000
+         AIF   (NOT &SW(11)).ES                                     3-9 15350000
+         BZ    IJHSNOOV                NO, CONTINUE                 3-9 15400000
+         MVC   IJHCSADR(IJHDL8),IJHSCOVF GET ADDR OF OVRFL RECORD   3-9 15450000
+         OI    IJHCRTR,IJHOVFL         SET OVFL BIT FOR CCW BUILD   3-9 15500000
+         B     IJHSOVF1                CONTINUE NORMALLY            3-9 15550000
+IJHSNOOV EQU   *                                                    3-9 15600000
+         AGO   .ET                                                  3-9 15650000
+.ES      ANOP                                                       3-9 15700000
+         BZ    *+8                     SET BIT TO TELL CCW BUILD    3-9 15750000
+         OI    IJHCRTR,X'04'            ROUTINE                     3-6 15800000
+.ET      ANOP                                                       3-9 15850000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS       3-10 15900000
+         BZ    IJHSOVFL                NO, BRANCH                  3-10 15950000
+         TM    IJHCCCB+2,X'80'          WAIT                        3-7 16000000
+         BO    *+6                                                  3-7 16050000
+         SVC   7                                                    3-7 16100000
+         TM    IJHCCCB+4,X'01'          EOF ON PREVIOUS GET         3-7 16150000
+         BC    14,IJHSWAIT              BRANCH IF NOT               3-7 16200000
+         OI    IJHADDR,X'04'            SET EOF SWITCH              3-7 16250000
+         B     IJHSWAIT+4               PUT RECORD OUT              3-7 16300000
+IJHSWAIT BAL   4,IJHCWAIT               WAIT                        3-7 16350000
+         TM    IJHCOPT,X'01'           ARE THERE TWO I/O AREAS      3-4 16400000
+         BZ    IJHSOVFL                NO, BRANCH                   3-4 16450000
+         TM    IJHCRTR,X'08'  IS IT THE FIRST RECORD                3-4 16500000
+         BZ    IJHSOVFL     YES, BRANCH                             3-4 16550000
+IJHSXCG1 XC    IJHCSADR(IJHDL8),IJHSCOVF GET ADDR OF PUT            3-9 16600000
+IJHSXCG2 XC    IJHSCOVF(IJHDL8),IJHCSADR AND SAVE ADDR OF           3-9 16650000
+IJHSXCG3 XC    IJHCSADR(IJHDL8),IJHSCOVF STARTED GET                3-9 16700000
+         B     IJHS2IOP                                             3-4 16750000
+IJHSOVFL MVC   IJHCSADR(8),IJHSCADR     MOVE CURR ADDR TO SEEKADDR  3-6 16800000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS       3-10 16850000
+         BO    IJHS2IOP                YES, BRANCH                 3-10 16900000
+         TM    IJHCSTBY,X'01'          IS IT AN OVERFLOW RECORD    3-10 16950000
+         BZ    IJHSOVF1                NO, GO BUILD FOR PUT        3-10 17000000
+         MVC   IJHCSADR(8),IJHSCOVF    MOVE CURR OVERFLOW ADDR     3-10 17050000
+         B     IJHSOVF1                GO FOR BUILD PUT            3-10 17100000
+IJHS2IOP TM    IJHCRTR,X'08'  IS IT THE FIRST RECORD                3-4 17150000
+         BZ    IJHSOVF1                YES,BRANCH                  3-10 17200000
+         AIF   (NOT &SW(11)).ET1                                   3-10 17250000
+         TM    IJHSINIT+1,IJHGETOV     THIS AN OVERFLOW GET Q      3-10 17300000
+         BO    IJHSOVF1                YES,SKIP IOAREA SWITCHING   3-10 17350000
+.ET1     ANOP                                                      3-10 17400000
+         XI    IJHCOPT,X'02'  CHANGE IOAREA SWITCH                  3-4 17450000
+IJHSOVF1 EQU   *                                                    3-9 17500000
+.EU      ANOP                                                       3-4 17550000
+         BAL   4,IJHSBILD              GO TO CCW BUILDER                17600000
+         DC    X'0540'                 CONSTANTS FOR THE BUILDER        17650000
+         AIF   (NOT &SW(23)).EW                                     3-4 17700000
+         AIF   (&SW(24)).EV            RDONLY SPECIFIED        @DL30SMP 17750000
+         MVC   IJHEWORK(4),IJHCCCW+16  IOAREA ADDRESS               3-4 17800000
+         MVI   IJHEWORK,X'81'           INDICATE WRITE DATA         3-4 17850000
+         TM    IJHCOPT,X'01'           Q ARE THERE TWO IO-AREAS    3-10 17900000
+         BZ    IJH12OVP                NO,BRANCH                   3-10 17950000
+         AGO   .EW                                                  3-4 18000000
+.EV      ANOP                                                       3-4 18050000
+         XR    0,13                                                 3-4 18100000
+         XR    13,0                                                 3-4 18150000
+         AIF   (NOT &SW(15)).EV1       RPS NOT SPECIFIED       @DL30SMP 18200000
+         ST    IJHREG6,IJHVTRS         SAVE REGISTER 6         @DL30SMP 18250000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 18300000
+         MVC   IJHVD44(IJHVL4,IJHREG13),IJHCCCW+IJHVD24        @DL30SMP 18350000
+* .                                    IOAREA ADDRESS          @DL30SMP 18400000
+         L     IJHREG6,IJHVTRS         RESTORE REGISTER 6      @DL30SMP 18450000
+         AGO   .EV2                                            @DL30SMP 18500000
+.EV1     ANOP                                                  @DL30SMP 18550000
+         MVC   44(4,13),IJHCCCW+16     IOAREA ADDRESS               3-4 18600000
+.EV2     ANOP                                                  @DL30SMP 18650000
+         MVI   44(13),X'81'             INDICATE WRITE DATA         3-4 18700000
+         XR    13,0                                                 3-4 18750000
+         XR    0,13                                                 3-4 18800000
+.EW      ANOP                                                       3-4 18850000
+         AIF   (NOT &SW(25)).EX                                     3-4 18900000
+         TM    IJHCRTR,X'08'  IS IT THE FIRST RECORD                3-4 18950000
+         BZ    *+8  YES, BRANCH                                     3-4 19000000
+         XI    IJHCOPT,X'02'           RESET IOAREA SWITCH          3-4 19050000
+.EX      ANOP                                                       3-4 19100000
+IJH12OVP BAL   4,IJHCEXWT              GO TO EXCP-ROUTINE          3-10 19150000
+         AIF   (NOT &SW(25)).EY                                    3-10 19200000
+         TM    IJHCOPT,X'01'           Q ARE THERE TWO IO-AREAS    3-10 19250000
+         BCR   8,12                    NO,RETURN                   3-10 19300000
+         TM    IJHCRTR,X'08'           1ST TIME SWITCH ON      @DA01089 19350000
+         BCR   8,12                    YES RETURN              @DA01089 19400000
+         EX    IJHREG0,IJHSXCG1        RESTORE FOR OVERFLOW         3-9 19450000
+         EX    IJHREG0,IJHSXCG2                                     3-9 19500000
+         EX    IJHREG0,IJHSXCG3                                     3-9 19550000
+.EY       ANOP                                                      3-4 19600000
+         BR    12                      RETURN                           19650000
+IJHSBHIN BAL   4,IJHCINIT              GO TO INIT-ROUTINE               19700000
+         LH    6,IJHSRCNT              PICK UP RECORD-COUNTER           19750000
+         L     5,IJHSDB1               PICK UP IOAREA                   19800000
+         BR    7                       RETURN                           19850000
+IJHSINT  TM    IJHCRTR,X'01'           TEST IF PUT WAS ISSUED           19900000
+         BCR   8,11                                                 3-3 19950000
+         BAL   12,IJHSPUT2             GO TO PUT ROUTINE                20000000
+         NI    IJHCRTR,X'FE'           SET PUT-BIT OF                   20050000
+         BR    11                      RETURN                       3-3 20100000
+IJHSBH12 AH    5,IJHCRESZ     *********** DEBLOCKING ROUTINE *********  20150000
+         LA    6,1(6)                  ADD ONE TO RECORD-COUNTER        20200000
+         LR    8,5                     PICK UP IOAREA                   20250000
+         AH    8,IJHCKYLC              ADD KEYLOC TO IT                 20300000
+         LH    9,IJHCKYSZ              PICK UP KEYSIZE                  20350000
+         AR    8,9                     ADD IT TO IOAREA ADDR            20400000
+         BCTR  8,0                                                      20450000
+IJHSBH30 BCTR  8,0                     SUBTRACT ONE                     20500000
+         CLI   0(8),X'FF'              DOES KEY CONTAIN FF              20550000
+         BNE   IJHSBH13                NO, RETURN                       20600000
+         BCT   9,IJHSBH30              YES, IS THIS A PADDING RECORD    20650000
+         OI    IJHCSTBY,X'20'          YES SET EOF INDICATOR            20700000
+         B     IJHSER2                 GO TO EXIT TO USER               20750000
+         AIF   (NOT &SW(11)).EZ                                     3-9 20800000
+IJHSGETH BAL   IJHREG4,IJHSGET2+4      ESTABLISH RETURN FROM CCW    3-9 20850000
+*                                      BUILDER AND SET UP FOR GET   3-9 20900000
+         DC    X'0602'                 CONSTANTS FOR BUILDER        3-9 20950000
+         BAL   IJHREG4,IJHCXWTH        EXCP, HOLD, WAIT             3-9 21000000
+         BR    IJHREG12                RETURN                       3-9 21050000
+.EZ      ANOP                                                       3-9 21100000
+IJHSGET2 EQU   *                                                    3-9 21150000
+         AIF   (NOT &SW(11)).E0                                     3-9 21200000
+         LA    IJHREG4,IJHSBH29+4      ESTABLISH CCW BUILD RETURN   3-9 21250000
+.E0      L     IJHREG5,IJHSIOAR        PICK UP I/O AREA ADDR        3-9 21300000
+         AIF   (NOT &SW(25)).E1                                     3-4 21350000
+         TM    IJHADDR,X'04'           EOF SWITCH ON                3-9 21400000
+         BC    14,IJHNEOF              BRANCH IF NOT                3-9 21450000
+         LA    10,IJHCTMTB             FORCE EOF IN STATUS          3-9 21500000
+         B     IJHCER1                                              3-9 21550000
+IJHNEOF  TM    IJHCOPT,X'01'           ARE THERE 2 IO AREAS         3-9 21600000
+         BZ    IJHSBLKD                NO, BRANCH                   3-4 21650000
+         TM    IJHCOPT,X'02'           WAS IOAREA2 LAST USED        3-4 21700000
+         BZ    *+8                     YES,BRANCH                   3-4 21750000
+         L     5,IJHCRARA              NO, GET ADDR OF IOAREA2      3-4 21800000
+         AIF   (NOT &SW(11)).OQ                                     3-9 21850000
+         TM    IJHSINIT+1,IJHGETOV     THIS AN OVERFLOW GET         3-9 21900000
+         BO    IJHSBLKD                YES                          3-9 21950000
+.OQ      ANOP                                                       3-9 22000000
+         XI    IJHCOPT,X'02'           CHANGE IOAREA SWITCH         3-4 22050000
+.E1      ANOP                                                       3-4 22100000
+IJHSBLKD EQU   *                                                    3-4 22150000
+         AIF   (NOT &SW(23)).E3                                     3-4 22200000
+         AIF   (&SW(24)).E2             RDONLY SPECIFIED       @DL30SMP 22250000
+         ST    5,IJHEWORK               ADDRESS OF IOAREA               22300000
+         MVI   IJHEWORK,X'82'           INDICATE READ DATA          3-4 22350000
+         AGO   .E3                                                  3-4 22400000
+.E2      ANOP                                                       3-4 22450000
+         XR    0,13                                                 3-4 22500000
+         XR    13,0                                                 3-4 22550000
+         ST    5,44(13)                 ADDRESS OF IOAREA               22600000
+         MVI   44(13),X'82'             INDICATE READ DATA          3-4 22650000
+         XR    13,0                                                 3-4 22700000
+         XR    0,13                                                 3-4 22750000
+.E3      ANOP                                                       3-4 22800000
+         TM    IJHCOPT,X'08'           TEST IF BLOCKED FILE         3-4 22850000
+         BO    IJHSBH29                YES,BRANCH                       22900000
+         AH    5,IJHCKYSZ              ADD KEYSIZE TO IOAREA            22950000
+IJHSBH29 EQU   *                                                    3-4 23000000
+         AIF   (NOT &SW(11)).E4                                     3-9 23050000
+         B     IJHSBILD                GO TO CCW BUILDER            3-9 23100000
+         AGO   .E5                                                  3-9 23150000
+.E4      BAL   IJHREG4,IJHSBILD        GO TO CCW BUILDER            3-9 23200000
+.E5      ANOP                                                       3-9 23250000
+         DC    X'0600'                 CONSTANTS FOR BUILDER            23300000
+         BAL   4,IJHCEXWT              GO TO EXCP-ROUTINE               23350000
+         AIF   (NOT &SW(25)).E6                                     3-4 23400000
+         OI    IJHCRTR,X'08'  CHANGE FIRST TIME SWITCH              3-4 23450000
+.E6      ANOP                                                       3-4 23500000
+         BR    12                      RETURN                           23550000
+IJHSWORK TM    IJHCRTR,X'40' *********** WORKAREA SUBROUTINE ********   23600000
+         BCR   8,4                     IF NO WORKAREA RETURN            23650000
+         L     10,IJHSIOAR                                              23700000
+         AIF   (NOT &SW(25)).E7                                     3-4 23750000
+         TM    IJHCOPT,X'01'  ARE THERE 2 I/O AREAS                 3-4 23800000
+         BZ    IJHSWKAD  NO, BRANCH                                 3-4 23850000
+         AIF   (NOT &SW(11)).E70                                    3-9 23900000
+         TM    IJHSINIT+1,IJHGETOV     THIS AN OVERFLOW GET         3-9 23950000
+         BZ    IJHSCKIO                NO                           3-9 24000000
+         AIF   (NOT &SW(15)).E61       RPS NOT SPECIFIED       @DL30SMP 24050000
+         ST    IJHREG6,IJHVTRS         SAVE REGISTER 6         @DL30SMP 24100000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 24150000
+         L     IJHREG10,IJHCCCW+IJHVD24 .GET IOAREA ADDR USED  @DL30SMP 24200000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 24250000
+         AGO   .E62                                            @DL30SMP 24300000
+.E61     ANOP                                                  @DL30SMP 24350000
+         L     IJHREG10,IJHCCCW+16     GET IOAREA ADDR USED         3-9 24400000
+.E62     ANOP                                                  @DL30SMP 24450000
+         B     IJHSWKAD                                             3-9 24500000
+IJHSCKIO EQU   *                                                    3-9 24550000
+.E70     ANOP                                                       3-9 24600000
+         TM    IJHCOPT,X'02'           WAS IOAREA2 LAST USED   @DA00116 24650000
+         BO    IJHSWKAD                YES,USE IOAREAS         @DA00116 24700000
+         L     10,IJHCRARA  LOAD ADDRESS OF CORRECT I/O AREA        3-4 24750000
+.E7      ANOP                                                       3-4 24800000
+IJHSWKAD LR    9,0  PICK UP WORK AREA                               3-4 24850000
+         LH    11,IJHCRESZ             PICK UP RECORD-SIZE              24900000
+         TM    IJHCOPT,X'08'           TEST IF BLOCKED FILE             24950000
+         BO    IJHSBH15                YES, BRANCH                      25000000
+         LH    8,IJHCKYSZ              NO, PICK UP KEYSIZE              25050000
+         BCTR  8,0                                                      25100000
+         EX    8,IJHSMVKY              MOVE KEY                         25150000
+         LA    8,1(8)                                                   25200000
+         AR    9,8                     ADD KEYLENGTH TWO IOAREA         25250000
+IJHSBH15 LR    10,5                                                     25300000
+         TM    IJHCRTR,X'04'           TEST IF OUTPUT                   25350000
+         BZ    IJHCMOVE                NO, GO TO MOVE                   25400000
+         XR    9,10                    YES                              25450000
+         XR    10,9                    CHANGE TO AND                    25500000
+         XR    9,10                    FROM ADDRESS                     25550000
+         B     IJHCMOVE                GO TO MOVE                       25600000
+IJHSMVKY MVC   0(1,9),0(10)            MOVE KEY                         25650000
+*************** END OF TRACK ROUTINE ************                   3-9 25700000
+IJHSEOTR EQU   *                                                    3-9 25750000
+         AIF   (NOT &SW(11)).E9                                     3-9 25800000
+         AIF   (NOT &SW(25)).E8                                     3-9 25850000
+         TM    IJHCOPT,IJHIOA2         IS IT IOAREA2                3-9 25900000
+         BZ    IJHS2EOT                NO, CONTINUE                 3-9 25950000
+         TM    IJHCRTR,X'08'           IS FIRST TIME SWITCH ON @DA01024 26000000
+         BZ    IJHS2EOT                YES,CONTINUE            @DA01024 26050000
+         MVC   IJHSCOVF(IJHDL8),IJHCSADR SAVE ADDRESS FOR PUT       3-9 26100000
+         OI    IJHSINIT+1,IJHGETOV     INDICATE NEXT IS OVRFL READ  3-9 26150000
+         TM    IJHCOPT,IJHIO2US        IOAREA2 LAST USED            3-9 26200000
+         BO    IJHSCHNG                YES                          3-9 26250000
+         L     IJHREG5,IJHSIOAR        GET ADDR OF IOAREAS          3-9 26300000
+         B     IJHSCNG1                BR TO STORE ADDR IN CCW      3-9 26350000
+IJHSCHNG L     IJHREG5,IJHCRARA        GET ADDR OF IOAREA2          3-9 26400000
+IJHSCNG1 EQU   *                                               @DL30SMP 26450000
+         AIF   (NOT &SW(15)).E71       RPS NOT SPECIFIED       @DL30SMP 26500000
+         ST    IJHREG6,IJHVTRS .       SAVE REGISTER 6         @DL30SMP 26550000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 26600000
+         ST    IJHREG5,IJHCCCW+IJHVD24 SET CCW FOR WORKAREA RTN@DL30SMP 26650000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 26700000
+         AGO   .E72                                            @DL30SMP 26750000
+.E71     ANOP                                                  @DL30SMP 26800000
+         ST    IJHREG5,IJHCCCW+16      SET CCW FOR WORKAREA ROUTINE 3-9 26850000
+.E72     ANOP                                                  @DL30SMP 26900000
+         TM    IJHCOPT,IJHBLKD         IS IT A BLOCKED FILE         3-9 26950000
+         BO    IJHSBH11                YES, EXIT                    3-9 27000000
+         AH    IJHREG5,IJHCKYSZ        ADD KEY SIZE TO IOAREA       3-9 27050000
+         B     IJHSBH11                RETURN OVER GET EXIT         3-9 27100000
+IJHS1EOT NI    IJHCRTR,X'FF'-IJHFIRST  CLEAR FIRST TIME SWITCH      3-9 27150000
+IJHS2EOT EQU   *                                                    3-9 27200000
+.E8      SVC   IJHSVC36                FREE HELD TRACK              3-9 27250000
+.E9      ANOP                                                       3-9 27300000
+         MVC   IJHCSADR(IJHDL8),IJHSCADR SET UP SEEK ADDRESS        3-9 27350000
+         MVC   IJHCSADR+6(2),IJHSTICU  PICK UP CURRENT TRACKIND. ENTRY  27400000
+         BAL   4,IJHSBILD              GO TO CCW-BUILDER                27450000
+         DC    X'0601'                 CONSTANTS FOR THE BUILDER        27500000
+         AIF   (NOT &SW(23)).FB                                     3-4 27550000
+         LA    4,IJHCBCKT               IOAREA ADDRESS              3-4 27600000
+         AIF   (&SW(24)).FA             RDONLY SPECIFIED       @DL30SMP 27650000
+         ST    4,IJHEWORK                                           3-4 27700000
+         MVI   IJHEWORK,X'42'           INDICATE READ TRACK INDEX   3-4 27750000
+         AGO   .FB                                                  3-4 27800000
+.FA      ANOP                                                       3-4 27850000
+         XR    0,13                                                 3-4 27900000
+         XR    13,0                                                 3-4 27950000
+         ST    4,44(13)                                             3-4 28000000
+         MVI   44(13),X'42'             INDICATE READ TRACK INDEX   3-4 28050000
+         XR    13,0                                                 3-4 28100000
+         XR    0,13                                                 3-4 28150000
+.FB      ANOP                                                       3-4 28200000
+         AIF   (NOT &SW(11)).FC                                     3-9 28250000
+         BAL   IJHREG4,IJHCXWTH        TO EXCP/HOLD ROUTINE         3-9 28300000
+         AGO   .FD                                                  3-9 28350000
+.FC      ANOP                                                       3-9 28400000
+         BAL   4,IJHCEXWT              GO TO EXCP-ROUTINE               28450000
+.FD      ANOP                                                       3-9 28500000
+         AIF   (NOT &SW(15)).FD1       RPS NOT SPECIFIED       @DL30SMP 28550000
+         ST    IJHREG6,IJHVTRS .       SAVE REGISTER 6         @DL30SMP 28600000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 28650000
+         MVI   IJHVARG2,IJHVZERO       SET PD SEC ARG TO 0     @DL30SMP 28700000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 28750000
+.FD1     ANOP                                                  @DL30SMP 28800000
+         SR    8,8                      SET REGISTERS TO ZERO       3-4 28850000
+         SR    9,9                                                      28900000
+         LA    7,X'93'                 2ND CYLINDER BYTE       @DM05928 28950000
+         IC    9,IJHSTICU+1            ADD ONE                          29000000
+IJHSC002 LA    9,2(9)                  TO TRACKINDEX                    29050000
+         STC   9,IJHSTICU+1            RECORDNUMBER                     29100000
+         IC    8,IJHCTIH               PICK UP HIGH RECORD # ON TI      29150000
+         CLR   8,9                     CHECK IF REACHED                 29200000
+         BL    IJHSBH5                 YES, BRANCH                      29250000
+IJHSBH6  EQU   *                                                    3-9 29300000
+         AIF   (NOT &SW(11)).FE                                     3-9 29350000
+         SVC   IJHSVC36                FREE INDEX TRACK             3-9 29400000
+         NI    IJHSINIT+1,X'FF'-IJHGETOV RESET OVFL INDICATOR       3-9 29450000
+.FE      ANOP                                                       3-9 29500000
+         TM    IJHCBCKT+7,IJHNOVFL     TEST IF ANY OVFL RECORD      3-9 29550000
+         BO    IJHSRETB                NO, RETURN                       29600000
+         AIF   (&SW(25) AND NOT &SW(11)).FJ                         3-9 29650000
+         MVC   IJHCSADR(8),IJHCBCKT    YES, MOVE NEW ADDR. TO SEEKADDR. 29700000
+IJHSBH3  OI    IJHSINIT+1,X'02'        SET INDICATORS ON                29750000
+         AIF   (NOT &SW(11)).FF                                     3-9 29800000
+         BAL   IJHREG12,IJHSGETH       GO TO GET/HOLD ROUTINE       3-9 29850000
+         AIF   (NOT &SW(25)).FG                                     3-9 29900000
+         OI    IJHCRTR,IJHOVIND        TURN ON OVER FLOW SWITCH     3-9 29950000
+         AGO   .FG                                                  3-9 30000000
+.FF      ANOP                                                       3-9 30050000
+         AIF   (NOT &SW(25)).FF1                               @DM02732 30100000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS   @DM02732 30150000
+         BO    IJHCRENT                BRANCH IF YES           @DM02732 30200000
+.FF1     ANOP                                                  @DM02732 30250000
+         OI    IJHCNTSW,X'04'          FIRST GET IN OVFLO      @DA01015 30300000
+IJHCRENT BAL   12,IJHSGET2             GO TO GET ROUTINE       @DA01015 30350000
+.FG      ANOP                                                       3-9 30400000
+         OI    IJHCSTBY,X'01'                                           30450000
+         MVC   IJHSCOVF(8),IJHCSADR    SAVE CURRENT OVERFLOW ADDR       30500000
+         AIF   (&SW(25) OR &SW(11)).FU2                        @DA01015 30550000
+         TM    IJHCNTSW,X'04'          UNSUCCESSFULL GET ?     @DA01015 30600000
+         BO    IJHSBH17                EXIT                    @DA01015 30650000
+.FU2     ANOP                                                  @DA01015 30700000
+IJHCTEN  EQU   *+2                                                  3-9 30750000
+         LA    5,10(5)                 ADD TEN TO IOAREA                30800000
+         B     IJHSBH13                RETURN                           30850000
+IJHSOTR  EQU   *                                                    3-9 30900000
+         AIF   (NOT &SW(11)).FI                                     3-9 30950000
+         AIF   (NOT &SW(25)).FH                                     3-9 31000000
+         TM    IJHCSTBY,X'01'          REC RETR FROM OVFL AREA @DA02114 31050000
+         BO    IJHSOTR2                IF YES, BRANCH          @DA02114 31100000
+         TM    IJHCRTR,X'08'           IS IT FIRST TIME        @DA02114 31150000
+         BO    IJHSOTR2                IF NOT, BRANCH          @DA02114 31200000
+         B     IJHSOTR1                                        @DA02114 31250000
+IJHSOTR2 TM    IJHCOPT,IJHIOA2         IS IT IOAREA2           @DA02114 31300000
+         BZ    IJHSOTR1                NO, CONTINUE                 3-9 31350000
+         TM    IJHCRTR,IJHOVIND        FIRST OVRFL REC FOR IOAREA2  3-9 31400000
+         BZ    IJHS1EOT                YES, GO TO HANDLE IT         3-9 31450000
+.FH      ANOP                                                       3-9 31500000
+IJHSOTR1 SVC   IJHSVC36                FREE LAST TRACK HELD         3-9 31550000
+.FI      ANOP                                                       3-9 31600000
+         L     IJHREG5,IJHSDB1         FIND IOAREA POINTER          3-9 31650000
+         SH    IJHREG5,IJHCTEN         GET ADDRESS OF LINK FIELD    3-9 31700000
+         MVC   IJHCSADR(8),0(5)        GET ADDRESS OF NEXT RECORD       31750000
+         AGO   .FK                                                  3-4 31800000
+.FJ      ANOP                                                       3-4 31850000
+         TM    IJHCOPT,X'01'            ARE THERE 2 I/O AREAS       3-4 31900000
+         BZ    IJHSBCKT                 NO, BRANCH                  3-4 31950000
+         TM    IJHCRTR,X'08'            IS IT THE FIRST RECORD      3-4 32000000
+         BZ    IJHSBCKT                 YES, BRANCH                 3-4 32050000
+         LA    6,1                      SET RECORD COUNTER TO 1     3-4 32100000
+IJHSBCKT MVC   IJHCSADR(8),IJHCBCKT     MOVE NEW ADDR TO SEEKADDR   3-4 32150000
+IJHSBH3  OI    IJHSINIT+1,X'02'        SET INDICATORS ON            3-4 32200000
+         AIF   (NOT &SW(25)).FJ1                               @DM02732 32250000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS   @DM02732 32300000
+         BO    IJHCRENT                BRANCH IF YES           @DM02732 32350000
+.FJ1     ANOP                                                  @DM02732 32400000
+         OI    IJHCNTSW,X'04'          SET 1ST IN CHAIN ERROR  @DA01015 32450000
+IJHCRENT BAL   12,IJHSGET2             GO TO GET ROUTINE       @DA01015 32500000
+         TM    IJHCNTSW,X'04'                                  @DA01015 32550000
+         BO    IJHSBH17                                        @DA01015 32600000
+IJHSAVE  TM    IJHCOPT,X'01'            ARE THERE 2 I/O AREAS       3-6 32650000
+         BO    IJHSYES                  BRANCH IF YES               3-6 32700000
+         MVC   IJHSCOVF(8),IJHCSADR     SAVE ADDR FOR PUT           3-6 32750000
+         B     IJHSLAD                                              3-6 32800000
+IJHSYES  TM    IJHCSTBY,X'01'           WAS LAST RECORD IN OVERFLOW 3-6 32850000
+         BZ    *+12                     NO, DO NOT ADD              3-6 32900000
+IJHSLAD  LA    5,10(5)                  ADD 10 TO IOAREA            3-6 32950000
+         OI    IJHCSTBY,X'01'          SET OVERFLOW SWITCH          3-4 33000000
+         B     IJHSBH13                RETURN                       3-4 33050000
+IJHSOTR  BAL   4,IJHCWAIT              WAIT                         3-4 33100000
+         OI    IJHCSTBY,X'01'                                       3-4 33150000
+         L     5,IJHSIOAR              LOAD ADDR OF IOAREAS         3-4 33200000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS        3-4 33250000
+         BZ    IJHSADKY                NO, BRANCH                   3-4 33300000
+         MVC   IJHSCOVF(8),IJHCSADR     SAVE ADDR FOR PUT           3-6 33350000
+         TM    IJHCOPT,X'02'           WAS IOAREA2 LAST USED        3-4 33400000
+         BZ    IJHSADKY                YES, BRANCH                  3-4 33450000
+         L     5,IJHCRARA              LOAD ADDR OF IOAREA2         3-4 33500000
+IJHSADKY TM    IJHCRTR,X'08'            IS IT THE FIRST RECORD      3-4 33550000
+         BZ    IJHSBH3                  YES, BRANCH                 3-4 33600000
+IJHSKEY  TM    IJHCOPT,X'08'            TEST IF BLOCKED FILE        3-4 33650000
+         BO    IJHSNEXT                 IF SO, BRANCH               3-4 33700000
+         AH    5,IJHCKYSZ               GET ADDR OF LINKFIELD       3-4 33750000
+IJHSNEXT MVC   IJHCSADR(8),0(5)        GET ADDR OF NEXT RECORD      3-4 33800000
+.FK      ANOP                                                       3-4 33850000
+         TM    IJHCSADR+7,X'FF'        CHECK IF END OF CHAIN            33900000
+         BC    12,IJHSBH3              NO, GO TO HANDLE NEW OVERFLOW    33950000
+         AIF   (NOT &SW(25) OR &SW(11)).FL                          3-9 34000000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS        3-4 34050000
+         BO    *+8                     YES, BRANCH                  3-4 34100000
+.FL      ANOP                                                       3-4 34150000
+         NI    IJHCSTBY,X'FE'          YES,SET INDICATORS OFF           34200000
+         NI    IJHSINIT+1,X'FD'                                         34250000
+         AIF   (NOT &SW(11)).OP                                     3-9 34300000
+         AIF   (NOT &SW(25)).OP                                     3-9 34350000
+         NI    IJHCRTR,X'FF'-IJHOVIND  RESET OVERFLOW SWITCH        3-9 34400000
+.OP      ANOP                                                       3-9 34450000
+         CLI   IJHCPDDV,X'02'          PRIME DATA ON 2321           4-0 34500000
+         BNE   IJHSRETB                NO,BRANCH                    4-0 34550000
+         CLI   IJHSCADR+3,X'13'        LAST SUBCELL                 3-5 34600000
+         BNE   IJHSRETB                NO,RETURN                    3-5 34650000
+         MVI   IJHSLMIT+4,X'05'        CHANGE UPPER STRIP LIMIT     3-5 34700000
+         B     IJHSRETB                RETURN                           34750000
+IJHSBH5  SR    9,8                     FIND FIRST RECORD # IN NEXT TR.  34800000
+         STC   9,IJHSTICU+1            STORE IT                         34850000
+         IC    9,IJHSTICU              ADD ONE                          34900000
+         LA    9,1(9)                  TO TRACK NUMBER                  34950000
+         STC   9,IJHSTICU              STORE IT                         35000000
+         AIF   (NOT &SW(15)).UP1       RPS NOT SPECIFIED       @DL30SMP 35050000
+         ST    IJHREG6,IJHVTRS .       SAVE REGISTER 6         @DL30SMP 35100000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 35150000
+         MVI   IJHVARG3,IJHVZERO       SET TI SEC ARG TO 0     @DL30SMP 35200000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 35250000
+.UP1     ANOP                                                  @DL30SMP 35300000
+         B     IJHSBH6                 RETURN                           35350000
+IJHSEOT  LA    8,IJHSLMIT+7    ***SUBROUTINE TO ADD ONE TO CURR.ADDR*** 35400000
+         LA    11,5                    SET LOOP COUNTER TO 5   @DA00209 35450000
+         SR    9,9                     ZERO REGISTER 9                  35500000
+         SR    10,10                   ZERO REGISTER 10                 35550000
+IJHSNXT  IC    9,16(8)                 PICK UP CURRENT CHARACTER        35600000
+         IC    10,0(8)                 PICK UP LIMIT                    35650000
+         CR    9,10                    IS LIMIT REACHED                 35700000
+         BL    IJHSEX1                 NO, EXIT                         35750000
+         BCT   11,IJHSMOV              IS FIVE CHARACTER CHECKED        35800000
+         CLI   IJHCPDDV,X'02'          PRIME DATA ON 2321           4-0 35850000
+         BNE   IJHSNO21                BRANCH IF NOT                4-0 35900000
+         MVI   IJHSCADR+5,1            INIT HI H FOR NEW VOLUME     4-0 35950000
+IJHSNO33 MVI   IJHSCADR+3,X'00'        INIT SUBCELL                 4-0 36000000
+         MVC   IJHSLMIT+4(1),IJHSINIT+2  INIT SECOND C              4-0 36050000
+         LA    8,IJHSLMIT              GET ADDRESS OF CURRENT M     4-0 36100000
+         IC    9,16(8)                 SAVE M IN REGISTER           4-0 36150000
+IJHSEX1  LA    9,1(9)                  ADD 1 TO CURRENT VALUE       4-0 36200000
+         STC   9,16(8)                 STORE CURRENT CHARACTER      4-0 36250000
+         LA    10,3                    PICK UP CONSTANT TO CHECK IF 4-0 36300000
+         CR    11,10                   CHANGE MADE,WHICH AFFECTS THE4-0 36350000
+         BC    2,IJHSMRLN              BR IF NOT SHARED TRACK  @DA00209 36400000
+         MVC   IJHSTICU(2),IJHSC002+2                               4-0 36450000
+         CLI   IJHCDRCY+1,X'01'        SHARED TRACK EXISTS          4-0 36500000
+         BC    8,IJHSMRLN              NO BRANCH                    4-0 36550000
+         MVC   IJHSCADR+7(1),IJHSLMIT+2 MOVE RECORD # TO CURR ADDR  4-0 36600000
+         MVC   IJHSLMIT+7(1),IJHCSTH   SET HI RECORD # IN LIMIT     4-0 36650000
+IJHSMRLN CLI   IJHCPDDV,X'02'          PD ON 2321              @DL2W721 36700000
+         BCR   8,4                     YES,RETURN              @DL2W721 36750000
+         LA    10,1                                                 4-0 36800000
+         CR    11,10                   WAS FIRST C CHANGED          4-0 36850000
+         BCR   7,4                     NO RETURN                    4-0 36900000
+         MVI   IJHSLMIT+4,X'93'        SET NEW UPPER LIMIT          4-0 36950000
+         TM    IJHCPDDV,X'04'          PD ON MERLIN 3330       @DL2W721 37000000
+         BCR   1,4                     YES,RETURN              @DL2W721 37050000
+         MVI   IJHSLMIT+4,X'5B'                                @DL2W721 37100000
+         CLI   IJHCPDDV,X'09'          PD ON WINCHESTER 35 MB  @DL2W721 37150000
+         BCR   8,4                     YES,RETURN              @DL2W721 37200000
+         CLI   IJHSCADR+3,X'02'        IS IT ABOVE CYL 512     @DA01251 37250000
+         BE    IJHSMB72                BRANCH IF YES           @DA01251 37300000
+         MVI   IJHSLMIT+4,X'FF'        SET 2ND C TO MAX        @DA01251 37350000
+         BR    4                       RETURN                  @DA01251 37400000
+IJHSMB72 MVI   IJHSLMIT+4,X'B7'        SET 70 MB UPPER LIMIT   @DA01251 37450000
+         BR    4                                               @DL2W721 37500000
+IJHSMOV  MVC   16(1,8),8(8)            SET NEW STARTVALUE      @DL2W721 37550000
+         MVC   IJHSLMIT+7(1),IJHCPDH   SET HI RECORD # IN LIMIT     4-0 37600000
+         BCT   8,IJHSNXT               GO TO CHECK NEXT CHARACTER   4-0 37650000
+IJHSNO21 MVI   IJHSCADR+4,X'01'        INIT C FOR NEW VOLUME        4-0 37700000
+         B     IJHSNO33                                             4-0 37750000
+IJHSBILD EQU   *                                               @DL30SMP 37800000
+         AIF   (NOT &SW(15)).FL0       RPS NOT SPECIFIED       @DL30SMP 37850000
+         ST    IJHREG6,IJHVTRS .       SAVE REAISTER 6         @DL30SMP 37900000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 37950000
+.FL0     ANOP                                                  @DL30SMP 38000000
+         AIF   (&SW(25)).FM                                         3-4 38050000
+         LA   9,IJHCBLSZ               CCW-BUILDER FOR SEQ.             38100000
+         LA    8,IJHCCCW                                                38150000
+         AH    9,IJHSINIT                                               38200000
+         AIF   (NOT &SW(15)).FL1         RPS NOT SPECIFIED     @DL30SMP 38250000
+         MVC   IJHVD0(IJHVL40,IJHREG8),IJHSKON .PUT FIRST 5    @DL30SMP 38300000
+* .                                      CCW'S IN CCW BLD AREA @DL30SMP 38350000
+         MVC   IJHVD30(IJHVL2,IJHREG8),IJHVD0(IJHREG9) .PUT    @DL30SMP 38400000
+* .                                     LENGTH FIELD IN CCW    @DL30SMP 38450000
+         MVC   IJHVD9(IJHVL3,IJHREG8),IJHVD1(IJHREG2) .PUT     @DL30SMP 38500000
+* .                                     ADDR SEARCH ARG IN CCW @DL30SMP 38550000
+         MVC   IJHVD25(IJHVL3,IJHREG8),IJHVD9(IJHREG2) .PUT    @DL30SMP 38600000
+* .                                     ADDR IOAREAS IN CCW    @DL30SMP 38650000
+         AGO   .FN                                             @DL30SMP 38700000
+.FL1     ANOP                                                  @DL30SMP 38750000
+         MVC   0(22,8),IJHSKON                                          38800000
+         MVC   22(2,8),0(9)            MOVE LENGTHFIELD                 38850000
+         MVC   1(3,8),1(2)             MOVE ADDR OF SEARCH-BUCKET       38900000
+         MVC   17(3,8),9(2)            MOVE ADDR OF IOAREAS             38950000
+         AGO   .FN                                                  3-4 39000000
+.FM      ANOP                                                       3-4 39050000
+         LR    7,4                     SAVE COMMAND CODE REGISTER   3-4 39100000
+         CLC   0(2,4),IJHSBH29+4       WAS GET ISSUED               3-4 39150000
+         BNE   IJHSHERE                NO, BRANCH                   3-4 39200000
+         TM    IJHCOPT,X'01'           ARE THERE 2 I/O AREAS        3-4 39250000
+         BZ    IJHSHERE                NO, BRANCH                   3-4 39300000
+         LA    7,IJHCEXCP-2            EXIT ADDRESS                 3-4 39350000
+IJHSHERE LA    9,IJHCBLSZ              CCW  BUILDER FOR SEQ.        3-4 39400000
+         LA    8,IJHCCCW                                            3-4 39450000
+         AIF   (NOT &SW(15)).FM1       RPS NOT SPECIFIED       @DL30SMP 39500000
+         MVC   IJHVD0(IJHVL40,IJHREG8),IJHSKON .PUT FIRST 5    @DL30SMP 39550000
+* .                                    CCW'S IN CCW BLD AREA   @DL30SMP 39600000
+         MVC   IJHVD9(IJHVL3,IJHREG8),IJHVD1(IJHREG2) .PUT     @DL30SMP 39650000
+* .                                    ADDR SEARCH ARG IN CCW  @DL30SMP 39700000
+         AGO   .FM2                                            @DL30SMP 39750000
+.FM1     ANOP                                                  @DL30SMP 39800000
+         MVC   0(22,8),IJHSKON                                      3-4 39850000
+         MVC   1(3,8),1(2)             MOVE ADDR OF S/S BUCKET      3-4 39900000
+.FM2     ANOP                                                  @DL30SMP 39950000
+         TM    IJHCOPT,X'01'            ARE THERE 2 I/O AREAS       3-4 40000000
+         BZ    IJHSCCWS                                             3-4 40050000
+         AIF   (NOT &SW(15)).FM3       RPS NOT SPECIFIED       @DL30SMP 40100000
+         MVC   IJHVD25(IJHVL3,IJHREG8),IJHCRARA+IJHVD1 .PUT    @DL30SMP 40150000
+* .                                    ADDR IOAREA IN CCW      @DL30SMP 40200000
+         AGO   .FM4                                            @DL30SMP 40250000
+.FM3     ANOP                                                  @DL30SMP 40300000
+         MVC   17(3,8),IJHCRARA+1      IOAREA ADDR TO CCW           3-4 40350000
+.FM4     ANOP                                                  @DL30SMP 40400000
+         TM    IJHCOPT,X'02'           WAS IOAREA2 LAST USED        3-4 40450000
+         BO    *+10                    YES, BRANCH                  3-4 40500000
+IJHSCCWS EQU   *                                               @DL30SMP 40550000
+         AIF   (NOT &SW(15)).FM5       RPS NOT SPECIFIED       @DL30SMP 40600000
+         MVC   IJHVD25(IJHVL3,IJHREG8),IJHVD9(IJHREG2) .PUT    @DL30SMP 40650000
+* .                                    ADDR IOAREAS IN CCW     @DL30SMP 40700000
+         L     IJHREG10,IJHVD24(IJHREG8) .GET ADDR OF IOAREA   @DL30SMP 40750000
+         AGO   .FM6                                            @DL30SMP 40800000
+.FM5     ANOP                                                  @DL30SMP 40850000
+         MVC   17(3,8),9(2)             MOVE ADDR OF IOAREAS        3-4 40900000
+         L     10,16(8)                 GET ADDR OF I/O AREA        3-4 40950000
+.FM6     ANOP                                                  @DL30SMP 41000000
+         TM    IJHCOPT,X'01'            ARE THERE 2 I/O AREAS       3-4 41050000
+         BZ    IJHSADD                  NO, BRANCH                  3-4 41100000
+         CLI   0(4),X'05'               WAS A PUT ISSUED            3-4 41150000
+         BNE   IJHSADD                  NO, BRANCH                  3-4 41200000
+         TM    IJHCOPT,X'08'            TEST FOR BLOCKED FILE       3-4 41250000
+         BO    IJHSOTST                 YES, BRANCH                 3-4 41300000
+         AH    10,IJHCKYSZ              ADD KEYLENGTH               3-4 41350000
+         LA    9,8(9)                   IF NOT, GET LENGTH FIELD    3-4 41400000
+IJHSOTST TM    IJHCRTR,X'04'            IS IT AN OVERFLOW RECORD    3-6 41450000
+         BZ    IJHSMVLN                NO, BRANCH                   3-9 41500000
+         LA    9,2(9)                   INCR ADDR FOR OVERFLOW      3-4 41550000
+         B     IJHSMVLN                                             3-4 41600000
+IJHSADD  AH    9,IJHSINIT                                           3-4 41650000
+IJHSMVLN NI    IJHCRTR,X'FB'            TURN OFF OVERFLOW SWITCH    3-6 41700000
+         AIF   (NOT &SW(15)).FM7       RPS NOT SPECIFIED       @DL30SMP 41750000
+         MVC   IJHVD30(IJHVL2,IJHREG8),IJHVD0(IJHREG9) .PUT    @DL30SMP 41800000
+* .                                    LENGTH FIELD IN CCW     @DL30SMP 41850000
+         AGO   .FN                                             @DL30SMP 41900000
+.FM7     ANOP                                                  @DL30SMP 41950000
+         MVC   22(2,8),0(9)             MOVE LENGTH FIELD           3-6 42000000
+.FN       ANOP                                                      3-4 42050000
+         AIF   (NOT &SW(15)).FN1       RPS NOT SPECIFIED       @DL30SMP 42100000
+         MVC   IJHVD40(IJHVL32,IJHREG8),IJHVD0(IJHREG8) .PUT   @DL30SMP 42150000
+* .                                    NEXT 4 CCW IN BLD AREA  @DL30SMP 42200000
+         MVC   IJHVD24(IJHVL1,IJHREG8),IJHVD0(IJHREG4) .PUT    @DL30SMP 42250000
+* .                                    OP-CODE IN READ CCW     @DL30SMP 42300000
+         MVI   IJHVD28(IJHREG8),IJHVCCF .SET SKIP BIT OFF      @DL30SMP 42350000
+* .                                    IN READ CCW             @DL30SMP 42400000
+         MVC   IJHVD36(IJHVL1,IJHREG8),IJHVD1(IJHREG4) .PUT    @DL30SMP 42450000
+* .                                    FLAGS IN SET SECT CCW   @DL30SMP 42500000
+         NC    IJHVD36(IJHVL1,IJHREG8),IJHSLMIT .CLEAN UP      @DL30SMP 42550000
+* .                                    FLAGS IN THE CCW        @DL30SMP 42600000
+         L     IJHREG10,IJHVD16(IJHREG8) .PUT ADDR FIRST       @DL30SMP 42650000
+         LA    IJHREG9,IJHVD8(IJHREG8) SEARCH CCW INTO         @DL30SMP 42700000
+         OR    IJHREG10,IJHREG9 .      THE FIRST               @DL30SMP 42750000
+         ST    IJHREG10,IJHVD16(IJHREG8) .TIC CCW              @DL30SMP 42800000
+         LA    IJHREG9,IJHVD48(IJHREG8) .GET ADDR 2ND SEARCH   @DL30SMP 42850000
+         L     IJHREG10,IJHVD56(IJHREG8) CACULATE ADDR 2ND     @DM08006 42900000
+         OR    IJHREG10,IJHREG9         SEARCH CCW & PUT IT    @DM08006 42950000
+         ST    IJHREG10,IJHVD56(IJHREG8) INTO 2ND TIC CCW      @DM08006 43000000
+         AGO   .FN2                                            @DL30SMP 43050000
+.FN1     ANOP                                                  @DL30SMP 43100000
+         MVC   24(24,8),0(8)           MOVE 3 CCW FOR VERIFY OPTN       43150000
+         MVC   16(1,8),0(4)            MOVE OP-CODE                     43200000
+         MVC   20(1,8),1(4)            MOVE FLAG BIT                    43250000
+         NC    20(1,8),IJHSLMIT                                         43300000
+         L     10,8(8)                                              3-9 43350000
+         OR    10,8                                                3-9  43400000
+         ST    10,8(8)                                                  43450000
+         LA    IJHREG9,IJHVD24(IJHREG8) GET ADDR 2ND SEARCH    @DL30SMP 43500000
+         L     IJHREG10,IJHVD32(IJHREG8) CACULATE ADDR 2ND     @DM08006 43550000
+         OR    IJHREG10,IJHREG9         SEARCH CCW & PUT IT    @DL30SMP 43600000
+         ST    IJHREG10,IJHVD32(IJHREG8) INTO 2ND TIC CCW      @DM08006 43650000
+.FN2     AIF   (NOT &SW(15)).FN3       RPS NOT SPECIFIED       @DM08006 43700000
+         TM    IJHVD0(IJHREG4),IJHVSGET GET TYPE CCW CHAIN     @DL30SMP 43750000
+         BNO   IJHVSBL2 .              NO, PROCESS PUT CHAIN   @DL30SMP 43800000
+         TM    IJHVD1(IJHREG4),IJHVSTI TI CCW CHAIN            @DL30SMP 43850000
+         BNO   IJHVSBL1 .              NO, OFL CCW CHAIN       @DL30SMP 43900000
+         MVC   IJHVARG1(IJHVL1),IJHVARG3 .PUT SEC ARG FLD # 3  @DL30SMP 43950000
+* .                                    INTO SEC ARG FLD # 1    @DL30SMP 44000000
+         LA    IJHREG10,IJHVARG3 .     PUT ADDR SEC ARG FLD    @DL30SMP 44050000
+         STCM  IJHREG10,IJHVM1,IJHVD33(IJHREG8) .#3 IN READ    @DL30SMP 44100000
+* .                                    SECTOR CCW              @DL30SMP 44150000
+         B     IJHVSBL4 .              SET READ SEC OP=CODE    @DL30SMP 44200000
+IJHVSBL1 EQU   *                                               @DL30SMP 44250000
+         TM    IJHSINIT+IJHVD1,IJHVSOFL OVERFLOW CCW CHAIN     @DL30SMP 44300000
+         BNO   IJHVSBL3 .              NO, PROCESS PD CHAIN    @DL30SMP 44350000
+         STM   IJHREG0,IJHREG1,IJHVWRK1 SAVE REGISTERS 0 & 1   @DL30SMP 44400000
+         ICM   IJHREG0,IJHVM4,IJHVD30(IJHREG8) .PUT RECORD     @DL30SMP 44450000
+* .                                    LENGTH + 10 IN PARM REG @DL30SMP 44500000
+         ICM   IJHREG0,IJHVM2,IJHCKYSZ+IJHVD1 .PUT KEYSIZE     @DL30SMP 44550000
+* .                                    INTO PARM REGISTER      @DL30SMP 44600000
+         ICM   IJHREG1,IJHVM3,IJHCPDDV PUT PD DEVICE TYPE      @D37ZDHK 44650000
+* .                                    CODE IN PARM REGISTER   @DL30SMP 44700000
+         L     IJHREG10,IJHVD8(IJHREG8) PUT RECORD NUMBER IN   @DL30SMP 44750000
+         ICM   IJHREG0,IJHVM5,IJHVD4(IJHREG10) .PARM REG       @DL30SMP 44800000
+         SVC   IJHSVC75 .              CALCULATE SECTOR ARG    @DL30SMP 44850000
+         STC   IJHREG0,IJHVARG1 .      PUT SECTOR ARGUMENT     @DL30SMP 44900000
+* .                                    IN SEC ARG FLD # 1      @DL30SMP 44950000
+         LM    IJHREG0,IJHREG1,IJHVWRK1 RESTORE REG'S 0 & 1    @DL30SMP 45000000
+IJHVSBL2 EQU   *                                               @DL30SMP 45050000
+         LA    IJHREG10,IJHVARG4 .     PUT ADDR SEC ARG FLD    @DL30SMP 45100000
+         STCM  IJHREG10,IJHVM1,IJHVD33(IJHREG8) .#4 IN READ    @DL30SMP 45150000
+* .                                    SECTOR CCW              @DL30SMP 45200000
+         MVI   IJHVD32(IJHREG8),IJHVNOOP .PUT NO-OP            @DL30SMP 45250000
+* .                                    OP-CODE IN CCW          @DL30SMP 45300000
+         B     IJHVSBL5                SET UP SET SEC CCW'S    @DL30SMP 45350000
+IJHVSBL3 EQU   *                                               @DL30SMP 45400000
+         MVC   IJHVARG1(IJHVL1),IJHVARG2 .PUT SEC ARG FLD # 2  @DL30SMP 45450000
+* .                                    INTO SEC ARG FLD # 1    @DL30SMP 45500000
+         LA    IJHREG10,IJHVARG2 .     PUT ADDR SEC ARG FLD    @DL30SMP 45550000
+         STCM  IJHREG10,IJHVM1,IJHVD33(IJHREG8) .#2 IN READ    @DL30SMP 45600000
+* .                                    SECTOR CCW              @DL30SMP 45650000
+IJHVSBL4 EQU   *                                               @DL30SMP 45700000
+         MVI   IJHVD32(IJHREG8),IJHVRSOC .PUT READ SECTOR      @DL30SMP 45750000
+* .                                    OP-CODE IN CCW          @DL30SMP 45800000
+IJHVSBL5 EQU   *                                               @DL30SMP 45850000
+         LA    IJHREG10,IJHVARG1 .     PUT ADDR SECTOR ARG     @DL30SMP 45900000
+         ICM   IJHREG10,IJHVM3,IJHVSSOC .FIELD # 1 AND THE     @DL30SMP 45950000
+         ST    IJHREG10,IJHVD0(IJHREG8) .SET SECTOR OP-CODE    @DL30SMP 46000000
+         ST    IJHREG10,IJHVD40(IJHREG8) .IN BOTH SET SEC CCWS @DL30SMP 46050000
+.FN3     ANOP                                                  @DL30SMP 46100000
+         TM    1(4),X'01'                                               46150000
+         BO    IJHSBLTI                                                 46200000
+         AIF   (NOT &SW(15)).FN5       RPS NOT SPECIFIED       @DL30SMP 46250000
+         OC    IJHCCCW+IJHVD24(IJHVL1),IJHSLMIT+IJHVD1 .MODIFY @DL30SMP 46300000
+* .                                              CCW OP-CODE   @DL30SMP 46350000
+         OC    IJHCCCW+IJHVD64(IJHVL1),IJHSLMIT+IJHVD1 .MODIFY @DL30SMP 46400000
+* .                                    CCW OP-CODE             @DL30SMP 46450000
+         AGO   .FN6                                            @DL30SMP 46500000
+.FN5     ANOP                                                  @DL30SMP 46550000
+         OC    IJHCCCW+16(1),IJHSLMIT+1                                 46600000
+         OC    IJHCCCW+40(1),IJHSLMIT+1                                 46650000
+.FN6     ANOP                                                  @DL30SMP 46700000
+         AIF   (&SW(25)).FO                                         3-4 46750000
+IJHSBLUT LA    4,2(4)                                                   46800000
+         AIF   (NOT &SW(15)).FN7       RPS NOT SPECIFIED       @DL30SMP 46850000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 46900000
+.FN7     ANOP                                                  @DL30SMP 46950000
+         BR    4                                                        47000000
+          AGO  .FR                                                  3-4 47050000
+.FO      ANOP                                                       3-4 47100000
+IJHSBLUT LA    7,2(7)                  INCREMENT ADDRESS            3-4 47150000
+         AIF   (NOT &SW(15)).FO1       RPS NOT SPECIFIED       @DL30SMP 47200000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 47250000
+.FO1     ANOP                                                  @DL30SMP 47300000
+         BALR  7,7                     EXIT OR EXCP                 3-4 47350000
+         AIF   (NOT &SW(15)).FO2       RPS NOT SPECIFIED       @DL30SMP 47400000
+         ST    IJHREG6,IJHVTRS .       SAVE REGISTER 6         @DL30SMP 47450000
+         ICM   IJHREG6,IJHVM1,IJHCCCB+IJHVD9 .SET BASE FOR EXT @DL30SMP 47500000
+.FO2     ANOP                                                  @DL30SMP 47550000
+         AIF   (NOT &SW(23)).FQ                                     3-4 47600000
+         AIF   (&SW(24)).FP            RDONLY SPECIFIED        @DL30SMP 47650000
+         MVC   IJHEWORK+1(3),IJHCCCW+17  IOAREA ADDRESS             3-4 47700000
+         AGO   .FQ                                                  3-4 47750000
+.FP      ANOP                                                       3-9 47800000
+         XR    0,13                                                 3-4 47850000
+         XR    13,0                                                 3-4 47900000
+         AIF   (NOT &SW(15)).FP1       RPS NOT SPECIFIED       @DL30SMP 47950000
+         MVC   IJHVD45(IJHVL3,IJHREG13),IJHCCCW+IJHVD25 .SAVE  @DL30SMP 48000000
+* .                                    IOAREA ADDR IN PARM LST @DL30SMP 48050000
+         AGO   .FP2                                            @DL30SMP 48100000
+.FP1     ANOP                                                  @DL30SMP 48150000
+         MVC   45(3,13),IJHCCCW+17     IOAREA ADDRESS               3-4 48200000
+.FP2     ANOP                                                  @DL30SMP 48250000
+         XR    13,0                                                 3-4 48300000
+         XR    0,13                                                 3-4 48350000
+.FQ      ANOP                                                       3-4 48400000
+         AIF   (NOT &SW(15)).FQ1       RPS NOT SPECIFIED       @DL30SMP 48450000
+         L     IJHREG6,IJHVTRS .       RESTORE REGISTER 6      @DL30SMP 48500000
+.FQ1     ANOP                                                  @DL30SMP 48550000
+         TM    IJHCRTR,X'08'           FIRST TIME THROUGH           3-4 48600000
+         BCR   1,12                    NO, RETURN                   3-4 48650000
+         OI    IJHCRTR,X'08'           CHANGE FIRST TIME SWITCH     3-4 48700000
+         B     IJHSREDO                REISSUE GET                  3-4 48750000
+.FR      ANOP                                                       3-4 48800000
+IJHSBLTI EQU   *                                               @DL30SMP 48850000
+         AIF   (NOT &SW(15)).FR1       RPS NOT SPECIFIED       @DL30SMP 48900000
+         MVC   IJHCCCW+IJHVD30(IJHVL2),IJHCKYLC+IJHVD4 .PUT    @DL30SMP 48950000
+* .                                    KEYLENGTH IN CCW        @DL30SMP 49000000
+         MVC   IJHCCCW+IJHVD25(IJHVL3),IJHVD5(IJHREG2) .PUT    @DL30SMP 49050000
+* .                                    ADDR TI SEARCH ARG IN   @DL30SMP 49100000
+* .                                    CCW                     @DL30SMP 49150000
+         AGO   .FR2                                            @DL30SMP 49200000
+.FR1     ANOP                                                  @DL30SMP 49250000
+         MVC   IJHCCCW+22(2),IJHCKYLC+4                                 49300000
+         MVC   IJHCCCW+17(3),5(2)                                       49350000
+.FR2     ANOP                                                  @DL30SMP 49400000
+         B     IJHSBLUT                                                 49450000
+IJHSKON  EQU   *                                               @DL30SMP 49500000
+         AIF   (NOT &SW(15)).FR3       RPS NOT SPECIFIED       @DL30SMP 49550000
+IJHVSSOC DC    X'2300000040000001' .   SET SECTOR CCW          @DL30SMP 49600000
+.FR3     ANOP                                                  @DL30SMP 49650000
+         DC    X'3100000040000005'                                      49700000
+         DC    X'0800000040000000'                                      49750000
+         AIF   (NOT &SW(15)).FR4       RPS NOT SPECIFIED       @DL30SMP 49800000
+         DC    X'0600000010000000' .   VERIFY CCW              @DM05939 49850000
+         DC    X'2200000000000001' .   READSECTOR CCW          @DL30SMP 49900000
+         AGO   .FS                                             @DL30SMP 49950000
+.FR4     ANOP                                                  @DL30SMP 50000000
+         DC    X'060000001000'                                          50050000
+.FS      AIF   (&SW(12)).FT            SEPASMB SPECIFIED       @DL30SMP 50100000
+&SYSECT  CSECT                                                          50150000
+.FT      MEXIT                                                      3-9 50200000

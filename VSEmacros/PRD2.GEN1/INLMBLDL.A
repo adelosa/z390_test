@@ -1,0 +1,469 @@
+*%GOTO PLSACCES;                      /* BEGIN OF PLS COMMENT           00050000
+         MACRO                                                          00100000
+&LABEL   INLMBLDL &RPL=,                                               X00150000
+               &LEVEL=,                                                X00200000
+               &LIBUSE=,                                               X00250000
+               &CHAINID=,                                              X00300000
+               &STOWTAB=,                                              X00350000
+               &STOWNO=,                                               X00400000
+               &STOWLEN=,                                              X00450000
+               &LIBTYPE=,                                              X00500000
+               &REQUEST=,                                              X00550000
+               &CONT=,                                                 X00600000
+               &INFORM=                                                 00650000
+         GBLC  &FC                    MF TO BE PASSED TO INLMLRPL       00700000
+         GBLB  &SYNERR                ERROR DURING SYNTAX CHECK         00750000
+         GBLB  &INNER                 CALL INLMLRPL AS INNER MACRO      00800000
+         LCLB  &REGERR                UNALLOWED REGISTER NOTATION       00850000
+         LCLC  &REG                   PREPARE STRING FOR ST INSTR.      00900000
+.*                                                                      00950000
+.* IBM DISK OPERATING SYSTEM                                            01000000
+.*                                                                      01050000
+         SPACE                                                          01100000
+*  LIBRARIAN - INLMBLDL - 5686-066-06-75C - VERSION 02-06-24            01150006
+         SPACE                                                          01200000
+.*                                                                      01250000
+         AGO   .ENDPCP                                                  01300000
+.*************************************************************          01310006
+.*        LICENSED MATERIALS - PROPERTY OF IBM               *          01320006
+.*        "RESTRICTED MATERIALS OF IBM"                      *          01330006
+.*        5686-066                                           *          01340006
+.*        (C) COPYRIGHT IBM CORP. 1984  2002                 *          01341006
+.*                                                           *          01342006
+.*************************************************************          01343006
+.*                                                                      01650000
+.* A000000-999999                                              @D14LDFB 01700000
+.*                                                                      01750000
+.*                                                                      01800000
+*/*   MODULE INLMBLDL - LIBRARIAN MACRO INLMBLDL                        01850000
+*/**                                                                    01900000
+*/****  START OF SPECIFICATIONS  *************************************/ 01950000
+*/**                                                                    02000000
+*/**  MACRO NAME:  INLMBLDL                                             02050000
+*/**                                                                    02100000
+*/**  MACRO TYPE:  EXTERNAL LIBRARIAN MACRO, BILINGUAL                  02150000
+*/**                                                                    02200000
+*/**  DESCRIPTIVE NAME:  MACRO FOR BUILDING LIST OF ENTRIES             02250000
+*/**                                                                    02300000
+*/**  SYNTAX OF MACRO:                                                  02350000
+*/**                                                                    02400000
+*/**    ASSEMBLER:                                                      02450000
+*/**                                                                    02500000
+*/** <LABEL> INLMBLDL RPL = NAME | (R)                                  02550000
+*/**                  <,LEVEL = SUBLIB | MEMBER>                        02600000
+*/**                  <,LIBTYPE = PHASE | OBJ | SOURCE | PROC | LBR     02650000
+*/**                             | DUMP>                                02700000
+*/**                  <,LIBUSE = SEARCH | CATALOG | ACCESS | USER>      02750000
+*/**                  <,CHAINID = NAME | (R)>                           02800000
+*/**                  <,STOWTAB = NAME | (R)>                           02850000
+*/**                  <,STOWNO = NAME | (R)>                            02900000
+*/**                  <,STOWLEN = NAME | (R)>                           02950000
+*/**                  <,CONT>                                           03000000
+*/**                  <,REQUEST = GENERIC | NONGENERIC>                 03050000
+*/**                  <,INFORM = KEY | ENTRY | RESOURCE>                03100000
+*/**                                                                    03150000
+*/**    PLS:                                                            03200000
+*/**                                                                    03250000
+*/** ?<LABEL:> INLMBLDL RPL(NAME | (R))                                 03300000
+*/**                    <LEVEL(SUBLIB | MEMBER)>                        03350000
+*/**                    <LIBTYPE(PHASE | OBJ | SOURCE | PROC | LBR)>    03400000
+*/**                             | DUMP)>                               03450000
+*/**                    <LIBUSE(SEARCH | CATALOG | ACCESS | USER)>      03500000
+*/**                    <CHAINID(NAME | (R))>                           03550000
+*/**                    <STOWTAB(NAME | (R))>                           03600000
+*/**                    <STOWNO(NAME | (R))>                            03650000
+*/**                    <STOWLEN(NAME | (R))>                           03700000
+*/**                    <CONTINUED>                                     03750000
+*/**                    <REQUEST(GENERIC | NONGENERIC)>                 03800000
+*/**                    <INFORM(KEY | ENTRY | RESOURCE)>                03850000
+*/**                    ;                                               03900000
+*/*   EJECT                                                             03950000
+*/**  INPUT:    SPECIFICATION OF MACRO AND CONTROL BLOCK.               04000000
+*/**            THE USER MUST SUPPLY A STORAGE AREA OF 72 BYTES,        04050000
+*/**            USED AS A REGISTER SAVE AREA, AND PASS ITS ADDRESS      04100000
+*/**            IN REGISTER 13                                          04150000
+*/**                                                                    04200000
+*/**  OUTPUT:   RETURN CODE IN REGISTER 15                              04250000
+*/**            THE ARGUMENTS GIVEN IN STOWTAB ARE FILLED UP WITH       04300000
+*/**            INFORM ABOUT THEIR EXISTENCE, THE LIBRARY OBJECT        04350000
+*/**            THEY RESIDE IN, OR THE RESOURCE NAME.                   04400000
+*/**                                                                    04450000
+*/**  FUNCTION:                                                         04500000
+*/**                                                                    04550000
+*/**  THIS MACRO BUILDS A LIST OF INFORMATION IN AN AREA CALLED A STOW  04600000
+*/**  TABLE.  THE INFORMATION CAN BE ABOUT SUBLIBRARIES OR MEMBERS AND  04650000
+*/**  THE QUANTITY OF INFORMATION RETURNED IS CONTROLLED BY THE CALLER. 04700000
+*/**  THE CALLER CAN REQUEST TO BUILD A LIST ABOUT A SPECIFIC LIST      04750000
+*/**  OF SUBLIBRARIES OR MEMBERS,   OR THE CALLER CAN REQUEST THAT A    04800000
+*/**  GENERIC SEARCH BE DONE.  THE MACRO WILL START ITS SEARCH AT THE   04850000
+*/**  BEGINNING OF THE SPECIFIED LIBRARY CHAIN AND CONTINUE THROUGH     04900000
+*/**  THE LIBRARIES UNTIL IT CAN FIND THE ARGUMENTS OR THE CHAIN ENDS.  04950000
+*/**  ON A GENERIC REQUEST, THE SEARCH STOPS AT THE FIRST OCCURRENCE    05000000
+*/**  OF A MATCHING ARGUMENT.                                           05050000
+*/**  ======>  THE FUNCTION GETS A LIST OF ARGUMENTS (IN THE STOWTABLE  05100000
+*/**           FORMAT) AS INPUT AND PASSES BACK AN IDENTIFICATION       05150000
+*/**           ABOUT THE EXISTENCE OF THE GIVEN LIBRARY OBJECTS IN THE  05200000
+*/**           SEARCHING CHAIN, TOGETHER WITH ADDITIONAL DESCRIPTOR     05250000
+*/**           INFORMATIONS.                                            05300000
+*/**           - THE FUNCTION WORKS FOR:                                05350000
+*/**           1. A LIST OF SUBLIBRARY NAMES OR A LIST OF MEMBER        05400000
+*/**           SPECIFICATIONS, WHICH WILL BE FLAGGED AS EXISTENT OR     05450000
+*/**           NOT (INFORM=KEY) OR FILLED UP WITH ADDITIONAL SUBLIB     05500000
+*/**           OR MEMBER DESCRIPTOR INFORMATION (INFORM=ENTRY),         05550000
+*/**           2. A LIST OF FULL SPECIFIED NAMES OR ONE GENERIC         05600000
+*/**           SPECIFICATION, WHICH WILL BE EXPANDED TO A LIST OF       05650000
+*/**           ENTRIES FOUND IN THE FIRST LIBRARY OR SUBLIBRARY         05700000
+*/**           WHERE THE GENERIC SPECIFICATION MATCHES.                 05750000
+*/**           - FOR SUBLIBRARIES, THE LOCKING RESOURCE NAMES WILL      05800000
+*/**           BE BUILT WITH REQUEST INFORM=RESOURCE.                   05850000
+*/**           - IF NO MATCH IS FOUND IN THE SEARCHING CHAIN, RETURN    05900000
+*/**           CODE 12 IS PASSED BACK.                                  05950000
+*/**           - IF THE INFORMATION AREA (PARAMETER STOWLEN) IS         06000000
+*/**           EXCEEDED BY THE ACTUAL INFORMATION, RETURN CODE 8 IS     06050000
+*/**           PASSED BACK. NOW IT IS POSSIBLE TO GIVE A CONTINUATION   06100000
+*/**           REQUEST (PARAMETER CONTINUE) TO GET THE REMAINING        06150000
+*/**           INFORMATION.                                             06200000
+*/**           - IF SOME OF THE ARGUMENTS IN A LIST DO   NOT OCCUR      06250000
+*/**           IN THE SEARCHING CHAIN OR DO NOT PASS THE SECURITY       06300000
+*/**           CHECK THE CORRESPONDING ENTRIES ARE FLAGGED AND A        06350000
+*/**           RETURN CODE OF 4 IS PASSED BACK TO THE INVOKER.          06400000
+*/**           - THE SECURITY CHECK FOR A FULLY SPECIFIED ARGUMENT      06450000
+*/**           IS FOR READ AUTHORIZATION.                               06500000
+*/**           - THE SECURITY CHECK FOR A GENERIC SUBLIBRARY            06550000
+*/**           SPECIFICATION IS DONE FOR READ AUTHORIZATION ON          06600000
+*/**           LIBRARY LEVEL, FOR A GENERIC MEMBER SPECFICATION FOR     06650000
+*/**           READ AUTHORIZATION ON THE SUBLIBRARY.                    06700000
+*/***                                                                   06750000
+*/**  THE CHAIN OF LIBRARY/SUBLIBRARY DEFINITIONS GIVEN BY THE 'LIBUSE' 06800000
+*/**  AND 'LIBTYPE' PARAMETERS IS USED.                                 06850000
+*/**                                                                    06900000
+*/**  REGISTER USAGE FOR INLMBLDL MACRO:                                06950000
+*/**                                                                    07000000
+*/**    REG  0   FUNCTION INDICATOR                                     07050000
+*/**    REG  1   POINTER TO CONTROL BLOCK                               07100000
+*/**    REG 13   ADDRESS OF SAVEAREA                                    07150000
+*/**    REG 14   RETURN ADDRESS                                         07200000
+*/**    REG 15   USED AS BRANCH REGISTER AND FOR RETURN CODES           07250000
+*/**                                                                    07300000
+*/**    ALL OTHER REGISTERS REMAIN UNCHANGED                            07350000
+*/**                                                                    07400000
+*/**  RETURN CODES FROM LANGUAGE PROCESSOR:                             07450000
+*/**     0      MACRO EXPANSION SUCCESSFUL                              07500000
+*/**     4      PARAMETERS HAVE BEEN IGNORED DUE TO CONFLICTS           07550000
+*/**     8      INVALID PARAMETERS SPECIFIED                            07600000
+*/**                                                                    07650000
+*/**  RETURN CODES FROM SERVICE FUNCTION:                               07700000
+*/**     0      REQUEST HAS BEEN HONORED                                07750000
+*/**     4      SOME OF THE ARGUMENTS WERE NOT FOUND IN THE GIVEN CHAIN 07800000
+*/**            AND THEIR STOW ENTRIES ARE FLAGGED                      07850000
+*/**     8      THE AREA SUPPLIED FOR THE STOW TABLE WAS NOT SUFFICIENT 07900000
+*/**            AND THE REQUEST COULD NOT BE COMPLETED.  A NONGENERIC   07950000
+*/**            REQUEST CAN BE CONTINUED BY SUPPLYING THE ENTRIES THAT  08000000
+*/**            WERE NOT PROCESSED.  A GENERIC REQUEST CAN BE CONTINUED 08050000
+*/**            BY SUPPLYING THE ORIGINAL ARGUMENT AS THE FIRST ENTRY   08100000
+*/**            OF THE STOW TABLE AND THE LAST RETURNED ARGUMENT AS THE 08150000
+*/**            SECOND ENTRY ALONG WITH THE KEYWORD 'CONTINUED'/'CONT'  08200000
+*/**    12      NO ENTRY FOUND                                          08250000
+*/**    16      EXTERNAL ERROR WITH FEEDBACK CODE                       08300000
+*/**    20      INTERNAL ERROR WITH FEEDBACK CODE                       08350000
+*/**                                                                    08400000
+*/**  NOTES:                                                            08450000
+*/**                                                                    08500000
+*/**     CHANGE ACTIVITIES:                                             08550000
+*/**                                                                    08600000
+*/**        SUPPORT OF VSE LIBRARIAN                                    08650000
+*/**        PREPARE PLS3 TO PLX/370 CONVERSION FOR MSHP        @D66GDMK 08660004
+*/**        MAKE LIBRM API AMODE(ANY) CAPABLE                  @D66GDMK 08670002
+*/**        SPLIT $IJBLBR.PHASE IN SVA LOW AND HIGH            @D67GDMK 08680005
+*/**                                                                    08700000
+*/**     <...> DENOTES, THAT THIS PARAMETER IS OPTIONAL.                08750000
+*/**                                                                    08800000
+*/****  END OF SPECIFICATIONS  ***************************************/ 08850000
+*/*   EJECT                                                             08900000
+*/**  PARAMETER DESCRIPTION:                                            08950000
+*/**                                                                    09000000
+*/**    RPL      SPECIFIES THE NAME OF THE AREA WHERE THE REQUEST       09050000
+*/**             PARAMETER LIST IS ALLOCATED.                           09100000
+*/**             ON THE SECOND USE OF THE SAME CONTROL BLOCK            09150000
+*/**             ONLY THE PARAMETERS TO BE MODIFIED HAVE TO             09200000
+*/**             BE SPECIFIED. RPL MUST BE SPECIFIED.                   09250000
+*/**                                                                    09300000
+*/**                                                                    09350000
+*/**    LIBUSE   SPECIFIES THE REQUESTED LIBRARY/SUBLIBRARY CHAIN:      09400000
+*/**               SEARCH  SEARCH LIBRARY/SUBLIBRARY CHAIN              09450000
+*/**               ACCESS  ACCESS LIBRARY/SUBLIBRARY CHAIN              09500000
+*/**               CATALOG CATALOG LIBRARY/SUBLIBRARY CHAIN             09550000
+*/**               USER    USER-DEFINED LIBRARY/SUBLIBRAY CHAIN         09600000
+*/**                       (ONLY WITH LIBTYPE=LBR)                      09650000
+*/**                                                                    09700000
+*/**    CHAINID  SPECIFIES THE NAME OF THE AREA WHERE THE 8 CHAR        09750000
+*/**             IDENTIFIER OF THE USER-DEFINED LIB/SUBLIB CHAIN        09800000
+*/**             IS PROVIDED.                                           09850000
+*/**             (ONLY WITH LIBUSE=USER, OTHERWISE IGNORED).            09900000
+*/**                                                                    09950000
+*/**    LIBTYPE  SPECIFIES THE LIBRARY TYPE:                            10000000
+*/**               PHASE    FOR PHASES                                  10050000
+*/**               OBJ      FOR OBJECT MODULES                          10100000
+*/**               SOURCE   FOR SOURCE BOOKS                            10150000
+*/**               PROC     FOR PROCEDURES                              10200000
+*/**               DUMP     FOR DUMPS                                   10250000
+*/**               LBR      FOR LIBRARIAN ACCESSED LIBRARY/SUBLIBRARY   10300000
+*/**                                                                    10350000
+*/**    REQUEST  SPECIFIES THE ARGUMENTS IN STOWTAB                     10400000
+*/**             GENERIC    ONE GENERIC ENTRY IS CONTAINED IN THE       10450000
+*/**                        STOWTABLE. A GENERIC ENTRY CAN BE SPECIFIED 10500000
+*/**                        AS A 1-7 CHARACTER PREFIX FOLLOWED BY AN    10550000
+*/**                        ASTERISK(*).  BOTH THE MEMBER NAME AND TYPE 10600000
+*/**                        CAN BE SPECIFIED GENERICALLY.               10650000
+*/**                                                                    10700000
+*/**             NONGENERIC A LIST OF COMPLETE ENTRY ID'S IS PASSED     10750000
+*/**                        WITH THE STOWTABLE.                         10800000
+*/**             NONGENERIC IS THE DEFAULT VALUE.                       10850000
+*/**                                                                    10900000
+*/**    STOWTAB  SPECIFIES THE NAME OF THE AREA WHERE THE STOW TABLE    10950000
+*/**             (HEADER AND STOW ENTRIES) IS LOCATED.  THE REMAINDER   11000000
+*/**             OF THE AREA IS USED FOR STORING THE REQUESTED          11050000
+*/**             INFORMATION.                                           11100000
+*/**                                                                    11150000
+*/**    STOWLEN  LENGTH OF THE STOW TABLE AREA                          11200000
+*/**                                                                    11250000
+*/**    STOWNO  SPECIFIES THE NUMBER OF STOWTABLE ENTRIES.              11300000
+*/**                                                                    11350000
+*/**                                                                    11400000
+*/**    LEVEL    SPECIFIES LEVEL OF THE ENTRIES IN THE STOWTABLE        11450000
+*/**             SUBLIB  SPECIFIES THAT THE ARGUMENTS ARE SUBLIBRARY    11500000
+*/**                     NAMES                                          11550000
+*/**             MEMBER  SPECIFIES THAT THE ARGUMENTS ARE MEMBER        11600000
+*/**                     IDENTIFIERS                                    11650000
+*/**             MEMBER IS THE DEFAULT VALUE.                           11700000
+*/**                                                                    11750000
+*/**    INFORM SPECIFIES THE INFORMATION TO BE PASSED BACK TO           11800000
+*/**             THE CALLER                                             11850000
+*/**             KEY     SPECIFIES THAT ONLY MINIMAL INFORMATION        11900000
+*/**                     ABOUT THE OBJECT IS RETURNED (FOUND IN         11950000
+*/**                     WHICH LIBRARY)                                 12000000
+*/**             ENTRY   THE COMPLETE DIRECTORY ENTRY IS RETURNED.      12050000
+*/**             RESOURCE (ONLY FOR LEVEL=SUBLIB) RETURNS ONLY THE      12100000
+*/**                     RESOURCE NAME OF THE OBJECT FOR LOCKING        12150000
+*/**                     PURPOSES.                                      12200000
+*/**                                                                    12250000
+*/**    CONTINUED SPECIFIES THAT THIS IS A CONTINUATION OF              12300000
+*/**    (CONT)    A PREVIOUS INCOMPLETE GENERIC REQUEST                 12350000
+*/**                                                                    12400000
+*/**    PARAMETER RESTRICTIONS:                                         12450000
+*/**                                                                    12500000
+*/**    IF LEVEL=SUBLIB THEN LIBTYPE MUST BE 'LBR' AND INFORM MUST BE   12550000
+*/**    EITHER 'ENTRY' OR 'RESOURCE'                                    12600000
+*/**                                                                    12650000
+*/**    IF LEVEL=MEMBER THEN INFORM MUST NOT BE 'RESOURCE'.             12700000
+*/**                                                                    12750000
+*/*   ENDMODULE INLMBLDL                                                12800000
+.ENDPCP  ANOP                                                           12850000
+.*                                                                      12900000
+.*       DEFINITION OF MACRO VARIABLES                                  12950000
+.*                                                                      13000000
+&FC      SETC  ''                                                       13050000
+&SYNERR  SETB  0                                                        13100000
+         AIF   ('&LABEL' EQ '').NOLABEL                                 13150000
+&LABEL   DS    0H                                                       13200000
+.NOLABEL ANOP                                                           13250000
+&FC      SETC  'BLDL'              SET FUNCTION CODE FOR CONTROL BLOCK  13300000
+.VALMF1  ANOP                                                           13350000
+&INNER   SETB  1                   CALL LBRACCCB AS INNER MACRO         13400000
+         AIF   (T'&RPL NE 'O').AREA                                     13450000
+         AIF   ('&RPL' NE '').AREA                                      13500000
+         MNOTE 8,'RPL IS NOT SPECIFIED, GENERATION SUPPRESSED'          13550000
+.*       SYNTAX CHECK CONTINUES                                         13600000
+&SYNERR  SETB  1                                                        13650000
+.AREA    ANOP                                                           13700000
+.*                                                                      13750000
+.*       PERFORM SYNTAX CHECK OF OTHER PARAMETERS VIA INLMLRPL MACRO    13800000
+.*                                                                      13850000
+         INLMLRPL MF=MOD,                                              X13900000
+               AREA=&RPL,                                              X13950000
+               LEVEL=&LEVEL,                                           X14000000
+               LIBUSE=&LIBUSE,                                         X14050000
+               LIBTYPE=&LIBTYPE,                                       X14100000
+               CHAINID=&CHAINID,                                       X14150000
+               STOWTAB=&STOWTAB,                                       X14200000
+               STOWLEN=&STOWLEN,                                       X14250000
+               REQUEST=&REQUEST,                                       X14300000
+               INFORM=&INFORM                                           14350000
+         AIF   (&SYNERR).MEND                                           14400000
+         L   RPLACR15,LRPLSTTB                                          14450000
+         USING INLCSTOH,RPLACR15                                        14500000
+.BRSTNO  ANOP                                                           14550000
+         AIF (T'&STOWNO EQ 'O').BRSTOW                                  14600000
+         AIF ('&STOWNO' EQ '').BRSTOW                                   14650000
+         AIF ('&STOWNO'(1,1) NE '(').NRSTNO                             14700000
+&REG     SETC '&STOWNO'(2,K'&STOWNO-2)                                  14750000
+         STH  &REG,STOHNOEN                                             14800000
+         AGO  .BRSTOW                                                   14850000
+.NRSTNO  ANOP                                                           14900000
+         LA   RPLACCR0,&STOWNO                                          14950000
+         STH  RPLACCR0,STOHNOEN                                         15000000
+.BRSTOW  ANOP                                                           15050000
+         DROP RPLACR15                                                  15100000
+         NI   LRPLOPC2,X'FF'-LRPLCNTD                                   15150000
+         AIF  (T'&CONT EQ 'O').BALBLDL                                  15200000
+         OI   LRPLOPC2,LRPLCNTD                                         15250000
+.BALBLDL ANOP                                                           15300000
+.*                                                                      15350000
+.*       INVOCATION OF INLPBLDL IN SVA PHASE $IJBLBR                    15400000
+.*                                                                      15450000
+         XC    LRPLRQTY,LRPLRQTY                                        15500000
+         OI    LRPLRQT3,LRPLBLDL     INDICATE INLPBLDL PROCESSING       15550000
+         LA    RPLACCR0,LBRFCBDL     SET CODE TO CALL INLPBLDL          15600000
+         ASYSCOM RPLACR15                                               15650000
+         USING SYSCOM,RPLACR15                                          15700000
+         L     RPLACR15,IJBPLCT      ADDRESS OF LIBRARY POINTER TABLE   15750000
+         USING INLCLPT,RPLACR15                                         15800000
+         L     RPLACR15,LPT$ADDR     ADDRESS OF SVA PHASE $IJBLBR       15850000
+         DROP  RPLACR15                                                 15900000
+         BASSM RPLACR14,RPLACR15     BRANCH TO $IJBLBR-INLPBLDL@D66GDMK 15960002
+         AGO   .MEND                                                    16000000
+.MEND    ANOP                                                           16050000
+&INNER   SETB  0                                                        16100000
+&SYNERR  SETB  0                                                        16150000
+         MEND                                END OF PLS COMMENT      */ 16200000
+*%PLSACCES:;                                                            16250000
+*%INLMBLDL: MACRO KEYS(RPL,                                             16300000
+*                      LEVEL,                                           16350000
+*                      STOWTAB,                                         16400000
+*                      CHAINID,                                         16450000
+*                      STOWNO,                                          16500000
+*                      STOWLEN,                                         16550000
+*                      LIBUSE,                                          16600000
+*                      LIBTYPE,                                         16650000
+*                      REQUEST,                                         16700000
+*                      CONTINUED,                                       16750000
+*                      INFORM);                                         16800000
+* /*******************************************************************/ 16850000
+* /*  PLS PART OF INLMBLDL MACRO, DESCRIPTION SEE ASM PART           */ 16900000
+* /*******************************************************************/ 16950000
+* DCL (SYNERR,                       /* SYNTAX ERROR IN MACRO CALL   */ 17000000
+*      INNER,                        /* CALL LBRACCCB AS INNER MACRO */ 17050000
+*      RC)                           /* RETURN CODE SET BY LBRACCCB  */ 17100000
+*      FIXED EXTERNAL;                                                  17150000
+* DCL (FC,                           /* PASS MF TO LBRACCCB MACRO    */ 17200000
+*      TAREA)                        /* FOR ADDRESSING CONTROL BLOCK */ 17250000
+*      CHARACTER EXTERNAL;                                              17300000
+* DCL (IN) CHARACTER;                /* FOR LISTING OF INVOKING MACRO*/ 17350000
+* DCL (COL1,COLA,COLD,               /* OUTPUT COLUMNS               */ 17400000
+*      RCERR) FIXED;                 /* RETURN CODE 8                */ 17450000
+* COLA = MACLMAR;                                                       17500000
+* COLD = COLA + 35;                                                     17550000
+* COL1 = MACGLMAR;                                                      17600000
+* RCERR = 8;                                                            17650000
+* IN = MACLABEL || ' ' || MACNAME || ' ' || MACLIST || ' ' || MACKEYS;  17700000
+* ANS (COMMENT(IN)) COL(COLA) SKIP;                                     17750000
+* IN =' LIBRARIAN - INLMBLDL - 5666-301-06-H07 - VERSION 84-02-08';     17800000
+* ANS (COMMENT(IN)) COL(COLA) SKIP;                                     17850000
+* SYNERR = 0;                                                           17900000
+* INNER = 1;                                                            17950000
+* RC = 0;                                                               18000000
+* FC = 'BLDL';                                                          18050000
+* /*******************************************************************/ 18100000
+* /*  PREPARE TEMPORARY STRINGS FOR INVOCATION  OF INLMLRPL MACRO    */ 18150000
+* /*******************************************************************/ 18200000
+* VALMF1:;                                                              18250000
+* IF NUMBER(LEVEL) = 0 THEN                                             18300000
+*    TLIB = '';                                                         18350000
+* ELSE                                                                  18400000
+*    TLIB = ' LEVEL('||LEVEL(1)||')';                                   18450000
+* IF NUMBER(LIBUSE) = 0 THEN                                            18500000
+*    TUSE = '';                                                         18550000
+* ELSE                                                                  18600000
+*    TUSE = ' LIBUSE('||LIBUSE(1)||')';                                 18650000
+* IF NUMBER(LIBTYPE) = 0 THEN                                           18700000
+*    TINF = '';                                                         18750000
+* ELSE                                                                  18800000
+*    TINF = ' LIBTYPE('||LIBTYPE(1)||')';                               18850000
+* IF NUMBER(CHAINID) = 0 THEN                                           18900000
+*    TCHD = '';                                                         18950000
+* ELSE                                                                  19000000
+*    TCHD = ' CHAINID('||CHAINID(1)||')';                               19050000
+* IF NUMBER(STOWTAB) = 0 THEN                                           19100000
+*    TCHN = '';                                                         19150000
+* ELSE                                                                  19200000
+*    TCHN = ' STOWTAB('||STOWTAB(1)||')';                               19250000
+* IF NUMBER(STOWLEN) = 0 THEN                                           19300000
+*    TLEN = '';                                                         19350000
+* ELSE                                                                  19400000
+*    TLEN = ' STOWLEN('||STOWLEN(1)||')';                               19450000
+* IF NUMBER(REQUEST) = 0 THEN                                           19500000
+*    TDTF = '';                                                         19550000
+* ELSE                                                                  19600000
+*    TDTF = ' REQUEST('||REQUEST(1)||')';                               19650000
+* IF NUMBER(INFORM) = 0 THEN                                            19700000
+*    TIOA = '';                                                         19750000
+* ELSE                                                                  19800000
+*    TIOA = ' INFORM('||INFORM(1)||')';                                 19850000
+* /*******************************************************************/ 19900000
+* /*  CHECK IF RPL HAS BEEN SPECIFIED                               */  19950000
+* /*******************************************************************/ 20000000
+* IF NUMBER(RPL) ¬= 0 THEN                                              20050000
+*    GOTO VALAREA;                                                      20100000
+* ANS MSG ('RPL NOT SPECIFIED, GENERATION SUPPRESSED')                  20150000
+*      COL(COLA) SKIP NORESCAN;                                         20200000
+* /*  SYNTAX CHECK CONTINUES                                         */ 20250000
+* RC = RCERR;                                                           20300000
+* /*******************************************************************/ 20350000
+* /*  CALL LBRACCCB MACRO AND CONTINUE SYNTAX CHECK                  */ 20400000
+* /*******************************************************************/ 20450000
+* VALAREA:;                                                             20500000
+* IF MACLABEL ¬= '' THEN                                                20550000
+*    ANS (MACLABEL||';') COL(COLA) SKIP RESCAN;                         20600000
+* ANS ('? INLMLRPL MF(MOD) AREA('||RPL(1)||')'                          20650000
+*     ||TLIB||TUSE||TINF||TCHN||TLEN||TDTF||TIOA||TCHD||';')            20700000
+*     COL(COLA) SKIP RESCAN;                                            20750000
+* IF RC ¬= 0 THEN                                                       20800000
+*    GOTO MEND;                                                         20850000
+*                                                                       20900000
+* IF NUMBER(STOWNO) = 0 THEN                                            20950000
+*    GOTO STOHEND;                                                      21000000
+* ANS('RFY INLCSTOH BASED(LRPLSTTB);') COL(COLA) SKIP RESCAN;           21050000
+* IF STOWNO(1,1:1) = '(' THEN                                           21100000
+*    TSTNO = STOWNO(1,1);                                               21150000
+* ELSE                                                                  21200000
+*    TSTNO = STOWNO(1);                                                 21250000
+* ANS('STOHNOEN = '||TSTNO||';') COL(COLA) SKIP RESCAN;                 21300000
+* ANS('/* INSERT STOWNO */') COL(COLD);                                 21350000
+* ANS('RFY INLCSTOH;') COL(COLA) SKIP RESCAN;                           21400000
+* STOHEND:;                                                             21450000
+* IF CONTINUED = '' THEN                                                21500000
+*   ANS('LRPLCNTD = ''0''B;') COL(COLA) SKIP RESCAN;                    21550000
+* ELSE                                                                  21600000
+*   ANS('LRPLCNTD = ''1''B;') COL(COLA) SKIP RESCAN;                    21650000
+*                                                                       21700000
+* /*******************************************************************/ 21750000
+* /*  PREPARE CALL TO PHASE $IJBLBR AND EXECUTE MODULE INLPBLDL      */ 21800000
+* /*******************************************************************/ 21850000
+* ANS ('RFY (RPLACCR0,RPLACR14,RPLACR15) RSTD;')                        21900000
+*      COL(COLA) SKIP RESCAN;                                           21950000
+* ANS ('LRPLRQTY = ''000000''X;') COL(COLA) SKIP NORESCAN;              22000000
+* ANS ('/*                              */') COL(COLD) NORESCAN;        22050000
+* ANS ('LRPLBLDL = ''1''B;') COL(COLA) SKIP NORESCAN;                   22100000
+* ANS ('/* INDICATE INLPBLDL PROCESSING */') COL(COLD) NORESCAN;        22150000
+* ANS ('RPLACCR0 = LBRFCBDL;') COL(COLA) SKIP NORESCAN;                 22200000
+* ANS ('/* SET CODE TO CALL INLPBLDL */') COL(COLD) NORESCAN;           22250000
+* ANS ('GENERATE REFS(INLCLPT,LPT$ADDR,RPLACR14,RPLACR15,IJBPLCT);')    22300001
+*      COL(COLA) SKIP RESCAN;                                           22350000
+* ANS ('ASYSCOM RPLACR15') COL(COL1+9) SKIP NORESCAN;                   22400000
+* ANS ('USING SYSCOM,RPLACR15') COL(COL1+9) SKIP NORESCAN;              22450000
+* ANS ('L     RPLACR15,IJBPLCT') COL(COL1+9) SKIP NORESCAN;             22500000
+* ANS ('ADDRESS OF LIBRARY POINTER TABLE') COL(COLD) NORESCAN;          22550000
+* ANS ('USING INLCLPT,RPLACR15') COL(COL1+9) SKIP NORESCAN;             22600000
+* ANS ('L     RPLACR15,LPT$ADDR') COL(COL1+9) SKIP NORESCAN;            22650000
+* ANS ('ADDRESS OF SVA PHASE $IJBLBR') COL(COLD) NORESCAN;              22700000
+* ANS ('DROP  RPLACR15') COL(COL1+9) SKIP NORESCAN;                     22750000
+* ANS ('BASSM RPLACR14,RPLACR15') COL(COL1+9)SKIP NORESCAN;/*@D66GDMK*/ 22810002
+* ANS ('BRANCH TO $IJBLBR-INLPBLDL') COL(COLD) NORESCAN;                22820002
+* ANS (MACCONC||'ENDGEN;') COL(COLA) SKIP NORESCAN;                     22900000
+* ANS ('RFY (RPLACCR0,RPLACCR1,RPLACR14,RPLACR15,INLCLRPL);')           22950000
+*        COL(COLA) SKIP RESCAN;                                         23000000
+* MEND:;                                                                23050000
+* INNER = 0;                                                            23100000
+* SYNERR = 0;                                                           23150000
+* RETURN CODE(RC);                                                      23200000
+* %END;                                                                 23250000

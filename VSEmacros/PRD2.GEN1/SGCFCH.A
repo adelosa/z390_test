@@ -1,0 +1,1916 @@
+         MACRO                                                          00001042
+         SGCFCH                                                         00002042
+         GBLB  &BGFSTAT           STATISTICS                   @D35ZDVB 00003042
+         GBLB  &SGCFCH                                         @D37ZDVB 00004042
+         GBLB  &BGDEBUG                                        @D64ADMZ 00005042
+*--------------------------------------------------------------@D148DVB 00006042
+*                                                              @D148DVB 00007042
+.*       IBM DISK OPERATING SYSTEM                             @D148DVB 00008042
+*        SUPERVISOR - SGCFCH - 5686-066                        @DA35100 00009042
+.*                                                             @D148DVB 00010042
+*        LICENSED MATERIALS - PROPERTY OF IBM                  @D148DVB 00011042
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"           @D31UDMZ 00012042
+*        5686-066 (C) COPYRIGHT IBM CORP. 1979, 2002                    00013042
+*        SEE COPYRIGHT INSTRUCTIONS                            @D31UDMZ 00014042
+*                                                              @D148DVB 00015042
+*--------------------------------------------------------------@D148DVB 00016042
+.* /* START OF SPECIFICATIONS ***************************************** 00017042
+.*                                                                      00018042
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00019042
+.*                                                                      00020042
+.*01* DESCRIPTIVE NAME = PROGRAM MANAGEMENT ROUTINES                    00021042
+.*                                                                      00022042
+.*01* NOTES = CHANGE ACTIVITY                                           00023042
+.*    PRESENT CODE HAS BEEN MOVED FROM MACROS FOPT, PIOCS AND SGSVC,    00024042
+.*    WITH MINOR CHANGES RELATED TO NEW BASE REGISTER CONVENTIONS.      00025042
+.*    NEW MODULE - FIRST RELEASE 34                            @D34RDFG 00026042
+.*                 REL 35        E SUPPORT                     @D35EDVB 00027042
+.*                               SVA DUMPS                     @D35EDFR 00028042
+.*                               B TRANSIENT MOVE              @D35WDVB 00029042
+.*                 AF REL 1.2    MORE TASKS                    @D36IDVB 00030042
+.*                               CONCATENATED LIBRARIES        @D36JDVB 00031042
+.*                               SHARED LIBRARIES              @D36JDVB 00032042
+.*                               B TRANSIENT CONTENTION REMOVAL@D36BDVB 00033042
+.*                 AF REL 1.3    EXEC ...,SIZE=PHASENAME       @D37CDVB 00034042
+.*                 AF REL 2.1    NEW LIBRARIAN                 @D14CDVB 00035042
+.*                               SECURITY INTEGRITY            @D14BDVB 00036042
+.*  MSG0P77I AFTER LTA LOAD REQ FOR NON-$$B PHASE WITH SEC=YES @DA35100 00037042
+.*                 AF REL 4.1    IAF HOOK                      @D31ZDVB 00038042
+.*                 AF REL 5.1    CICS EXTENSIONS               @D51HDOW 00039042
+.*                 AF REL 5.1.0  ADAPTION TO CHANGED CONTR.BL. @D51IDMZ 00040042
+.*                 NEW INTERFACE TO PERFORMANCE MONITOR        @D51MDKH 00041042
+.*                 AF REL 5.2    31 BIT SUPPORT                @D52VDMZ 00042042
+.*                 AF REL 6.1    TAPE (SA) FETCH               @D61DDMZ 00043042
+.*                               SVC12 / 13 MOVED TO SGSVC     @D61DDVB 00044042
+.*                               SVC65(CDLOAD) MOVED FROM SGAM @D61NDVB 00045042
+.*                               VENDOR INTERFCAES             @D61EDVB 00046042
+.*                 AF REL 6.4    API - MVS PLATFORM            @D64ADVB 00047042
+.*                               VSAM COMREG                   @DY43914 00048042
+.*  MSG0P77I AFTER SVC 4 FROM THE LTA, R1 HIGH ORDER BYTE SET  @DY43914 00049042
+.*  (INTEGRATED DY44069)                                       @DY43914 00050042
+.*  FREEVIS PHASE STORAGE AFTER LOAD FAILURE                   @DY44547 00051042
+.*  INFORM SGDEBUG THAT CI IS INCONSISTENT (DY45092 IN 2.3)    @DY44547 00051142
+.*  MORE THAN 255 TASKS                                        @D66ODOW 00051242
+.*  CHANGED GETVIS CALL DUE TO SETLOCK PROCESSING IN GETVIS    @D67FDMZ 00051342
+.**** END OF SPECIFICATIONS ***************************************** / 00051442
+         AIF   (NOT &SGCFCH).NOPRINT                           @D61NDVB 00051542
+         PRINT GEN                                             @D37ZDVB 00051642
+.NOPRINT ANOP                                                  @D37ZDVB 00051742
+         DS    0D                                              @D64ADVB 00051842
+  TITLE 'DOS SUPERVISOR SGCFCH  FETCH SUPERVISOR CALLS  **96/03/07** '  00051942
+         DC    CL8'*SGCFCH*'                                   @D36JDVB 00052042
+         DC    CL8'DY44547 '      LAST APAR FIX                @DY44547 00052142
+         DC    CL10'03/08/2002'                                @D67FDMZ 00052242
+         ENTRY SGPGM                                           @D36ZDVB 00052342
+SGPGM    DS    0H                                              @D36ZDVB 00052442
+         BR    RC                 BRANCH TO SVC ROUTINE        @D34RDFG 00052542
+         USING SGPGM,RD           COMMON BASE OF SGPGM         @D34RDFG 00052642
+         USING SVEARA,R8          SAVE AREA POINTER            @D34RDFG 00052742
+         USING TCBADR,RA                                       @D36IDVB 00052842
+         USING DISP,R6            DISPATCHER ADDRESS           @D36IDVB 00052942
+         SPACE 1                                                        00053042
+*-------------------------------------------------------------*@D369DVB 00053142
+*                                                                     * 00053242
+* SVC 1: LOAD AND EXECUTE A PROBLEM PROGRAM PHASE.                    * 00053342
+*                                                                     * 00053442
+*-------------------------------------------------------------*@D369DVB 00053542
+         SPACE 1                                                        00053642
+SVC01    SLR   R0,R0 .            NO LOAD ADDRESS SUPPLIED     @D365DVB 00053742
+         L     R7,AFETCH          GET ADDRESS OF FETCH ROUTINE @D64ADVB 00053842
+         LA    R9,4               INDICATE NORMAL FETCH        @D35EDVB 00053942
+*SGLINK  FETCH,INPUT=(R0,R1,R2,R6,R9,RA,RB),OUTPUT=(R0,R1,R2),         *00054042
+               WORK=(R3,R4,R5,R7,RF)                           @D369DVB 00055042
+*        AMODESW CALL,REGS=(RB,R7)     READ-IN PHASE           @D64ADVB 00056042
+         AMODESW CALL,REGS=(RB,R7)                             @D64ADVB 00057042
+.* OUTPUT R0=R2=ENTRYPOINT                                     @D52VDMZ 00058042
+.* THE HIGH ORDER BYTE IN R0 (R2) IS ZERO                      @D52VDMZ 00059042
+         CLI   DFWKRCOD,00        ANY RETURN CODE REQUESTED    @D14CDVB 00060042
+         BNER  R6                 YES  ================>       @D14CDVB 00061042
+         L     R8,TCBSAVE         SET UP SAVE AREA POINTER     @D36IDFR 00062042
+         L     R9,SVER00          GET EP                       @D36IDVB 00063042
+         LTR   R9,R9              EP PROVIDED BY REQUESTOR     @D36IDVB 00064042
+         BZ    SVC01A             NO, USE ADDRESS FROM FETCH   @DL29ZCJ 00065042
+.* EP IS 3/4 BYTE ADDRESS DEPENDING ON CALLER'S AMODE          @D52VDMZ 00066042
+         TM    TCBEXFLG,TCBEXAM   CALLER IN AMODE 31           @D52VDMZ 00067042
+         BO    SVC0150            YES                          @D52VDMZ 00068042
+         LA    R0,0(,R9)          NO, CLEAR FIRST BYTE OF EP   @D52VDMZ 00069042
+         B     SVC01A             PASS USER EP                 @D52VDMZ 00070042
+SVC0150  DS    0H                 CLEAR FIRST BIT OF EP        @D52VDMZ 00071042
+         N     R9,BIT0OFF         TURN BIT 0 OFF               @D52VDMZ 00072042
+         LR    R0,R9              GET EP IN CORRECT REGISTER   @D52VDMZ 00073042
+         C     R0,ADDRMSK         VALID EP (<= 16MB -1)        @D52VDMZ 00074042
+         BNH   SVC01A             YES                          @D52VDMZ 00075042
+         TM    DFWKFLAG,FLRETCOD  RETURN CODE REQUESTED        @D52VDMZ 00076042
+         BZ    ERR25              NO, CANCEL WITH INVALID ADDR.@D52VDMZ 00077042
+         LA    RF,16              RETURN CODE INVALID ADDRESS  @D52VDMZ 00078042
+         ST    RF,SVER0F          PASS RETURN CODE             @D52VDMZ 00079042
+         BR    R6                 RETURN TO DISPATCHER         @D52VDMZ 00080042
+SVC01A   ST    R0,SVEPSW2         STORE ENTRY ADDRESS IN PSW   @D52VDMZ 00081042
+.* IF AMODE 31 IS SPECIFIED, PASS CONTROL IN AMODE 31          @D52VDMZ 00082042
+.* IF AMODE 24 IS SPECIFIED, PASS CONTROL IN AMODE 24          @D52VDMZ 00083042
+.* IF AMODE ANY IS SPECIFIED, PASS CONTROL IN CALLER'S AMODE   @D52VDMZ 00084042
+         TM    DFWKEMVS,SDLEAM31  DOES PHASE HAS AMODE 24      @D52VDMZ 00085042
+         BZ    SVC01AE            YES, DO NOT CHANGE PSW       @D52VDMZ 00086042
+         TM    DFWKEMVS,SDLEAM24  DOES PHASE HAS AMODE ANY     @D52VDMZ 00087042
+         BZ    SVC01A50           NO,PASS CONTROL IN AMODE 31  @D52VDMZ 00088042
+         TM    TCBEXFLG,TCBEXAM   CALLER IN AMODE 31           @D52VDMZ 00089042
+         BZ    SVC01AE            NO, PASS CONTROL IN AMODE 24 @D52VDMZ 00090042
+SVC01A50 OI    SVEPSW2,SVEPAM31   SET AMODE 31 ON              @D52VDMZ 00091042
+SVC01AE  DS    0H                                              @D52VDMZ 00092042
+         BR    R6                 =====================>       @D14ZDVB 00093042
+         DROP  R8                                              @D14ZDVB 00094042
+         SPACE 2                                                        00095042
+*-------------------------------------------------------------*@D369DVB 00096042
+*                                                                     * 00097042
+* SVC 2: LOAD AND EXECUTE A LOGICAL TRANSIENT.                        * 00098042
+.*       SVC 2 MAY BE GIVEN IN AMODE 31/RMODE ANY(PHASENAME ABOVE 16M)* 00099042
+.*       SVC 2 CODE GETS CONTROL IN AMODE 24. A SWITCH TO AMODE 31 IS * 00100042
+.*       DONE TO ADDRESS PHASENAME ABOVE 16MB. NO PROBLEM WITH BASE   * 00101042
+.*       RD (HIGH ORDER BYTE IS 0).                                   * 00102042
+*                                                                     * 00103042
+*-------------------------------------------------------------*@D369DVB 00104042
+         SPACE 1                                                        00105042
+*                                 TIP PTR IS PROVIDED BY DISP  @D36IDFR 00106042
+         USING TIBADR,R8                     IN REGISTER 8     @D36IDFR 00107042
+         USING TCBADR,RA          TCBPTR PROVIDE BY DISP IN RA @D61NDMZ 00108042
+         SPACE 1                                                        00109042
+SVC02    DS    0H                 FETCH A B-TRANSIENT          @D35EDVB 00110042
+         N     R1,BIT0OFF         TURN BIT 0 OFF               @D61NDMZ 00111042
+         TM    TCBEXFLG,TCBEXAM   CALLER IN AMODE 31           @D61NDMZ 00112042
+         BO    SVC02K0            YES                          @D61NDMZ 00113042
+         LA    R1,0(,R1)          CLEAR FIRST BYTE             @D61NDMZ 00114042
+SVC02K0  DS    0H                                              @D61NDMZ 00115042
+         SPACE 1                                                        00116042
+*        AMODESW SET,AMODE=31,WR=(RF)                         *@D64ADMZ 00117042
+         AMODESW SET,AMODE=31,WR=(RF)                          @D64ADMZ 00118042
+*---- CHECK FOR B_TRANSIENT LOAD OR SPECIAL SVA_SERVICES -----*@D149DVB 00119042
+         SPACE 1                                               @D14CDVB 00120042
+         CLC   D0(L8,R1),JDUMP    IS $$BJDUMP BEING FETCHED?   @D35EDFR 00121042
+PCKSVC02 EQU   *                  PAGE FAULT MAY OCCUR HERE    @D35EDFR 00122042
+         BL    SVC02TD            NO, IT IS A LOWER NAME       @D35EDFR 00123042
+         BH    SVC02TP            NO, IT IS A HIGHER NAME      @D35EDFR 00124042
+         CLC   TID(2),IJBHMTID    IS IT A MAINTASK             @D51IDMZ 00125042
+         BH    ERR18I             =====>  NO ... INIT. DUMP    @D14ZDVB 00126042
+         L     RD,CRADDR          LOAD ADDRESS OF PART.COMREG  @D36IDVB 00127042
+         USING COMREG,RD          COMREG BASE                  @D36IDVB 00128042
+         OI    JCSW1,JOBEND       INDICATE END OF JOB REQUEST  @D35EDFR 00129042
+         DROP  RD                                              @D36IDVB 00130042
+         B     ERR18I             =====>   INITIALIZE DUMP     @D14ZDVB 00131042
+         SPACE 1                                               @D14ZDVB 00132042
+*-------------------------------------------------------------*@D369DVB 00133042
+BDUMP    DC    C'$$BDUMP '        NAME FOR B-DUMP              @D35EDFR 00134042
+JDUMP    DC    C'$$BJDUMP'        NAME FOR J-DUMP              @D35EDFR 00135042
+PDUMP    DC    C'$$BPDUMP'        NAME FOR P-DUMP              @D35EDFR 00136042
+VSMACLOS DC    C'$$BACLOS'        NAME FOR VSAM AUTOM. CLOSE   @D14CDFG 00137042
+BEOJ4    DC    C'$$BEOJ4 '        NAME FOR EOJ-4               @D36BDVB 00138042
+BEOJ3A   DC    C'$$BEOJ3A'        NAME FOR EOJ-3A              @D36BDVB 00139042
+CHCKPT1  DC    C'$$BCHKPD'        NAME OF CHECKPOINT PHASE     @D31ZDVB 00140042
+CHCKPT2  DC    C'$$BCHKPT'        NAME OF CHECKPOINT PHASE     @D31ZDVB 00141042
+VTAMOPEN DC    C'$$BO'            BEGIN OF VTAM OPEN PHASENAME @D52VDMZ 00142042
+VTAMCLOS DC    C'$$BC'            BEGIN OF VTAM CLOSE PHASENAME@D52VDMZ 00143042
+VTAMCOM  DC    C'ST01'            COMMON CHARACTERS OF VTAM PH.@D52VDMZ 00144042
+*-------------------------------------------------------------*@D369DVB 00145042
+         SPACE 1                                               @D14ZDVB 00146042
+         USING SGPGM,RD           REESTABLISH OLD USING        @D35EDFR 00147042
+SVC02TP  CLC   D0(L8,R1),PDUMP    IS $$BPDUMP BEING FETCHED?   @D35EDFR 00148042
+         BNE   SVC02LTA           NO  --->      PROCESS SVC02  @D14ZDVB 00149042
+*        AMODESW SET,AMODE=24,WR=(RF)                          @D64ADMZ 00150042
+         AMODESW SET,AMODE=24,WR=(RF)                          @D64ADMZ 00151042
+         L     RD,APBASE          LOAD SGAP BASE,              @D35EDFR 00152042
+         USING SGAP,RD            ESTABLISH ADDRESSABILITY AND @D35EDFR 00153042
+         L     R9,ATERMBAS        BASE ADDR OF TERM/DUMP ROUT. @D61NDMZ 00154042
+*SGLINK  TERMPDMP,INPUT=(R6,R8,R9,RA,RD)                       @D61NDMZ 00155042
+         B     TERMPDMP-TERMBASE(,R9)  -->  INITIALIZE PDUMP   @D61NDMZ 00156042
+         DROP  RD                 RELEASE SGAP BASE            @D52VDMZ 00157042
+         USING SGPGM,RD           REESTABLISH OLD USING        @D35EDFR 00158042
+SVC02TD  CLC   D0(L8,R1),BDUMP    IS $$BDUMP BEING FETCHED?    @D35EDFR 00159042
+         BE    ERR18I             =====>    INITIALIZE DUMP    @D14ZDVB 00160042
+         CLC   D0(L8,R1),VSMACLOS IS $$BACLOS BEING FETCHED    @D14CDFG 00161042
+         BNE   SVC02LTA           NO, PROCESS SVC 2            @D14CDFG 00162042
+         L     RB,CRADDR          GET CURRENT COMREG           @KXB0043 00163042
+         TM    JCSW5-COMREG(RB),JCLACTIV  REQ. BY JCL IS NOT.. @KXB0043 00164042
+         BO    SVC02LTA           .. DURING CANCEL             @KXB0043 00165042
+         TM    TIBCNCL,XFF        IS TASK CANCELLING           @D14CDFG 00166042
+         BM    SVC02LTA           EOT CLEAN-UP, OK             @D14CDFG 00167042
+         BZ    ERR21              NO, DON'T ALLOW              @D14CDFG 00168042
+         TM    TCBFLAG3,ISPFMT    IS IT SPF AB EXIT            @D14CDFG 00169042
+         BNO   ERR21              IF NOT, DON'T ALLOW          @D14CDFG 00170042
+         SPACE 1                                               @D369DVB 00171042
+*---- B_TRANSIENT LOAD PROCESSING ----------------------------*@D149DVB 00172042
+         SPACE 1                                               @D369DVB 00173042
+SVC02LTA EQU   *                                               @D35EDVB 00174042
+         AIF   (NOT &BGFSTAT).FSTZZ1                           @D35ZDVB 00175042
+         L     R3,AFCHDAT                                      @D35ZDVB 00176042
+         USING DFCB,R3                                         @D35ZDVB 00177042
+         L     R4,FNCT$BNR                                     @D35ZDVB 00178042
+         LA    R4,1(R4)                                        @D35ZDVB 00179042
+         ST    R4,FNCT$BNR                                     @D35ZDVB 00180042
+         DROP  R3                                              @D35ZDVB 00181042
+.FSTZZ1  ANOP                                                  @D35ZDVB 00182042
+         CLC   D0(L8,R1),CHCKPT1  IS IT CHECKPOINT PHASE       @D31ZDVB 00183042
+         BE    SVC02000           YES --------->               @D31ZDVB 00184042
+         CLC   D0(L8,R1),CHCKPT2                               @D31ZDVB 00185042
+         BNE   SVC02010           NO  --------->               @D31ZDVB 00186042
+SVC02000 DS    0H                                              @D31ZDVB 00187042
+         L     R9,PCBPTR          GET CURRENT PCB POINTER      @D51IDMZ 00188042
+         USING PCBADR,R9                                       @D51IDMZ 00189042
+         TM    PCEFLAG,PCEDYNP    DYNAMIC PARTITION            @D51IDMZ 00190042
+         BO    ERR43              YES, CANCEL CHECKPOINT REQU. @D51IDMZ 00191042
+         L     R9,SMVPEND         GET PART. END ADDR + 1       @D52VDMZ 00192042
+         BCTR  R9,0               R9 = PART. END ADDRESS       @D52VDMZ 00193042
+         C     R9,ADDRMSK         END ADDR > 16MB - 1          @D52VDMZ 00194042
+         BH    ERR45                                           @D52VDMZ 00195042
+         DROP  R9                 RELEASE PCB                  @D51IDMZ 00196042
+SVC02010 EQU   *                                               @D31ZDVB 00197042
+         L     R7,AGETLT10        ENTRY POINT TO GETLTA10      @DY43914 00198042
+         BALR  RB,R7              TRY TO OCCUPY LTA            @DY43914 00199042
+         B     SVC02EOT           LTA FREE / USABLE            @D61EDVB 00200042
+*---->   B     SVC02OCC           LTA OCCUPIED                 @D61EDVB 00201042
+SVC02OCC DS    0H                                              @D61EDVB 00202042
+         L     R5,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00203042
+         LA    R5,SRQLTA-SRQTAB(,R5) ADDR LTA WAIT QUEUE       @D61RDVB 00204042
+*SGLINK  RESVCX,INPUT=(R5,R6)                                  @D369DVB 00205042
+         B     RESVCX             =====>  RESVC WHEN LTA FREED @D14ZDVB 00206042
+         SPACE 1                                                        00207042
+SVC02EOT DS    0H                                              @DY43914 00208042
+         CLC   D0(L8,R1),BEOJ4    IS $$BEOJ4 BEING FETCHED     @D14CDFG 00209042
+         BE    SVC02EOJ           YES --->                     @D36BDVB 00210042
+         CLC   D0(L8,R1),BEOJ3A   IS $$BEOJ3A BEING FETCHED    @D36BDVB 00211042
+         BNE   SVC02A             NO FURTHER CHECKING          @D36BDVB 00212042
+SVC02EOJ TM    TIBCNCL,XFF        AB EXIT IN PROCESS           @D14CDFG 00213042
+         BNO   SVC02TRM           NO, CHECK FOR EOT CLEAN-UP   @D14CDFG 00214042
+         TM    TCBFLAG3,ISPFMT    IS IT SPF AB EXIT            @D14CDFG 00215042
+         BO    SVC11_E            YES, INTERPRET AS SVC 11     @D64ADMZ 00216042
+SVC02TRM BZ    SVC02A             NOT EOT CLEAN-UP, CONTINUE   @D14CDFG 00217042
+*        AMODESW SET,AMODE=24,WR=(RF)                          @D64ADMZ 00218042
+         AMODESW SET,AMODE=24,WR=(RF)                          @D64ADMZ 00219042
+         L     RD,APBASE          GET BASE OF TERMINATOR       @D14CDFG 00220042
+         USING SGAP,RD            ESTABLISH ADDRESSABILITY     @D36BDVB 00221042
+*SGLINK  LTARTRN,INPUT=(R6,R8,RA,RD)                           @D369DVB 00222042
+         B     LTARTRN                                         @D36BDVB 00223042
+         USING SGPGM,RD           REESTABLISH OLD USING        @D36BDVB 00224042
+         SPACE 1                                               @D35WDVB 00225042
+*-----SVC02 MOVE MODE ----------------------------------------*@D35WDVB 00226042
+         SPACE 1                                               @D35WDVB 00227042
+         USING SVEARA,RE                                       @D14CDVB 00228042
+SVC02A   DS    0H                                              @D14CDVB 00229042
+         NOP   *                                               @D61EDVB 00230042
+         NOP   *                                               @D61EDVB 00231042
+         NOP   *                                               @D61EDVB 00232042
+         NOP   *                                               @D61EDVB 00233042
+         L     RE,LTAREA2         ADDR (LTA SAVE AREA)         @D14CDVB 00234042
+         L     R0,ALTA            GET POINTER TO LTA           @D36BDVB 00235042
+         ST    R0,SVER0F          POST LOADPOINT TO LTA        @D36BDVB 00236042
+         L     RF,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00237042
+         MVC   RBLTA-SRQTAB(2,RF),TID LTA IS OCCUPIED AND              *00238042
+                                            SAVE OWNERS TASK-ID@D66ODOW 00239042
+         LA    R7,DFCBSAV         PASS SAVE AREA POINTER TO            *00240042
+                                            MOVE MODE ROUTINE  @D36IDVB 00241042
+         MVI   DFWKSWRQ,SVC02REQ  INDICATE SVC 2 REQUEST       @D64ADVB 00242042
+         MVC   DFWKSVC,SVCCODE    SAVE SVC #                   @D61RDVB 00243042
+         L     RB,AFCHDAT         PROVIDE ...                  @D14BDVB 00244042
+         USING DFCB,RB            .... INTERFACE               @D14BDVB 00245042
+         L     RF,DAFCHMOV        ...  TO MOVE_MODE ROUTINE    @D14BDVB 00246042
+*SGLINK  FCHMOVE,INPUT=(R0,R1,R7,RA,RB,RE,RF),OUTPUT=(R1,RF),          *00247042
+                 WORK=(R8,R9)                                           00248042
+*        AMODESW CALL,REGS=(RE,RF)  CALL MOVE SUBROUTINE       @D61FDMZ 00249042
+         AMODESW CALL,REGS=(RE,RF)  CALL MOVE SUBROUTINE       @D61FDMZ 00250042
+         DROP  RB                                              @D14BDVB 00251042
+         L     R8,TIBPTR          RESTORE CURRENT TIB          @D61NDMZ 00252042
+         L     RE,LTAREA2         ADDR (LTA SAVE AREA)         @D14CDVB 00253042
+         MVC   SVEARA(8),DFWKNAME PROVIDE PHASE_NAME           @D61EDMZ 00254042
+         LTR   R9,RF              LTA MOVE DONE                @D36IDVB 00255042
+         BZ    SVC02D             YES --->                     @D35WDVB 00256042
+         L     R5,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00257042
+         TM    RBFDIR-SRQTAB(R5),FREEBIT DIR SEARCH TASK FREE  @D66ODOW 00258042
+         BO    SVC02D             YES -->                      @D66ODOW 00259042
+         TM    TIBFLAG1,LTAOWNER+LTAACT REQUEST FROM LTA       @D36BDVB 00260042
+         BO    SVC02B             YES --->                     @D36BDVB 00261042
+         LA    R5,SRQLTA-SRQTAB(,R5) ADDR LTA WAIT QUEUE       @D61RDVB 00262042
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D369DVB 00263042
+         BAL   RF,RPOST           POST NEXT TASK IN QUEUE      @D36IDVB 00264042
+SVC02B   DS    0H                                                       00265042
+         L     R5,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00266042
+         LA    R5,SRQFDIR-SRQTAB(,R5) ADDR DIRECTORY SEARCH Q  @D61RDVB 00267042
+*SGLINK  RESVCX,INPUT=(R5,R6)                                  @D369DVB 00268042
+         B     RESVCX             =====>                       @D14ZDVB 00269042
+SVC02D   LR    R5,R0              )  PASS LP TO FETCH          @D14BDVB 00270042
+         LA    R5,D8(R5)          )  PROVIDE ENTRY POINT       @D35WDVB 00271042
+         ST    R5,SVEPSW2         )      IN PSW                @D35WDVB 00272042
+         SPACE 1                                               @D35WDVB 00273042
+*-------------------------------------------------------------*@D35WDVB 00274042
+         SPACE 1                                               @D35WDVB 00275042
+         OI    SVEPSW,ENABLE+SMDAT           SET PSW           @D35ADVB 00276042
+         OI    TIBFLAG1,LTAOWNER   TASK IDENTIFIED AS LTA OWNER@D36BDVB 00277042
+         AIF   (NOT &BGFSTAT).FSTZZ2                           @D35ZDVB 00278042
+         L     R3,AFCHDAT                                      @D35ZDVB 00279042
+         USING DFCB,R3                                         @D35ZDVB 00280042
+         L     R4,FACT$BNR                                     @D35ZDVB 00281042
+         LA    R4,1(R4)                                        @D35ZDVB 00282042
+         ST    R4,FACT$BNR                                     @D35ZDVB 00283042
+         L     R4,FNCT$BNR                                     @D35ZDVB 00284042
+         BCTR  R4,0                                            @D35ZDVB 00285042
+         ST    R4,FNCT$BNR                                     @D35ZDVB 00286042
+         DROP  R3                                              @D35ZDVB 00287042
+.FSTZZ2  ANOP                                                  @D35ZDVB 00288042
+         B     BRTAB02(R9)        BRANCH_TAB RC(MOVE_MODE)     @D14BDVB 00289042
+BRTAB02  B     SVC02N             LTA MOVE ALREADY DONE        @D14BDVB 00290042
+         B     SVC02L             PHASE IN SDL BUT NO MOVE MODE@D35WDVB 00291042
+         B     ERR25              =====>         CANCEL TASK...        *00292042
+                                  ... IF PHASE OUTSISE LTA     @D14ZDVB 00293042
+         B     NO$$BERR            LTA_PHASE MUST START $$B    @D14BDVB 00294042
+         SPACE 1                                               @D14ZDVB 00295042
+SVC02L   LA    R1,D0(R7)          PASS PTR TO PARAMETER LIST   @D14BDVB 00296042
+         L     R7,AFETCH          GET ADDRESS OF FETCH ROUTINE @D64ADVB 00297042
+         LA    R9,4               INDICATE NORMAL FETCH REQUEST@D35EDVB 00298042
+*SGLINK  FETCH,INPUT=(R0,R1,R2,R6,R9,RA,RB),OUTPUT=(R0,R1,R2),         *00299042
+               WORK=(R3,R4,R5,R7,RF)                           @D369DVB 00300042
+         LA    R7,FETCH$$B-FETCH(,R7)                          @D64ADVB 00301042
+*        AMODESW CALL,REGS=(RB,R7)     READ-IN PHASE           @D64ADVB 00302042
+         AMODESW CALL,REGS=(RB,R7)                             @D64ADVB 00303042
+SVC02N   DS    0H                                              @D51MDKH 00304042
+.* PERFOMANCE TOOL MIGHT NOT WORK IN AMODE 31                           00305042
+*        AMODESW SET,AMODE=24,WR=(R3)                          @D64ADMZ 00306042
+         AMODESW SET,AMODE=24,WR=(R3)                          @D64ADMZ 00307042
+         L     R3,TCBSAVE                                      @D36IDVB 00308042
+         CLC   SVENAME-SVEARA(1,R3),SVEEND-1-SVEARA(R3)        @D51IDMZ 00309042
+         SGVSEPT PROBE=8          I/F TO PERFORMANCE TOOL      @D51MDKH 00310042
+         TM    TIBFLAG1,LTAOWNER+LTAACT REQUEST FROM LTA       @D36BDVB 00311042
+         BOR   R6                 ===================> EXIT WITHOUT... *00312042
+                                  ... SWAPPING POINTERS        @D14CDVB 00313042
+         NI    SVEPSW,XFF-PRCDMSK RESET PGR RECORDING MASK     @D36IDVB 00314042
+         TM    SVEPSW-SVEARA(R3),PRCDMSK                       @D36IDVB 00315042
+         BZ    SVC02P             --->                         @D36IDVB 00316042
+         OI    SVEPSW,PRCDMSK     SET PROGR RECORDING MASK     @D36IDVB 00317042
+SVC02P   BAL   RB,GETLTA2         EXCHANGE SAVE AREA PTRS      @D61EDVB 00318042
+         BR    R6                 ===========> EXIT DISPATCHER @D61EDVB 00319042
+         DROP  R8                 RESET BASE TO TIB            @D61EDVB 00320042
+         DROP  RE                 RESET BASE TO LTA SAVEAREA   @D61EDVB 00321042
+         SPACE 1                                                        00322042
+PRCDMSK  EQU   X'40'              EVENT RECORDING MASK         @D35ADVB 00323042
+         EJECT                                                 @D61EDVB 00324042
+*---------------------------------------------------------------------* 00325042
+*   ROUTINE GETLTA  (OCCUPY LTA)                                      * 00326042
+*                                                                     * 00327042
+*    CALLING SEQUENCE: AMODESW CALL,REGS=(R4,RF)                      * 00328042
+*    INPUT:  R4:  RETURN ADDRESS                                      * 00329042
+*            R8:  ADDR CURRENT TIB                                    * 00330042
+*            RA:  ADDR CURRENT TCB                                    * 00331042
+*            RF:  ENTRY POINT                                         * 00332042
+*    OUTPUT: R6:  ADDR (DISP)                                         * 00333042
+*    WORK:   R0,R5,R9,RB-RF                                           * 00334042
+*    ADDRESSING MODE: 24-BIT                                          * 00335042
+*    EXIT NORMAL: RETURN TO CALLER                                    * 00336042
+*    EXIT ERROR : ERR21- LTA OWNED BY TASK, BUT NOT ACTIVE            * 00337042
+*                 ERR2E- DEADLOCK FOR LTA                             * 00338042
+*                                                                     * 00339042
+*---------------------------------------------------------------------* 00340042
+GETLTA   DS    0H                 ENTRY POINT                  @D61EDVB 00341042
+         LA    R0,*-SGPGM(,0)     PROVIDE                      @D61EDVB 00342042
+         LA    RF,0(,RF)          .... BASE                    @D61EDVB 00343042
+         SLR   RF,R0              .... OF                      @D61EDVB 00344042
+         LR    RD,RF              .... MODULE                  @D61EDVB 00345042
+         L     R6,DISPAD          ADDR BASE OF DISP            @D61EDVB 00346042
+         USING TIBADR,R8          SET BASE TO TIB              @D61EDVB 00347042
+         TM    TIBFLAG1,LTAOWNER  REQUESTOR DOES OWN LTA       @D61EDVB 00348042
+         BO    ERR21              YES, ---------->             @D61EDVB 00349042
+.*                                ( CANCEL KALLER )            @D61EDVB 00350042
+GETLT010 DS    0H                                              @D61EDVB 00351042
+         L     R7,AGETLT15        ENTRY POINT TO GETLTA15      @DY43914 00352042
+         BALR  RB,R7              TRY TO OCCUPY LTA            @DY43914 00353042
+         B     GETLT030           LTA FREE / USABLE            @D61EDVB 00354042
+*---->   B     GETLT020           LTA OCCUPIED                 @D61EDVB 00355042
+GETLT020 DS    0H                                              @D61EDVB 00356042
+         L     R5,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00357042
+         LA    R5,SRQLTA-SRQTAB(,R5) ADDR LTA WAIT QUEUE       @D61RDVB 00358042
+*SGLINK  RWAIT,INPUT=(R5,R6,RC)                                @D61EDVB 00359042
+         BAL   RC,RWAIT           RWAIT UNTIL RESOURCE IS FREE @D61EDVB 00360042
+         B     GETLT010           TRY ONCE MORE ----------.    @D61EDVB 00361042
+GETLT030 DS    0H                                              @D61EDVB 00362042
+         L     RF,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00363042
+         MVC   RBLTA-SRQTAB(2,RF),TID   LTA IS OCCUPIED AND            *00364042
+                                             IDENTIFY OWNER    @D66ODOW 00365042
+         OI    TIBFLAG1,LTAOWNER  TASK IDENTIFIED AS LTA OWNER @D61EDVB 00366042
+         SLR   RE,RE              NO PROVISION OF R0 / R1 IN           *00367042
+                                  ... LTA SAVEAREA             @D61EDVB 00368042
+         BAL   RB,GETLTA2         EXCHANGE SAVE AREA PTRS      @D61EDVB 00369042
+*        AMODESW RETURN,REG=(R4)  EXIT  ==========>            @D61EDVB 00370042
+         AMODESW RETURN,REG=(R4)  EXIT  ==========>            @D61EDVB 00371042
+         SPACE 2                                               @D61EDVB 00372042
+*---------------------------------------------------------------------* 00373042
+*   ROUTINE GETLTA1                                                   * 00374042
+*    INPUT:  R6:  ADDR DISPATCHER                                     * 00375042
+*            R8:  ADDR CURRENT TIB                                    * 00376042
+*            RA:  ADDR CURRENT TCB                                    * 00377042
+*            RB:  RETURN ADDRESS                                      * 00378042
+*            RD:  BASE OF ROUTINE                                     * 00379042
+*    OUTPUT: -                                                        * 00380042
+*    WORK:   R9,RE,RF                                                 * 00381042
+*    ADDRESSING MODE: ANY                                             * 00382042
+*---------------------------------------------------------------------* 00383042
+GETLTA10 DS    0H                 ENTRY POINT                  @DY43914 00384042
+         CLC   0(1,R1),7(R1)      FORCE AREA INTO STORAGE TO AVOID PF   00385042
+*                                 BEFORE CLOSING LTA GATE      @DY43914 00386042
+GETLTA12 DS    0H                 ENTRY POINT                  @DY43914 00387042
+         SL    R7,AGETLT10        R7 = 0 IF EP=GETLTA10        @DY43914 00388042
+GETLTA14 DS    0H                 ENTRY POINT                  @DY43914 00389042
+         L     RF,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00390042
+         LH    RF,RBLTA-SRQTAB(RF)                             @D66ODOW 00391042
+         N     RF,GETLTAMK                                     @D66ODOW 00392042
+         CLM   RF,3,FREEVAL       LTA AVAILABLE                @D66ODOW 00393042
+         L     RF,ASRQTAB         RELOAD                       @D66ODOW 00394042
+.* CODE IS USED BECAUSE WE HAVE TO ENSURE SAME CONDITION CODE           00395042
+.* AS ON PREVIOUS RELEASES THRU FOOLOWING INSTRUCTION                   00396042
+.*       CLI   RBLTA-SRQTAB(RF),FREE    LTA AVAILABLE                   00397042
+GETLTAX  DS    0H                                              @D61EDVB 00398042
+         NOP   *                                               @D61EDVB 00399042
+         NOP   *                                               @D61EDVB 00400042
+         NOP   *                                               @D61EDVB 00401042
+         NOP   *                                               @D61EDVB 00402042
+         BER   RB                 YES, ==========>             @D61EDOW 00403042
+         TM    TIBFLAG1,LTAOWNER+LTAACT REQUEST FROM LTA       @D36BDVB 00404042
+         BZ    GETLTA18           NO,  ---------->             @D61EDVB 00405042
+         BM    ERR21              =====> IF LTA OWNED BY REQUESTOR     *00406042
+                                  BUT NOT ACTIVE CANCEL TASK   @D14ZDVB 00407042
+.* VENDOR EXIT MUST NOT ISSUE SVC-2 OR GETLTA IF LTA IS ALREADY ...     00408042
+.*    ... IN USE BY THIS TASK                                           00409042
+         TM    TCBFLAG6,TCBPSTAC  VENDOR EXIT ACTIVE           @D61EDVB 00410042
+         BZR   RB                 NO,  ==========>   OK        @D61EDVB 00411042
+         B     ERR21              YES, ==========>   ERROR     @D61EDVB 00412042
+GETLTAMK DC    A(32768)                                        @D66ODOW 00413042
+         SPACE 1                                               @D52VDMZ 00414042
+GETLTA18 DS    0H                                              @D61EDVB 00415042
+         LA    R5,SRQUSE-SRQTAB(,RF)   ADDRESS LOCK RESOURCE   @DY43802 00416042
+         USING RQADR,R5                                        @DY43802 00417042
+         TM    RSCDESC,FREEBIT         RESOURCE FREE           @D66ODOW 00418042
+         BO    GETLTA1A                YES                     @D66ODOW 00419042
+         BAL   RC,RWAIT                WAIT FOR RESOURCE       @DY43802 00420042
+*SGLINK  RWAIT,INPUT=(R5,RC)                                            00421042
+         LTR   R7,R7              CALLED VIA EP=GETLTA10       @DY43914 00422042
+         BNZ   GETLTA14           NO,  --------->              @DY43914 00423042
+         CLC   0(1,R1),7(R1)      FORCE AREA INTO STORAGE TO AVOID PF   00424042
+*                                 BEFORE CLOSING LTA GATE      @DY43914 00425042
+         B     GETLTA14           CHECK WHETHER LTA IS FREE    @DY43914 00426042
+GETLTA1A DS    0H                                              @DY43802 00427042
+         MVC   RSCDESC,TID        OCCUPY RESOURCE, IDENT OWNER @D66ODOW 00428042
+         DROP  R5                      RELEASE RESOURCE BASE   @DY43802 00429042
+         LH    R9,RBLTA-SRQTAB(,RF) TID OF LTA OWNER           @D66ODOW 00430042
+         L     RE,AFCHDAT         CALL DEADLOCK CHECKER        @D51IDMZ 00431042
+         L     RF,DASGLOCK-DFCB(,RE) ROUTINE                   @D51IDMZ 00432042
+*SGLINK  SGLOCKCK,INPUT=(R6,R9,RE),OUTPUT=(RF),WORK=(NONE)     @D51IDMZ 00433042
+*        AMODESW CALL,REGS=(RE,RF) CALL DEADLOCK CHECKER       @D64ADMZ 00434042
+         AMODESW CALL,REGS=(RE,RF)                             @D64ADMZ 00435042
+         LR    R9,RF              SAVE RETURN CODE             @DY43802 00436042
+         L     R5,ASRQTAB         ADDR RESOURCE ANCHOR TABLE   @DY43802 00437042
+         LA    R5,SRQUSE-SRQTAB(,R5)   OPEN GATE AND ...       @DY43802 00438042
+         BAL   RF,RPOST           ... POST WAITERS             @DY43802 00439042
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00440042
+         LTR   RF,R9              RESTORE RETURN CODE          @DY43802 00441042
+         BNZ   ERR2E              NO, DEADLOCK DETECTED, CANCEL@D51IDMZ 00442042
+         LTR   R7,R7              CALLED VIA EP=GETLTA10       @DY43914 00443042
+         BNZ   GETLTA1C           NO,  --------->              @DY43914 00444042
+         CLC   0(1,R1),7(R1)      FORCE AREA INTO STORAGE TO AVOID PF   00445042
+*                                 BEFORE CLOSING LTA GATE      @DY43914 00446042
+GETLTA1C DS    0H                                              @DY43914 00447042
+         L     RF,ASRQTAB         ADDRESS RESOURCE ANCHOR TABLE@D61RDVB 00448042
+         TM    RBLTA-SRQTAB(RF),FREEBIT LTA AVAILABLE          @D66ODOW 00449042
+         BNO   4(,RB)             NO,  ============>           @D66ODOW 00450042
+         BR    RB                 YES, ============>           @D61EDVB 00451042
+         SPACE 2                                               @D61EDVB 00452042
+AGETLT10 DC    A(GETLTA10)                                     @DY43914 00453042
+AGETLT15 DC    A(GETLTA12)                                     @DY43914 00454042
+         SPACE 2                                               @D61EDVB 00455042
+*---------------------------------------------------------------------* 00456042
+*   ROUTINE GETLTA2                                                   * 00457042
+*    INPUT:  R6:  ADDR DISPATCHER                                     * 00458042
+*            R8:  ADDR CURRENT TIB                                    * 00459042
+*            RA:  ADDR CURRENT TCB                                    * 00460042
+*            RB:  RETURN ADDRESS                                      * 00461042
+*            RD:  BASE OF ROUTINE                                     * 00462042
+*            RE:  ADDR LTA-SA IF <R0> AND <R1> SOULD BE PROVIDED      * 00463042
+*                 FROM USER-SA INTO LTA-SA  / OTHERWISE 0             * 00464042
+*    OUTPUT: -                                                        * 00465042
+*    WORK:   R0,R1,R5,R7,RF                                           * 00466042
+*    ADDRESSING MODE: ANY                                             * 00467042
+*---------------------------------------------------------------------* 00468042
+GETLTA2  DS    0H                 ENTRY POINT                  @D61EDVB 00469042
+         MVC   LTID,TID           IDENTIFY LTA OWNER           @D51IDOW 00470042
+         MVC   LTKEY,PIK          SET LTKEY                    @D51IDMZ 00471042
+         L     RF,APCBATAB        ADDRESS TABLE OF PCB PTRS    @D51IDMZ 00472042
+         L     RF,0(,RF)          GET PTR TO SYSTEM PCB        @D51IDMZ 00473042
+         USING PCBADR,RF                                       @D51IDMZ 00474042
+         L     RF,PCEPIB          GET PTR TO AR PIB            @D51IDMZ 00475042
+         USING PIBADR,RF                                       @D51IDMZ 00476042
+         L     R5,TCBSAVE         ADDR CURRENT SAVEAREA        @D61EDVB 00477042
+         ST    R5,PIBSAV2N                                     @D51IDMZ 00478042
+         DROP  RF                                              @D61EDVB 00479042
+         LTR   RE,RE              ADDR LTA-SA PROVIDED         @D61EDVB 00480042
+         BZ    GETLT210           NO,  ---------->             @D61EDVB 00481042
+         USING SVEARA,RE          SET BASE TO LTA-SA           @D61EDVB 00482042
+         L     R0,SVER00-SVEARA(R5) PARAMETER REGS OF REQ.     @D61EDVB 00483042
+         L     R1,SVER01-SVEARA(R5) PARAMETER REGS OF REQ.     @D61EDVB 00484042
+         ST    R0,SVER00          POST PARM REGS TO LTA        @D36BDVB 00485042
+         ST    R1,SVER01          POST PARM REGS TO LTA        @D36BDVB 00486042
+GETLT210 DS    0H                                              @D61EDVB 00487042
+         L     RF,LTAREA2         ADDR LTA-SA                  @D61EDVB 00488042
+*SGLINK  SETLT,INPUT=(R6,R7,R8,RA,RF),WORK=(R5,RF)             @D36BDVB 00489042
+         BAL   R7,SETLT           EXCHANGE SA POINTERS         @D61EDVB 00490042
+         BR    RB                 ===========>                 @D61EDVB 00491042
+         SPACE 2                                               @D61EDVB 00492042
+         DROP  R8                 RESET BASE TO TIB            @D61EDVB 00493042
+         DROP  RE                 RESET BASE TO LTA SAVEAREA   @D61EDVB 00494042
+         EJECT                                                 @D61EDVB 00495042
+*-------------------------------------------------------------*@D369DVB 00496042
+*                                                                     * 00497042
+* SVC 4: LOAD A PROBLEM PROGRAM PHASE AND RETURN TO THE USER          * 00498042
+.* ONLINE ENVIRONMENT                                                   00499042
+.* LTA PROCESSING:                                                      00500042
+.* SVC 4 IS ALSO USED TO LOAD PHASES INTO THE LTA (MOVE MODE POSSIBLE)  00501042
+.* WITHOUT PASSING CONTROL TO THE PHASE (AS DONE BY SVC 02).            00502042
+.* THE MOVE FUNCTION IS ONLY OFFERED IF R1 POINTS TO A PHASENAME.       00503042
+.* A PARAMETERLIST IS NOT SUPPORTED.                                    00504042
+.* STANDALONE ENVIRONMENT                                               00505042
+.*   SVA LOAD COMPLETE :     MOVE PHASE FROM SVA TO PARTITION,LTA,PTA   00506042
+.*   SVA LOAD NOT COMPLETE : LOAD PHASE FROM TAPE TO SVA USING SPECIAL  00507042
+.*                           ROUTINE                                    00508042
+*                                                                     * 00509042
+*-------------------------------------------------------------*@D369DVB 00510042
+         SPACE 1                                                        00511042
+         USING TIBADR,R8                                       @D14BDVB 00512042
+SVC04    DS    0H                                              @D35EDVB 00513042
+         TM    TIBFLAG1,LTAOWNER+LTAACT    REQUEST FROM LTA    @DA33314 00514042
+         BNO   SVC04K              NO  --->                    @D36BDVB 00515042
+         DROP  R8                                              @D14ZDVB 00516042
+         USING SVEARA,R8                                       @D36IDVB 00517042
+         LTR   R0,R0               LOADPOINT PASSED            @D14BDVB 00518042
+         BZ    SVC04K              NO --->                     @D14BDVB 00519042
+         CL    R0,APTA             POSSIBLE INSIDE LTA         @D35WDVB 00520042
+         BNL   SVC04K              NO --->                     @D35WDVB 00521042
+         SPACE 1                                               @D35WDVB 00522042
+*---- SVC04 MOVE MODE ----------------------------------------*@D35WDVB 00523042
+         SPACE 1                                               @D35WDVB 00524042
+         LR    R4,R1               SAVE CONTENT OF R1          @D36JDVB 00525042
+         TM    D0(R1),XF0          PARAMETER LIST PROVIDED     @D35WDVB 00526042
+PCKSVC04 EQU   *                   PGM CHECK MAY OCCUR HERE    @D365DVB 00527042
+         BZ    SVC04H              YES --->  (NO MOVE MODE)    @D14BDVB 00528042
+         LA    R7,DFCBSAV          SAVE AREA POINTER           @D36IDVB 00529042
+         MVI   DFWKSWRQ,X00        CLEAR SWITCH BYTE           @D64ADVB 00530042
+         TM    TCBEXFLG,TCBEXAM    CALLER IN AMODE 31          @DY43914 00531042
+         BO    SVC04B0             YES, --------->             @DY43914 00532042
+         N     R1,ADDRMSK          CLEAR FIRST BYTE OF R1      @DY43914 00533042
+         B     SVC04B1             --------->                  @DY43914 00534042
+SVC04B0  DS    0H                                              @DY43914 00535042
+         N     R1,BIT0OFF          CLEAR HIGH ORDERED BIT      @DY43914 00536042
+         CL    R1,ADDRMSK          R1 NOT LESS THAN 16M        @DY43914 00537042
+         BNL   ERR45               YES, =============>         @DY43914 00538042
+SVC04B1  DS    0H                                              @DY43914 00539042
+         MVC   DFWKSVC,SVCCODE    SAVE SVC #                   @D64ADMZ 00540042
+         L     RB,AFCHDAT          PROVIDE ...                 @D14BDVB 00541042
+         USING DFCB,RB             .... INTERFACE              @D14BDVB 00542042
+         L     RF,DAFCHMOV         ...  TO MOVE_MODE ROUTINE   @D14BDVB 00543042
+*SGLINK  FCHMOVE,INPUT=(R0,R1,R7,RA,RB,RE,RF),OUTPUT=(R1,RF),WORK=(R9)  00544042
+*        AMODESW CALL,REGS=(RE,RF)  CALL MOVE SUBROUTINE       @D61FDMZ 00545042
+         AMODESW CALL,REGS=(RE,RF)  CALL MOVE SUBROUTINE       @D61FDMZ 00546042
+         DROP  RB                                              @D14BDVB 00547042
+         LR    R1,R4               RESET ORIGINAL R1           @D36JDVB 00548042
+         B     BRTAB04(RF)         BRANCH_TAB RC(MOVE_MODE)    @D14BDVB 00549042
+BRTAB04  B     SVC04C              MOVE MODE SUCCESSFUL        @D14BDVB 00550042
+         B     SVC04K              NOT SUCCESSFULL             @D35WDVB 00551042
+         B     ERR25               ==================>         @D14ZDVB 00552042
+         B     NO$$BERR            LTA_PHASE MUST START $$B    @D14BDVB 00553042
+         SPACE 1                                                        00554042
+SVC04C   L     R3,D0(R7)           ADDR (SDL_ENTRY)            @D14CDVB 00555042
+         USING INLCSDLE,R3                                     @D14CDVB 00556042
+SVC04G   L     R5,SDLEENP          ENTRY POINT AT LINK EDIT    @D14CDVB 00557042
+         L     R4,SDLELPT          LOAD POINT AT LINK EDIT     @D14CDVB 00558042
+         SLR   R5,R4               GET DELTA                   @D35WDVB 00559042
+         ALR   R0,R5               POST ENTRY POINT            @D35WDVB 00560042
+         B     SVC04RET            --->                        @D35WDVB 00561042
+         DROP  R3                                              @D35WDVB 00562042
+         SPACE 1                                                        00563042
+SVC04H   EQU   *                                               @D14BDVB 00564042
+*-------------------------------------------------------------*@D14BDVB 00565042
+         SPACE 1                                               @D14BDVB 00566042
+SVC04K   DS    0H                                              @D52VDMZ 00567042
+         LTR   R0,R0              LOADPOINT PROVIDED BY USER   @D52VDMZ 00568042
+         BZ    SVC04K1            NO                           @D52VDMZ 00569042
+.* THE LP IS REGARDED AS 3/4 BYTE ADDRESS DEP. ON CALLERS AMODE@D52VDMZ 00570042
+         TM    TCBEXFLG,TCBEXAM   CALLER IN AMODE 31           @D52VDMZ 00571042
+         BO    SVC04K0            YES                          @D52VDMZ 00572042
+         N     R0,ADDRMSK         CLEAR FIRST BYTE OF LP       @D52VDMZ 00573042
+         B     SVC04K1            CONTINUE WITH FETCH PROC.    @D52VDMZ 00574042
+SVC04K0  DS    0H                                              @D52VDMZ 00575042
+         N     R0,BIT0OFF         TURN BIT 0 OFF IN LP         @D52VDMZ 00576042
+SVC04K1  DS    0H                                              @D61DDMZ 00577042
+         TM    IJBFLG08,IJBSAENV+IJBSVALC ONLINE ENVIRON. OR   @D61DDMZ 00578042
+         BNM   SVC04K2            SA AND SVA LOAD NOT COMPLETE @D61DDMZ 00579042
+*                                                                       00580042
+* STANDALONE ENVIRONMENT:                                               00581042
+* SVA LOAD NOT COMPLETE: LOAD PHASE FROM TAPE INTO STORAGE              00582042
+*                                                                       00583042
+         L     RB,IJBSPAVT        ADDRESS OF SUPAVT            @D61DDMZ 00584042
+         USING SUPAVT,RB                                       @D61DDMZ 00585042
+         L     RB,ASUPAVTE        ADDRESS OF SUPAVT EXTENSION  @D61DDMZ 00586042
+         USING SUPAVTEX,RB                                     @D61DDMZ 00587042
+         L     RF,AIJBTFCH        ADDR OF TAPE FETCH ROUTINE   @D61DDMZ 00588042
+         DROP  RB                 RELEASE SUPAVTEX             @D61DDMZ 00589042
+*SGLINK  IJBTFCH,INPUT=(R0,R1,RA,RB,RF),OUTPUT=(R0,R1,RF),             *00590042
+               WORK=(R2,R3,R4,R5,R7)                           @D61DDMZ 00591042
+         BALR  RB,RF              CALL SA ROUTINE              @D61DDMZ 00592042
+         LTR   RF,RF              CANCEL REQUIRED              @D61DDMZ 00593042
+         BZR   R6                 NO                           @D61DDMZ 00594042
+* CANCEL REQUEST WITH CC X'47'                                 @D61DDMZ 00595042
+         LA    RB,ERR47E          RB=CANCEL CODE               @D61DDMZ 00596042
+         LA    R1,SVC04C47        R1=ADDR(CANCEL INFORM.)      @D61DDMZ 00597042
+         USING MAPDMPIF,R1                                     @D61DDMZ 00598042
+         STH   RF,CANC47RS        STORE SATFCH RETURN CODE     @D61DDMZ 00599042
+         DROP  R1                                              @D61DDMZ 00600042
+         LA    R0,4               FUNCTION CODE                @D61DDMZ 00601042
+         L     R6,IJBSPAVT        ADDRESS OF SUPAVT            @D61DDMZ 00602042
+         USING SUPAVT,R6                                       @D61DDMZ 00603042
+         L     R6,ADISPSER        ADDR(DISPATCHER ERROR EXIT)  @D61DDMZ 00604042
+         DROP  R6                                              @D61DDMZ 00605042
+*        AMODESW CALL,REGS=(R7,R6)  NO RETURN FROM CANCEL SERV.@D61DDMZ 00606042
+         AMODESW CALL,REGS=(R7,R6)  NO RETURN FROM CANCEL SERV.@D61DDMZ 00607042
+SVC04C47 DS    0F                 CANCEL INFORMATION           @D61DDMZ 00608042
+         DC    A(SVC4C47E-SVC4C47B) LENGTH OF VAR. CANCEL INFO.@D61DDMZ 00609042
+SVC4C47B DS    0H                 BEGIN OF CANCEL INFO         @D61DDMZ 00610042
+         DC    A(FCH_ID)          RETURN CODE                  @D61DDMZ 00611042
+         DC    CL8'SA-FCH'        COMPONENT ID                 @D61DDMZ 00612042
+SVC4C47E DS    0H                 END OF CANCEL INFO           @D61DDMZ 00613042
+.* ONLINE ENVIRONMENT OR SA ENVIRONMENT AND SVA LOAD COMPLETE  @D61DDMZ 00614042
+         SPACE 1                                                        00615042
+         USING DISP,R6            REESTABLISH ADDR. DISPATCHER @D61DDMZ 00616042
+SVC04K2  DS    0H                                              @D61DDMZ 00617042
+         L     R7,AFETCH          ADDRESS FETCH ROUTINE        @D64ADVB 00618042
+         LA    R9,4               INDICATE NORMAL FETCH REQUEST@D35EDVB 00619042
+*SGLINK  FETCH,INPUT=(R0,R1,R2,R6,R9,RA,RB),OUTPUT=(R0,R1,R2),         *00620042
+               WORK=(R3,R4,R5,R7,RF)                           @D369DVB 00621042
+*        AMODESW CALL,REGS=(RB,R7)     READ-IN PHASE           @D64ADVB 00622042
+         AMODESW CALL,REGS=(RB,R7)                             @D64ADVB 00623042
+SVC04RET L     R8,TCBSAVE         SET UP SAVE AREA POINTER     @D14BDVB 00624042
+         CL    R1,SVER01          WAS R1 ALTERED DURING FETCH? @D36IDVB 00625042
+         BE    SVC04R1            NO, NO NEED TO DESTROY R0    @DL29ZCJ 00626042
+         ST    R1,SVER00          PASS FETCH PARAM TO R0       @DL29ZCJ 00627042
+SVC04R1  DS    0H                 SET ENTRY POINT              @D52VDMZ 00628042
+         ST    R0,SVER01          PASS ENTRY ADDR TO USER REG1 @DL29ZCJ 00629042
+         LTR   R0,R0              EP NOT SET => ERROR OCCURED..@D52VDMZ 00630042
+         BZ    SVC04E             .. THEN NO AMODE HANDLING    @D52VDMZ 00631042
+.* IF AMODE 31 IS SPECIFIED, SET BIT 0 IN SVER01 (EP)          @D52VDMZ 00632042
+.* IF AMODE 24 IS SPECIFIED, DO NET SET BIT 0 IN SVER01        @D52VDMZ 00633042
+.* IF AMODE ANY IS SPECIFIED, SET BIT 0 DEP. ON CALLER'S AMODE @D52VDMZ 00634042
+         TM    DFWKEMVS,SDLEAM31  DOES PHASE HAS AMODE 24      @D52VDMZ 00635042
+         BZ    SVC04E             YES, DO NOT UPDATE EP        @D52VDMZ 00636042
+         TM    DFWKEMVS,SDLEAM24  DOES PHASE HAS AMODE ANY     @D52VDMZ 00637042
+         BZ    SVC04A50           NO, INDICATE AMODE 31        @D52VDMZ 00638042
+         TM    TCBEXFLG,TCBEXAM   CALLER IN AMODE 31           @D52VDMZ 00639042
+         BZ    SVC04E             NO                           @D52VDMZ 00640042
+SVC04A50 OI    SVER01,SVEPAM31    INDICATE AMODE 31            @D52VDMZ 00641042
+SVC04E   BR    R6                 ====================>        @D14ZDVB 00642042
+         DROP  R8                                              @D14BDVB 00643042
+         SPACE 2                                               @D34RDFG 00644042
+NO$$BERR DS    0H                                              @D14BDVB 00645042
+.* SECURITY MIGHT NOT WORK IN AMODE 31                                  00646042
+*        AMODESW SET,AMODE=24,WR=(R2)                                   00647042
+         AMODESW SET,AMODE=24,WR=(R2)                          @D64ADMZ 00648042
+*        MVC   DFWKNAME,0(R1)     PROVIDE PHASE NAME           @D21ZDVB 00649042
+         MVC   DFWKPHPT(L'TXTSVC),TXTSVC PROVIDE SVC_TXT       @D21ZDVB 00650042
+         LA    R0,DFWKPHPT        ADDR TO ...                  @D14BDVB 00651042
+         ST    R0,XXUSAREA        ... DEBUG FEATURE            @D14BDVB 00652042
+         DEBUG DSPLYDAT,XXDBGMC   WRITE DEBUG_ENTRY            @D61NDVB 00653042
+         L     R2,LPBPTR          ADDR (LIBRARY PTR TABLE)     @D21ZDVB 00654042
+         USING INLCLPT,R2                                      @D21ZDVB 00655042
+.*                         ASSUME THAT IJSYSRES AND...         @D21ZDVB 00656042
+.*                         ...SYSLIB ARE LOCATED AT...         @D21ZDVB 00657042
+.*                         ...BEGIN OF TABLE AREA              @D21ZDVB 00658042
+.*                         ...LDT / SLDT                       @D21ZDVB 00659042
+         L     R0,LPTBLDT         ADDR (LIB_DEF_TAB)           @D21ZDVB 00660042
+         L     R1,LPTBSDT         ADDR (SUBLIB_DEF_TAB)        @D21ZDVB 00661042
+.* THE FOLLOWING INSTRUCTION MUST BE ACTIVATED IF ASSUMPTION   @D21ZDVB 00662042
+.* IS NO LONGER VALID ---> ASK LIBRARIAN                       @D21ZDVB 00663042
+.*       L     R2,AFTTAB          ADDR (SYSTEM_CHAIN_ENTRY)    @D21ZDVB 00664042
+.*       USING LOTENTRY,R2                                     @D21ZDVB 00665042
+.*       AH    R0,LOTEOLDT        + OFFSET  LIB_DEF_TAB AREA   @D21ZDVB 00666042
+.*                                .... > ===>  0               @D21ZDVB 00667042
+.*       AH    R1,LOTEOSDT        + OFFSET  SUBLIB_DEF_TAB AREA@D21ZDVB 00668042
+         ST    R0,DFWKALIB        ... INTO                     @D21ZDVB 00669042
+         ST    R1,DFWKASLB        ...      FCHWORK             @D21ZDVB 00670042
+         LA    R1,DFWKNAME        PROVIDE ....                 @D21ZDVB 00671042
+         ST    R1,DFWKANAM        .... INTERFACE FOR SECURITY  @D21ZDVB 00672042
+         LH    R0,RID             SAVE RID                     @DY42963 00673042
+         L     R1,CRADDR          GET CURRENT COMREG           @DY42963 00674042
+         MC    4,4                PSEUDO PART. COMREG IN R1 IF @DY42963 00675042
+*                                 ICCF PP.OTHERWISE UNCHANGED  @DY42963 00676042
+* RID SET TO SYSTEMID DURING MC PROCESSING                     @DY42963 00677042
+         STH   R0,RID             RESTORE RID                  @DY42963 00678042
+         ST    R1,DFWKCOMG        PROVIDE COMREG, SEC I/F      @DY42963 00679042
+         LA    R1,DFWKALIB        PTR TO SEC. PARAMETER LIST   @D14CDHD 00680042
+         DROP  R2                                              @D21ZDVB 00681042
+         SLR   R0,R0              ....          ROUTINE        @D21ZDVB 00682042
+         BCTR  R0,0               R0 MUST BE NEGATIVE          @D21ZDVB 00683042
+         LA    R5,DFCBSAV         USED AS REGISTER SAVE AREA   @D21ZDVB 00684042
+         SPACE 1                                               @D21ZDVB 00685042
+*   INTERFACE TO  SCYSVC :                                     @D21ZDVB 00686042
+*           INPUT  R0 = 0 SECURITY CHECK MUST BE PERFORMED     @D21ZDVB 00687042
+*                     > 0 AUTHORITY CHECK REQUIRED (THAT MEANS @D21ZDVB 00688042
+*                            THE CUMULATED ACCCESS RIGHTS OF   @D21ZDVB 00689042
+*                            LOT ENTRIES)                      @D21ZDVB 00690042
+*                     < 0 RECORDING DUE TO SECURITY VIOLATION  @D21ZDVB 00691042
+*                  R1 = ADDRESS (PARAMETER LIST)               @D21ZDVB 00692042
+*                       PARAMETER LIST = < ADDR(LIB.DEF.TAB)   @D21ZDVB 00693042
+*                                         ,ADDR(SLIB.DEF.TAB)  @D21ZDVB 00694042
+*                                         ,ADDR(PHASENAME)     @D21ZDVB 00695042
+*                                         ,ADDR(COMREG) >      @DY42963 00696042
+*                  R5 = SAVE AREA ADDRESS                      @D21ZDVB 00697042
+*                  RA = TCB ADDRRESS OF LOAD/FETCH REQUESTOR   @D21ZDVB 00698042
+*                  RC = RETURN ADDRESS                         @D21ZDVB 00699042
+*                  RD = BASE REGISTER OF SCYSVC ROUTINE        @D21ZDVB 00700042
+*           OUTPUT RF = RETURN CODE                            @D21ZDVB 00701042
+         SPACE 1                                               @D21ZDVB 00702042
+         DROP  RD                 RELEASE BASE                 @D64ADMZ 00703042
+         L     RD,AFCHDAT         BASE REG. OF SEC. ROUTINE    @D64ADMZ 00704042
+         USING DFCB,RD                                         @D14CDHD 00705042
+         L     RC,DASCYSVC        LOGGING OF SECURITY VIOLATION@D21ZDVB 00706042
+         DROP  RD                 RELEASE FETCH DATA SECTION   @D64ADMZ 00707042
+         L     RD,ASGSVCX2        BASE OF SECURITY ROUTINE     @D64ADMZ 00708042
+         BASSM RC,RC              PASS CONTROL TO SEC. ROUTINE @D64ADMZ 00709042
+         L     RD,PGMBASE         RELOAD BASE                  @D64ADMZ 00710042
+         USING SGPGM,RD                                        @D52VDMZ 00711042
+*                                                                       00712042
+*  INPUT  R1 POINTS TO MESSAGE AREA DESCRIBED BY MAPDMPIF               00713042
+*            FIRST 4 BYTES CONTAIN ACTUAL MESSAGE LENGTH                00714042
+*         BIT 0 SET IN R1 : FREEVIS IS DONE BY TERMINATOR ROUTINE       00715042
+*                           FOR CANCLEN                                 00716042
+*         R0 = 4 FUNCTION CODE                                          00717042
+*         R6 = ADISPSER                                                 00718042
+*         RB = X'0B' CANCEL CODE                                        00719042
+*                                                                       00720042
+         L     R5,DFWKALIB        ADDRESS OF LIBRARY NAME      @D52VDMZ 00721042
+         LA    R0,CANCLEN         LENGTH OF CANCEL INFORMATION @D52VDMZ 00722042
+         SGETVIS LENGTH=(0)                                    @D52VDMZ 00723042
+         LTR   RF,RF              GETVIS SUCCESSFUL            @D52VDMZ 00724042
+         BNZ   NO$$BER0           NO TRY OLD I/F               @D52VDMZ 00725042
+         USING MAPDMPIF,R1                                     @D52VDMZ 00726042
+         MVC   CANC0BL2,0(R5)     PROVIDE LIBRARY NAME         @D52VDMZ 00727042
+         MVI   CANC0BD3,C'.'                                   @D52VDMZ 00728042
+         L     R5,DFWKASLB        ADDRESS OF SUBLIBRARY NAME   @D52VDMZ 00729042
+         MVC   CANC0BSN,0(R5)     PROVIDE SUBLIBRARY NAME      @D52VDMZ 00730042
+         MVI   CANC0BD4,C'.'                                   @D52VDMZ 00731042
+         L     R5,DFWKANAM        ADDRESS OF MEMBER NAME       @D52VDMZ 00732042
+         MVC   CANC0BMN,0(R5)     PROVIDE MEMBER NAME          @D52VDMZ 00733042
+         DROP  R1                                              @D52VDMZ 00734042
+         O     R1,BIT0OMSK        SET BIT 0 ON FOR FREEVIS     @D52VDMZ 00735042
+         B     NO$$BER1           EXIT                         @D52VDMZ 00736042
+NO$$BER0 DS    0H                                              @D52VDMZ 00737042
+         MVC   SVCSV3+4(7),0(R5)  PROVIDE LIBRARY NAME         @D51IDMZ 00738042
+         MVI   SVCSV3+11,C'.'                                  @D51IDMZ 00739042
+         L     R5,DFWKASLB        ADDRESS OF SUBLIBRARY NAME   @D51IDMZ 00740042
+         MVC   SVCSV3+12(8),0(R5) PROVIDE SUBLIBRARY NAME      @D51IDMZ 00741042
+         MVI   SVCSV3+20,C'.'                                  @D51IDMZ 00742042
+         L     R5,DFWKANAM        ADDRESS OF MEMBER NAME       @D51IDMZ 00743042
+         MVC   SVCSV3+21(8),0(R5) PROVIDE MEMBER NAME          @D51IDMZ 00744042
+         LA    R1,SVCSV3          POINT TO MESSAGE AREA        @D52VDMZ 00745042
+NO$$BER1 DS    0H                                              @D52VDMZ 00746042
+         LA    R0,25              MESSAGE LENGTH               @D52VDMZ 00747042
+         ST    R0,0(R1)           PROVIDE MESSAGE LENGTH       @D52VDMZ 00748042
+         LA    R0,4               FUNCTION CODE                @D52VDMZ 00749042
+         LA    RB,X'0B'           CANCEL CODE                  @D52VDMZ 00750042
+         L     R6,ADISPSER        ADDR OF DISP CANCEL SERVICE  @D52VDMZ 00751042
+*        AMODESW CALL,REGS=(R7,R6)   SERVICE DOES NOT RETURN   @D61NDMZ 00752042
+         AMODESW CALL,REGS=(R7,R6)   SERVICE DOES NOT RETURN   @D61NDMZ 00753042
+         SPACE 1                                               @D14BDVB 00754042
+         DROP  RD                                              @D21ZDVB 00755042
+TXTSVC   DC    CL8'LTA->$$B'                                   @D14BDVB 00756042
+         SPACE 2                                               @D14BDVB 00757042
+*-------------------------------------------------------------*@D369DVB 00758042
+*                                                                     * 00759042
+* SVC 8: TEMPORARILY RETURN FROM LOGICAL TRANSIENT TO THE PROBLEM     * 00760042
+*        PROGRAM. THE TRANSIENT IS NOT RELEASED.                      * 00761042
+*        THE RETURN ADDRESS IS SPECIFIED IN REG 14.            @D36ZDVB 00762042
+*                                                                     * 00763042
+*-------------------------------------------------------------*@D369DVB 00764042
+         SPACE 1                                                        00765042
+         USING TIBADR,R8          PROVIDED BY DISPATCHER       @D36BDVB 00766042
+         USING SVEARA,RB          PROVIDED BY DISPATCHER       @D36BDVB 00767042
+         USING SGPGM,RD           ESTABLISH ADDRESSABILITY     @D14CDHD 00768042
+         SPACE 1                                               @D369DVB 00769042
+SVC08    DS    0H                                              @D35EDVB 00770042
+         TM    TIBFLAG1,LTAOWNER+LTAACT  REQUEST FROM LTA?     @D36BDVB 00771042
+         BNO   ERR21              =====>   NO , ILLEGAL SVC    @D14ZDVB 00772042
+         L     R2,APCBATAB        POINT PCBATAB                @D51IDMZ 00773042
+         L     R2,0(,R2)          GET PTR TO SYS PCB           @D51IDMZ 00774042
+         USING PCBADR,R2                                       @D51IDMZ 00775042
+         L     R2,PCEPIB          GET AR PIB                   @D51IDMZ 00776042
+         USING PIBADR,R2                                       @D51IDMZ 00777042
+         L     RF,PIBSAV2N        POINT TO PP SAVE AREA.       @D51IDMZ 00778042
+         MVC   SVER00(L4),SVEPSW2-SVEARA(RF)  SAVE PSW ADDR    @D36BDVB 00779042
+         MVC   SVEPSW2+1-SVEARA(L3,RF),SVER0E+1  PASS ADDR     @D36BDVB 00780042
+         MVI   SVEPSW2-SVEARA(RF),X'00' PASS CNTRL. IN AMODE24 @D52VDMZ 00781042
+         B     SVC89              --->                         @D14ZDVB 00782042
+         SPACE 2                                                        00783042
+*-------------------------------------------------------------*@D369DVB 00784042
+*                                                                     * 00785042
+* SVC 9: RETURN TO LOGICAL TRANSIENT AFTER AN SVC 8 IS ISSUED.        * 00786042
+*                                                                     * 00787042
+*-------------------------------------------------------------*@D369DVB 00788042
+         SPACE 1                                                        00789042
+SVC09    DS    0H                                              @D35EDVB 00790042
+         TM    TIBFLAG1,LTAOWNER+LTAACT  REQUEST FROM LTA?     @D36BDVB 00791042
+         BNM   ERR21              =====>  NO, ILLEGAL SVC      @D14ZDVB 00792042
+         L     R2,APCBATAB        POINT PCBATAB                @D51IDMZ 00793042
+         L     R2,0(,R2)          GET PTR TO SYS PCB           @D51IDMZ 00794042
+         USING PCBADR,R2                                       @D51IDMZ 00795042
+         L     R2,PCEPIB          GET AR PIB                   @D51IDMZ 00796042
+         USING PIBADR,R2                                       @D51IDMZ 00797042
+         L     RF,PIBSAV2N        POINT TO LTA SAVEAREA IN PIB @D51IDMZ 00798042
+         MVC   SVEPSW2(L4),SVER00-SVEARA(RF) RESTORE PSW ADDR  @D36BDVB 00799042
+         SPACE 1                                               @D369DVB 00800042
+*-------------------------------------------------------------*@D369DVB 00801042
+SVC89    STM   R0,R1,SVER00-SVEARA(RF) PASS REG  0 AND 1       @D36BDVB 00802042
+         ST    RB,PIBSAV2N        SAVE AREA PTR TO AR PIB      @D51IDMZ 00803042
+         LR    R7,R6                                           @D36BDVB 00804042
+*SGLINK  SETLT,INPUT=(R6,R7,R8,RA,RF),WORK=(R5,RF)             @D36BDVB 00805042
+         B     SETLT              =====>     EXIT WITH SWAPPING....    *00806042
+                                  ... SAVE AREA POINTERS       @D14ZDVB 00807042
+         DROP  R2                 DROP PIB POINTER             @D51IDMZ 00808042
+         DROP  R8                 DROP TIB POINTER             @D14ZDVB 00809042
+         SPACE 2                                                        00810042
+*-------------------------------------------------------------*@D369DVB 00811042
+*                                                                     * 00812042
+*SVC 11: RETURN FROM A LOGICAL TRANSIENT RELEASEING THE LTA           * 00813042
+*        OR EOT ROUTINE                                               * 00814042
+.* WITH AF 5.2 SVC 11 IS NO LONGER CALLED BY DUMP ROUTINE      @D52VDMZ 00815042
+*                                                                     * 00816042
+*-------------------------------------------------------------*@D369DVB 00817042
+         SPACE 1                                                        00818042
+         USING TIBADR,R8                                       @D36BDVB 00819042
+         SPACE 1                                                        00820042
+SVC11_E  DS    0H                 SWITCH TO AMODE 24           @D64ADMZ 00821042
+*        AMODESW SET,AMODE=24,WR=(R7)                          @D64ADMZ 00822042
+         AMODESW SET,AMODE=24,WR=(R7)                          @D64ADMZ 00823042
+SVC11    DS    0H                 RELEASE LTA                  @D35EDVB 00824042
+         TM    TIBFLAG1,EOTACT    IS REQUESTOR EOT ?           @D52VDMZ 00825042
+         BNZ   CEOTTERM           YES --> CALL TERM/EOT        @D36BDVB 00826042
+         TM    TIBFLAG1,LTAOWNER+LTAACT REQUEST GIVEN FROM LTA @D36BDVB 00827042
+         BNO   ERR21              =====>   ILLEGAL SVC         @D14ZDVB 00828042
+         BAL   R7,FREELTA         FREE THE LOGIAL TRANS.AREA   @D36BDVB 00829042
+         SGVSEPT PROBE=9          I/F TO PERFORMANCE TOOL      @D51MDKH 00830042
+         L     R7,SVC11A10        FORCE 31                     @D64ADOW 00831042
+         BSM   0,R7               ... BIT                      @D64ADOW 00832042
+SVC11L10 DS    0H                 ... MODE                     @D64ADOW 00833042
+         L     R7,TCBATCBE                                     @D64ADOW 00834042
+         USING TCBXADR,R7                                      @D64ADOW 00835042
+         ICM   R7,B'1111',TCBXTQCA TIMER ACTIVE                @D64ADOW 00836042
+         BZR   R6                 NO, EXIT TO DISPATCHER       @D64ADOW 00837042
+         USING EXITBLK,R7                                      @D64ADOW 00838042
+         TM    EXITFLG,DELINT     TIMER EXIT DELAYED           @D64ADOW 00839042
+         BNOR  R6                 NO, EXIT TO DISPATCHER       @D64ADOW 00840042
+         NI    EXITFLG,XFF-DELINT RESET TIMER EXIT DELAYED FLAG@D64ADOW 00841042
+         OI    TIBFLAG,CDELEX     SETUP DISPATCHER EXIT        @D64ADOW 00842042
+         BR    R6                                              @D64ADOW 00843042
+SVC11A10 DC    A(SVC11L10+X'80000000')                         @D64ADOW 00844042
+         DROP  R7                                              @D64ADOW 00845042
+         SPACE 1                                               @D14ZDVB 00846042
+CEOTTERM L     RD,APBASE          BASE TO SGAP                 @D36BDVB 00847042
+         USING SGAP,RD                                         @D36BDVB 00848042
+         LR    R7,R6              SET EXIT ADDRESS             @D36BDVB 00849042
+*SGLINK  EOTRTRN,INPUT=(R6,R7,R8,RA,RD),WORK=(R5,RE,RF)        @D36BDVB 00850042
+         B     EOTRTRN            =====================>       @D14ZDVB 00851042
+         DROP  R8,RB,RD                                        @D36BDVB 00852042
+         USING SGPGM,RD                                        @D36BDVB 00853042
+         SPACE 2                                                        00854042
+.*------------------------------------------------------------*@D61BDVB 00855042
+.*     SVC 12 / 13 MOVED INTO SGSVC                           *@D61BDVB 00856042
+.*------------------------------------------------------------*@D61BDVB 00857042
+*-------------------------------------------------------------*@D369DVB 00858042
+*                                                                     * 00859042
+*SVC 23: LOAD PHASE HEADER.                                           * 00860042
+*        AMODE = RMODE = 24 (OF CALLER)                               * 00861042
+*        INPUT : R1 = ADDR(PHASENAME)                                 * 00862042
+*                R0 = ADDR(OF AREA WHERE LOADPOINT IS STORED)         * 00863042
+*                (BOTH ARE REGARDED AS 3 BYTE ADDRESSES)              * 00864042
+*        OUTPUT: LOAD ADDRESS IN RETURN AREA                          * 00865042
+*                SINCE THE HIGH ORDER BYTE OF THE RETURN AREA MUST NOT* 00866042
+*                BE DESTROYED (OLD I/F), REQUESTS FOR PHASES LOCATED  * 00867042
+*                ABOVE 16 MB, ARE CANCELLED.                          * 00868042
+*-------------------------------------------------------------*@D369DVB 00869042
+         SPACE 1                                                        00870042
+SVC23    TM    SVOLDP+1,KEY0      IS PSW KEY ZERO                   303 00871042
+         BNZ   ERR21              =====>   NO, ILLEGAL SVC     @D14ZDVB 00872042
+         XR    R9,R9              SET RETURN CODE FOR SVC23    @D35EDVB 00873042
+         N     R0,ADDRMSK         CLEAR FIRST BYTE             @D52VDMZ 00874042
+         B     SVC2351            LOAD PHASE HEADER            @D35EDVB 00875042
+         SPACE 2                                                    RJI 00876042
+*-------------------------------------------------------------*@D369DVB 00877042
+*        SVC51 PROVIDES THE USER WITH THE DIRECTORY RECORD INFORMATION* 00878042
+*        IN AN AT LEAST 12 BYTE AREA THE ADDRESS IF WHICH IS GIVEN IN * 00879042
+*        REGISTER 1. THE LAYOUT OF THE 12 BYTE FIELD  MUST BE         * 00880042
+*        COMPATIBLE WITH THE FIRST 12 BYTES OF A DIRECTORY ENTRY.     * 00881042
+*        AMODE = RMODE = 24 (OF CALLER)                               * 00882042
+*        R0 = BEGIN OF PROBLEM PROGRAM AREA MUST BE VALID 4 BYTE ADDR * 00883042
+*-------------------------------------------------------------*@D369DVB 00884042
+         SPACE 1                                                        00885042
+SVC51    DS    0H                                              @D35EDVB 00886042
+         LA    R9,8               SET SVC-51 INDICATION        @D37CDVB 00887042
+SVC2351  L     R7,AFETCH          GET ADDRESS OF FETCH ROUTINE @D64ADVB 00888042
+*SGLINK  FETCH,INPUT=(R0,R1,R2,R6,R9,RA,RB),OUTPUT=(R0,R1,R2),         *00889042
+               WORK=(R3,R4,R5,R7,RF)                           @D369DVB 00890042
+*        AMODESW CALL,REGS=(RB,R7)                             @D64ADVB 00891042
+         AMODESW CALL,REGS=(RB,R7)                             @D64ADVB 00892042
+         BR    R6                 =====>  EXIT  DISPATCHER     @D14ZDVB 00893042
+         DROP  RD,RA,R6                                        @D61BDVB 00894042
+*-------------------------------------------------------------*@D149DVB 00895042
+.*--- CDLOAD / CDDELETE MOVED FROM SGAM ----------------------*@D61NDVB 00896042
+  TITLE 'VSE SUPERVISOR SGCFCH     -     CDLOAD / CDDELETE SERVICES    *00897042
+                 95/12/11 '                                    @D64ADVB 00898042
+************************************************************** @D36ZDJB 00899042
+*                                                            * @D36ZDJB 00900042
+*   CDLOAD / CDDELETE ROUTINE                                * @D52VDMZ 00901042
+*------------------------------------------------------------* @D36ZDJB 00902042
+* FUNCTION :                                                 * @D149DJB 00903042
+*                                                            * @D149DJB 00904042
+*       THE  C D L O A D / C D D E L E T E SVC ROUTINE       * @D52VDMZ 00905042
+*       CDLOAD                                               * @D52VDMZ 00906042
+*       PROCESSING SVC 65 RETURNS EITHER A PHASE'S LOAD      * @D358DUL 00907042
+*       ADDRESS IF IT IS CONTAINED IN THE SVA, OR IT LOADS   * @D358DUL 00908042
+*       THE PHASE INTO THE PARTITION GETVIS AREA AFTER       * @D358DUL 00909042
+*       IMPLICIT EXECUTION OF A GETVIS.                      * @D358DUL 00910042
+*       CDDELETE                                             * @D52VDMZ 00911042
+*       PROCESSING SVC 65 DECREASES A PHASES LOAD COUNT AND, * @D52VDMZ 00912042
+*       IF THE LOAD COUNT IS ZERO,DELETES THE PHASE'S DIREC. * @D52VDMZ 00913042
+*       ENTRY AND FREEVIS THE OCCUPID GETVIS AREA.           * @D52VDMZ 00914042
+*                                                            * @D149DJB 00915042
+* OPERATION:                                                 * @D61NDVB 00916042
+*                                                            * @D149DJB 00917042
+* COMMON CODE FOR CDLOAD/CDDELETE                            * @D149DJB 00918042
+* - SWITCH TO AMODE 31                                       * @D52VDMZ 00919042
+* - SAVE PHASENAME IN TCB.DFWKNAME                           * @D52VDMZ 00920042
+* - OCCUPY RESOURCE (IF NOT FREE GOTO RESVCX)                * @D52VDMZ 00921042
+* - IF PHASE NAME NOT VALID, HANDLE AS NOT FOUND             * @D52VDMZ 00922042
+* - ESTABLISH SEPARATE PASSES FOR CDLOAD/CDDELETE            * @D52VDMZ 00923042
+* CDLOAD PROCESSING                                          * @D52VDMZ 00924042
+* CDDELETE PROCESSING                                        * @D52VDMZ 00925042
+* IF THE ANCHOR TABLE CONTAINS AN ENTRY FOR THE REQUESTED    * @D36ZDJB 00926042
+* PHASE, A LOAD COUNT IS UPDATED AND CONTROL IS RETURNED     * @D52VDMZ 00927042
+* IMMEDIATELY.                                               * @D36ZDJB 00928042
+* IF THE ANCHOR TABLE EITHER DOES NOT CONTAIN AN ENTRY FOR   * @DM12777 00929042
+* THE REQUESTED PHASE, OR HAS NOT YET BEEN BUILT, A LOAD IS  * @DM12777 00930042
+* ISSUED WITH TXT=NO AND DE=YES.                             * @DM12777 00931042
+*  ( THE 38-BYTE DIRECTORY ENTRY WHICH HAS TO BE PROVIDED BY * @D367DJB 00932042
+*    THE LOAD FOR THE FETCH ROUTINE WILL BE LOCATED IN THE   *          00933042
+*    TCB STARTING AT DFWKNAME.                               * @D36IDJB 00934042
+*                                                            *          00935042
+* IF THE PHASE IS FOUND IN THE SVA THE RETURN CODE AND THE   * @DM12777 00936042
+* RETURN PARAMETERS ARE STORED INTO THE PP-SAVE AREA.        * @DM12777 00937042
+* WHEN THE PHASE WILL BE LOADED INTO THE PARTITION OF THE    *          00938042
+* REQUESTOR, GETVIS SPACE IS REQUESTED AND IF SUCCESSFUL     * @D367DJB 00939042
+* A SECOND LOAD WITH DE=YES AND TXT=YES IS ISSUED.           * @D367DJB 00940042
+*                                                            * @D149DJB 00941042
+* CDDELETE PROCESSING STARTS WITH .....                      * @D52VDMZ 00942042
+*                                                            * @D149DJB 00943042
+* ATTRIBUTES : REUSABLE                                      * @D149DJB 00944042
+*            : THE CDLOAD FUNCTION EXECUTES PARTLY IN        * @D52VDMZ 00945042
+*              AMODE 31 (NECESSARY TO ACCESS CONTROL INFO).  * @D52VDMZ 00946042
+*              WHEN CALLING GETVIS THE AMODESW CALL I/F HAS  * @D52VDMZ 00947042
+*              TO BE USED(GETV. RETURNS WITH AMODESW RETURN).* @D52VDMZ 00948042
+*              BEFORE FETCH IS CALLED (BALR I/F),CDLOAD WILL * @D52VDMZ 00949042
+*              SWITCH TO AMODE 24.                           * @D52VDMZ 00950042
+*            : THE CDDELETE FUNCTION EXECUTES .....          * @D52VDMZ 00951042
+*                                                            *          00952042
+* INPUT (REGISTERS IN REQUESTOR SAVE AREA) :                 * @D149DJB 00953042
+*         R1  --> ADDRESS OF PHASE NAME                      * @D149DJB 00954042
+*         R15 --> REQUEST OPTIONS : RETPNF : X'10'           * @D149DJB 00955042
+*                                   PAGE   : X'01'           * @D149DJB 00956042
+*                                   CDDELTE: X'02'           * @D52VDMZ 00957042
+* INPUT (REGISTERS) :                                        * @D149DJB 00958042
+*         R8  --> TIB                                        * @D149DJB 00959042
+*         RA  --> TCB                                        * @D149DJB 00960042
+*         ICCF PASSES A PARAMETER LIST ALONG WITH THE        * @D149DJB 00961042
+*         PSEUDO PARTITION USER PARAMETERS:                  * @D149DJB 00962042
+*         R2 --> PARMLIST ADDRESS                            * @D149DJB 00963042
+*         PARMLIST+0: COMREG ADDRESS                         * @D149DJB 00964042
+*         PARMLIST+4: PSEUDO PARTITION END                   * @D149DJB 00965042
+*                                                            * @D149DJB 00966042
+* OUTPUT (REGISTERS IN REQUESTOR SAVE AREA) :                * @D149DJB 00967042
+*   CDLOAD                                                   * @D149DJB 00968042
+*         R0  --> LOAD POINT OF PHASE                        * @D149DJB 00969042
+*         R1  --> ENTRY POINT OF PHASE                       * @D149DJB 00970042
+*         R14 --> PHASE LENGTH                               * @D149DJB 00971042
+*         R15 --> RETURN CODE                                * @D149DJB 00972042
+*   CDDELETE                                                 * @D52VDMZ 00973042
+*         R15 --> RETURN CODE                                * @D52VDMZ 00974042
+*                                                            * @D149DJB 00975042
+* REGISTER USAGE : R0-R6 : WORK                              * @D149DJB 00976042
+*                  R7    : NOT USED                          * @D149DJB 00977042
+*                  R8    : WORK                              * @D149DJB 00978042
+*                  R9    : WORK (CDLFETCH)                   * @D149DJB 00979042
+*                  RA    : ADDRESS OF THE REQUESTOR'S TCB    * @D149DJB 00980042
+*                  RB    : WORK (CDLFETCH)                   * @D149DJB 00981042
+*                  RC-RD : WORK                              * @D149DJB 00982042
+*                  RE    : MODULE BASE REGISTER              * @D149DJB 00983042
+*                  RF    : WORK                              * @D149DJB 00984042
+*                                                            * @D149DJB 00985042
+* EXIT-NORMAL :                                              * @D149DJB 00986042
+*       THE RETURN CODE FIELD IN THE REQUESTOR SAVE AREA     * @D149DJB 00987042
+*       (RF FIELD) WILL CONTAIN A ZERO OR A NON-ZERO VALUE   * @D149DJB 00988042
+*       IF DURING PROCESSING ANY PROBLEMS ARE ENCOUNTERED.   * @D149DJB 00989042
+*       THEN CONTROL IS RETURNED TO THE DISPATCHER VIA       * @D149DJB 00990042
+*       REGISTER 6.                                          * @D149DJB 00991042
+*       THE FOLLOWING ARE THE EXPECTED ERROR CODES           * @D358DUL 00992042
+*       FROM THIS MODULE -                                   * @D358DUL 00993042
+*                                                            * @D149DJB 00994042
+*       CDLOAD                                               * @D149DJB 00995042
+*       04 - THE PARTITIONS GETVIS AREA IS 0K.               * @D358DUL 00996042
+*       08 - THE REQUESTED LENGTH IS NEGATIVE.               * @D358DUL 00997042
+*       12 - NO MORE STORAGE IS AVAILABLE IN THE GETVIS AREA.* @D358DUL 00998042
+*            --->    PRECEDING CODES PASSED BY GETVIS        * @D358DUL 00999042
+*       16 - ANCHOR TABLE IS FULL AND NO GETVIS IS AVAILABLE * @D52VDMZ 01000042
+*            TO ALLOCATE A NEW ANCHOR TABLE.                 * @D52VDMZ 01001042
+*       20 - THE REQUESTED PHASE WAS NOT FOUND.              * @D35ZDJB 01002042
+*            THIS RETURN CODE IS PASSED TO THE USER ONLY IF  * @D35ZDJB 01003042
+*            THE APPROPIATE OPTION IN THE CDLOAD MACRO IS SET* @D35ZDJB 01004042
+*            OTHERWISE HE IS CANCELLED WITH ERROR 22.        * @D149DJB 01005042
+*       24 - THE REQUESTED PHASE IS A MOVE MODE PHASE        * @D149DJB 01006042
+*       28 - THE PHASE'S LOAD COUNT IS EXHAUSTED             * @D52VDMZ 01007042
+*       CDDELETE                                             * @D52VDMZ 01008042
+*                                                            * @D35ZDJB 01009042
+* EXTERNAL REFERENCES :                                      * @D149DJB 01010042
+*                                                            * @D149DJB 01011042
+*      DATA AREAS : PARTITION SAVE AREA (SVEARA)             * @D149DJB 01012042
+*                   ANCHOR TABLE        (MAPGVCTL)           * @D149DJB 01013042
+*                   ANCHOR TABLE ENTRY  (ATENTRY)            * @D149DJB 01014042
+*      ROUTINES   : FETCH                                    * @D149DJB 01015042
+*                   GETVISMR                                 * @D52VDMZ 01016042
+*                   RPOST                                    * @D149DJB 01017042
+*                   RWAIT                                    * @D149DJB 01018042
+*                   RESVCX                                   * @D149DJB 01019042
+*                                                            * @D358DUL 01020042
+************************************************************** @DM14638 01021042
+         SPACE 2                                               @D36ZDJB 01022042
+         DS    0D                                              @D64ADVB 01023042
+         DC    CL16'*CDLOAD*96/08/23' ROUTINE NAME  /YY/MM/DD/ @D64ADMZ 01024042
+         SPACE 1                                               @D37ZDJB 01025042
+         USING DISP,R6            DISPATCHER ADDRESSABILITY    @D36IDJB 01026042
+         USING TCBADR,RA          TCB ADDRESSABILITY           @D36IDJB 01027042
+         USING SVEARA,RD          SAVE AREA ADDRESSABILITY     @D52VDMZ 01028042
+CDLOAD   DS    0H                                              @D14CDJB 01029042
+CDDELETE DS    0H                                              @D52VDMZ 01030042
+         L     RE,CDBASE          BASE REGISTER                @D14CDJB 01031042
+         USING CDLOAD,RE          CODE ADDRESSABILITY          @D14CDJB 01032042
+************************************************************** @D367DJB 01033042
+*    SWITCH TO AMODE 31 , SAVE PHASENAME                     * @D52VDMZ 01034042
+************************************************************** @D367DJB 01035042
+         TM    TCBEXFLG,TCBEXAM   CALLER IN AMODE 31           @D52VDMZ 01036042
+         BO    CDLOAD00           YES                          @D52VDMZ 01037042
+         LA    R1,0(,R1)          NO, USE ONLY 3 BYTE ADDRESS  @D52VDMZ 01038042
+CDLOAD00 DS    0H                                              @D52VDMZ 01039042
+*        AMODESW SET,AMODE=31,WR=(RF)                          @D52VDMZ 01040042
+         AMODESW SET,AMODE=31,WR=(RF)                          @D52VDMZ 01041042
+         XC    DFWK1STL(LFCHWORK),DFWK1STL CLEAR WORK AREA     @D64ADMZ 01042042
+         MVC   DFWKNAME,0(R1)     PROVIDE PHASE NAME           @D367DJB 01043042
+PCKSVC65 EQU   *                  DELAYED INPUT CHECK <R1>     @D14CDJB 01044042
+         SPACE 1                                               @D64ADVB 01045042
+         MVC   DFWKSVC,SVCCODE    SAVE SVC NUMBER              @D61NDMZ 01046042
+*SGLINK  PRODEXIT,WORK=(NONE),OUTPUT=(RF)                               01047042
+*SGLINK  PRODEXIT,WORK=(NONE),OUTPUT=(RF)                               01048042
+*        PRODEXIT ACTIVATE,ID=EXPHASE,RC=YES                   @D61EDVB 01049042
+         PRODEXIT ACTIVATE,ID=EXPHASE,RC=YES                   @D61EDVB 01050042
+         CL    RF,F8              SKIP FETCH PROCESSING        @D61EDVB 01051042
+         BE    PREXPST9           NO FETCH ACTION REQUIRED     @D61EDVB 01052042
+CDLOAD05 DS    0H                                              @D61EDVB 01053042
+************************************************************** @D52VDMZ 01054042
+*   ESTABLISH COMREG POINTER                                 * @D52VDMZ 01055042
+************************************************************** @D52VDMZ 01056042
+         L     R3,CRADDR          POINT TO CURRENT COMREG      @D367DJB 01057042
+         USING TIBADR,R8          GET TIB ADDRESSABILITY       @D36GDJB 01058042
+         TM    TIBFLAG2,ICCFPP    PSEUDO PARTITION REQUEST ?   @D36GDJB 01059042
+         DROP  R8                                              @D36GDJB 01060042
+         BZ    NOETSS1            NO, SKIP                     @D35ZDUL 01061042
+         L     R8,IJBETSS         GET ICCF VECTOR TABLE        @DY44126 01062042
+         USING DTSVECDS,R8        TELL ASSEMBLER               @DY44126 01063042
+         TM    DTSFLG2,DTSCANCL   ICCF SUPVR CANCELLED?        @DY44126 01064042
+         BNO   NOETSS0            NO, CONTINUE                 @DY44126 01065042
+         DROP  R8                 RELEASE ICCF VECTOR TABLE    @DY44126 01066042
+         L     RD,TCBSAVE         GET SAVE AREA                @DY44126 01067042
+         LA    RF,CDLERR28        ICCF DOES NO LONGER PROV.SA  @DY44126 01068042
+         ST    RF,SVER0F          SAVE RETURN CODE             @DY44126 01069042
+         BR    R6                 RETURN                       @DY44126 01070042
+NOETSS0  DS    0H                                              @DY44126 01071042
+         L     R3,0(R2)           GET PSEUDO PARTITION COMREG  @D367DJB 01072042
+NOETSS1  EQU   *                                               @D35ZDUL 01073042
+         ST    R3,DFWKCOMG        SAVE PARTITION COMREG ADDR.  @D36ZDJB 01074042
+************************************************************** @D52VDMZ 01075042
+*   CHECK IF CDLOAD IS AVAILABLE AND, IF YES, OCCUPY IT      * @D367DJB 01076042
+************************************************************** @D367DJB 01077042
+* SKIP GATING FOR PSEUDO PARTITION REQUEST ????                @D52VDMZ 01078042
+         BAL   R8,CDLGCLOS        GET CDLOAD GATE              @D64ADVB 01079042
+*SGLINK CDLGCLOS,INPUT=(R6,R8,RE),WORK=(R2,R5,RF),OUTPUT=()             01080042
+*                                 IF NOT SUCCESSFUL GOTO RESVCX@D64ADVB 01081042
+************************************************************** @D367DJB 01082042
+*   CHECK FOR VALID PHASE NAME                               * @D149DJB 01083042
+************************************************************** @D367DJB 01084042
+         L     RD,TCBSAVE         GET SAVE AREA POINTER        @D52VDMZ 01085042
+         TM    DFWKNAME,XFF        IS PHASENAME VALID ?        @D14ZDJB 01086042
+         BNM   CDLPHSNF            NO, HANDLE AS NOT FOUND     @D52VDMZ 01087042
+************************************************************** @D367DJB 01088042
+*   ESTABLISH SEPARATE PATHES FOR CDLOAD AND CDDELETE        * @D52VDMZ 01089042
+************************************************************** @D367DJB 01090042
+         TM    SVER0F+D3,CDDELSVC CDDELETE SVC                 @D52VDMZ 01091042
+         BO    CDDEL00            YES                          @D52VDMZ 01092042
+************************************************************** @D36ZDJB 01093042
+*   SET UP POINTER TO THE FIRST ANCHOR TALBE                 * @D52VDMZ 01094042
+************************************************************** @D36ZDJB 01095042
+         USING COMREG,R3                                       @D367DJB 01096042
+         TM    OPTNBYTE,ANCHTBIT  ANCHOR TABLE INITIALIZED ?   @D35EDFG 01097042
+         BNO   CDLDCOM            NO ,SKIP SCAN OF ANCHOR TAB. @D37ZDJB 01098042
+         L     RC,IJBGVCTL        POINT TO ANCHOR TABLE        @D14CDJB 01099042
+         DROP  R3                 RELEASE COMREG               @D367DJB 01100042
+************************************************************** @D36ZDJB 01101042
+*   SCAN ANCHOR TABLE (S) OF PARTITION FOR GIVEN PHASE NAME    @D52VDMZ 01102042
+*    AN ENTRY CAN ONLY BE USED IF IT WAS LOADED VIA CDLOAD     @D64ADMZ 01103042
+*    (ATSUBPOL=00), NOT IF IT WAS LOADED BY MVS LOAD           @D64ADMZ 01104042
+************************************************************** @D36ZDJB 01105042
+CDLD000  DS    0H                                              @D64ADVB 01106042
+         BAL   R8,CDLSCP          SCAN FOR PHASE NAME          @D52VDMZ 01107042
+*SGLINK CDLSCP,INPUT=(R8,RA,RC,RE),WORK=(R0,R3,R4,RC),OUTPUT=(R5,RF)    01108042
+         NI    DFWKSWRQ,XFF-MORESRCH BIT IS NOT SET DURING FIRST SCAN   01109042
+*                                 OF ANCHOR TABLE              @D64ADMZ 01110042
+         LTR   RF,RF              ENTRY FOUND                  @D52VDMZ 01111042
+         BNZ   CDLDCOM            NO,  --------->              @D64ADVB 01112042
+         USING ATENTRY,R5                                      @D52VDMZ 01113042
+         CLI   ATSUBPOL,X00       WAS PHASE LOADED BY CDLOAD?  @D64ADMZ 01114042
+         BE    CDLDRET            YES, DESIRED ATE             @D64ADMZ 01115042
+         DROP  R5                 RELEASE ATE                  @D64ADMZ 01116042
+         OI    DFWKSWRQ,MORESRCH  LOADED BY MVS LOAD, CONTINUE @D64ADVB 01117042
+*                                 SEARCH FOR A CDLOAD ENTRY    @D64ADMZ 01118042
+         B     CDLD000            NO,  ----------> MORE SEARCH @D64ADMZ 01119042
+************************************************************** @D36ZDJB 01120042
+*   PHASE NOT FOUND IN ANCHOR TABLE, OR ANCHOR TABLE NOT     * @D36ZDJB 01121042
+*   INITIALIZED, GET DIRECTORY ENTRY VIA FETCH               * @D36ZDJB 01122042
+************************************************************** @D36ZDJB 01123042
+CDLDCOM  DS    0H                                              @D37ZDJB 01124042
+         CLC   TID,ARTIDH         SYSTEM TASK                  @D66ODOW 01125042
+         BNL   CDLCUSTK           NO,  ---------->             @D64ADVB 01126042
+         OI    DFWKSWRQ,SYSAMASK  INDICATE SYSTEM TASK         @D64ADVB 01127042
+CDLCUSTK DS    0H                                              @D64ADVB 01128042
+         LA    R2,DFWKNAME        POINT TO DIR ENTRY           @D367DJB 01129042
+         ST    R2,DFWKPHPT        STORE POINTER TO DIR ENTRY   @D367DJB 01130042
+         ST    R2,DFWKANAM        STORE POINTER TO DIR ENTRY   @D14CDJB 01131042
+         MVI   DFWKRQFM,CDLOADRQ  INDICATE CDLOAD REQUEST      @D64ADVB 01132042
+         XR    R0,R0                                           @D35EDFG 01133042
+         MVI   DFWKFLAG,DENTRY+NTXTNTRY+SDLFORM INSERT DE=YES  @D14BDJB 01134042
+*                                        TXT=NO AND SDL-FORMAT @D149DJB 01135042
+*        GENSERV DEBUG,FIELD=FCHENTRY                          @D64ADVB 01136042
+         GENSERV DEBUG,FIELD=FCHENTRY                          @D64ADVB 01137042
+         SPACE                                                          01138042
+*SGLINK CDLFTCH,INPUT=(R0,R6,R8,RA,RE),WORK=(R1,R3,R4,R5,R7,R9,RB,RF)   01139042
+         BAL   R8,CDLFTCH         EXECUTE FETCH CALL SEQUENCE  @D367DJB 01140042
+         TM    DFWKESWT,NOTFND+ACTIVE  PHASE FOUND ?           @D14CDJB 01141042
+         BO    CDLPHSNF           NO                           @D52VDMZ 01142042
+************************************************************** @D36ZDJB 01143042
+*   PHASE FOUND IN LIBRARY, CHECK IF PHASE MUST BE LOADED    * @D36ZDJB 01144042
+************************************************************** @D36ZDJB 01145042
+CDLOAD11 EQU   *                                               @D35EDJB 01146042
+         TM    DFWKESWT,SVAPHASE  PHASE FOUND IN SVA ?         @D14CDJB 01147042
+         BO    CDLOAD12           YES, ---------->             @D61NDMZ 01148042
+         TM    SVER0F+D3,CDLDSVAO CONSIDER ONLY SVA PHASES     @D61NDMZ 01149042
+         BO    CDLPHSNF           YES, PHASE NOT FOUND         @D61NDMZ 01150042
+         LH    R2,PIK             CURRENT PIK                  @D61NDMZ 01151042
+         LTR   R2,R2              REQUESTOR AR OR SYSTEM       @D61NDMZ 01152042
+         BNZ   CDLRQGV            NO,  ----------> LOAD PHASE  @D61NDMZ 01153042
+         B     CDLPHSNF           YES, ---------->             @D61NDMZ 01154042
+*                                 PHASE CAN'T USED BY AR/SYSTEM@D61NDMZ 01155042
+CDLOAD12 DS    0H                                              @D61NDMZ 01156042
+         TM    DFWKEMVS,SDLECLM   MOVE MODE PHASE ?            @D14CDJB 01157042
+         BO    CDLERR18           YES ===>   ERROR             @D61NDMZ 01158042
+         TM    IJBFLG08,IJBSAENV  SA ENVIRONMENT               @D61NDMZ 01159042
+         BZ    CDLOAD_SVA         NO,  ---------->             @D64ADMZ 01160042
+**********************************************************************  01161042
+* IN A STAND ALONE ENVIRONMENT THE SVA IS USED AS LIBRARY AND CONTAINS  01162042
+* PHASES WHICH ARE NOT SVA ELIGIBLE. THEREFORE THE INDICATION           01163042
+* SVAPHASE IS NOT SUFFICIENT. PHASES THAT ARE NOT SVA ELIGIBLE ARE      01164042
+* LOADED IN THE PARTITION, PROVIDED THAT NO RELOCATION IS NECESSARY,    01165042
+* SINCE RLD INFORMATION IS NO LONGER AVAILABLE.                         01166042
+**********************************************************************  01167042
+         TM    DFWKESWT,SDLEBSE   PHASE SVA ELIGIBLE           @D61DDMZ 01168042
+         BZ    CDLOAD_SAE         NO, PHASE MUST BE LOADED     @D64ADMZ 01169042
+CDLOAD_SVA DS  0H                 BOTH SA AND ONLINE ENV.      @D64ADMZ 01170042
+         BAL   R8,CDLSVAPI        GET PHASE INFO OF SVA PHASE  @D64ADMZ 01171042
+*SGLINK CDLSVAPI,INPUT=(R8,RA,RE),WORK=(R3),OUTPUT=(R0,R1,RF)           01172042
+         B     PHSALD1            PROVIDE RETURN INFO AND RET. @D64ADMZ 01173042
+CDLOAD_SAE DS  0H                 SA ENV.,PHASE NOT SVA ELIG.  @D64ADMZ 01174042
+         SR    R3,R3              CLEAR FOR ICM                @D61DDMZ 01175042
+         ICM   R3,3,DFWKERLD      LOAD PHASE ONLY IF NOTHING.. @D61DDMZ 01176042
+         BNZ   CDLPHSNF           .. TO RELOCATE               @D61DDMZ 01177042
+************************************************************** @D36ZDJB 01178042
+*   PHASE MUST BE LOADED. FIND FREE ENTRY IN ANCHOR TABLE.   * @D52VDMZ 01179042
+*   GET LENGTH OF PHASE AND OCCUPY GETVIS                    * @D36ZDJB 01180042
+************************************************************** @D36ZDJB 01181042
+CDLRQGV  DS    0H                                              @D367DJB 01182042
+         SGCOV D52CDMZ0,MC=803,SKIP=YES                        @D52VDMZ 01183042
+         BAL   R8,CDLFNATE        SCAN FOR FREE ENTRY          @D64ADVB 01184042
+*SGLINK CDLFNATE,INPUT=(R8,RA,RE),WORK=(R0,R1,R3,R4,R5,RC),OUTPUT=(RF)  01185042
+         LTR   RF,RF              FREE ENTRY FOUND             @D52VDMZ 01186042
+         BNZ   CDLERROR           NO, RETURN WITH RETCODE      @D52VDMZ 01187042
+         XC    SVER0F(3),SVER0F   CLEAR OPTION REGISTER FOR .. @D51IDMZ 01188042
+         NI    SVER0F+D3,PAGEIND  .. GETVIS BESIDE PAGEIND     @D14CDJB 01189042
+         TM    DFWKEMVS,SDLERMOD  DOES PHASE HAS RMODE ANY     @D52VDMZ 01190042
+         BZ    CDLRQGV2           NO, RMODE 24                 @D52VDMZ 01200042
+         OI    SVER0F+D2,GVLOCANY YES, GETVIS CAN BE ANYWHERE  @D52VDMZ 01201042
+         B     CDLRQGV3                                        @D52VDMZ 01202042
+CDLRQGV2 DS    0H                                              @D52VDMZ 01203042
+         OI    SVER0F+D2,GVLOCBEL GETVIS MUST BE LOC. BELOW    @D52VDMZ 01204042
+CDLRQGV3 DS    0H                                              @D52VDMZ 01205042
+         MVC   SVER0E,SVER01      SAVE R1 FOR DUMP I/F ON ERROR@DY44547 01206042
+         L     R0,DFWKEPLN        LENGTH OF PHASE FOR GETVIS   @D14CDJB 01207042
+************************************************************** @D36ZDJB 01208042
+*   REQUEST GETVIS SPACE FOR THE PHASE                       * @D36ZDJB 01209042
+*     USE GETVIS SVC ENTRY:                                  * @D36ZDJB 01210042
+*      REASON: NOT ONLY THE GETVIS GATE IS NEEDED, BUT ALSO  * @D67FDMZ 01211042
+*              THE LOCAL LOCK IN CASE OF OS/390 EMULATION    * @D67FDMZ 01212042
+*      INPUT: R6  RETURN ADDRESS                             * @D67FDMZ 01213042
+************************************************************** @D36ZDJB 01214042
+         ST    R0,SVER00          SAVE LENGTH PARAMETER        @D36ZDJB 01215042
+         L     R6,AMBASE          GETVIS BASE REGISTER         @D67FDMZ 01216042
+*        BASSM R6,R6              CALL GETVIS                  @D61ADKH 01217042
+         BASSM R6,R6              CALL GETVIS                  @D61ADKH 01218042
+         L     RE,CDBASE          RESTORE CDLOAD BASE REGISTER @D14CDJB 01219042
+         L     R6,DISPAD          DISPATCHER ADDRESS           @D35EDFG 01220042
+         MVI   RID+1,REENTRID     RESET RID                    @D35EDFG 01221042
+         LTR   RF,RF .            TEST RETURN CODE OF GETVIS   @DL295HL 01222042
+         BNZ   CDLDEX             GO TO EXIT (RC SET IN GETVIS)@D36ZDJB 01223042
+************************************************************** @D36ZDJB 01224042
+*   LOAD PHASE                                               * @D36ZDJB 01225042
+************************************************************** @D36ZDJB 01226042
+         L     R0,SVER01          SAVE LOAD ADDR FOR NEXT LOAD @D36ZDJB 01227042
+         NI    DFWKESWT,HEXFF-SVAPHASE SVA COPY IS NOT CONSID. @D14CDJB 01228042
+         MVI   DFWKFLAG,DENTRY+SDLFORM  INSERT DE=YES, TXT=YES @D14BDJB 01229042
+*SGLINK CDLFTCH,INPUT=(R0,R6,R8,RA,RE),WORK=(R1,R3,R4,R5,R7,R9,RB,RF)   01230042
+         BAL   R8,CDLFTCH         EXECUTE FETCH CALL SEQUENCE  @D367DJB 01231042
+         CLI   DFWKRCOD,0         SUCCESSFUL?                  @DY44547 01232042
+         BE    CDLSET00           YES, CONTINUE                @DY44547 01233042
+* FREEVIS STORAGE OCCUPIED FOR PHASE                           @DY44547 01234042
+         XC    SVER0F,SVER0F      CLEAR FREEVIS OPTION REGISTER@DY44547 01235042
+* LENGTH AND ADDRESS IN SAVE AREA (SVER00, SVER01)             @DY44547 01236042
+         L     R6,CDFREVIS        GET ADDR OF FREEVIS          @D67FDMZ 01237042
+         BASSM R6,R6              CALL FREEVIS                 @DY44547 01238042
+         MVI   RID+1,REENTRID     RESET RID                    @DY44547 01239042
+         L     RE,CDBASE          RESTORE CDLOAD BASE REGISTER @DY44547 01240042
+         L     R6,DISPAD          DISPATCHER ADDRESS           @DY44547 01250042
+         AIF   (NOT &BGDEBUG).CDFFAIL                          @D64ADMZ 01251042
+         LTR   RF,RF                                           @D64ADMZ 01252042
+         BZ    CDLFREOK           FREEVIS WORKED               @D64ADMZ 01253042
+         BAL   R5,SYSERROR        HARDWAIT X'FED'              @D64ADMZ 01254042
+CDLFREOK DS    0H                 FREEVIS WORKED               @D64ADMZ 01255042
+.CDFFAIL ANOP                                                           01256042
+         MVC   SVER01,SVER0E      SET R1, GET CORRECT MSG      @DY44547 01257042
+         B     CDLPHSNF           PHASE NOT FOUND              @DY44547 01258042
+************************************************************** @D36ZDJB 01259042
+*   UPDATE ANCHOR TABLE                                      * @D36ZDJB 01260042
+************************************************************** @D36ZDJB 01261042
+CDLSET00 DS    0H                                              @D64ADVB 01262042
+*SGLINK CDLDATE,INPUT=(R8,RA,RE),WORK=(R0,R1,R3,RC,RF),OUTPUT=(R5)      01263042
+         BAL   R8,CDLDATE         BUILD ATE                    @D64ADVB 01264042
+************************************************************** @D36ZDJB 01265042
+*   CDLOAD EXIT CODE                                         * @D36ZDJB 01266042
+************************************************************** @D36ZDJB 01267042
+CDLDRET  EQU   *                                               @D36ZDJB 01268042
+         USING ATENTRY,R5         ADDRESS DIRECTORY ENTRY      @D52VDMZ 01269042
+         L     RF,ATPHSLEN        LOAD PHASELENGTH             @D367DJB 01270042
+         LM    R0,R1,ATLOADP      GET LOAD AND ENTRY POINT     @D367DJB 01271042
+         MVC   DFWKEMVS,ATPHATT   GET PHASE ATTRIBUTE          @D52VDMZ 01272042
+PHSALD   DS    0H                                              @D52VDMZ 01273042
+         SR    R8,R8                                           @D52VDMZ 01274042
+         ICM   R8,3,ATLDCNT       GET LOAD COUNT               @D52VDMZ 01275042
+         CLM   R8,3,XFFFF         LOAD COUNT EXCEEDED          @D52VDMZ 01276042
+         BNE   PHSALD0            NO                           @D52VDMZ 01277042
+         OI    ATPHFLAG,ATLOADCE  INDICATE LOAD COUNT EXCEEDED @D52VDMZ 01278042
+         B     PHSALD1                 ---------->             @D52VDMZ 01279042
+PHSALD0  DS    0H                 ENTRY FOR SVA PHASE          @D52VDMZ 01280042
+         LA    R8,1(,R8)          NEW LOAD COUNT               @D52VDMZ 01281042
+         STCM  R8,B'0011',ATLDCNT SAVE LOAD COUNT              @D52VDMZ 01282042
+PHSALD1  DS    0H                 ENTRY FOR SVA PHASE          @D52VDMZ 01283042
+         TM    DFWKEMVS,SDLEAM31  DOES PHASE HAS AMODE 24      @D52VDMZ 01284042
+         BZ    PHSALD2            YES                          @D52VDMZ 01285042
+         TM    DFWKEMVS,SDLEAM24  DOES PHASE HAS AMODE ANY     @D52VDMZ 01286042
+         BZ    PHSALD3            NO,PHASE HAS AMODE 31        @D52VDMZ 01287042
+         TM    TCBEXFLG,TCBEXAM   AMODE=ANY,CALLER IN AMODE 31?@D52VDMZ 01288042
+         BZ    PHSALD2            NO                           @D52VDMZ 01289042
+PHSALD3  DS    0H                                              @D52VDMZ 01290042
+         O     R1,BIT0OMSK        SET BIT 0=1, INDIC. AMODE=31 @D52VDMZ 01291042
+PHSALD2  DS    0H                                              @D52VDMZ 01292042
+         STM   R0,R1,SVER00       STORE LOAD AND ENTRY POINT   @D36ZDJB 01293042
+*                                 INTO USER SAVE AREA          @DL295HL 01294042
+         ST    RF,SVER0E          STORE PHASELENGTH            @D36ZDJB 01295042
+PHSALD4  XR    RF,RF .                                         @D35EDVB 01296042
+CDLERROR ST    RF,SVER0F .        STORE RETURN CODE            @DL295HL 01297042
+CDLDEX   EQU   *                                               @D36ZDJB 01298042
+*SGLINK CDLGOPEN,INPUT=(R6,R8,RE),WORK=(R2,R5,RF)                       01299042
+         BAL   R8,CDLGOPEN        OPEN CDLOAD GATE             @D367DJB 01300042
+*        AMODESW RETURN,REG=(R6)  ==========>  RETURN TO DISP  @D64ADVB 01301042
+         AMODESW RETURN,REG=(R6)  REURN TO DISP                @D64ADVB 01302042
+         DROP  R5                 RELEASE DIRECTORY ENTRY      @D52VDMZ 01303042
+         SPACE 1                                               @D64ADVB 01304042
+************************************************************** @D52VDMZ 01305042
+*SGLINK  PRODEXIT,WORK=(NONE),OUTPUT=(NONE)                             01306042
+PREXPST9 DS    0H                                              @D61EDVB 01307042
+*        PRODEXIT ACTIVATE,ID=POSTFCH                          @D61EDVB 01308042
+         PRODEXIT ACTIVATE,ID=POSTFCH                          @D61EDVB 01309042
+         SLR   RF,RF                                           @D61EDVB 01310042
+         ST    RF,SVER0F          STORE RETURN CODE            @D61EDVB 01311042
+         BR    R6                 RETURN TO SVC EXIT           @D61EDVB 01312042
+************************************************************** @D52VDMZ 01313042
+*   MOVE MODE PHASE NOT ALLOWED                              * @D36ZDJB 01314042
+************************************************************** @D52VDMZ 01315042
+CDLOAD13 DS    0H                                              @D61DDMZ 01316042
+         LA    RF,SMERR18         SET RETURN CODE              @D14CDJB 01317042
+         B     CDLERROR           ERROR EXIT: SET RETURNCODE   @D14CDJB 01318042
+************************************************************** @D52VDMZ 01319042
+*   PHASE NOT FOUND IN LIBRARY                               * @D36ZDJB 01320042
+************************************************************** @D52VDMZ 01321042
+CDLPHSNF DS    0H                                              @D14ZDJB 01322042
+         LA    RF,SMERR14         PREPARE RETURN CODE          @D14CDJB 01323042
+         TM    SVER0F+D3,CDNOCANC SHALL USER BE CANCELLED ?    @D14CDJB 01324042
+         BO    CDLERROR           NO  ===>                     @D35ZDJB 01325042
+         L     R8,SVER01          GET POINTER TO PHASE NAME    @D14CDJB 01326042
+         ST    R8,TCBCANAM        STORE IT FOR DUMP            @D14CDJB 01327042
+         BAL   R8,CDLGOPEN        OPEN CDLOAD GATE             @D367DJB 01328042
+         B     ERR22              BRANCH                       @D35EDFG 01329042
+         SPACE 1                                               @D64ADVB 01330042
+************************************************************** @D52VDMZ 01331042
+*   MOVE MODE PHASE FOUND BUT NOT ALLOWED                    * @D36ZDJB 01332042
+************************************************************** @D52VDMZ 01333042
+CDLERR18 LA    RF,SMERR18         SET RETURN CODE              @D14CDJB 01334042
+         B     CDLERROR           ERROR EXIT: SET RETURNCODE   @D14CDJB 01335042
+         EJECT                                                 @D64ADVB 01336042
+************************************************************** @D52VDMZ 01337042
+*   CDDELETE: PERFORM CDDELETE FUNCTION                      * @D52VDMZ 01338042
+*------------------------------------------------------------* @D64ADVB 01339042
+*   AT ENTRY POINT CDDEL00, CDLOAD GATE IS ALREADY OCCUPIED  * @D52VDMZ 01340042
+*   BY THE CURRENT TASK                                      * @D64ADVB 01341042
+*------------------------------------------------------------* @D64ADVB 01342042
+*   INPUT : RD = PTR TO SAVE AREA                            * @D52VDMZ 01343042
+*           RA = TCB PTR                                     * @D52VDMZ 01344042
+*           R3 = PTR TO COMREG                               * @D52VDMZ 01345042
+*           RE = BASE OF ROUTINE                             * @D64ADVB 01346042
+*                                                            * @D64ADVB 01347042
+*   OUTPUT: RF = RETURN CODE                                 * @D64ADVB 01348042
+*                                                            * @D52VDMZ 01349042
+*   WORK  : R0-R5, RC, RF                                    * @D52VDMZ 01350042
+*------------------------------------------------------------* @D64ADVB 01351042
+*   CALLED SUBROUTINES:                                      * @D52VDMZ 01352042
+*           CDLSCP    -    SEARCH ATE                        * @D64ADVB 01353042
+*           CDFREEPH  -    FREE PHASE AREA                     @D64ADVB 01354042
+*           CDDELATE  -    DELETE ATE                          @D64ADVB 01355042
+************************************************************** @D52VDMZ 01356042
+CDDEL00  DS    0H                 CDDELETE CODE                @D52VDMZ 01357042
+         USING COMREG,R3                                       @D52VDMZ 01358042
+         TM    OPTNBYTE,ANCHTBIT  ANCHOR TABLE INTIALIZED      @D52VDMZ 01359042
+         BZ    CDLPHSNF           NO, RETURN PHASE NOT FOUND   @D52VDMZ 01360042
+         L     RC,IJBGVCTL        GET PTR TO CONTROL INFO      @D52VDMZ 01361042
+         DROP  R3                 RELEASE COMREG               @D52VDMZ 01362042
+CDDEL05  DS    0H                 CDDELETE CODE                @D52VDMZ 01363042
+         BAL   R8,CDLSCP          SCAN FOR GIVEN PHASE NAME    @D52VDMZ 01364042
+*SGLINK CDLSCP,INPUT=(R8,RA,RC,RE),WORK=(R0,R4),OUTPUT=(R5,RC,RF)       01365042
+         NI    DFWKSWRQ,XFF-MORESRCH  NOT SET DURING FIRST SCAN@D64ADMZ 01366042
+         LTR   RF,RF              PHASE FOUND                  @D52VDMZ 01367042
+         BNZ   CDLPHSNF           NO, RETURN PHASE NOT FOUND   @D52VDMZ 01368042
+         USING ATENTRY,R5                                      @D52VDMZ 01369042
+         CLI   ATSUBPOL,X00       PHASE LOADED VIA CDLOAD      @D64ADVB 01370042
+         BE    CDDEL07            YES, ATE IS CORRECT          @D64ADMZ 01371042
+         OI    DFWKSWRQ,MORESRCH  LOADED BY MVS LOAD, CONT. SE.@D64ADVB 01372042
+         B     CDDEL05            .. FOR PHASE LOADED BY CDLOAD@D64ADMZ 01373042
+CDDEL07  DS    0H                                              @D64ADMZ 01374042
+         TM    ATPHFLAG,ATLOADCE  LOAD COUNT EXCEEDED          @D52VDMZ 01375042
+PCKCDL3  EQU   *                  ANCHOR TABLE OVERLAYED       @D52VDMZ 01376042
+         BNZ   CDDER04            YES, --------->              @D64ADVB 01377042
+*      GENSERV DECTEST,FIELD=ATLDCNT,BC=BNZ,LAB=CDDEL40                 01378042
+*                                 LOADCOUNT NOT ZERO ------>   @D64ADVB 01379042
+       GENSERV DECTEST,FIELD=ATLDCNT,BC=BNZ,LAB=CDDEL40                 01380042
+         SPACE 1                                               @D64ADVB 01381042
+*     IF LOADCOUNT = 0, THEN FREE PHASE AREA AND UPDATE ATE    @D64ADVB 01382042
+*     FREEVIS STORAGE WHICH OCCUPIES DELETED PHASE             @D64ADVB 01383042
+         SPACE 1                                               @D64ADVB 01384042
+         USING ATENTRY,R5                                      @D52VDMZ 01385042
+         TM    ATPHFLG2,ATSVAPHA  PHASE IN SVA                 @D64ADVB 01386042
+         BO    CDDEL20            YES, --------->              @D64ADVB 01387042
+*                                 ... NO FREEVIS FOR PHASE     @D64ADVB 01388042
+         L     R1,ATLOADP         GET LOAD POINT OF PHASE      @D52VDMZ 01389042
+         L     R0,ATPHSLEN        GET LENGTH OF PHASE          @D52VDMZ 01390042
+         DROP  R5                                              @D52VDMZ 01391042
+         L     RD,TCBSAVE         ADDR REQUESTOR'S SA          @D64ADVB 01392042
+         USING SVEARA,RD                                       @D64ADVB 01393042
+         XC    SVER0F,SVER0F      CLEAR FREEVIS OPTION REGISTER@D52VDMZ 01394042
+         ST    R1,SVER01          FREEVIS ADDRESS              @D52VDMZ 01395042
+         ST    R0,SVER00          FREEVIS LENGTH               @D52VDMZ 01396042
+         L     R6,CDFREVIS        GET ADDR OF FREEVIS          @D67FDMZ 01397042
+*        BASSM R6,R6              CALL FREEVIS                 @D61ADKH 01398042
+         BASSM R6,R6              CALL FREEVIS                 @D61ADKH 01399042
+         L     RE,CDBASE          RESTORE CDLOAD BASE REGISTER @D52VDMZ 01400042
+         L     R6,DISPAD          DISPATCHER ADDRESS           @D52VDMZ 01410042
+         MVI   RID+1,REENTRID     RESET RID                    @D52VDMZ 01411042
+         LTR   RF,RF              TEST RETURN CODE OF FREEVIS  @D52VDMZ 01412042
+         BNZ   CDDEL60            NO, ---------->  HW X'FED'   @D64ADVB 01413042
+         SPACE 1                                               @D64ADVB 01414042
+*     UPDATE ANCHOR TABLE AND DO FREEVIS IF NECESSARY          @D52VDMZ 01415042
+CDDEL20  DS    0H                                              @D52VDMZ 01416042
+         BAL   R8,CDDELATE        UPDATE ANCHOR TABLE          @D52VDMZ 01417042
+*SGLINK CDDELLATE,INPUT=(R8,RA,RE),WORK=(R0R1,R3-R5,RC),OUTPUT=(RF)     01418042
+         SLR   R0,R0                                           @D64ADVB 01419042
+CDDEL40  DS    0H                                              @D52VDMZ 01420042
+         ST    R0,SVER00          PASS LOAD COUNT TO CALLER    @D64ADVB 01421042
+*                                 OPEN CDLOAD GATE             @D64ADVB 01422042
+         B     PHSALD4            ==========>  RETURN TO CALLER@D52VDMZ 01423042
+         SPACE 1                                               @D52VDMZ 01424042
+CDDEL60  DS    0H                 NOT OK,  SYSTEM ERROR X'FED' @D64ADVB 01425042
+*        MVI   IJBHWORG,HWORG248  HARD WAIT ORIGINATOR         @D64ADVB 01426042
+*   ERROR EXIT: HARDWAIT X'FED'                                @D64ADVB 01427042
+         BAL   R5,SYSERROR            ==========>  HW X'FED'   @D64ADVB 01428042
+         SPACE 1                                               @D52VDMZ 01429042
+CDDER04  DS    0H                                              @D64ADVB 01430042
+         LA    RF,SMERR04         INDICATE LOAD COUNT EXCEEDED @D52VDMZ 01431042
+         B     CDLERROR           DO NOT DELETE PHASE          @D52VDMZ 01432042
+         EJECT                                                 @D367DJB 01433042
+************************************************************** @D52VDMZ 01434042
+*   C O M M O N  S U B R O U T I N E S                       * @D52VDMZ 01435042
+************************************************************** @D52VDMZ 01436042
+         SPACE 1                                                        01437042
+************************************************************** @D52VDMZ 01438042
+*   ROUTINE CDDELATE UPDATE ANCHOR TABLE AFTER DELETING      * @D52VDMZ 01439042
+*                    A PHASE                                 * @D52VDMZ 01440042
+*   ROUTINE CDDELLE: UPDATE LLE CHAIN AFTER DELETING A PHASE * @D64ADVB 01441042
+*                                                            * @D52VDMZ 01442042
+*    INPUT: RA TCB POINTER                                   * @D52VDMZ 01443042
+*           R8 RETURN ADDRESS                                * @D52VDMZ 01444042
+*           RE BASE ADDRESS                                  * @D52VDMZ 01445042
+*           DFWKANCS: ADDRESS OF REGARDED TABLE HEADER       * @D64ADVB 01446042
+*                                                            * @D52VDMZ 01447042
+*    OUTPUT:RF RETURN CODE FREEVIS                           * @D52VDMZ 01448042
+*    LINK:  R8                                               * @D52VDMZ 01449042
+*    WORK:  R0,R1,R3,R4,RC                                   * @D52VDMZ 01450042
+*                                                            * @D52VDMZ 01451042
+************************************************************** @D52VDMZ 01452042
+         SPACE 1                                               @D52VDMZ 01453042
+         USING ANCHTAB,RC                                      @D52VDMZ 01454042
+*SGLINK CDDELLE,S,INPUT=(R8,RA,RE),WORK=(R0,R1,R3-R5,RC),OUTPUT=(RF)    01455042
+CDDELLE  DS    0H                                              @D64ADVB 01456042
+         LA    R4,CDLSFLLE        ADDRESS OF CONTROL INFO      @D64ADVB 01457042
+         L     R5,DFWKALLE        ADDRESS OF LLE               @D64ADVB 01458042
+         B     CDELTB00                                        @D64ADVB 01459042
+         SPACE 1                                               @D64ADVB 01460042
+*SGLINK CDDELATE,S,INPUT=(R8,RA,RE),WORK=(R0,R1,R3-R5,RC),OUTPUT=(RF)   01461042
+CDDELATE DS    0H                                              @D64ADVB 01462042
+         LA    R4,CDLSFATE        ADDRESS OF CONTROL INFO      @D64ADVB 01463042
+         L     R5,DFWKAATE        ADDRESS OF ATE               @D64ADVB 01464042
+         SPACE 1                                               @D64ADVB 01465042
+CDELTB00 DS    0H                                              @D52VDMZ 01466042
+         SLR   RF,RF                                           @D64ADVB 01467042
+         L     RC,DFWKANCS        RC = ADDR OF CURRENT ATE-TAB @D64ADVB 01468042
+*                                 ...               OR LLE-TAB @D64ADVB 01469042
+         MVI   0(R5),HEX00        INDICATE EMPTY ENTRY         @D52VDMZ 01470042
+*      GENSERV DECTEST,FIELD=ANCHNOUE,BC=BNZ,LAB=(R8) TABLE EMPTY       01471042
+       GENSERV DECTEST,FIELD=ANCHNOUE,BC=BNZ,LAB=(R8)                   01472042
+*              EXIT IF STILL ACTIVE ENTRIES ==========>        @D64ADVB 01473042
+*     UPDATE FORWARD/BACKWARD POINTER                          @D52VDMZ 01474042
+         L     R1,CDLSF0RQ-CDLSFATE(,R4) REQUEST ID            @D64ADVB 01475042
+         L     R3,ANCHBWP         IF IT IS THE FIRST TABLE ... @D52VDMZ 01476042
+         LTR   R0,R3              ... (ANCHBWP=0)              @D52VDMZ 01477042
+         BNZ   CDELTB40           NO,  ---------->             @D64ADVB 01478042
+         B     CDELTB20(R1)       YES, ---------->             @D64ADVB 01479042
+CDELTB20 DS    0H                                              @D64ADVB 01480042
+         B     0(,R8)             FIRST ANCHOR TABLE ...       @D64ADVB 01481042
+*                                 ...DO NO FREEVIS,BUT RETURN  @D52VDMZ 01482042
+*                                 ==========>                  @D64ADVB 01483042
+*        B     CDELTB30           LLE CHAIN ....               @D64ADVB 01484042
+CDELTB30 DS    0H                                              @D64ADVB 01485042
+         LA    R3,TCBALLST        USE TCBALLST AS FWPTR        @D64ADVB 01486042
+         SLR   R0,R0              ... AND ZERO AS BWPTR        @D64ADVB 01487042
+CDELTB40 DS    0H                                              @D64ADVB 01488042
+         L     R1,DFWKCOMG        GET COMREG                   @DY45190 01489042
+         USING COMREG,R1                                       @DY45190 01490042
+         OI    IJBMSWB1,IJBCIINC  DEBUG WILL SKIP CONS. CHECK  @DY45190 01491042
+         DROP  R1                 RELEASE COMREG               @DY45190 01492042
+         L     R1,ANCHFWP         STORE FORWARD PTR IN BACKW.. @D52VDMZ 01493042
+         ST    R1,ANCHFWP-ANCHTAB(,R3) TABLE                   @D52VDMZ 01494042
+         LTR   R1,R1                STORE BACKW. PTR IN .. ..  @D52VDMZ 01495042
+         BZ    CDELTB50             .. FORW. TABLE IF IT ..    @D52VDMZ 01496042
+         ST    R0,ANCHBWP-ANCHTAB(,R1) EXISTS, OTHERWISE SKIP  @D52VDMZ 01497042
+CDELTB50 DS    0H                                              @D52VDMZ 01498042
+*     SFREEVIS ANCHOR/PLLE TABLE                               @D52VDMZ 01499042
+         L     R3,TCBATCBE        ADDR TO TCBX                 @D64ADVB 01500042
+         TM    TCBXSAUS-TCBXADR(R3),TCBXXSBU SAVE AREA FREE    @D64ADMZ 01501042
+         BZ    CDELTB55           YES                          @D64ADMZ 01502042
+         ST    R5,CDREG5          SAVE ORIGINAL CONTENTS OF R5 @D64ADMZ 01503042
+         BAL   R5,SYSERROR        HARDWAIT                     @D64ADMZ 01504042
+CDELTB55 DS    0H                                              @D52VDMZ 01505042
+         OI    TCBXSAUS-TCBXADR(R3),TCBXXSBU SAVE AREA USED    @D64ADMZ 01506042
+         LA    R3,TCBXXSB-TCBXADR-16(,R3)  GET SAVE AREA ADDR  @D64ADMZ 01507042
+         L     R0,CDLSF0TL-CDLSFATE(,R4) LENGHT OF TABLE       @D64ADVB 01508042
+         LR    R1,RC              START ADDR OF TABLE          @D52VDMZ 01509042
+*        SFREEVIS LENGTH=(0),SAVE=(3),SPACE=YES                @D52VDMZ 01510042
+         SFREEVIS LENGTH=(0),SAVE=(3),SPACE=YES                @D52VDMZ 01511042
+         L     R3,TCBATCBE                                     @D64ADMZ 01512042
+         NI    TCBXSAUS-TCBXADR(R3),XFF-TCBXXSBU SAVE AREA USED@D64ADMZ 01513042
+         L     R3,DFWKCOMG        GET COMREG                   @DY45190 01514042
+         USING COMREG,R3                                       @DY45190 01515042
+         NI    IJBMSWB1,XFF-IJBCIINC DO CONS. CHECK AGAIN      @DY45190 01516042
+         DROP  R3                 RELEASE COMREG               @DY45190 01517042
+         BR    R8                 ==========>  RETURN          @D52VDMZ 01518042
+*                                 RF MIGHT BE CHECKED BY CALLER@D64ADVB 01519042
+         DROP  RC                                              @D52VDMZ 01520042
+         EJECT                                                          01521042
+************************************************************** @D52VDMZ 01522042
+*   ROUTINE CDLSCP: SCAN FOR GIVEN PHASENAME IN ANCHOR TABLE * @D64ADVB 01523042
+*   ROUTINE CDLSCLLE: SCAN FOR GIVEN PHASENAME IN LLE CHAIN  * @D64ADVB 01524042
+*                                                            * @D64ADVB 01525042
+*    INPUT: RA TCB POINTER (DFWKNAME)                        * @D52VDMZ 01526042
+*           RC POINTER TO CONTROL INFO                       * @D52VDMZ 01527042
+*              CDLSCP = COMREG.IJBGVCTL                      * @D52VDMZ 01528042
+*              CDLSCLLE = TCB.DFWKALLST                      * @D52VDMZ 01529042
+*           R8 RETURN ADDRESS                                * @D52VDMZ 01530042
+*           RE BASE ADDRESS                                  * @D52VDMZ 01531042
+*                                                            * @D52VDMZ 01532042
+*    OUTPUT:RF : 0 FOUND                                     * @D52VDMZ 01533042
+*                R5 : PTR TO DIRECTORY ENTRY                 * @D52VDMZ 01534042
+*                         ATE FOR CDLSCP                     * @D64ADVB 01535042
+*                         LLE FOR CDLSCLLE                   * @D64ADVB 01536042
+*                DFWKANCS : PTR TO ANCHOR TABLE              * @D64ADVB 01537042
+*                DFWKAATE : ABS. ADDR OF ATE                 * @D64ADVB 01538042
+*           RF : 4 NOT FOUND                                 * @D52VDMZ 01539042
+*                                                            * @D52VDMZ 01540042
+*    LINK:  R8                                               * @D52VDMZ 01541042
+*           EXIT CODE SAME AS CDLFNLLE/CDLFNATE                @D64ADVB 01542042
+*    WORK:  R0,R3,R4,RC                                      * @D52VDMZ 01543042
+************************************************************** @D52VDMZ 01544042
+         SPACE 1                                               @D64ADVB 01545042
+*SGLINK CDLSCLLE,S,INPUT=(R8,RA,RC,RE),WORK=(R0,R3,R4),                *01546042
+               OUTPUT=(R5,RC,RF)                               @D64ADVB 01547042
+CDLSCLLE DS    0H                 EP - SEARCH LLE              @D64ADVB 01548042
+         LA    R4,CDLSFLLE        ADDRESS OF CONTROL INFO      @D64ADVB 01549042
+         LA    R0,PLLELEN(,0)     LENGTH OF PLLE               @D64ADVB 01550042
+         B     CDLSCP00                                        @D64ADVB 01551042
+         SPACE 1                                               @D64ADVB 01552042
+*SGLINK CDLSCP,S,INPUT=(R8,RA,RC,RE),WORK=(R0,R3,R4),OUTPUT=(R5,RC,RF)  01553042
+CDLSCP   DS    0H                 EP - SEARCH ATE              @D52VDMZ 01554042
+         LA    R4,CDLSFATE        ADDRESS OF CONTROL INFO      @D64ADVB 01555042
+         LA    R0,ATENTLEN(,0)    LENGTH OF ATE                @D52VDMZ 01556042
+CDLSCP00 DS    0H                                              @D64ADVB 01557042
+         SLR   RF,RF              CLEAR RETURN CODE            @D52VDMZ 01558042
+         USING ANCHTAB,RC         ADDR. FOR ANCHOR TABLE       @D52VDMZ 01559042
+*                                 ... OR PLLE CHAIN            @D64ADVB 01560042
+.*                                HEADER INFO USED ONLY        @D64ADVB 01561042
+CDLSCP02 DS    0H                                              @D52CDVB 01562042
+         TM    DFWKSWRQ,MORESRCH  CONTINUE SEARCH              @D64ADVB 01563042
+         BZ    CDLSCP03           NO,  ---------->             @D64ADVB 01564042
+         L     R3,DFWK1STL        YET UNPROCESSED ENTRIES      @D64ADVB 01565042
+         L     R5,DFWK2NDL        ADDR LAST CONSIDERED ENTRY   @D64ADVB 01566042
+         B     CDLSCP05                                        @D64ADVB 01567042
+CDLSCP03 DS    0H                                              @D52CDVB 01568042
+         LH    R3,ANCHNOUE        NO OF ACTIVE ENTRIES         @D52VDMZ 01569042
+         LTR   R3,R3              ANY ACTIVE ENTRY             @D52VDMZ 01570042
+         BZ    CDLSCP10           NO,  ----------> NEXT TABLE  @D52VDMZ 01571042
+         LH    R3,ANCHNUME        NO OF ENTRIES IN TABLE       @D64ADVB 01572042
+         LA    R5,ANCHDIRF        FIRST ENTRY IN ANCHOR TABLE  @D52VDMZ 01573042
+         SR    R5,R0              START FOR LOOP               @D52VDMZ 01574042
+CDLSCP05 DS    0H                                              @D52VDMZ 01575042
+         ALR   R5,R0              ADDR NEXT ENTRY              @D64ADVB 01576042
+         ST    R3,DFWK1STL        SAVE YET UNPROCESSED ENTRIES @D64ADVB 01577042
+         ST    R5,DFWK2NDL        SAVE ADDR OF CURRENT ENTRY   @D64ADVB 01578042
+         CLC   0(8,R5),DFWKNAME   CHECK PHASE NAME             @D64ADVB 01579042
+PCKCDL1  EQU   *                  IF ANCHOR TABLE OVERLAYED    @DA11894 01580042
+.*                                ... IS USER CANCELED         @D64ADVB 01581042
+         BE    CDLSFEXT           FOUND, ---------->           @D64ADVB 01582042
+         BCT   R3,CDLSCP05        CHECK NEXT ENTRY             @D52VDMZ 01583042
+         SPACE 1                                               @D64ADVB 01584042
+CDLSCP10 L     RC,ANCHFWP         GET PTR TO NEXT ANCHOR TABLE @D52VDMZ 01585042
+         LTR   RC,RC              DOES IT EXIST                @D52VDMZ 01586042
+         BNZ   CDLSCP03           YES, PRESUME SEARCH          @D52VDMZ 01587042
+         LA    RF,4               PHASENAME NOT FOUND          @D52VDMZ 01588042
+         B     CDLSFN90           NOT FOUND, ---------->       @D64ADVB 01589042
+         DROP  RC                 RELEASE ANCHOR TABLE         @D52VDMZ 01590042
+         EJECT                                                          01591042
+************************************************************** @D52VDMZ 01592042
+*   ROUTINE CDLFNATE: FIND FREE ENTRY IN ATE CHAIN           * @D52VDMZ 01593042
+*   ROUTINE CDLFNLLE: FIND FREE ENTRY IN LLE CHAIN           * @D64ADVB 01594042
+*                                                            * @D64ADVB 01595042
+*    INPUT: RA TCB POINTER                                   * @D52VDMZ 01596042
+*           R8 RETURN ADDRESS                                * @D52VDMZ 01597042
+*           RE BASE ADDRESS                                  * @D52VDMZ 01598042
+*                                                            * @D52VDMZ 01599042
+*    OUTPUT:RF : 0 FREE ENTRY FOUND                          * @D52VDMZ 01600042
+*                    PTR TO CONTR.INFO WITH FREE ENTRY IN    * @D52VDMZ 01601042
+*                      DFWKANCS                              * @D52VDMZ 01602042
+*                    PTR TO DIRECTORY ENTRY IN               * @D52VDMZ 01603042
+*                      DFWKAATE (ATE FOR CDLSCP)               @D64ADVB 01604042
+*                      DFWKALLE (LLE FOR CDLSCLLE)             @D64ADVB 01605042
+*           RF : 16 ANCHOR TABLE FULL AND NO SYSTEM GETVIS   * @D52VDMZ 01606042
+*                   AVAILABLE TO ALLOCATE NEW ANCHOR TABLE   * @D52VDMZ 01607042
+*                    DFWKAATE = 0 (FOR CDLSCP)               * @D52VDMZ 01608042
+*                    DFWKALLE = 0 (FOR CDLSCLLE)             * @D52VDMZ 01609042
+*           R5                                               * @D64ADMZ 01610042
+*           RC                                               * @D64ADMZ 01611042
+*    LINK:  R8                                               * @D52VDMZ 01612042
+*    WORK:  R0,R1,R3,R4                                      * @D52VDMZ 01613042
+*                                                            * @D52VDMZ 01614042
+*    NOTE: WHEN ENTERING THE ROUTINE                         * @D52VDMZ 01614142
+************************************************************** @D52VDMZ 01614242
+         SPACE 1                                               @D64ADVB 01614342
+*SGLINK CDLFNLLE,S,INPUT=(R8,RA,RE),WORK=(R0,R1,R3,R4),                *01614442
+               OUTPUT=(R5,RC,RF)                               @D64ADVB 01614542
+CDLFNLLE DS    0H                                              @D64ADVB 01614642
+         LA    R4,CDLSFLLE        ADDRESS OF CONTROL INFO      @D64ADVB 01614742
+         L     RC,TCBALLST        ADDR BEGIN OF CHAIN          @D64ADVB 01614842
+         LTR   R5,RC              LLE CHAIN ALREADY INITIALIZED@D64ADVB 01614942
+         BZ    CDLSFN20           NO,  ---------->             @D64ADVB 01615042
+         SLR   RF,RF                                           @D64ADVB 01616042
+         B     CDLSFN10           YES, ---------->             @D64ADVB 01617042
+         SPACE 1                                               @D64ADVB 01618042
+*SGLINK CDLFNATE,S,INPUT=(R8,RA,RE),WORK=(R0,R1,R3,R4),OUTPUT=(RF)      01619042
+CDLFNATE DS    0H                                              @D52VDMZ 01620042
+         SLR   RF,RF                                           @D64ADVB 01621042
+         LA    R4,CDLSFATE        ADDRESS OF CONTROL INFO      @D64ADVB 01622042
+         L     RC,DFWKCOMG        COMREG ADDRE                 @D64ADVB 01623042
+         USING COMREG,RC          ADDRESS COMREG               @D52VDMZ 01624042
+         TM    OPTNBYTE,ANCHTBIT  ANCHOR TABLE INITIALIZED     @D52VDMZ 01625042
+         BZ    CDLSFNOT           NO, IJBGVCTL NOT SET         @D52VDMZ 01626042
+         L     RC,IJBGVCTL        ADDRESS OF ANCHOR TABLE      @D64ADVB 01627042
+         DROP  RC                                              @D64ADVB 01628042
+         SPACE 1                                               @D64ADVB 01629042
+         USING ANCHTAB,RC         ADDRESS. FOR CURRENT TABLE   @D52VDMZ 01630042
+.*                                HEADER INFO USED ONLY        @D64ADVB 01631042
+CDLSFN10 DS    0H                                              @D64ADVB 01632042
+         L     R1,CDLSF0NE-CDLSFATE(,R4) TOTAL NUMBER          @D64ADVB 01633042
+*                                 ...          OF ENTRIES      @D64ADVB 01634042
+         CH    R1,ANCHNOUE        ANCHOR TABLE FULL            @D64ADVB 01635042
+         BH    CDLSFN70           NO, FREE ENTRY AVAILABLE     @D64ADVB 01636042
+         LR    R5,RC              SAVE CURRENT TABLE ADDRESS   @D64ADVB 01637042
+         L     RC,ANCHFWP         PTR TO NEXT TABLE            @D52VDMZ 01638042
+         LTR   RC,RC              NEXT TABLE AVAILABLE         @D52VDMZ 01639042
+         BNZ   CDLSFN10           YES, SCAN TABLE              @D64ADVB 01640042
+         SPACE 1                                               @D64ADVB 01641042
+*     EXTEND TABLE VIA SGETVIS                                 @D64ADVB 01642042
+CDLSFN20 DS    0H                                              @D52VDMZ 01643042
+         L     R3,DFWKCOMG        GET COMREG                   @DY45190 01644042
+         USING COMREG,R3                                       @DY45190 01645042
+         OI    IJBMSWB1,IJBCIINC  DEBUG WILL SKIP CONS. CHECK  @DY45190 01646042
+         DROP  R3                 RELEASE COMREG               @DY45190 01647042
+         L     R3,TCBATCBE        ADDR TO TCBX                 @D64ADVB 01648042
+         TM    TCBXSAUS-TCBXADR(R3),TCBXXSBU SAVE AREA FREE    @D64ADMZ 01649042
+         BZ    CDLSFN25           YES                          @D64ADMZ 01650042
+         ST    R5,CDREG5          SAVE ORIGINAL CONTENTS OF R5 @D64ADMZ 01651042
+         BAL   R5,SYSERROR        HARDWAIT                     @D64ADMZ 01652042
+CDLSFN25 DS    0H                                              @D64ADMZ 01653042
+         OI    TCBXSAUS-TCBXADR(R3),TCBXXSBU SAVE AREA USED    @D64ADMZ 01654042
+         LA    R3,TCBXXSB-TCBXADR-16(,R3)  GET SAVE AREA ADDR  @D64ADMZ 01655042
+         L     R0,CDLSF0TL-CDLSFATE(,R4) LENGHT OF TABLE       @D64ADVB 01656042
+*        SGETVIS LENGTH=(0),SAVE=(3),SPACE=YES,LOC=ANY         @D52VDMZ 01657042
+         SGETVIS LENGTH=(0),SAVE=(3),SPACE=YES,LOC=ANY         @D52VDMZ 01658042
+         L     R3,TCBATCBE        GET TCB EXTENSION            @D64ADMZ 01659042
+         NI    TCBXSAUS-TCBXADR(R3),XFF-TCBXXSBU SAVE AREA USED@D64ADMZ 01660042
+         L     R3,CDLSF0RQ-CDLSFATE(,R4) REQUEST ID            @D64ADVB 01661042
+         LTR   RF,RF              GETVIS DONE                  @D52VDMZ 01662042
+         BNZ   CDLSFNER           NO, ERROR EXIT               @D64ADVB 01663042
+         LTR   RC,R5              RESTORE CURRENT TABLE ADDR   @D64ADVB 01664042
+         BNZ   CDLSFN50           LLE ALREADY INITIALIZED      @D64ADVB 01665042
+         B     CDLSFN30(R3)                                    @D64ADVB 01666042
+CDLSFN30 B     CDLSFNER           ATE REQ: ERROR  -----------> @D64ADVB 01667042
+*        B     CDLSFN40           LLE REQ:                     @D64ADVB 01668042
+*     UPDATE TCBALLST IF FIRST LLE TABLE IN CHAIN              @D64ADVB 01669042
+CDLSFN40 ST    R1,TCBALLST        ADDR BEGIN OF LLE CHAIN      @D64ADVB 01670042
+         B     CDLSFN60                                        @D64ADVB 01671042
+*     UPDATE FWD AND BWD POINTERS                              @D64ADVB 01672042
+CDLSFN50 DS    0H                                              @D64ADVB 01673042
+         ST    R1,ANCHFWP         STORE NEW TABLE              @D52VDMZ 01674042
+         ST    RC,ANCHBWP-ANCHDIR(,R1) STORE BACHWARD PTR      @D52VDMZ 01675042
+CDLSFN60 DS    0H                                              @D64ADVB 01676042
+         LR    RC,R1              NEW TABLE                    @D52VDMZ 01677042
+         L     R1,CDLSF0NE-CDLSFATE(,R4) TOTAL NUMBER          @D64ADVB 01678042
+CDLSFN70 DS    0H                                              @D64ADVB 01679042
+         STH   R1,ANCHNUME        ... OF TABLE ENTRIES         @D64ADVB 01680042
+         SPACE 1                                               @D64ADVB 01681042
+*     FIND FREE ENTRY, IDENTIFIED BY X'0'                      @D64ADVB 01682042
+         LA    R5,ANCHDIRF        ADDRESS FIRST ENTRY          @D52VDMZ 01683042
+CDLSFN80 CLI   0(R5),HEX00        ENTRY FREE                   @D64ADVB 01684042
+PCKCDL2  EQU   *                  ANCHOR TABLE OVERLAYED       @D52VDMZ 01685042
+         BE    CDLSFEXT           YES, ----------> RETURN RC=0 @D64ADVB 01686042
+         A     R5,CDLSF0EL-CDLSFATE(,R4) ADDR NEXT ENTRY       @D64ADVB 01687042
+         BCT   R1,CDLSFN80        MORE TO DO, ---------->      @D64ADVB 01688042
+*                                 OTHERWISE ERROR              @D64ADVB 01689042
+CDLSFNER LA    RF,SMERR10         NO FREE ENTRY IN ANCHOR TABLE@D64ADVB 01690042
+CDLSFN90 SLR   RC,RC                                           @D64ADVB 01691042
+CDLSFNOT SLR   R5,R5                                           @D64ADVB 01692042
+CDLSFEXT DS    0H                                              @D64ADVB 01693042
+         L     R3,DFWKCOMG        GET COMREG                   @DY45190 01694042
+         USING COMREG,R3                                       @DY45190 01695042
+         NI    IJBMSWB1,XFF-IJBCIINC DO CONS. CHECK AGAIN      @DY45190 01696042
+         DROP  R3                 RELEASE COMREG               @DY45190 01697042
+         L     R3,CDLSF0EX-CDLSFATE(,R4)  OFFSET OF ENTRY ADDR @D64ADVB 01698042
+*                                 ... IN TCB                   @D64ADVB 01699042
+         ST    R5,0(R3,RA)        STORE ADDRESS OF ATE/LLE     @D64ADVB 01700042
+         ST    RC,DFWKANCS        STORE PTR TO ANCHOR TABLE    @D52VDMZ 01701042
+         BR    R8                 ==========>  RETURN TO CALLER@D52VDMZ 01701142
+         SPACE 1                                               @D64ADVB 01701242
+         SPACE 1                                               @D64ADVB 01701342
+*---------------------------------------------------------------------* 01701442
+CDLSFATE DS    0F                                              @D64ADVB 01701542
+CDLSF0EL DC    A(ATENTLEN)        LENGTH OF ATE                @D64ADVB 01701642
+CDLSF0TL DC    A(ANCHDIRL)        LENGTH OF ANCHOR TABLE       @D64ADVB 01701742
+CDLSF0NE DC    A(ATENTNUM)        NUMBER OF ENTRIES IN AT      @D64ADVB 01701842
+CDLSF0EX DC    A(DFWKAATE-TCBADR) OFFSET OF ADDR TO ATE        @D64ADVB 01701942
+CDLSF0RQ DC    A(0)               REQUEST ID                   @D64ADVB 01702042
+*---------------------------------------------------------------------* 01703042
+CDLSFLLE DS    0F                                              @D64ADVB 01704042
+         DC    A(PLLELEN)         LENGTH OF LLE                @D64ADVB 01705042
+         DC    A(PLLETBLN)        LENGTH OF LLE TABLE          @D64ADVB 01706042
+         DC    A(PLLETBNO)        NUMBER OF ENTRIES IN LLE TAB @D64ADVB 01707042
+         DC    A(DFWKALLE-TCBADR) OFFSET OF ADDR TO LLE        @D64ADVB 01708042
+         DC    A(4)               REQUEST ID                   @D64ADVB 01709042
+*---------------------------------------------------------------------* 01710042
+         DROP  RC                 RELEASE ANCHOR TABLE         @D52VDMZ 01711042
+         SPACE 2                                               @D64ADVB 01712042
+************************************************************** @D36ZDJB 01713042
+*                                                            * @D36ZDJB 01714042
+*    THIS SUBROUTINE BUILDS THE FETCH CALLING SEQUENCE         @D367DJB 01715042
+*                                                            * @D36ZDJB 01716042
+*        FETCH SAVES R8-R14 AND RETURNS THE ENTRY POINT IN R0  @D35ZDJB 01717042
+*                                                            * @D36ZDJB 01718042
+************************************************************** @D36ZDJB 01719042
+         SPACE 1                                               @D64ADVB 01720042
+*SGLINK CDLFTCH,S,INPUT=(R0,R6,R8,RA,RE),WORK=(R1,R3,R4,R5,R7,R9,RB,RF) 01721042
+CDLFTCH  DS    0H                                              @D36ZDJB 01722042
+         LA    R1,DFWKPHPT        POINT TO PARAMETER LIST      @D367DJB 01723042
+         LA    R9,D4                                           @D35EDVB 01724042
+         L     R7,AFETCH          ADDRESS FETCH ROUTINE        @D64ADVB 01725042
+*SGLINK  FETCH,INPUT=(R0,R1,R2,R6,R9,RA,RB),OUTPUT=(R0,R1,R2),         *01726042
+               WORK=(R3,R4,R5,R7,RF)                           @D369DVB 01727042
+         LA    R7,XFTCHMVS-FETCH(R7)  CALL FETCH SERVICE       @D64ADVB 01728042
+*        AMODESW CALL,REGS=(RB,R7),AMODE=31                    @D64ADVB 01729042
+         AMODESW CALL,REGS=(RB,R7),AMODE=31                    @D64ADVB 01730042
+         L     R6,DISPAD          RESTORE DISPATCHER ADDRESS   @D36ZDJB 01731042
+         BR    R8                 RETURN  ==========>          @D35EDFG 01732042
+         EJECT                                                 @D36ZDJB 01733042
+************************************************************** @D36ZDJB 01734042
+*                                                            * @D36ZDJB 01735042
+*   THIS SUBROUTINE OPENS THE CDLOAD GATE                    * @D36ZDJB 01736042
+*                                                            * @D36ZDJB 01737042
+*   INPUT  : R6  --> DISPATCHER                              * @D149DJB 01738042
+*            R8 : RETURN ADDRESS                               @D64ADVB 01739042
+*            RE : ROUTINE BASE                                 @D64ADVB 01740042
+*   OUTPUT : NONE                                            * @D149DJB 01741042
+*   WORK   : R2,R5,RF                                        * @D149DJB 01742042
+*   EXIT   : RETURN TO CALLER                                  @D64ADVB 01743042
+*   ERROR EXIT: -                                              @D64ADVB 01744042
+*                                                            * @D149DJB 01745042
+************************************************************** @D36ZDJB 01746042
+         SPACE 1                                               @D64ADVB 01747042
+*SGLINK CDLGOPEN,S,INPUT=(R6,R8,RE),WORK=(R2,R5,RF),OUTPUT=()           01748042
+CDLGOPEN DS    0H                                              @D36IDJB 01749042
+         L     R2,PCBPTR          PCB OF RUNNING PARTITION     @D36IDJB 01750042
+         USING PCBADR,R2                                       @D36IDJB 01751042
+         MVC   CDLDTID,H0         RESET CDLOAD OWNERSHIP       @D66ODOW 01752042
+         LA    R5,SRQCDL          POINT TO RESOURCE QUEUE      @D14BDJB 01753042
+         LR    R2,RE              SAVE BASE                    @D64ADVB 01754042
+         BAL   RF,RPOST           FREE AND POST ALL WAITERS    @D36IDJB 01755042
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D14ZDJB 01756042
+         LR    RE,R2                                           @D64ADVB 01757042
+         BR    R8                 RETURN,  ==========>         @D367DJB 01758042
+         DROP  R2                                              @D14CDJB 01759042
+         SPACE 2                                               @D64ADVB 01760042
+*---------------------------------------------------------------------* 01761042
+*                                                              @D64ADVB 01762042
+*   THIS SUBROUTINE OCCUPIES THE CDLOAD GATE                   @D64ADVB 01763042
+*                                                              @D64ADVB 01764042
+*   INPUT  : R6 : ADDR OF DISPATCHER                           @D64ADVB 01765042
+*            R8 : RETURN ADDRESS                               @D64ADVB 01766042
+*            RE : ROUTINE BASE                                 @D64ADVB 01767042
+*   OUTPUT : NONE                                              @D64ADVB 01768042
+*   WORK   : R2,R5                                             @D64ADVB 01769042
+*   EXIT   : RETURN TO CALLER IF GATE IS AVAILABLE             @D64ADVB 01770042
+*            GOTO RESVCX IF GATE IS ALREDY CLOSED              @D64ADVB 01771042
+*   ERROR EXIT: -                                              @D64ADVB 01772042
+*                                                              @D64ADVB 01773042
+*---------------------------------------------------------------------* 01774042
+         SPACE 1                                               @D64ADVB 01775042
+CDLGCLOS DS    0H                                              @D64ADVB 01776042
+*SGLINK CDLGCLOS,S,INPUT=(R6,R8,RE),WORK=(R2,R5),OUTPUT=()              01777042
+*                                 R8,RF ARE ONLY DESTROYED IF GOING     01778042
+*                                 TO RESVCX                             01779042
+         L     R2,PCBPTR          GET POINTER TO ACTUAL PCB    @D52VDMZ 01780042
+         USING PCBADR,R2                                       @D52VDMZ 01781042
+         LA    R5,SRQCDL          POINT TO CDLOAD WAIT QUEUE   @D14BDJB 01782042
+         USING RQADR,R5           ADDRESS CDLOAD RESOURCE      @D52VDMZ 01783042
+         TM    RSCDESC,FREEBIT    PCBRBCDL FREE ?              @D66ODOW 01784042
+         BNO   RESVCX             NO ===> REISSUE REQUEST      @D66ODOW 01785042
+*SGLINK  RESVCX,INPUT=(R5,R6),WORK=(R8,RF) AMODE=(ANY)         @D64ADVB 01786042
+         MVC   CDLDTID,TID        IDENTIFY CDLOAD OWNER        @D66ODOW 01787042
+         MVC   RSCDESC,TID        OCCUPY RESOURCE, IDENT OWNER @D66ODOW 01788042
+         DROP  R5                 RELEASE CDLOAD RESOURCE      @D52VDMZ 01789042
+         DROP  R2                                              @D52VDMZ 01790042
+         BR    R8                 RETURN, ==========>          @D64ADVB 01791042
+         SPACE 2                                               @D64ADVB 01792042
+         EJECT                                                 @D64ADVB 01793042
+*---------------------------------------------------------------------* 01794042
+*                                                              @D64ADVB 01795042
+*   THIS SUBROUTINE BUILDS THE ANCHOR TABLE ENTRY              @D64ADVB 01796042
+*                                                              @D64ADVB 01797042
+*   INPUT  : R8 : RETURN ADDRESS                               @D64ADVB 01798042
+*            RA : ADDR OF TCB                                  @D64ADVB 01799042
+*            RE : ROUTINE BASE                                 @D64ADVB 01800042
+*   OUTPUT : R5 : ADDRESS OF ATE                               @D64ADVB 01810042
+*   WORK   : R0,R1,R3,RC,RF                                    @D64ADVB 01820042
+*   EXIT   : RETURN TO CALLER                                  @D64ADVB 01830042
+*   ERROR EXIT: -                                              @D64ADVB 01831042
+*                                                              @D64ADVB 01832042
+*---------------------------------------------------------------------* 01833042
+*SGLINK CDLDATE,S,INPUT=(R8,RA,RE),WORK=(R0,R1,R3,RC,RF),OUTPUT=(R5)    01834042
+CDLDATE  DS    0H                                              @D64ADVB 01835042
+         L     R5,DFWKAATE        ADDR ATE                     @D64ADVB 01836042
+         LTR   R5,R5              IS IT FIRST ENTRY            @D52VDMZ 01837042
+         BNZ   CDLSET0            NO, SET ENTRY                @D52VDMZ 01838042
+         LA    R5,ANCHDIRF-ANCHTAB  OFFSET TO FIRST ENTRY      @D52VDMZ 01839042
+         L     R3,DFWKCOMG        COMREG ADDRESS               @D52VDMZ 01840042
+         USING COMREG,R3                                       @D52VDMZ 01841042
+         L     RC,IJBGVCTL        GET PTR TO ANCHOR TABLE      @D52VDMZ 01842042
+         USING ANCHTAB,RC                                      @D64ADVB 01843042
+         LA    R0,ATENTNUM(,0)    TOTAL NUMBER                 @D64ADVB 01844042
+         STH   R0,ANCHNUME        ... OF ENTRIES IN ANCHOR TAB @D64ADVB 01845042
+         DROP  RC                                              @D64ADVB 01846042
+         DROP  R3                                              @D52VDMZ 01847042
+         AR    R5,RC              ADD BEGIN ADDR OF ANCHOR TAB.@D52VDMZ 01848042
+         B     CDLSET1                                         @D52VDMZ 01849042
+         USING ATENTRY,R5         ADDR. FOR ANCHOR TABLE ENTRY @D367DJB 01850042
+CDLSET0  DS    0H                                              @D52VDMZ 01851042
+         L     RC,DFWKANCS        PTR TO ANCHOR TABLE          @D52VDMZ 01852042
+CDLSET1  DS    0H                                              @D52VDMZ 01853042
+         MVC   ATPHSNME,DFWKNAME  MOVE PHASENAME INTO ENTRY    @D367DJB 01854042
+         MVC   ATPHATT,DFWKEMVS   GET PHASE ATTR. FOR NEXT LOAD@D52VDMZ 01855042
+         MVI   ATPHFLAG,X00       CLEAR FLAGS                  @D64ADVB 01856042
+         MVC   ATPHFLG2,DFWKESWT  ... MORE ATTRIBUTES          @D64ADVB 01857042
+         NI    ATPHFLG2,XFF-SDLEBNF-SDLEBSR-SDLEBRL            @D64ADVB 01858042
+         SPACE 1                                               @D64ADVB 01859042
+************************************************************** @D36ZDJB 01860042
+*   PROVIDE RETURN INFORMATION                               * @D36ZDJB 01861042
+************************************************************** @D36ZDJB 01862042
+*        GET LENGTH OF PHASE                                   @DL295HL 01863042
+         L     RF,DFWKEPLN        GET LENGTH OF PHASE          @D14CDJB 01864042
+         ST    RF,ATPHSLEN        STORE PHASE LENGTH INTO      @D367DJB 01865042
+*                                 ANCHOR TABLE ENTRY           @DL295HL 01866042
+         L     R3,DFWKEEPL        GET ENTRY POINT              @D14CDJB 01867042
+         S     R3,DFWKELPL        MINUS LOAD POINT             @D14CDJB 01868042
+         L     R0,DFWKEVLE        EP IN SVA, IF ANY            @D64ADVB 01869042
+         TM    DFWKESWT,SVAPHASE  PHASE FOUND IN SVA           @D14CDJB 01870042
+         BO    CDLSET10           NO,  ---------->             @D64ADVB 01871042
+         L     R0,DFWKEPNT        ENTRY POINT                  @D64ADVB 01872042
+CDLSET10 DS    0H                                              @D64ADVB 01873042
+         LR    R1,R0              SAVE ENTRY POINT FROM FETCH  @D36ZDJB 01874042
+         SR    R0,R3              GET NEW LOAD POINT           @D36ZDJB 01875042
+         ST    R1,ATENTP          STORE ENTRY POINT            @D367DJB 01876042
+         ST    R0,ATLOADP         AND LOAD POINT INTO          @D367DJB 01877042
+*                                 ANCHOR TABLE ENTRY           @DL295HL 01878042
+         USING ANCHTAB,RC                                      @D52VDMZ 01879042
+*        GENSERV INC,FIELD=ANCHNOUE  INCREASE NBR USED ENTRIES @D64ADVB 01880042
+         GENSERV INC,FIELD=ANCHNOUE  INCREASE NBR USED ENTRIES @D64ADVB 01881042
+         DROP  RC                 RELEASE ANCHOR TABLE         @D52VDMZ 01882042
+         BR    R8                 ==========>       RETURN     @D64ADVB 01883042
+         SPACE 1                                               @D64ADVB 01884042
+*---------------------------------------------------------------------* 01885042
+*                                                              @D64ADMZ 01886042
+*   THIS SUBROUTINE RETURNS PHASE INFORMATION OF SVA PHASES    @D64ADMZ 01887042
+*                                                              @D64ADMZ 01888042
+*   INPUT  : R8 : RETURN ADDRESS                               @D64ADMZ 01889042
+*            RA : ADDR OF TCB                                  @D64ADMZ 01890042
+*            RE : ROUTINE BASE                                 @D64ADMZ 01891042
+*   OUTPUT : R0 : LOAD POINT                                   @D64ADMZ 01892042
+*            R1 : ENTRY POINT                                  @D64ADMZ 01893042
+*            RF : LENGTH OF PHASE                              @D64ADMZ 01894042
+*   WORK   : R3                                                @D64ADMZ 01895042
+*   EXIT   : RETURN TO CALLER                                  @D64ADMZ 01896042
+*   ERROR EXIT: -                                              @D64ADMZ 01897042
+*                                                              @D64ADMZ 01898042
+*---------------------------------------------------------------------* 01899042
+*SGLINK CDLSVAPI,S,INPUT=(R8,RA,RE),WORK=(R3),OUTPUT=(R0,R1,RF)         01900042
+CDLSVAPI DS    0H                                              @D64ADMZ 01901042
+*        GET LENGTH OF PHASE                                   @DL295HL 01902042
+         L     RF,DFWKEPLN        GET LENGTH OF PHASE          @D14CDJB 01903042
+         L     R3,DFWKEEPL        GET ENTRY POINT              @D14CDJB 01904042
+         S     R3,DFWKELPL        MINUS LOAD POINT             @D14CDJB 01905042
+         L     R0,DFWKEVLE        EP IN SVA                    @D64ADMZ 01906042
+         LR    R1,R0              SAVE ENTRY POINT FROM FETCH  @D36ZDJB 01907042
+         SR    R0,R3              GET NEW LOAD POINT           @D36ZDJB 01908042
+         BR    R8                 RETURN TO CALLER             @D64ADMZ 01909042
+*---------------------------------------------------------------------* 01910042
+         SPACE 1                                               @D64ADVB 01911042
+CDREG5   DS    F                                               @D64ADMZ 01912042
+CDFREVIS DC    A(FREEVIS)         FREEVIS ENTRY POINT          @D67FDMZ 01913042
+CDLERR28 EQU   28                 CDLOAD/CDDELETE IN ICCF PSEUDO PART.  01914042
+*                                 NOT ALLOWED DUR. ICCF CANCEL @DY44126 01915042
+         DROP  R6,RA,RE                                        @D14CDJB 01916042
+         DROP  RD                 RELEASE SAVEAREA             @D52VDMZ 01917042
+.*--- CDLOAD / CDDELETE MOVED FROM SGAM ----------------------*@D61NDVB 01918042
+.*                                                             @D64ADVB 01919042
+         SGXFCH     -  MVS PLATFORM - LOAD/DELETE/BLDL SERVICES         01920042
+.*                                                             @D64ADVB 01921042
+         AIF   (NOT &SGCFCH).PRTGEN                            @D61NDVB 01922042
+         PRINT  NOGEN                                          @D377DVB 01923042
+.PRTGEN  ANOP                                                  @D377DVB 01924042
+         MEND                                                        EM 01925042

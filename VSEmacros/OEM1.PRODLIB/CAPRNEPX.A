@@ -1,0 +1,213 @@
+*ASM CICS(NOPROLOG NOEPILOG NOEDF)                                      00001000
+         GBLB  GNEPEIE             DFHEIEND INDICATOR                   00002000
+&GNEPEIE SETB  1                   SET DFHEIEND FOR DFHSNEP             00003000
+         DFHSNEP TYPE=INITIAL                                           00004000
+DFHEISTG DSECT                     Continue DSECT                       00005000
+         CNOP  0,4                 ALIGN                                00006000
+MSGAREA  DS    XL(RAPSMSGL)        Message area                         00007000
+CAPRDATL DS    H                   Data area len for HC                 00008000
+LOC8@    DS    A                   @ LOC8                               00009000
+DFHEIEND DS    0X                  END DFHEISTG                         00010000
+DFHZNEP0 CSECT ,                                                        00011000
+         EJECT                                                          00012000
+***************************************************************         00013000
+*         CA-RAPS NODE ERROR PROGRAM (NEP) for CICS TS only             00014000
+*         Note - Use CAPRNEP for CICS VSE 2.3                           00015000
+*--------------------------------------------------------------         00016000
+*   Change Log: New Module 1/19/01 - JMW                                00017000
+*               COSMETIC CHANGES 04/04/2003 TC74568                     00018000
+*--------------------------------------------------------------         00019000
+*--------------------------------------------------------------         00020000
+*                                                                       00021000
+*********************************************************************** 00022000
+* NOTE - IF your installation is already using a NEP then you           00023000
+* can DELETE the following statements:                                  00024000
+*      1  DFHSNEP TYPE=INITIAL                                          00025000
+*      2  DFHSNEP TYPE=FINAL                                            00026000
+*      3  END   DFHNEPNA                                                00027000
+* In addition, ensure that you place the following three statements     00028000
+* at the top of your existing NEP:                                      00029000
+*                                                                       00030000
+*  *ASM CICS(NOPROLOG NOEPILOG NOEDF) - Note: Starts in column number 1 00031000
+*        GBLB  GNEPEIE             DFHEIEND INDICATOR                   00032000
+*  &GNEPEIE SETB  1                   Set DFHEIEND for DFHSNEP          00033000
+*                                                                       00034000
+* These statements instruct the Command Level TRANSLATOR and the        00035000
+* macro preprocessor not to insert certain code during transalation     00036000
+* and macro preprocessing - you will encounter errors during            00037000
+* Translation and MACRO preprocessing stages if they are not placed     00038000
+* at the top of your NEP.                                               00039000
+*********************************************************************** 00040000
+         LTORG                                                          00041000
+         EJECT                                                          00042000
+TCTTEAR  EQU   0                   Avoid assembly errors                00043000
+*                                                                       00044000
+*        RAPS NODE ERROR PROGRAM LOGIC FOR PRINTER ERROR RECOVERY       00045000
+*             (RAPS CONTROLLED CICS PRINTERS UNDER VTAM)                00046000
+*                                                                       00047000
+         DFHSNEP TYPE=ERRPROC,GROUP=1,CODE=(D9,DC,DD)                   00048000
+         STM   R14,R11,NEPEPRS     Save Regs                            00049000
+         LR    R5,R15              Set addressability                   00050000
+         USING *-6,R5              SET BASEREG                          00051000
+         SPACE ,                                                        00052000
+*********************************************************************** 00053000
+*        VERSION IDENTIFYING HEADER                                   * 00054000
+*********************************************************************** 00055000
+CAPRNEP0 DS    0H                                                       00056000
+         B     CAPRNEP1            Branch around header                 00057000
+         DC    CL8'CAPRZNEP'       Program ID                           00058000
+         DC    CL7'VM=5.0 '            VERSION                          00059000
+         DC    CL11'CA-RAPS/VSE'       PRODUCT                          00060000
+CAPRNEP1 DS    0H                      ALIGNMENT                        00061000
+         SPACE ,                                                        00062000
+         LA    R2,18*4+4*2         Len for SA & plist                   00063000
+         STH   R2,DFHEIPL+(12*4)   Set len for GETMAIN                  00064000
+*        EXEC CICS GETMAIN,        Get storage below the line           00065000
+*              LENGTH(DFHEIPL+(12*4)),                                  00066000
+*              SET(R4),                                                 00067000
+*              INITIMG(X'00')                                           00068000
+         DFHECALL =X'0C02E000480000CC00',(PTR4__RF,R4),(FB_2,DFHEIPL+(1*00069000
+               2*4)),(___1,=X'00')                                      00070000
+         SPACE 2                                                        00071000
+*        EXEC CICS LOAD,                                                00072000
+*              PROGRAM('CAPRLOC8'),                                     00073000
+*              SET(R15)                                                 00074000
+         DFHECALL =X'0E06C0004800000400',(CHA8,=CL8'CAPRLOC8'),(PTR4__R*00075000
+               F,R15)                                                   00076000
+         SPACE 2                                                        00077000
+         ST    R15,LOC8@           Save @ CAPRLOC8                      00078000
+         LR    R6,R13              Save @ of EISTG                      00079000
+         SPACE ,                                                        00080000
+         LA    R1,TWANID           Get @ Printer ID                     00081000
+         ST    R1,72(R4)           ... and set in PLIST                 00082000
+         DFHCSAD TYPE=LOCATE,REG=R14  Get @ CSA                         00083000
+         ST    R14,72+4(R4)        ...and set in PLIST                  00084000
+         SPACE ,                                                        00085000
+         LA    R1,72(,R4)          Get @ Plist                          00086000
+         LR    R13,R4              SET SAVEAREA FOR CAPRLOC8            00087000
+         L     R15,LOC8@-DFHEISTG(R6) Get @ CAPRLOC8                    00088000
+         BASSM R14,R15             ...AND CHECK IF RAPS PRINTER         00089000
+         B     CAPREXT1                +0 NOT A RAPS PRINTER            00090000
+         B     CAPRCVR                 +4 RAPS PRINTER                  00091000
+         EJECT                                                          00092000
+*                                                                       00093000
+CAPRCVR  DS    0H                                                       00094000
+         LR    R13,R6              Restore @ EISTG                      00095000
+         OI    TWAOPT2,TWAOAS              ABORT VTAM SEND              00096000
+         NI    TWAOPT2,255-(TWAOAT)        DO NOT ABEND TASK            00097000
+         NI    TWAOPT3,255-(TWAOOS+TWAOCN) OR SET NODE OUT OF SERVICE   00098000
+         ICM   R15,B'1111',X'0C'(R15)      ADCON RPCB EXTENSION         00099000
+         BZ    CAPREXT2                    ..NO JO ACTIVE               00100000
+         OI    X'38'(R15),X'01'            ATTEMPT AUTO RECOV           00101000
+         B     SENDMSG                                                  00102000
+         EJECT                                                          00103000
+*                                                                       00104000
+*   SEND CONSOLE MSG NOTIFYING THAT ERROR RECOVERY HAS BEEN ENTERED     00105000
+*                                                                       00106000
+SENDMSG  DS    0H                                                       00107000
+         MVC   MSGAREA(RAPSMSGL),RAPSMSG Move msg to WKSTG              00108000
+         LA    R7,MSGAREA          Get @ MSGAREA                        00109000
+         LA    R6,L'MSGAREA-4(,R7) ---> TERMID in MSG                   00110000
+         MVC   0(4,R6),TWANID      Move TERMID to MSG                   00111000
+         WTO   MF=(E,(R7))         SEND THE MSG                         00112000
+         SPACE 3                                                        00113000
+         B     CAPREXT2            Continue                             00114000
+         EJECT                                                          00115000
+CAPREXT1 DS    0H                                                       00116000
+         LR    R13,R6              Restore @ EISTG                      00117000
+CAPREXT2 DS    0H                                                       00118000
+*        EXEC CICS FREEMAIN,       Free our storage                     00119000
+*              DATAPOINTER(R4)                                          00120000
+         DFHECALL =X'0C0440004800004000',,(PTR4,R4)                     00121000
+         SPACE 3                                                        00122000
+*                                                                       00123000
+*                                                                       00124000
+*        RETURN                                                         00125000
+*                                                                       00126000
+CAPRNEPX DS    0H                                                       00127000
+         LM    R14,R11,NEPEPRS     Restore Regs                         00128000
+*********************************************************************** 00129000
+*        INSERT NON-RAPS ERROR RECOVERY LOGIC HERE IF DESIRED.        * 00130000
+*********************************************************************** 00131000
+         BR    R14                     AND RETURN                       00132000
+         EJECT                                                          00133000
+         LTORG                                                          00134000
+RAPSMSG  WTO   'CA-RAPS NODE ERROR PROGRAM ACTIVE FOR PRINTER XXXX',   X00135000
+               MF=L                                                     00136000
+RAPSMSGL EQU   *-RAPSMSG                                                00137000
+         DROP R5                                                        00138000
+         EJECT                                                          00139000
+*********************************************************************** 00140000
+*        RAPS NODE ERROR PROGRAM LOGIC FOR HARCOPY FEATURE            * 00141000
+*               (RAPS VTAM-SCREEN TO POWER QUEUE ROUTINE)             * 00142000
+*********************************************************************** 00143000
+         DFHSNEP TYPE=ERRPROC,GROUP=2,CODE=(42)                         00144000
+         STM   R14,R11,NEPEPRS     Save Regs                            00145000
+         LR    R5,R15              Load Base Reg                        00146000
+         USING *-6,R5              SET BASEREG                          00147000
+         SPACE                                                          00148000
+HDCOPY10 DS    0H                                                       00149000
+         L     R3,TWATIOAA         Get @ TIOA(data portion)             00150000
+         LH    R2,TWATIOAL         GET LEN OF DATA                      00151000
+         LA    R2,10(,R2)          ADJUST FOR OUR DATA                  00152000
+         STH   R2,DFHEIPL+(12*4)   Set len for GETMAIN                  00153000
+HDCOPY20 DS    0H                                                       00154000
+*        EXEC CICS GETMAIN,        Get storage                          00155000
+*              LENGTH(DFHEIPL+(12*4)),                                  00156000
+*              SET(R4),                                                 00157000
+*              INITIMG(X'00')                                           00158000
+         DFHECALL =X'0C02E000480000CC00',(PTR4__RF,R4),(FB_2,DFHEIPL+(1*00159000
+               2*4)),(___1,=X'00')                                      00160000
+         SPACE 2                                                        00161000
+HDCOPY30 DS    0H                                                       00162000
+         L     R6,TWATCTA          Get @ TCTTE                          00163000
+         MVI   0(R4),X'FF'        SET FLAG                              00164000
+         MVC   1(1,R4),TCTEDSCL-DFHTCTTE(R6) SET DEFAULT # LINE         00165000
+         MVC   2(1,R4),TCTEDSCC-DFHTCTTE(R6) SET DEFAULT # COLS         00166000
+         TM    TCTE32SF-DFHTCTTE(R4),TCTEALW+TCTELEWA Alt on?           00167000
+         BZ    MOVE0000           ...NO-BRANCH,USE DEFAULTS             00168000
+         MVC   1(1,R4),TCTEASCL-DFHTCTTE(R6) SET ALT # LINES            00169000
+         MVC   2(1,R4),TCTEASCC-DFHTCTTE(R6) SET ALT # COLUMNS          00170000
+         SPACE                                                          00171000
+MOVE0000 DS    0H                                                       00172000
+         MVC   3(4,R4),TWANID     Set TERM-ID                           00173000
+         MVC   7(3,R4),TCTTEOI-DFHTCTTE(R6) Set OP-ID                   00174000
+HDCOPY40 DS    0H                                                       00175000
+         SPACE                                                          00176000
+         LR    R6,R3              COPY LIOA ADDR FOR MVCL               00177000
+         LH    R7,TWATIOAL         Get len for MVCL                     00178000
+         LA    R8,10(,R4)         To address for MVCL                   00179000
+         LA    R15,10(,R7)        Len of data for IC                    00180000
+         STH   R15,CAPRDATL       Set for START                         00181000
+         LR    R9,R7              COPY LENGTH FOR MVCL                  00182000
+         MVCL  R8,R6              COPY LIOA TO IC DATA                  00183000
+         SPACE                                                          00184000
+*        EXEC CICS START,                                               00185000
+*              TRANSID('RSCN'),                                         00186000
+*              FROM(0(R4)),                                             00187000
+*              INTERVAL(0),                                             00188000
+*              LENGTH(CAPRDATL)                                         00189000
+         DFHECALL =X'1008B8004800005000',(___4,=PL4'0'),,(CHA4,=CL4'RSC*00190000
+               N'),(______RF,0(R4)),(FB_2,CAPRDATL)                     00191000
+         SPACE 2                                                        00192000
+*        EXEC CICS FREEMAIN,       Free our storage                     00193000
+*              DATAPOINTER(R4)                                          00194000
+         DFHECALL =X'0C0440004800004000',,(PTR4,R4)                     00195000
+         SPACE 3                                                        00196000
+         MVI   TWAUPRRC,X'FF'   Tell ZNAC data is disposed              00197000
+         SPACE                                                          00198000
+SCREXIT  DS    0H                                                       00199000
+         LM    R14,R11,NEPEPRS     Restore Regs                         00200000
+         BR    R14                     AND RETURN                       00201000
+         LTORG                                                          00202000
+         DROP R5                                                        00203000
+         EJECT                                                          00204000
+         PUSH  PRINT                                                    00205000
+         PRINT OFF                                                      00206000
+         DFHTCTZE CICSYST=YES                                           00207000
+         DFHAFCD TYPE=DSECT                                             00208000
+         POP   PRINT                                                    00209000
+         DFHSNEP TYPE=FINAL                                             00210000
+         EJECT                                                          00211000
+COMREG   MAPCOMR ,                                                      00212000
+         END DFHNEPNA                                                   00213000

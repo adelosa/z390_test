@@ -1,0 +1,1179 @@
+         TITLE 'SECEXIT -- (CSECT)-- Copyright 1996,2006 (c) Connectivi*00001000
+               ty Systems Incorporated'                                 00002000
+*********************************************************************** 00003000
+*                                                                     * 00004000
+*  Copyright (c) 1996,2006 - Connectivity Systems Inc.                * 00005000
+*                                                                     * 00006000
+*  This is a SAMPLE security exit for TCP/IP for VSE. The sample exit * 00007000
+*  performs the following basic functions.                            * 00008000
+*                                                                     * 00009000
+*  1) It allows or disallows access to FTP based on a userid table    * 00010000
+*     that is hardcoded in the exit. You MUST modify the table to fit * 00011000
+*     your needs, or replace the call with a VSE Security call to one * 00012000
+*     of the security packages. The table must end on a userid of     * 00013000
+*     binary zeroes. The exit also allows use of the DEFINE USER      * 00014000
+*     command in the TCP/IP init deck.                                * 00015000
+*                                                                     * 00016000
+*  2) It always allows access to the userid 'ANONYMOUS' and will      * 00017000
+*     audit to the console all requests from this user, including     * 00018000
+*     the specified password. Note that most people will use their    * 00019000
+*     EMAIL id as the password for anonymous FTP.                     * 00020000
+*                                                                     * 00021000
+*  3) The table utilizes the data parameter from the DEFINE USER      * 00022000
+*     statement, if one is provided for the User. There are two       * 00023000
+*     fields that can be specified - an IP address and a Privlege     * 00024000
+*     indicator. The IP address will restrict the user to that IP     * 00025000
+*     Address. If the userid is found to be privleged (specified by   * 00026000
+*     the keyword PRIV, the user  can write into any library. If not, * 00027000
+*     the user can only write into the public library. Any user other * 00028000
+*     then anonymous can read any library.                            * 00029000
+*                                                                     * 00030000
+*     The syntax of the expected DATA parameter is:                   * 00031000
+*                                                                     * 00032000
+*     DATA='IP=xxx.xxx.xxx.xxx  PRIV'                                 * 00033000
+*                                                                     * 00034000
+*     If IP= is specified, the exit will only allow logons from       * 00035000
+*     this particular IP address. If PRIV is specified, the user      * 00036000
+*     is deemed to be a privileged user. The specified IP address     * 00037000
+*     can have a zero (0) in any one of the 4 triplets. This          * 00038000
+*     is a wild card indicator. For example, the following DEFINE     * 00039000
+*     USER statement:                                                 * 00040000
+*                                                                     * 00041000
+*     DEFINE USER,ID=JOHN,DATA='IP=100.0.0.0'                         * 00042000
+*                                                                     * 00043000
+*     Would allow JOHN access to the TCP/IP product from any          * 00044000
+*     IP address on network 100 (assuming the appropriate subnet      * 00045000
+*     mask).                                                          * 00046000
+*                                                                     * 00047000
+*  4) Anonymous FTP users can read any sublibrary in the PUBLIC       * 00048000
+*     library, but may only WRITE into the PUBLIC.INCOMING library    * 00049000
+*                                                                     * 00050000
+*  5) Auditing is provided in this program as an Option. If the first * 00051000
+*     flag if the SECDATA field is A, auditing will be done. If the   * 00052000
+*     field is no "A",   no auditing is done, save for activity       * 00053000
+*     performed for ANONYMOUS users and if anything is rejected.      * 00054000
+*                                                                     * 00055000
+*  6) FTP ROOT support is provided with DRIVER=FTPDAEMN. This will    * 00056000
+*     restrict the user to that directory and lower. The root         * 00057000
+*     directory can be specified with the ROOT= parameter on the      * 00058000
+*     DEFINE USER command or it can be added or modified in this      * 00059000
+*     exit. See label USERGOOD to change or add the root.               00060000
+*                                                                     * 00061000
+*  7) Remember, this is only an example. Additional field information * 00062000
+*     will probably be passed through this exit in the future. Do     * 00063000
+*     not assume that the system will never change. If you want to    * 00064000
+*     take advantage of future features, it is likely that you will   * 00065000
+*     need to modify this exit to take advantage of those future      * 00066000
+*     facilities. If you don't make changes, then the exit will work, * 00067000
+*     but without the new features. Also, do not do *ANY* wait        * 00068000
+*     processing in this exit. The more delays, the worse it is       * 00069000
+*     for the overall performance of TCP/IP, since all I/O requests   * 00070000
+*     from TCP/IP will go though this exit.                           * 00071000
+*                                                                     * 00072000
+* Program Attributes: Rent, Reus                                      * 00073000
+*                                                                     * 00074000
+*********************************************************************** 00075000
+         SPLEVEL SET=1                                                  00076000
+R0       EQU   0                                                        00077000
+R1       EQU   1                                                        00078000
+R2       EQU   2                                                        00079000
+R3       EQU   3                                                        00080000
+R4       EQU   4                                                        00081000
+R5       EQU   5                                                        00082000
+R6       EQU   6                                                        00083000
+R7       EQU   7                                                        00084000
+R8       EQU   8                                                        00085000
+R9       EQU   9                                                        00086000
+R10      EQU   10                                                       00087000
+R11      EQU   11                                                       00088000
+R12      EQU   12                                                       00089000
+R13      EQU   13                                                       00090000
+R14      EQU   14                                                       00091000
+R15      EQU   15                                                       00092000
+**********************************************************************  00093000
+**********************************************************************  00094000
+*        The first CSECT is optional.  If present, it can be         *  00095000
+*        used to identify and verify the version of the Security     *  00096000
+*        Exit being loaded and executed.                             *  00097000
+*                                                                    *  00098000
+*        If included, the format MUST be exactly as shown.           *  00099000
+*                                                                    *  00100000
+*        You may change the values for "Version", "Assembly date",   *  00101000
+*        "Assembly time", and "Modification identifier".             *  00102000
+*                                                                    *  00103000
+*        The label: "$$$$VERS" may be omitted; it is used only by    *  00104000
+*        CSI automatic release generation routines.                  *  00105000
+*                                                                    *  00106000
+**********************************************************************  00107000
+**********************************************************************  00108000
+IDENT    CSECT                                                          00109000
+IDENT    AMODE    31                    All AMODE statements must match 00110000
+IDENT    RMODE    ANY                   All RMODE statements must match 00111000
+$$$$VERS DC       CL8'SECEXIT '         Identifies Security Exit        00112000
+         DC       CL8'01.05 E '         Version                         00113000
+         DC       CL8'&SYSDATE'         Assembly date                   00114000
+         DC       CL8'&SYSTIME'         Assembly time                   00115000
+         DC       CL8'     '            Modification identifier         00116000
+         DC       A(0)                  Reserved, MUST be zero          00117000
+         DC       A(SECEXIT)            Address of Entry Point          00118000
+         ENTRY    $$$$VERS                                              00119000
+**********************************************************************  00120000
+**********************************************************************  00121000
+*        Main entry point for the Security Exit.  Be sure that       *  00122000
+*        the entry point name is included on the "END" card.         *  00123000
+**********************************************************************  00124000
+**********************************************************************  00125000
+SECEXIT  CSECT ,                       Beginning of the code            00126000
+SECEXIT  AMODE 31                      Allow upper storage access       00127000
+SECEXIT  RMODE ANY                     Load phase in 31-bit storage     00128000
+*                                                                       00129000
+* Setup the savearea and work area and make it fully reentrant          00130000
+*                                                                       00131000
+         STM   R14,R12,12(R13)         Standard linkage                 00132000
+         LR    R12,R15                 Load base for routine            00133000
+         USING SECEXIT,R12             Code now addressable             00134000
+         LR    R9,R1                   Load base for SXBLOK             00135000
+         USING SXBLOK,R9               SXBLOK now addressable           00136000
+         L     R5,=A(COMMON)           Load base for common storage     00137000
+         USING COMMON,R5               Common storage now addressable   00138000
+         LA    R0,DYNAMICL             Length for dynamic storage       00139000
+         GETVIS ,                      Obtain the storage               00140000
+         LTR   R15,R15                 Did we get the storage?          00141000
+         BNZ   GETVFAIL                No, error                        00142000
+         ST    R13,4(,R1)              Save incoming R13 address        00143000
+         LR    R13,R1                  Address SAVE area and dynamic    00144000
+         USING DYNAMIC,R13             Dynamic area now addressable     00145000
+*********************************************************************** 00146000
+*  Let's set some global indicators from the SXBLOK. First, we'll     * 00147000
+*  set the filetype.                                                  * 00148000
+*                                                                     * 00149000
+*********************************************************************** 00150000
+         MVC   FILETYPE(8),UNKNOWN     Initialize file type             00151000
+         MVI   WEBIN,0                 Default                          00152000
+         LA    R2,TYPETBL              Get table of file types          00153000
+TYPETBLL DS    0H                                                       00154000
+         CLC   0(1,R2),SXFTYPE         Match on the type?               00155000
+         BE    TYPETBLF                Yes                              00156000
+         CLI   0(R2),X'00'             End of table?                    00157000
+         BE    TYPETBLN                                                 00158000
+         LA    R2,9(R2)                Check next entry                 00159000
+         B     TYPETBLL                                                 00160000
+TYPETBLN DS    0H                                                       00161000
+         B     TYPETBLE                Not found, default stands        00162000
+TYPETBLF DS    0H                                                       00163000
+         MVC   FILETYPE(8),1(R2)       Move in File Type.               00164000
+TYPETBLE DS    0H                                                       00165000
+*********************************************************************** 00166000
+*  Let's see if the Auditing flag is on.                              * 00167000
+*                                                                     * 00168000
+*********************************************************************** 00169000
+*                                                                       00170000
+         CLI   SXSECDAT,C'A'           Auditing required?               00171000
+         BNE   NOGLBAUD                No, global auditing off          00172000
+         OI    AUDITFLG,X'80'          Global Auditing on               00173000
+NOGLBAUD DS    0H                                                       00174000
+*********************************************************************** 00175000
+*        Write a log message to indicate the nature of this call.     * 00176000
+*        This message is produced only if DIAGNOSE SECURITY is in     * 00177000
+*        effect.                                                      * 00178000
+*********************************************************************** 00179000
+         TM    SXFLAG1,SXF1DIAG        DIAGNOSE SECEXIT in effect?      00180000
+         BZ    NEXT1                   No, skip the message             00181000
+         SLR   R2,R2                                                    00182000
+         IC    R2,SXTYPE               Call type                        00183000
+         CL    R2,MAXTYPE              Is type too high?                00184000
+         BNH   *+6                     No                               00185000
+         SLR   R2,R2                   Force type to "Unknown"          00186000
+*                                                                       00187000
+         SLL   R2,3                    Offset into table                00188000
+         LA    R2,TYPETAB(R2)          Address "type" text              00189000
+         MVC   LOGMWMSG(L'TYPMSG),TYPMSG Construct message              00190000
+         MVC   LOGMWMSG+L'TYPMSG-8(8),0(R2)  Insert type into msg       00191000
+         LA    R0,L'TYPMSG             Length of message                00192000
+         LA    R1,LOGMWMSG             Address of message               00193000
+         L     R15,SX@MSGX             Address of message writer        00194000
+         BASSM R14,R15                 Write the message                00195000
+         B     NEXT1                   Skip to next section             00196000
+*                                                                       00197000
+TYPMSG   DC    C'Security exit call type: xxxxxxxx'                     00198000
+TYPETAB  DS    0D                                                       00199000
+         DC    CL8'Unknown'            0                                00200000
+         DC    CL8'SXTYPASS'           1                                00201000
+         DC    CL8'SXTYREAD'           2                                00202000
+         DC    CL8'SXTYWRIT'           3                                00203000
+         DC    CL8'SXTYUPDT'           4                                00204000
+         DC    CL8'SXTYSTRT'           5                                00205000
+         DC    CL8'SXTYSHUT'           6                                00206000
+         DC    CL8'SXTYHARD'           7                                00207000
+         DC    CL8'SXTYIP'             8                                00208000
+         DC    CL8'SXTYCMD'            9                                00209000
+         DC    CL8'SXTYDEL'            10                               00210000
+         DC    CL8'SXTYREN'            11                               00211000
+         DC    CL8'SXTYCRT'            12                               00212000
+         DC    CL8'SXTYEXEC'           13                               00213000
+         DC    CL8'SXTYAPPE'           14                               00214000
+         DC    CL8'SXTYOPDI'           15                               00215000
+         DC    CL8'SXTYRDD'            16                               00216000
+         DC    CL8'SXTYCWD'            17                               00217000
+         DC    CL8'SXTYSHEL'           18                               00218000
+         DC    CL8'SXTYICMP'           19                               00219000
+         DC    CL8'SXTYLOGI'           20                               00220000
+         DC    CL8'SXTYRPC'            21                               00221000
+         DC    CL8'SXTYWEBL'           22                               00222000
+         DC    CL8'SXTYSCAN'           23                               00223000
+         DC    CL8'SXTYMKD'            24                               00224000
+         DC    CL8'SXTYRMD'            25                               00225000
+         DC    CL8'SXTYCWDL'           26                               00226000
+         DC    CL8'Unknown '           27                               00227000
+         DC    CL8'Unknown '           28                               00228000
+         DC    CL8'SXTYFCMD'           29                               00229000
+MAXTYPE  DC    A(((*-TYPETAB)/8)-1)    Number of table entries          00230000
+*********************************************************************** 00231000
+*  Let's check out why the routine has been called.                   * 00232000
+*********************************************************************** 00233000
+NEXT1    DS    0H                                                       00234000
+         CLI   SXTYPE,SXTYSTRT         Startup  Request?                00235000
+         BE    START                                                    00236000
+         CLI   SXTYPE,SXTYICMP         ICMP reply Requested ?           00237000
+         BE    ICMP                                                     00238000
+         CLI   SXTYPE,SXTYLOGI         FTPD Login message access?       00239000
+         BE    LOGINF                                                   00240000
+         CLI   SXTYPE,SXTYWEBL         HTTPD Login message access?      00241000
+         BE    LOGINW                                                   00242000
+         CLI   SXTYPE,SXTYRPC          RPC request coming in ?          00243000
+         BE    RPC                                                      00244000
+         CLI   SXTYPE,SXTYPASS         Password Request?                00245000
+         BE    PASSWORD                                                 00246000
+         CLI   SXTYPE,SXTYCWD          Change directory ?               00247000
+         BE    CWD                                                      00248000
+         CLI   SXTYPE,SXTYCWDL         Change directory from root?      00249000
+         BE    CWD                                                      00250000
+         CLI   SXTYPE,SXTYREAD         Read     Request?                00251000
+         BE    READ                                                     00252000
+         CLI   SXTYPE,SXTYWRIT         Write    Request?                00253000
+         BE    WRITE                                                    00254000
+         CLI   SXTYPE,SXTYUPDT         Update   Request?                00255000
+         BE    UPDATE                                                   00256000
+         CLI   SXTYPE,SXTYSCAN         HTTP SCANBLOCK request?          00257000
+         BE    SCANBLOCK                                                00258000
+         CLI   SXTYPE,SXTYSHUT         Shutdown Request?                00259000
+         BE    SHUT                                                     00260000
+         B     NOAUDITG                We don't care. Get out           00261000
+*                                                                       00262000
+* IF THIS WAS A "CWD" REQUEST, THEN SXPATH WOULD CONTAIN THE            00263000
+* SUBDIRECTORY NAME. (SO WILL SXDPIE1 AND SXSPIE1-SXSPIE6, BUT IN       00264000
+* PIECES). SXPATH WILL BE IN THE FORMAT OF piece\piece\piece...         00265000
+* FOR DRIVER=FTPDAEMN, SXTYCWD IS CALLED FOR EACH PIECE, WHILE          00266000
+* SXTYCWDL IS CALLED WITH THE LAST PIECE.                               00267000
+*                                                                       00268000
+*********************************************************************** 00269000
+* If an outside source is trying to find us, we will determine if we    00270000
+* want to respond or not. ICMP requests serve an assortment of needs,   00271000
+* one of which is pinging. This is one of the fundamental ways that     00272000
+* hackers use to see what nodes are on the network. By using such       00273000
+* utilties as "fping", they can grab an entire range of addresses to    00274000
+* work on. By not responding to someone outside of your network, you    00275000
+* can make it a bit harder for them to get in. SXDATA will contain the  00276000
+* fullword IP address of the local TCP/IP system to make the compare    00277000
+* a lot easier.                                                         00278000
+*                                                                       00279000
+* In this example, we are using a class "C" network and will only allow 00280000
+* a reply from the same network. (xxx.xxx.xxx.any).                     00281000
+*********************************************************************** 00282000
+ICMP     DS    0H                                                       00283000
+         CLC   SXIPADDR(3),SXDATA      Part of our same network ?       00284000
+         BE    RETGOOD                 Yes, it's one of ours            00285000
+*                                                                       00286000
+         TM    SXFLAG1,SXF1DIAG        DIAGNOSE SECEXIT in effect?      00287000
+         BZ    NOAUDITF                No, skip the message             00288000
+*                                                                       00289000
+         LA    R0,M001L                Msg length                       00290000
+         LA    R1,IPSC001E             Msg address                      00291000
+         L     R15,SX@MSGX             Msg write routine                00292000
+         BASSM R14,R15                 Call it                          00293000
+         B     NOAUDITF                And exit                         00294000
+*********************************************************************** 00295000
+* If an outside source found our site, they may be doing "banner        00296000
+* grabbing" to see that manufacturer and release information of the     00297000
+* FTP daemon in order to determine what kind of system and what         00298000
+* weaknesses may be compromised. By using this exit, you can stop the   00299000
+* user from accessing the system befor he or she even gets a welcome    00300000
+* banner. This will make hacking a bit harder. SXDATA will contain the  00301000
+* fullword IP address of the local TCP/IP system to make the compare    00302000
+* a lot easier.                                                         00303000
+*                                                                       00304000
+* In this example, we are using a class "C" network and will only allow 00305000
+* FTP access from the same network. (xxx.xxx.xxx.any).                  00306000
+*********************************************************************** 00307000
+LOGINF   DS    0H                                                       00308000
+         CLC   SXIPADDR(3),SXDATA      Part of our same network ?       00309000
+         BE    RETGOOD                 Yes, it's one of ours            00310000
+*                                                                       00311000
+         TM    SXFLAG1,SXF1DIAG        DIAGNOSE SECEXIT in effect?      00312000
+         BZ    NOAUDITF                No, skip the message             00313000
+*                                                                       00314000
+         LA    R0,M011L                Msg length                       00315000
+         LA    R1,IPSC011E             Msg address                      00316000
+         L     R15,SX@MSGX             Msg write routine                00317000
+         BASSM R14,R15                 Call it                          00318000
+         B     NOAUDITF                And exit                         00319000
+*********************************************************************** 00320000
+* Your HTTPD has "SEC=YES". Before we send the PASSWORD.HTML to the     00321000
+* user, let's see if we want to allow this specific IP address to       00322000
+* bypass security or to force the user to have to log in at any         00323000
+* point, even if he logged in before. This is all based on return       00324000
+* codes as follows:                                                     00325000
+*                                                                       00326000
+* R15=0 (Normal processing)                                             00327000
+* R15=4 (Bypass a signon screen)                                        00328000
+* R15=8 (Force a signon screen even if it isn't needed)                 00329000
+*                                                                       00330000
+* In this example, we'll do normal processing                           00331000
+*********************************************************************** 00332000
+LOGINW   DS    0H                                                       00333000
+         MVI   WEBIN,1                 Force a login by default         00334000
+         B     RETGOOD                 And get out                      00335000
+*********************************************************************** 00336000
+* If an outside source found our site, they may be doing TCP port       00337000
+* scanning to see what programs are running under VSE. Typically this   00338000
+* is done to see if a specific application is available, and the port.  00339000
+* By using this exit, you can stop any acknowledgment from taking       00340000
+* place as well as block the IP address from even using the VSE stack   00341000
+* at all! You simply return a code of 0 if you want to allow the user   00342000
+* to keep doing this, or a non-zero to refuse his IP-traffic.           00343000
+*                                                                       00344000
+* This will only enter if the HTTPD is defined with "SCAN=EXIT".        00345000
+*                                                                       00346000
+* In this example, we are using a class "C" network and will not block  00347000
+* any scans from the same network. (xxx.xxx.xxx.any).                   00348000
+*********************************************************************** 00349000
+SCANBLOCK DS   0H                                                       00350000
+         CLC   SXIPADDR(3),SXDATA         Part of our same network ?    00351000
+         BE    RETGOOD                    Yes, don't refuse traffic     00352000
+         B     NOAUDITF                   Otherwise, refuse traffic     00353000
+*********************************************************************** 00354000
+* If an outside source found our site, they may be doing RPC port       00355000
+* scanning to see what programs are running under VSE. Typically this   00356000
+* is done to get user names, mount points, and program identifiers.     00357000
+* By using this exit, you can stop any acknowledgment from taking       00358000
+* place. This will make hacking a bit harder. SXDATA will contain the   00359000
+* fullword IP address of the local TCP/IP system to make the compare    00360000
+* a lot easier.                                                         00361000
+*                                                                       00362000
+* In this example, we are using a class "C" network and will only allow 00363000
+* RPC access from the same network. (xxx.xxx.xxx.any).                  00364000
+*********************************************************************** 00365000
+RPC      DS    0H                                                       00366000
+         CLC   SXIPADDR(3),SXDATA         Part of our same network ?    00367000
+         BE    RETGOOD                    Yes, it's one of ours         00368000
+*                                                                       00369000
+         TM    SXFLAG1,SXF1DIAG        DIAGNOSE SECEXIT in effect?      00370000
+         BZ    NOAUDITF                No, skip the message             00371000
+*                                                                       00372000
+         LA    R0,M012L            Msg length                           00373000
+         LA    R1,IPSC012E         Msg address                          00374000
+         L     R15,SX@MSGX         Msg write routine                    00375000
+         BASSM R14,R15             Call it                              00376000
+         B     NOAUDITF                   And exit                      00377000
+*********************************************************************** 00378000
+* In this routine, we will only let people with ADMIN ability get     * 00379000
+* into anything, or OPER ability to get into POWER.RDR. Everyone else * 00380000
+* can only get into POWER.LST or POWER.PUN                            * 00381000
+*                                                                     * 00382000
+* As an additional feature, we will cause any IP address that attempts* 00383000
+* to access IJSYSRS (other than ADMIN) to immediately have their IP   * 00384000
+* address blocked.                                                    * 00385000
+*********************************************************************** 00386000
+CWD      DS    0H                                                       00387000
+         CLI   SXPASSVF,X'FF'                Password Verified?         00388000
+         BE    CWDUOKAY                                                 00389000
+         BAS   R7,CHKNAM                     Find the name              00390000
+         LTR   R15,R15                       Did it work ?              00391000
+         BNE   RETFAIL                       No...error                 00392000
+CWDUOKAY DS    0H                                                       00393000
+         CLC   SXUSERID(8),=C'ADMIN   '      All powerful ?             00394000
+         BE    RETGOOD                       Yes...proceed              00395000
+         CLC   SXFNAME(7),=C'IJSYSRS'        Bad place ?                00396000
+         BNE   CWD2                          Go check more              00397000
+*                                                                       00398000
+* Block this IP                                                         00399000
+*                                                                       00400000
+         OI    SXHBLOCK,SXBLOKIP             Block the IP address       00401000
+         B     RETFAIL                       And get out                00402000
+*                                                                       00403000
+* Validate the access                                                   00404000
+*                                                                       00405000
+CWD2     CLC   SXDPIE1(8),=CL8'POWER'        Permit?                    00406000
+         BNE   RETFAIL                       No...                      00407000
+         CLC   SXSPIE1(8),=CL8'RDR'          Trying to get to RDR ?     00408000
+         BNE   RETGOOD                       No...proceed               00409000
+         CLC   32(8,R2),=CL8'OPER'           Able to do it ?            00410000
+         BE    RETGOOD                       Yes...proceed              00411000
+         B     RETFAIL                       It's a problem             00412000
+*********************************************************************** 00413000
+* This is the password routine. We'll validate the user password      * 00414000
+* or allow it if it is anonymous. Note that this routine is only      * 00415000
+* called for the FTP daemon. Other accesses to the file system require* 00416000
+* validation of the password as well. The password can either be      * 00417000
+* specified in this exit or on the DEFINE USER statement. If it was   * 00418000
+* on the define user statement, we'll verify that it was specified    * 00419000
+* correctly. If it was wrong, the user is still logged on if the      * 00420000
+* id and (correct) password is in this table.                         * 00421000
+*                                                                     * 00422000
+*********************************************************************** 00423000
+PASSWORD DS    0H                                                       00424000
+         CLC   SXUSERID(16),ANON               Userid=Anonymous         00425000
+         BNE   CHECKTAB                       No, check the table       00426000
+         MVC   LOGMWMSG(M005L),IPSC005I                                 00427000
+         MVC   LOGMWMSG+52(16),SXPASSWD                                 00428000
+         LA    R0,M005L            Msg length                           00429000
+         LA    R1,LOGMWMSG         Msg address                          00430000
+         L     R15,SX@MSGX         Msg write routine                    00431000
+         BASSM R14,R15             Call it                              00432000
+         B     USERGOOD                                                 00433000
+         LTORG ,                                                        00434000
+CHECKTAB DS    0H                                                       00435000
+         CLI   SXPASSVF,X'FF'                Password Verified?         00436000
+         BNE   RETFAIL                       No                         00437000
+USERGOOD DS    0H                                                       00438000
+*********************************************************************** 00439000
+*    The user's root directory can be modified/added here. The root   * 00440000
+*    directory is required to be padded with blanks.                  * 00441000
+*********************************************************************** 00442000
+*        CLI   SXFROOT,C' '                 Root specified on DEF USER? 00443000
+*        BH    RETGOOD                      Yes, already set            00444000
+*        MVI   SXFROOT,C' '                 Clear field to spaces       00445000
+*        MVC   SXFROOT+1(L'SXFROOT-1),SXFROOT Propogate spaces          00446000
+*        MVC   SXFROOT(12),=C'USERLIB.TEST' Set user's root directory   00447000
+         B     RETGOOD                                                  00448000
+*********************************************************************** 00449000
+* Here, we check if the userid has already been validated by          * 00450000
+* TCP/IP prior to calling the security exit. Note that the exit       * 00451000
+* could have ignored this password completely.                        * 00452000
+*                                                                     * 00453000
+*                                                                     * 00454000
+*********************************************************************** 00455000
+CHKNAM   LA    R2,USERTAB                    Get address of table       00456000
+CHKLOOP  DS    0H                                                       00457000
+         CLC   0(16,R2),SXUSERID             Does the Userid match      00458000
+         BE    USERFND                       Yup, go check password     00459000
+         CLC   0(16,R2),USERTABE             End of table?              00460000
+         BE    USERNFND                      Yup, user not found        00461000
+         LA    R2,USERTABL(R2)               Bump to next entry         00462000
+         B     CHKLOOP                                                  00463000
+USERFND  DS    0H                                                       00464000
+         SLR   R15,R15                       Init the code              00465000
+         CLC   16(16,R2),SXPASSWD            Does the password match?   00466000
+         BER   R7                                                       00467000
+         MVC   LOGMWMSG(M007L),IPSC007E  Bad Password                   00468000
+         MVC   LOGMWMSG+14(16),SXUSERID                                 00469000
+         LA    R0,M007L            Msg length                           00470000
+         LA    R1,LOGMWMSG         Msg address                          00471000
+         L     R15,SX@MSGX         Msg write routine                    00472000
+         BASSM R14,R15             Call it                              00473000
+         LA    R15,4                         Indicate failure           00474000
+         BR    R7                            And return                 00475000
+*                                                                       00476000
+USERNFND DS    0H                                                       00477000
+         MVC   LOGMWMSG(M008L),IPSC008E  User not found                 00478000
+         MVC   LOGMWMSG+14(16),SXUSERID                                 00479000
+         LA    R0,M008L            Msg length                           00480000
+         LA    R1,LOGMWMSG         Msg address                          00481000
+         L     R15,SX@MSGX         Msg write routine                    00482000
+         BASSM R14,R15             Call it                              00483000
+         LA    R15,4                         Indicate failure           00484000
+         BR    R7                            And return                 00485000
+*                                                                       00486000
+*                                                                       00487000
+WRITE    DS    0H                                                       00488000
+READ     DS    0H                                                       00489000
+*********************************************************************** 00490000
+* This is the Read/Write routine. A read will be allowed if           * 00491000
+*                                                                     * 00492000
+* 1) The user is defined and is not an anonymous                      * 00493000
+* 2) The user is anonymous and is reading from a PUBLIC library,      * 00494000
+*    but not PUBLIC.INCOMING (e.g. Can't see other users uploads)     * 00495000
+*                                                                     * 00496000
+* A Write will be allowed if:                                         * 00497000
+*                                                                     * 00498000
+* 1) The user has the privilege bit on                                * 00499000
+* 2) The user is not anonymous and attempting to write into           * 00500000
+*    "PUBLIC.*"                                                       * 00501000
+* 3) The user is ANONYMOUS and is attempting to write into            * 00502000
+*    PUBLIC.INCOMING                                                  * 00503000
+*                                                                     * 00504000
+* If the specified password does not match, this routine will         * 00505000
+* automatically reject the request.                                   * 00506000
+*                                                                     * 00507000
+*********************************************************************** 00508000
+         CLC   SXUSERID(16),ANON                                        00509000
+         BE    AUSERFND                      Allow anonymous in         00510000
+*********************************************************************** 00511000
+* Here, we check if the userid has already been validated by          * 00512000
+* TCP/IP prior to calling the security exit. Note that the exit       * 00513000
+* could have ignored this password completely.                        * 00514000
+*********************************************************************** 00515000
+         CLI   SXPASSVF,X'FF'                Password Verified?         00516000
+         BE    REALUSER                                                 00517000
+*                                                                       00518000
+         LA    R2,USERTAB                    Get address of table       00519000
+RCHKTAB  DS    0H                                                       00520000
+         CLC   0(16,R2),SXUSERID             Does the Userid match      00521000
+         BE    RCHKPASS                      Yup, go process            00522000
+         CLC   0(16,R2),USERTABE             End of table?              00523000
+         BE    RUSERNFN                      Yup, user not found.       00524000
+*                                            only happen if this exit   00525000
+*                                            Note that this can         00526000
+*                                            is loaded (or security     00527000
+*                                            turned on) after           00528000
+*                                            initialization             00529000
+*                                            or if security is called   00530000
+*                                            for something other then   00531000
+*                                            LPD                        00532000
+*                                                                       00533000
+         LA    R2,USERTABL(R2)               Bump to next entry         00534000
+         B     RCHKTAB                                                  00535000
+RCHKPASS DS    0H                                                       00536000
+         CLC   16(16,R2),SXPASSWD           Does the password match?    00537000
+         BNE   RCHKPASF                                                 00538000
+         B     REALUSER                                                 00539000
+RCHKPASF DS    0H                                                       00540000
+         MVC   LOGMWMSG(M007L),IPSC007E  Bad Password                   00541000
+         MVC   LOGMWMSG+14(16),SXUSERID                                 00542000
+         LA    R0,M007L            Msg length                           00543000
+         LA    R1,LOGMWMSG         Msg address                          00544000
+         L     R15,SX@MSGX         Msg write routine                    00545000
+         BASSM R14,R15             Call it                              00546000
+         B     RETFAIL                                                  00547000
+         LTORG ,                                                        00548000
+RUSERNFN DS    0H                                                       00549000
+*********************************************************************** 00550000
+* Here, we have a userid not found condition (see comments above)     * 00551000
+* We'll reject any request from this user. If he wants to come in     * 00552000
+* again as ANONYMOUS, he is welcome to do it.                         * 00553000
+*********************************************************************** 00554000
+         MVC   LOGMWMSG(M009L),IPSC009E  User not found                 00555000
+         MVC   LOGMWMSG+14(16),SXUSERID                                 00556000
+         LA    R0,M009L            Msg length                           00557000
+         LA    R1,LOGMWMSG         Msg address                          00558000
+         L     R15,SX@MSGX         Msg write routine                    00559000
+         BASSM R14,R15             Call it                              00560000
+         B     RETFAIL                                                  00561000
+*                                                                       00562000
+AUSERFND DS    0H                                                       00563000
+         NI    DATAFLAG,255-X'80'          Anonymous not privleged      00564000
+         B     PROCANON                    Process anonymous            00565000
+*                                            user                       00566000
+*                                                                       00567000
+*                                                                       00568000
+PROCANON DS    0H                                                       00569000
+         CLI   SXTYPE,SXTYREAD               Anoymous trying to         00570000
+*                                            Read                       00571000
+         BNE   ANONWRIT                                                 00572000
+*                                                                       00573000
+         CLC   SXDPIE1(8),PUBLIC            Trying to read public       00574000
+         BE    AREADPUB                                                 00575000
+         B     RETFAIL                      Anoymous user cannot        00576000
+*                                           read anything but public    00577000
+AREADPUB DS    0H                                                       00578000
+         CLC   SXSPIE1(8),INCOMING         Trying to read               00579000
+*                                          PUBLIC.INCOMING              00580000
+         BNE   AREADOK                     No, anonymous read will      00581000
+*                                          be allowed                   00582000
+         B     RETFAIL                                                  00583000
+AREADOK  DS    0H                                                       00584000
+         B     RETGOOD                                                  00585000
+         LTORG ,                                                        00586000
+*                                                                       00587000
+ANONWRIT DS    0H                                                       00588000
+*********************************************************************** 00589000
+*  Here, we have an anonymous user attemping to write. We'll only     * 00590000
+*  allow this to PUBLIC.INCOMING                                      * 00591000
+*                                                                     * 00592000
+* If the user is the TCP/IP for VSE Line Printer Daemon, then we'll   * 00593000
+* always allow it WRITE access because the datasets to be written     * 00594000
+* to must have been specified in the initialization deck.             * 00595000
+*********************************************************************** 00596000
+         CLC   SXPROTO(8),LPD             Is it LPD?                    00597000
+         BE    RETGOOD                                                  00598000
+         CLC   SXDPIE1(8),PUBLIC          Is it public?                 00599000
+         BNE   RETFAIL                    No, failure                   00600000
+         CLC   SXSPIE1(8),INCOMING        Is it Incoming?               00601000
+         BNE   RETFAIL                    No, failure                   00602000
+         B     RETGOOD                    User can proceed              00603000
+         LTORG ,                                                        00604000
+*                                                                       00605000
+REALUSER DS    0H                                                       00606000
+*********************************************************************** 00607000
+* Here, we have a valid user in the table. Let's examine whether the  * 00608000
+* user is privileged. This is specified by the keyword "PRIV"         * 00609000
+* somewhere in the DATA field on the DEFINE USER TCP/IP parameter.    * 00610000
+*                                                                     * 00611000
+*********************************************************************** 00612000
+         LA    R8,SXDATA                 Get the data field             00613000
+         LA    R7,SXDATA+39              End of string                  00614000
+         CLC   0(40,R8),BLANKS           All blanks?                    00615000
+         BE    ENDUDATA                  No User data.                  00616000
+SCANDATA DS    0H                                                       00617000
+         CR    R8,R7                     End of string reached?         00618000
+         BH    ENDUDATA                  Yup.                           00619000
+         CLC   0(5,R8),PRIV              Privleged?                     00620000
+         BE    SETPRIV                                                  00621000
+         CLC   0(3,R8),IPAD              IP restriction?                00622000
+         BE    SETIP                                                    00623000
+         LA    R8,1(R8)                                                 00624000
+         B     SCANDATA                  Search some more               00625000
+*                                                                       00626000
+SETPRIV  DS    0H                                                       00627000
+         OI    DATAFLAG,X'80'            Set privileged                 00628000
+         LA    R8,5(R8)                  Skip past PRIV=                00629000
+         B     SCANDATA                                                 00630000
+         LTORG ,                                                        00631000
+*                                                                       00632000
+SETIP    DS    0H                                                       00633000
+         OI    DATAFLAG,X'40'            Indicate IP specified          00634000
+*                                                                       00635000
+*********************************************************************** 00636000
+* Here, we have located an IP= parameter in the data field for the    * 00637000
+* user. This means that the user must be using an IP address allowed  * 00638000
+* by this parameter. We'll accept wild cards in this field of either  * 00639000
+* 1, 2 or 3 zeroes.                                                   * 00640000
+*                                                                     * 00641000
+* R8: IP= in string                                                   * 00642000
+* R7: End of string                                                   * 00643000
+*********************************************************************** 00644000
+SETIPDG1 DS    0H                                                       00645000
+         LA    R8,3(R8)                  Point past IP=                 00646000
+         LR    R6,R8                     Remember start of string       00647000
+         SLR   R2,R2                                                    00648000
+SCNIPDG1 DS    0H                                                       00649000
+         CLI   0(R8),C'.'                At the end ?                   00650000
+         BE    ENDIPDG1                  Yup.                           00651000
+         CLR   R8,R7                     End of string?                 00652000
+         BE    INVUDATA                  Yup, this data just aint good  00653000
+         LA    R2,1(R2)                                                 00654000
+         LA    R8,1(R8)                                                 00655000
+         B     SCNIPDG1                                                 00656000
+ENDIPDG1 DS    0H                                                       00657000
+* R8 - Decimal Separating IP Part1 and IP Part 2                        00658000
+* R2 - Length of IP Part 1                                              00659000
+* R7 - Beginning of IP Part 1                                           00660000
+         LR    R0,R2                    Length of string                00661000
+         LR    R1,R6                    Start of String                 00662000
+         BAS   R14,CVTDB                                                00663000
+         LTR   R15,R15                                                  00664000
+         BNZ   INVUDATA                                                 00665000
+         STCM  R1,B'0001',IPPART1        A lot of work to get           00666000
+*                                        one byte, huh?                 00667000
+SETIPDG2 DS    0H                                                       00668000
+         LA    R8,1(R8)                  Point past period              00669000
+         LR    R6,R8                                                    00670000
+         SLR   R2,R2                                                    00671000
+SCNIPDG2 DS    0H                                                       00672000
+         CLI   0(R8),C'.'                At the end ?                   00673000
+         BE    ENDIPDG2                  Yup.                           00674000
+         CLR   R8,R7                     End of string?                 00675000
+         BE    INVUDATA                  Yup, this data just aint good  00676000
+         LA    R2,1(R2)                                                 00677000
+         LA    R8,1(R8)                                                 00678000
+         B     SCNIPDG2                                                 00679000
+ENDIPDG2 DS    0H                                                       00680000
+* R8 - Decimal Separating IP Part2 and IP Part 3                        00681000
+* R2 - Length of IP Part 2                                              00682000
+* R7 - Beginning of IP Part 2                                           00683000
+         LTR   R2,R2                                                    00684000
+         BZ    INVUDATA                  Just in case two periods       00685000
+         LR    R0,R2                     In a row.                      00686000
+         LR    R1,R6                                                    00687000
+         BAS   R14,CVTDB                                                00688000
+         LTR   R15,R15                                                  00689000
+         BNZ   INVUDATA                                                 00690000
+         STCM  R1,B'0001',IPPART2        A lot of work to get           00691000
+*                                        one byte, huh?                 00692000
+*                                        one byte, huh?                 00693000
+SETIPDG3 DS    0H                                                       00694000
+         LA    R8,1(R8)                  Point past period              00695000
+         LR    R6,R8                     Start of String                00696000
+         SLR   R2,R2                     Reset Count                    00697000
+SCNIPDG3 DS    0H                                                       00698000
+         CLI   0(R8),C'.'                At the end ?                   00699000
+         BE    ENDIPDG3                  Yup.                           00700000
+         CLR   R8,R7                     End of string?                 00701000
+         BE    INVUDATA                  Yup, this data just aint good  00702000
+         LA    R2,1(R2)                                                 00703000
+         LA    R8,1(R8)                                                 00704000
+         B     SCNIPDG3                                                 00705000
+ENDIPDG3 DS    0H                                                       00706000
+* R8 - Decimal Separating IP Part3 and IP Part 4                        00707000
+* R2 - Length of IP Part 3                                              00708000
+* R7 - Beginning of IP Part 3                                           00709000
+         LTR   R2,R2                                                    00710000
+         BZ    INVUDATA                  Just in case two periods       00711000
+         LR    R0,R2                     In a row.                      00712000
+         LR    R1,R6                                                    00713000
+         BAS   R14,CVTDB                                                00714000
+         LTR   R15,R15                                                  00715000
+         BNZ   INVUDATA                                                 00716000
+         STCM  R1,B'0001',IPPART3        A lot of work to get           00717000
+*                                        one byte, huh?                 00718000
+SETIPDG4 DS    0H                                                       00719000
+         LA    R8,1(R8)                  Point past period              00720000
+         LR    R6,R8                     Start of string                00721000
+         SLR   R2,R2                     Reset Count                    00722000
+SCNIPDG4 DS    0H                                                       00723000
+         CLI   0(R8),C' '                At the end ?                   00724000
+         BE    ENDIPDG4                  Yup.                           00725000
+         CLR   R8,R7                     End of string?                 00726000
+         BE    ENDIPDG4                  Yup, possible that this is ok  00727000
+         LA    R2,1(R2)                                                 00728000
+         LA    R8,1(R8)                                                 00729000
+         B     SCNIPDG4                                                 00730000
+ENDIPDG4 DS    0H                                                       00731000
+* R2 - Length of IP Part 4                                              00732000
+* R7 - Beginning of IP Part 4                                           00733000
+         LTR   R2,R2                                                    00734000
+         BZ    INVUDATA                  Just in case two periods       00735000
+         LR    R0,R2                     In a row.                      00736000
+         LR    R1,R6                                                    00737000
+         BAS   R14,CVTDB                                                00738000
+         LTR   R15,R15                                                  00739000
+         BNZ   INVUDATA                                                 00740000
+         STCM  R1,B'0001',IPPART4        A lot of work to get           00741000
+         B     SCANDATA                  And scan for more operands     00742000
+INVUDATA DS    0H                                                       00743000
+*********************************************************************** 00744000
+*  Here, we have a REAL user, but there was some problem parsing the  * 00745000
+*  user data field. We'll notify the operator and continue, but with  * 00746000
+*  no IP address or privileges defined.                               * 00747000
+*********************************************************************** 00748000
+         NI    DATAFLAG,255-X'80'        Turn off privleges             00749000
+         XC    IPPART1(4),IPPART1        Kill IP restriction            00750000
+         B     ENDUDATA                                                 00751000
+ENDUDATA DS    0H                                                       00752000
+*********************************************************************** 00753000
+*  Here, we finally have the ip address in its component parts,       * 00754000
+*  IPPART1-IPPART4. We need to check the IP address that is being     * 00755000
+*  used, in addition to other parameters on the DATA= statement       * 00756000
+*********************************************************************** 00757000
+         TM    DATAFLAG,X'40'             Was an IP restriction specd?  00758000
+         BZ    ENDUDATP                   No, no need to do check       00759000
+*                                                                       00760000
+         CLI   IPPART1,X'00'              First byte zeroes             00761000
+         BE    CHKPRT2                    Yup, check 2nd                00762000
+         CLC   IPPART1(1),SXIPADDR        First byte match?             00763000
+         BE    CHKPRT2                                                  00764000
+         B     IPINVALD                   Bad news - IP address         00765000
+*                                         restricted                    00766000
+CHKPRT2  DS    0H                                                       00767000
+*                                                                       00768000
+         CLI   IPPART2,X'00'              First byte zeroes             00769000
+         BE    CHKPRT3                    Yup, check 2nd                00770000
+         CLC   IPPART2(1),SXIPADDR+1      First byte match?             00771000
+         BE    CHKPRT3                                                  00772000
+         B     IPINVALD                   Bad news - IP address         00773000
+*                                         restricted                    00774000
+CHKPRT3  DS    0H                                                       00775000
+*                                                                       00776000
+         CLI   IPPART3,X'00'              First byte zeroes             00777000
+         BE    CHKPRT4                    Yup, check 2nd                00778000
+         CLC   IPPART3(1),SXIPADDR+2      First byte match?             00779000
+         BE    CHKPRT4                                                  00780000
+         B     IPINVALD                   Bad news - IP address         00781000
+*                                         restricted                    00782000
+CHKPRT4  DS    0H                                                       00783000
+*                                                                       00784000
+         CLI   IPPART4,X'00'              First byte zeroes             00785000
+         BE    IPADDROK                   Yup, check 2nd                00786000
+         CLC   IPPART4(1),SXIPADDR+3      First byte match?             00787000
+         BE    IPADDROK                                                 00788000
+         B     IPINVALD                   Bad news - IP address         00789000
+*                                         restricted                    00790000
+IPADDROK DS    0H                                                       00791000
+         B     ENDUDATP                                                 00792000
+IPINVALD DS    0H                                                       00793000
+         LA    R0,M014L            Msg length                           00794000
+         LA    R1,IPSC014E         Msg address                          00795000
+         L     R15,SX@MSGX         Msg write routine                    00796000
+         BASSM R14,R15             Call it                              00797000
+         B     RETFAIL                                                  00798000
+         LTORG ,                                                        00799000
+ENDUDATP DS    0H                                                       00800000
+*********************************************************************** 00801000
+*  Here, we've passed the test for the IP address. Now, we must       * 00802000
+*  check the privilege byte.                                          * 00803000
+*********************************************************************** 00804000
+         TM    DATAFLAG,X'80'            Is the user privileged?        00805000
+         BO    RETGOOD                   Can do anything                00806000
+         CLI   SXTYPE,SXTYREAD           Trying to Read ?               00807000
+         BE    RETGOOD                   Sure, user can read            00808000
+*                                        Anything                       00809000
+REALWRIT DS    0H                                                       00810000
+*********************************************************************** 00811000
+*  Here, we have a REAL user attempting to do a write. We'll only     * 00812000
+*  allow this to the PUBLIC library. Note that we have previously     * 00813000
+*  checked if the user is authorized.                                 * 00814000
+*********************************************************************** 00815000
+         CLC   SXDPIE1(8),PUBLIC        Trying to Write public?         00816000
+         BNE   RETFAIL                                                  00817000
+         B     RETGOOD                                                  00818000
+UPDATE   DS    0H                                                       00819000
+*                                                                       00820000
+         TM    SXFLAG1,SXF1DIAG        DIAGNOSE SECEXIT in effect?      00821000
+         BZ    ENDPROG                 No, skip the message             00822000
+*                                                                       00823000
+         LA    R0,M016L            Msg length                           00824000
+         LA    R1,IPSC016W         Msg address                          00825000
+         L     R15,SX@MSGX         Msg write routine                    00826000
+         BASSM R14,R15             Call it                              00827000
+         B     ENDPROG                                                  00828000
+*                                                                       00829000
+START    DS    0H                                                       00830000
+         LA    R0,M010L            Msg length                           00831000
+         LA    R1,IPSC010I         Msg address                          00832000
+         L     R15,SX@MSGX         Msg write routine                    00833000
+         BASSM R14,R15             Call it                              00834000
+**********************************************************************  00835000
+*        The following message is for the pupose of alerting         *  00836000
+*        the operator that "sample" code is running.  This can       *  00837000
+*        happen because:                                             *  00838000
+*                                                                    *  00839000
+*        1) You are intentionally running the unmodified sample.     *  00840000
+*        2) The DEFINE SECURITY command specifies an incorrect       *  00841000
+*           DRIVER= parameter                                        *  00842000
+*        3) Application of TCP/IP maintenance has replaced the       *  00843000
+*           "production" code.                                       *  00844000
+*        4) The LIBDEF for the TCP/IP partition is incorrect.        *  00845000
+*                                                                    *  00846000
+**********************************************************************  00847000
+         LA    R0,M000L            Msg length                           00848000
+         LA    R1,IPSC000W         Msg address                          00849000
+         L     R15,SX@MSGX         Msg write routine                    00850000
+         BASSM R14,R15             Call it                              00851000
+         LA    R0,PLSNTFYL         Msg length                           00852000
+         LA    R1,PLSNTFY          Msg address                          00853000
+         L     R15,SX@MSGX         Msg write routine                    00854000
+         BASSM R14,R15             Call it                              00855000
+         SLR   R8,R8                                                    00856000
+         B     ENDPROG                                                  00857000
+*                                                                       00858000
+SHUT     DS    0H                                                       00859000
+         LA    R0,M015L            Msg length                           00860000
+         LA    R1,IPSC015I         Msg address                          00861000
+         L     R15,SX@MSGX         Msg write routine                    00862000
+         BASSM R14,R15             Call it                              00863000
+         XR    R8,R8                                                    00864000
+         B     ENDPROG                                                  00865000
+*                                                                       00866000
+AUDITMSG DS    0H                                                       00867000
+*********************************************************************** 00868000
+*  Here, we've been requested to audit the current operation. We'll   * 00869000
+*  get all relevant data and write messages to the console.           * 00870000
+*********************************************************************** 00871000
+         MVC   LOGMWMSG(M017L),IPSC017I  User not found                 00872000
+         MVC   LOGMWMSG+16(16),SXUSERID                                 00873000
+         MVC   LOGMWMSG+33(11),ALLOWED1                                 00874000
+         TM    DATAFLAG,X'80'                 User privileged?          00875000
+         BNO   NPRIV                                                    00876000
+         MVC   LOGMWMSG+33(11),ALLOWED2                                 00877000
+NPRIV    DS    0H                                                       00878000
+         TM    RESFLAG,X'80'                  Was user authorized?      00879000
+         BO    AUDNOAUT                       Nope, leave it            00880000
+         MVC   LOGMWMSG+33(3),DIS                                       00881000
+AUDNOAUT DS    0H                                                       00882000
+         CLI   SXTYPE,SXTYWEBL                But was it?               00883000
+         BE    AUDNOWR                        Yes, leave it             00884000
+         MVC   LOGMWMSG+45(5),WRITEC                                    00885000
+         CLI   SXTYPE,SXTYWRIT                But was it?               00886000
+         BE    AUDNOWRT                       Yes, leave it             00887000
+         MVC   LOGMWMSG+45(5),READC                                     00888000
+         CLI   SXTYPE,SXTYREAD                But was it?               00889000
+         BE    AUDNOWRT                       Yes, leave it             00890000
+         MVC   LOGMWMSG+45(5),CCWD                                      00891000
+         CLI   SXTYPE,SXTYREAD                But was it?               00892000
+         BE    AUDNOWRT                       Yup, leave it             00893000
+         B     AUDNOWRT                       Default                   00894000
+AUDNOWR  DS    0H                                                       00895000
+         MVC   LOGMWMSG+45(5),LOGINC          Make it web login         00896000
+         MVC   LOGMWMSG+33(11),ALLOWED3       Indicate forced           00897000
+         CLI   WEBIN,0                        Is it forced ?            00898000
+         BNE   AUDNOWRT                       Yes...proceed             00899000
+         MVC   LOGMWMSG+33(11),ALLOWED4       Indicate bypassed         00900000
+AUDNOWRT DS    0H                                                       00901000
+         LA    R0,M017L            Msg length                           00902000
+         LA    R1,LOGMWMSG         Msg address                          00903000
+         L     R15,SX@MSGX         Msg write routine                    00904000
+         BASSM R14,R15             Call it                              00905000
+*                                                                       00906000
+         MVC   LOGMWMSG(M017DT4L),M017DT4M                              00907000
+         MVC   LOGMWMSG+06(08),SXFNAME                                  00908000
+         MVC   LOGMWMSG+20(08),SXPROTO                                  00909000
+         MVC   LOGMWMSG+34(08),FILETYPE                                 00910000
+         LA    R0,M017DT4L         Msg length                           00911000
+         LA    R1,LOGMWMSG         Msg address                          00912000
+         L     R15,SX@MSGX         Msg write routine                    00913000
+         BASSM R14,R15             Call it                              00914000
+*                                                                       00915000
+         MVC   LOGMWMSG(M017DT2L),M017DT2M                              00916000
+         MVC   LOGMWMSG+06(08),SXDPIE1                                  00917000
+         MVC   LOGMWMSG+20(08),SXDPIE2                                  00918000
+         MVC   LOGMWMSG+34(08),SXDPIE3                                  00919000
+         LA    R0,M017DT2L         Msg length                           00920000
+         LA    R1,LOGMWMSG         Msg address                          00921000
+         L     R15,SX@MSGX         Msg write routine                    00922000
+         BASSM R14,R15             Call it                              00923000
+*                                                                       00924000
+         MVC   LOGMWMSG(M017DT3L),M017DT3M                              00925000
+         MVC   LOGMWMSG+06(08),SXSPIE1                                  00926000
+         MVC   LOGMWMSG+20(08),SXSPIE2                                  00927000
+         MVC   LOGMWMSG+34(08),SXSPIE3                                  00928000
+         LA    R0,M017DT3L         Msg length                           00929000
+         LA    R1,LOGMWMSG         Msg address                          00930000
+         L     R15,SX@MSGX         Msg write routine                    00931000
+         BASSM R14,R15             Call it                              00932000
+*                                                                       00933000
+         BR    R10                                                      00934000
+*                                                                       00935000
+RETGOOD  DS    0H                                                       00936000
+         CLI   SXTYPE,SXTYPASS            We never audit passwords      00937000
+         BE    NOAUDITG                   Password                      00938000
+         CLI   SXTYPE,SXTYICMP            We never audit ICMP           00939000
+         BE    NOAUDITG                   Password                      00940000
+         TM    AUDITFLG,X'80'             Is auditing requested?        00941000
+         BZ    NOAUDITG                                                 00942000
+         OI    RESFLAG,X'80'                                            00943000
+         BAS   R10,AUDITMSG                                             00944000
+NOAUDITG DS    0H                                                       00945000
+         SLR   R8,R8                      Prepare to return a 0         00946000
+         CLI   WEBIN,1                    Bypass login screen ?         00947000
+         BE    NOAUDITF                   Yes, proceed                  00948000
+         CLI   WEBIN,2                    Force login screen ?          00949000
+         BE    FORCE8                     Yes...proceed                 00950000
+         B     ENDPROG                    Just run it normal            00951000
+*                                                                       00952000
+*                                                                       00953000
+RETFAIL  DS    0H                                                       00954000
+         CLI   SXTYPE,SXTYPASS            Have already audited          00955000
+         BE    NOAUDITF                   Password Failure              00956000
+         NI    RESFLAG,X'7F'              Indicate failure result       00957000
+         BAS   R10,AUDITMSG               All failures are audited      00958000
+NOAUDITF DS    0H                                                       00959000
+         LA    R8,4                       Prepare to return a 4         00960000
+         B     ENDPROG                                                  00961000
+FORCE8   DS    0H                                                       00962000
+         LA    R8,8                       Prepare to return an 8        00963000
+         B     ENDPROG                                                  00964000
+*                                                                       00965000
+*                                                                       00966000
+GETVFAIL DS    0H                                                       00967000
+         LA    R0,M002L            Msg length                           00968000
+         LA    R1,IPSC002E         Msg address                          00969000
+         L     R15,SX@MSGX         Msg write routine                    00970000
+         BASSM R14,R15             Call it                              00971000
+         SVC   14                         The registers are hosed!      00972000
+*                                                                       00973000
+* Free up the allocated storage and return to caller                    00974000
+*                                                                       00975000
+ENDPROG  DS    0H                                                       00976000
+         LA    R0,DYNAMICL             Length of Dynamic storage        00977000
+         LR    R1,R13                    Address of Dynamic storage     00978000
+         L     R13,4(,R13)               Restore Reg 13 before release  00979000
+         FREEVIS ,                       Release storage                00980000
+         LR    R15,R8                    Load return code               00981000
+         L     R14,12(,R13)              Restore return address         00982000
+         LM    R0,R12,20(R13)            Restore non-returned registers 00983000
+         BSM   0,R14                     Return to TCP/IP               00984000
+*                                                                       00985000
+*********************************************************************** 00986000
+* Subroutines                                                         * 00987000
+*                                                                     * 00988000
+*********************************************************************** 00989000
+*                                                                     * 00990000
+* CVTDB: Convert Decimal to Binary                                    * 00991000
+*                                                                     * 00992000
+* Input:                                                              * 00993000
+* R0: Length of number to convert                                     * 00994000
+* R1: Address of number to convert                                    * 00995000
+*********************************************************************** 00996000
+CVTDB     DS     0H                                                     00997000
+          STM   R1,R2,SAVER1            Save Regs one and two.          00998000
+          C     R0,THREE                More then three digits?         00999000
+          BH    ERR                                                     01000000
+          LR    R2,R0                   Copy length of field            01001000
+          BCTR  R2,0                    -1 for execute                  01002000
+DECCHK    DS    0H                                                      01003000
+          CLI   0(1),C'0'              Is this a decimal number?        01004000
+          BL    ERR                    Nope?                            01005000
+          CLI   0(1),C'9'              Still looking                    01006000
+          BH    ERR                    Nope.                            01007000
+          LA    R1,1(,R1)              Next digit                       01008000
+          BCT   R0,DECCHK              Loop some more                   01009000
+          L     R1,SAVER1              Copy address of digits           01010000
+          EX    R2,CVTDBPK             Pack it up.                      01011000
+          CVB   R1,TEMPSAVE            And Convert to Binary            01012000
+          XR    R15,R15                                                 01013000
+          BR    R14                                                     01014000
+ERR       DS    0H                                                      01015000
+          L     R2,SAVER2              Restore R2                       01016000
+          LA    R15,4                                                   01017000
+          BR    R14                    Return                           01018000
+          SPACE 1                                                       01019000
+CVTDBPK   PACK  TEMPSAVE(8),0(0,R1)   ** Executed **                    01020000
+*                                                                       01021000
+*                                                                       01022000
+*                                                                       01023000
+*********************************************************************** 01024000
+* Constants                                                           * 01025000
+*********************************************************************** 01026000
+* This is the userid and password table. The format of the table is   * 01027000
+* as follows:                                                         * 01028000
+*                                                                     * 01029000
+* 16 bytes userid, 16 bytes password, 1 byte privilege, 1 byte        * 01030000
+* reserved, 32 bytes reserved.                                        * 01031000
+*                                                                     * 01032000
+*********************************************************************** 01033000
+COMMON   CSECT ,                                                        01034000
+COMMON   AMODE 31                                                       01035000
+COMMON   RMODE ANY                                                      01036000
+*                                                                       01037000
+UNKNOWN  DC    CL8'Unknown'                                             01038000
+ANON     DC    CL16'ANONYMOUS'                                          01039000
+PUBLIC   DC    CL8'PUBLIC'                                              01040000
+INCOMING DC    CL8'INCOMING'                                            01041000
+LPD      DC    CL8'LPD'                                                 01042000
+PRIV     DC    CL5' PRIV'                                               01043000
+IPAD     DC    CL3'IP='                                                 01044000
+BLANKS   DC    CL40' '                                                  01045000
+ALLOWED1 DC    CL11'   ALLOWED '                                        01046000
+ALLOWED2 DC    CL11'  (ALLOWED)'                                        01047000
+ALLOWED3 DC    CL11' FORCE WEB '                                        01048000
+ALLOWED4 DC    CL11'BYPASS WEB '                                        01049000
+DIS      DC    CL3'DIS'                                                 01050000
+READC    DC    CL5'READ'                                                01051000
+WRITEC   DC    CL5'WRITE'                                               01052000
+CCWD     DC    CL5'CWD'                                                 01053000
+LOGINC   DC    CL5'LOGIN'                                               01054000
+THREE    DC    F'3'                                                     01055000
+*                                                                       01056000
+* Sample list of maintainable user                                      01057000
+*                                                                       01058000
+USERTABL EQU   40                        Length of table Entry          01059000
+USERTAB  DS    0D                                                       01060000
+         DC    CL16'SYSA',CL16'SYSA',CL8'ADMIN'                         01061000
+         DC    CL16'OPER',CL16'OPERPASS',CL8'OPER'                      01062000
+         DC    CL16'FRED',CL16'YABBADABBA',CL8'ADMIN'                   01063000
+         DC    CL16'BARNEY',CL16'GEEFRED',CL8'USER'                     01064000
+         DC    CL16'WILMA',CL16'CHARGEIT',CL8'USER'                     01065000
+         DC    CL16'BETTY',CL16'TEEHEEHEE',CL8'GUEST'                   01066000
+USERTABE DC    XL32'00'                 MUST BE LAST ENTRY!             01067000
+*                                                                       01068000
+TYPETBL  DS    0D                                                       01069000
+         DC    XL1'01',CL8'Directry'                                    01070000
+         DC    XL1'02',CL8'Library '                                    01071000
+         DC    XL1'03',CL8'VSAMKSDS'                                    01072000
+         DC    XL1'04',CL8'VSAMRRDS'                                    01073000
+         DC    XL1'05',CL8'ICCF    '                                    01074000
+         DC    XL1'06',CL8'VSAMKSDS'                                    01075000
+         DC    XL1'07',CL8'Pseudo  '                                    01076000
+         DC    XL1'08',CL8'Power   '                                    01077000
+         DC    XL1'09',CL8'Tape    '                                    01078000
+         DC    XL1'C1',CL8'VSAMESDS'                                    01079000
+         DC    XL1'C4',CL8'Direct  '                                    01080000
+         DC    XL1'E2',CL8'Sequentl'                                    01081000
+         DC    XL1'FF',CL8'Chainhdr'                                    01082000
+FILETABE DC    XL1'00',XL8'00'                                          01083000
+*                                                                       01084000
+IPSC000W DC    C'IPSC000W TCP/IP Security Exit '                        01085000
+         DC    C'This exit is running sample code that is NOT intended' 01086000
+         DC    C' for production use. Continued use of this unmodified' 01087000
+         DC    C' exit code may compromise the security of your system' 01088000
+         DC    C'.'                                                     01089000
+M000L    EQU   *-IPSC000W                                               01090000
+PLSNTFY  DC    C'PLEASE NOTIFY YOUR SECURITY ADMINISTRATOR! &SYSDATE'   01091000
+PLSNTFYL EQU   *-PLSNTFY                                                01092000
+*                                                                       01093000
+IPSC001E DC    C'IPSC010E ICMP reply suppressed. HACKER attack?'        01094000
+M001L    EQU   *-IPSC001E                                               01095000
+*                                                                       01096000
+IPSC002E DC    C'IPSC002E: SECURITY EXIT GETVIS FAILURE!!!!'            01097000
+M002L    EQU   *-IPSC002E                                               01098000
+*                                                                       01099000
+IPSC005I DC    C'IPSC005I Anonymous Userid Logging in with EMAIL ID: XX*01100000
+               XXXXXXXXXXXXXX'                                          01101000
+M005L    EQU   *-IPSC005I                                               01102000
+*                                                                       01103000
+IPSC007E DC    C'IPSC007E User XXXXXXXXXXXXXXXX: Incorrect Password Spe*01104000
+               cified'                                                  01105000
+M007L    EQU   *-IPSC007E                                               01106000
+*                                                                       01107000
+IPSC008E DC    C'IPSC008E User XXXXXXXXXXXXXXXX: User not found'        01108000
+M008L    EQU   *-IPSC008E                                               01109000
+*                                                                       01110000
+IPSC009E DC    C'IPSC009E User XXXXXXXXXXXXXXXX: User not found'        01111000
+M009L    EQU   *-IPSC009E                                               01112000
+*                                                                       01113000
+IPSC010I DC    C'IPSC010I '                                             01114000
+         DC    C'Security exit started '                                01115000
+         DC    C'Genned:&SYSDATE-&SYSTIME'                              01116000
+M010L    EQU   *-IPSC010I                                               01117000
+*                                                                       01118000
+IPSC011E DC    C'IPSC011E FTPD login message suppressed. HACKER attack' 01119000
+M011L    EQU   *-IPSC011E                                               01120000
+*                                                                       01121000
+IPSC012E DC    C'IPSC012E RPC access is being denied. HACKER attack?'   01122000
+M012L    EQU   *-IPSC012E                                               01123000
+*                                                                       01124000
+IPSC013E DC    C'IPSC013E Security Violation, Write not allowed'        01125000
+M013L    EQU   *-IPSC013E                                               01126000
+*                                                                       01127000
+IPSC014E DC    C'IPSC014E Security Violation, IP Address'               01128000
+M014L    EQU   *-IPSC014E                                               01129000
+*                                                                       01130000
+IPSC015I DC    C'IPSC015I Security Exit Shutdown Completed'             01131000
+M015L    EQU   *-IPSC015I                                               01132000
+*                                                                       01133000
+IPSC016W DC    C'IPSC016W An update request has been received from the *01134000
+               security exit'                                           01135000
+M016L    EQU   *-IPSC016W                                               01136000
+*                                                                       01137000
+IPSC017I DC    C'IPSC001I Userid XXXXXXXXXXXXXXXX YYYYYYYYYYY ZZZZZ acc*01138000
+               ess to'                                                  01139000
+M017L    EQU   *-IPSC017I                                               01140000
+M017DT2M DC    C'P1:   XXXXXXXX  P2: XXXXXXXX  P3: XXXXXXXX  '          01141000
+M017DT2L EQU   *-M017DT2M                                               01142000
+M017DT3M DC    C'S1:   XXXXXXXX  S2: XXXXXXXX  S3: XXXXXXXX  '          01143000
+M017DT3L EQU   *-M017DT3M                                               01144000
+M017DT4M DC    C'DLBL: XXXXXXXX  PR: XXXXXXXX  TY: XXXXXXXX  '          01145000
+M017DT4L EQU   *-M017DT4M                                               01146000
+*                                                                       01147000
+         LTORG ,                                                        01148000
+         DROP  ,                                                        01149000
+*                                                                       01150000
+*                                                                       01151000
+DYNAMIC  DSECT                                                          01152000
+SAVEAREA DS    9D                       Standard SAVE area              01153000
+WORKSAV1 DS    9D                                                       01154000
+DBL      DS    D                        Used for CVD                    01155000
+SAVER1   DS    F                        Required for the CVB routines   01156000
+SAVER2   DS    F                                                        01157000
+TEMPSAVE DS    CL8                      Temporary Storage               01158000
+FILETYPE DS    CL8                      EBDCIC: Type of File            01159000
+AUDITFLG DC    XL1'00'                   X'80' - Audit X'00 - Don't     01160000
+RESFLAG  DC    XL1'00'                   X'80' is allowed               01161000
+DATAFLAG DS    XL1                      Privilege byte for current      01162000
+RSVD1    DS    XL1                                                      01163000
+* X'80' Privilege was specified                                         01164000
+* X'40' IP address was specified                                        01165000
+*                                       Operation                       01166000
+IPPART   DS    0F                       IP address from the             01167000
+IPPART1  DS    X                        DATA= Parameter.                01168000
+IPPART2  DS    X                                                        01169000
+IPPART3  DS    X                                                        01170000
+IPPART4  DS    X                                                        01171000
+WEBIN    DS    X                                                        01172000
+*                                                                       01173000
+LOGMWMSG DS    CL256                    Area to build messages          01174000
+*                                                                       01175000
+         DS    0D                       Align to DBL-word               01176000
+DYNAMICL EQU   *-DYNAMIC                                                01177000
+         SXBLOK                                                         01178000
+         END   SECEXIT                  Identify Phase's entry point    01179000

@@ -1,0 +1,195 @@
+.********************************************************************** 00001000
+.*                                                                    * 00002000
+.*  CEERELES - BAL macro to dynamically delete a LE/VSE routine       * 00003000
+.*                                                                    * 00004000
+.*  PROPRIETARY STATEMENT:                                            * 00005000
+.*                                                                    * 00006000
+.*   LICENSED MATERIALS - PROPERTY OF IBM                             * 00007000
+.*                                                                    * 00008000
+.*   5686-066-32-75K                                                  * 00009000
+.*                                                                    * 00010000
+.*   (C) COPYRIGHT IBM CORP. 1997, 2002                               * 00011000
+.*                                                                    * 00012000
+.*   ALL RIGHTS RESERVED                                              * 00013000
+.*                                                                    * 00014000
+.*   US GOVERNMENT USERS RESTRICTED RIGHTS - USE,                     * 00015000
+.*   DUPLICATION OR DISCLOSURE RESTRICTED BY GSA ADP                  * 00016000
+.*   SCHEDULE CONTRACT WITH IBM CORP.                                 * 00017000
+.*                                                                    * 00018000
+.*        Language Environment for                                    * 00019000
+.*        VSE Version 1 Release 4 Modification 3                      * 00020000
+.*                                                                    * 00021000
+.*  FUNCTION:                                                         * 00022000
+.*       This macro is used to dynamically delete a LE/370-conforming * 00023000
+.*       routine.                                                     * 00024000
+.*                                                                    * 00025000
+.*  DEPENDENCIES - When the macro is expanded and executed, the       * 00026000
+.*                 following assumptions are made:                    * 00027000
+.*                 - R12 must point to the CAA                        * 00028000
+.*                 - R13 has a standard LE/370 DSA available          * 00029000
+.*                                                                    * 00030000
+.*  RESTRICTIONS - The following registers are destroyed by the       * 00031000
+.*                 macro invocation:                                  * 00032000
+.*                 - R0                                               * 00033000
+.*                 - R1                                               * 00034000
+.*                 - R14                                              * 00035000
+.*                 - R15 - upon return, this contains the target      * 00036000
+.*                         address                                    * 00037000
+.*                                                                    * 00038000
+.*    REGISTER CONVENTIONS:                                           * 00039000
+.*                                                                    * 00040000
+.*       R0     - Used as parameter to LOAD service, not restored     * 00041000
+.*       R1     - Used as parameter to LOAD service, not restored     * 00042000
+.*       R2-R11 - unused                                              * 00043000
+.*       R12    - Addr of CAA                                         * 00044000
+.*       R13    - Addr of DSA                                         * 00045000
+.*       R14    - Standard call register                              * 00046000
+.*       R15    - Contains target address upon return                 * 00047000
+.*                                                                    * 00048000
+.*    LINKAGE: CEERELES <&TOKEN=token>       token returned from fetch* 00049000
+.*                      <&FEEDBACK=fbcode>   Feedback token           * 00050000
+.*                      <MF=I |              Inline form              * 00051000
+.*                       MF=L |              List form                * 00052000
+.*                       MF=(E,ctrl addr)>   Execute form             * 00053000
+.*                                                                    * 00054000
+.*    MESSAGES:                                                       * 00055000
+.*       CEE39K The target load module was not recognized by LE/370.  * 00056000
+.*       CEE38N CEE5ADM or CEE5MBR could not properly initialize the  * 00057000
+.*              event handler.                                        * 00058000
+.*       CEE3DG The delete request for module <module-name> was       * 00059000
+.*              unsuccessful.                                         * 00060000
+.*                                                                    * 00061000
+.* History of changes:                                                * 00062000
+.*       03/15/96 (LHQ) Created                                       * 00063000
+.*       09/12/96 (RAA) Copyright (KCG0084)                           * 00064000
+.* $P1=CM2337   HLE6608  19980804 NGB:APAR PQ17606 Rollup             * 00065000
+.*                                    Clear R1 before BAL to prevent  * 00066000
+.*                                    abend 0C4 when in AMODE 24 and  * 00067000
+.*                                    condition code is non-zero.     * 00068000
+.* $P2=MD09012  HLE7706  20010119 DEM:FIN APAR PQ39723                * 00069000
+.*                                    Clear top bit after BAL to      * 00070000
+.*                                    prevent abend 0C4 when in AMODE * 00071000
+.*                                    24 and condition code is        * 00072000
+.*                                    non-zero.                       * 00073000
+.* ****************************************************************** * 00074000
+.*     LE/VSE Version 1 Release 4 Modification Level 3 Changes :      * 00075000
+.*                                                                    * 00076000
+.* $01  GWH  26/04/2002   Port macro to LE/VSE                   @01A * 00077000
+.*                                                                    * 00078000
+.********************************************************************** 00079000
+         MACRO                                                          00080000
+&LABEL   CEERELES &TOKEN=,                                             X00081000
+               &FEEDBACK=,                                             X00082000
+               &MF=I                                                    00083000
+.*                                                                      00084000
+.* @P2D *                                                               00085000
+         LCLC  &WKCHR                      Work char field              00086000
+         LCLC  &SRCREG                     Hold source reg              00087000
+&IDX     SETC  '&SYSNDX'                                                00088000
+&WKCHR   SETC   '&MF(1)'                   Set wkchar to first value    00089000
+.*                                                                      00090000
+.GOTPARM ANOP                                                           00091000
+         AIF    ('&WKCHR' EQ 'L').LSTFORM  List form                    00092000
+         AIF    ('&WKCHR' EQ 'E').EXCFORM  Execute form                 00093000
+         AIF    ('&WKCHR' EQ 'I').INLFORM  Inline form                  00094000
+         MNOTE 4,'CEERELES, error in MF operand... default to I form'   00095000
+         MEXIT                                                          00096000
+         AGO    .INLFORM                                                00097000
+.*                                                                      00098000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00099000
+.*                                                                   *  00100000
+.* List form of the MACRO                                            *  00101000
+.*                                                                   *  00102000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00103000
+.LSTFORM ANOP                                                           00104000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00105000
+.*       First check that a label has been specified. No default     *  00106000
+.*       is provided. Fatal error if label left off.                 *  00107000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00108000
+         AIF    (N'&LABEL NE 0).GOTLABL                                 00109000
+         MNOTE  8,'CEERELES Label is required for MF=L'                 00110000
+         MEXIT                                                          00111000
+.GOTLABL ANOP                                                           00112000
+&LABEL   DS     0F                                                      00113000
+         AGO    .PRMGEN                                                 00114000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00115000
+.*                                                                   *  00116000
+.*   INLINE version of the MACRO. Parameter list generation used for *  00117000
+.*   LIST form.                                                      *  00118000
+.*                                                                   *  00119000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00120000
+.INLFORM ANOP                                                           00121000
+         CNOP   0,4                                                     00122000
+         AIF    (N'&LABEL EQ 0).NOLABL                                  00123000
+&LABEL   DS     0F                                                      00124000
+         AGO    .GOTLBL                                                 00125000
+.NOLABL  ANOP                                                           00126000
+.GOTLBL  ANOP                                                           00127000
+         AIF    (T'&TOKEN NE 'O').GOTTK                                 00128000
+         MNOTE  12,'CEERELES TOKEN is required for MF=I'                00129000
+         MEXIT                                                          00130000
+.GOTTK   ANOP                             Generate label                00131000
+         BAL    1,CEE3&IDX                Put Addr(parmlist) into R1    00132000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00133000
+.*                                                                   *  00134000
+.*   LIST version of the MACRO. Parameter list generation used for   *  00135000
+.*   LIST form.                                                      *  00136000
+.*                                                                   *  00137000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00138000
+.PRMGEN  ANOP                              Generate parm list for call  00139000
+         AIF    (T'&TOKEN NE 'O').GOTTOK                                00140000
+         DC     A(0)                      Address of Token              00141000
+         AGO    .NEXTF                                                  00142000
+.GOTTOK  ANOP                                                           00143000
+         DC     A(&TOKEN)                 Address of Token              00144000
+.NEXTF   ANOP                                                           00145000
+         AIF    (T'&FEEDBACK EQ 'O').OMITFB1                            00146000
+         DC     A(&FEEDBACK)              Address of FBcode             00147000
+         AGO    .SKIP                                                   00148000
+.OMITFB1 ANOP                                                           00149000
+         DC     A(0)                      Address of FBcode             00150000
+.SKIP    ANOP                                                           00151000
+         AIF    ('&WKCHR' EQ 'L').DONE                                  00152000
+CEE3&IDX DS     0H                        Start of code after parmlist  00153000
+         LA     1,0(,1)                    Clear the high bit     @P2A  00154000
+.*                                                                      00155000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00156000
+.*                                                                   *  00157000
+.*   Execute form of macro. Will fill in the parm operands.          *  00158000
+.*                                                                   *  00159000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00160000
+.EXCFORM ANOP                                                           00161000
+         AIF    ('&WKCHR' NE 'E').NOLABL2                               00162000
+         AIF    (N'&LABEL EQ 0).NOLABL1                                 00163000
+&LABEL   DS     0H                                                      00164000
+         AGO    .NOLABL2                                                00165000
+.NOLABL1 ANOP                                                           00166000
+         DS     0H                                                      00167000
+.NOLABL2 ANOP                                                           00168000
+         AIF    (N'&MF(2) EQ 0).EXCF1                                   00169000
+         AIF    ('&MF(2)'(1,1) EQ '(').EXCF2                            00170000
+         AIF    ('&MF(2)' EQ '1').EXCF1                                 00171000
+         LA     1,&MF(2)                  Addr of parm list             00172000
+         AGO    .EXCF1                                                  00173000
+.EXCF2   ANOP                                                           00174000
+&SRCREG  SETC   '&MF(2)'(2,K'&MF(2)-2)                                  00175000
+         LR     1,&SRCREG                 Addr of parm list             00176000
+.EXCF1   ANOP                                                           00177000
+         AIF    ('&WKCHR' EQ 'I').GENCALL                               00178000
+         AIF    (T'&TOKEN EQ 'O').MOVEFB                                00179000
+         LA     15,&TOKEN                 Get address of token          00180000
+         ST     15,0(,1)                  Build token parm              00181000
+.MOVEFB  ANOP                                                           00182000
+         AIF    (T'&FEEDBACK EQ 'O').GENCALL                            00183000
+         LA     15,&FEEDBACK              Get address of feedback       00184000
+         ST     15,4(,1)                  Build fc parm                 00185000
+.GENCALL ANOP                                                           00186000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00187000
+.*       Call the CEL Routine to load the routine                    *  00188000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00189000
+         L      15,CEECAACELV-CEECAA(,12)          get LE libvec        00190000
+         L      15,X'DC0'(,15)                     get 'any' libvec     00191000
+         L      15,X'D0'(,15)                      get function addr    00192000
+         BALR   14,15                              Call function        00193000
+.DONE    ANOP                                                           00194000
+         MEND                                                           00195000

@@ -1,0 +1,774 @@
+         MACRO                                                          00001000
+&LABEL   SOCKET   &ACTION,                 Type of Socket action       *00002000
+               &NAME,                      Name of connection          *00003000
+               &ID=00,                     Identifier for connection   *00004000
+               &EY=SO,                     Identifier for connection   *00005000
+               &DATA=,                     Data address                *00006000
+               &DESC=,                     Socket Descriptor Address   *00007000
+               &ECB=,                      Socket ECB Address          *00008000
+               &ECB2=,                     Socket ECB Address Duplicate*00009000
+               &LOCAL=NO,                  Local defintion             *00010000
+               &PASSIVE=NO,                Passive Socket Flag         *00011000
+               &ACTIVE=NO,                 Activate Socket Flag        *00012000
+               &URGENT=NO,                 Urgent Flag                 *00013000
+               &SHORT=NO,                  Short Flag                  *00014000
+               &NEGOT=YES,                 Negotiate Flag              *00015000
+               &USESYS=NO,                 Use SYSPARM for SYSID       *00016000
+               &AXE=NO,                    Axe at Close Flag           *00017000
+               &PUSH=NO,                   Push Flag                   *00018000
+               &CICS=NO,                   Call made from in CICS      *00019000
+               &IDMS=NO,                   Call made from IDMS         *00020000
+               &SYSPLST=SYSPLIST,          Needed for IDMS storage     *00021000
+               &WAIT=NO,                   Ask for a wait to be handled*00022000
+               &HALFC=NO,                  Respect Half Close          *00023000
+               &TIMED=NO,                  Should we timeout if idle   *00024000
+               &LOPORT=0,                  Local Port Number           *00025000
+               &FOPORT=0,                  Foreign Port Number         *00026000
+               &FOIP=0,                    Foreign IP Address          *00027000
+               &SOBLADR=0,                 Address to store SOBLOK addr*00028000
+               &TIMEOUT=36000,             Timeout Value 2 Minutes     *00029000
+               &FAST=NO,                   YES speeds up CLOSE         *00030000
+               &RMODE=31,                  Location of SOBLOK          *00031000
+               &MF=E,                      Execute Code                *00032000
+               &MFG=,                      Parm area                   *00033000
+               &RELO=YES,                  Force relocatable           *00034000
+               &FORMAT=NEW                 Type of macro format         00035000
+         GBLB     &SODSECT                                              00036000
+         GBLB     &SOCSECT                                              00037000
+         GBLB     &CNDSECT                                              00038000
+         GBLC     &VER                                                  00039000
+         LCLC     &OFLAG                                                00040000
+         LCLC     &TEMP                                                 00041000
+         LCLC     &TM                                                   00042000
+         LCLB     &FASTCLS                                              00043000
+&FASTCLS SETB     0                                                     00044000
+&TEMP    SETC     '&SYSECT'                                             00045000
+&OFLAG   SETC     '0'                                                   00046000
+.*--------------------------------------------------------------------* 00047000
+.*                                                                    * 00048000
+.*       SOCKET   Macro -- Socket Open and Close                      * 00049000
+.*                                                                    * 00050000
+.*--------------------------------------------------------------------* 00051000
+.*        Copyright 1995,2005 -- Connectivity Systems Incorporated    * 00052000
+.*                                                                    * 00053000
+.*       Modifications at 1.5 E                                       * 00054000
+.*                                                                    * 00055000
+.*       1. Addition of new parameter: FAST=NO/YES                    * 00056000
+.*          If FAST=YES is specified, the CLOSE operation (only)      * 00057000
+.*          does not wait for the remote host to respond.  Unless     * 00058000
+.*          a positive response is needed, coding FAST=YES is         * 00059000
+.*          recommended. This parameter is compatible with all 1.5    * 00060000
+.*                                                                    * 00061000
+.*          ECB's specified along with FAST=YES have their POST       * 00062000
+.*          bit set.                                                  * 00063000
+.*                                                                    * 00064000
+.*--------------------------------------------------------------------* 00065000
+         AIF      ('&ACTION' EQ 'DSECT').DSECT                          00066000
+         AIF      ('&ACTION' EQ 'SET_SYSID').SETSID                     00067000
+         AIF      ('&MF' EQ 'L').SOPEN                                  00068000
+         AIF      ('&MF' EQ 'F').FORM                                   00069000
+         AIF      ('&MF' EQ 'I').INSERT                                 00070000
+.*                                                                      00071000
+.*       Check some extra parms                                         00072000
+.*                                                                      00073000
+         AIF      ('&ACTION' NE 'CLOSE').CHKECB                         00074000
+         AIF      ('&FAST' NE 'YES').CHKECB                             00075000
+         AIF      ('&WAIT' EQ 'YES').CHKECB                             00076000
+         AGO      .NOECBOK                                              00077000
+.CHKECB  ANOP                                                           00078000
+         AIF      ('&ECB' EQ '').SNERR1                                 00079000
+.NOECBOK ANOP                                                           00080000
+         AIF      ('&ID' EQ '').SNERR2                                  00081000
+         AIF      ('&DESC' EQ '').SNERR3                                00082000
+.*                                                                      00083000
+.*       Check the protocols                                            00084000
+.*                                                                      00085000
+         AIF      ('&NAME' EQ 'TCP').SACTCHK                            00086000
+         AIF      ('&NAME' EQ 'UDP').SACTCHK                            00087000
+         AIF      ('&NAME' EQ 'TELNET').SACTCHK                         00088000
+         AIF      ('&NAME' EQ 'CLIENT').SACTCHK                         00089000
+         AIF      ('&NAME' EQ 'RPC').SACTCHK                            00090000
+         AIF      ('&NAME' EQ 'FTP').SACTCHK                            00091000
+         AIF      ('&NAME' EQ 'RAW').SACTCHK                            00092000
+         AIF      ('&NAME' EQ 'CONTROL').SACTCHK                        00093000
+         MNOTE    12,'Unable to identify socket type'                   00094000
+         MEXIT                                                          00095000
+.*                                                                      00096000
+.*       Check the action types                                         00097000
+.*                                                                      00098000
+.SACTCHK ANOP                                                           00099000
+&LABEL   DS       0H                                                    00100000
+         AIF      ('&CICS' NE 'YES').SACTCHH                            00101000
+*        EXEC CICS ENTER TRACEID(1)                                     00102000
+*              RESOURCE('action')                                       00103000
+         DFHECALL =X'1A0460000822000000',,(FB_2,=Y(1)),(CHA8,=CL8'&ACTI*00104000
+               ON')                                                     00105000
+.SACTCHH ANOP                                                           00106000
+         AIF      ('&ACTION' EQ 'OPEN').SOPEN                           00107000
+         AIF      ('&ACTION' EQ 'CLOSE').SCLOSE                         00108000
+         AIF      ('&ACTION' EQ 'CLOSEONLY').SPROC                      00109000
+         AIF      ('&ACTION' EQ 'CLEANUP').SPROC                        00110000
+         AIF      ('&ACTION' EQ 'ABORT').SPROC                          00111000
+         AIF      ('&DATA' EQ '').SNERR4                                00112000
+         AIF      ('&ACTION' EQ 'SEND').SPROC                           00113000
+         AIF      ('&ACTION' EQ 'RECEIVE').SPROC                        00114000
+         AIF      ('&ACTION' EQ 'STATUS').SPROC                         00115000
+         MNOTE    12,'Unable to identify action operation'              00116000
+         MEXIT                                                          00117000
+.SCLOSE  ANOP                                                           00118000
+         AIF      ('&FAST' EQ 'YES').SCLOSEF                            00119000
+         AIF      ('&FAST' EQ 'NO').SPROC                               00120000
+         MNOTE    8,'Invalid value for FAST='                           00121000
+.SCLOSEF ANOP                                                           00122000
+&FASTCLS SETB     1                        Fast close                   00123000
+         AGO      .SPROC                                                00124000
+.*                                                                      00125000
+.*       Process a Socket Call                                          00126000
+.*                                                                      00127000
+.SPROC   ANOP                                                           00128000
+         LA       15,SORTCLSD              Set the closed flag          00129000
+         ICM      0,B'1111',&DESC          Load the descriptor          00130000
+         BZ       H&SYSNDX                 None, then error             00131000
+         SR       15,15                    Clear the return code        00132000
+         AGO      .SJOIN                                                00133000
+.*                                                                      00134000
+.*       Open a Socket Call                                             00135000
+.*                                                                      00136000
+.SOPEN   ANOP                                                           00137000
+         AIF      (&SOCSECT).SSOCKGO                                    00138000
+&SOCSECT SETB     1                                                     00139000
+         AIF      ('&MF' EQ 'L').SSKIP1                                 00140000
+         B        S&SYSNDX                 Skip the default images      00141000
+.SSKIP1  ANOP                                                           00142000
+         DS       0D                                                    00143000
+&EY.GENL GENL     SOCKET&ID                                             00144000
+SOGENLL  EQU      *-&EY.GENL                                            00145000
+         DS       0D                                                    00146000
+&EY.SPID DC       CL6'SCKT&ID'             Sub Pool ID                  00147000
+         DC       AL2(0)                                                00148000
+SOSPIDL  EQU      *-&EY.SPID                                            00149000
+         DS       0D                                                    00150000
+&EY.SDID DC       CL6'SCKD&ID'             Sub Pool ID                  00151000
+         DC       AL2(0)                                                00152000
+SOSDIDL  EQU      *-&EY.SDID                                            00153000
+         DS       0D                                                    00154000
+&EY.SSID DC       CL6'SCKS&ID'             Sub Pool ID                  00155000
+         DC       AL2(0)                                                00156000
+SOSSIDL  EQU      *-&EY.SSID                                            00157000
+         AIF      ('&MF' EQ 'L').SSKIP2                                 00158000
+S&SYSNDX DS       0H                                                    00159000
+.SSKIP2  ANOP                                                           00160000
+         SQBLOK   DSECT                                                 00161000
+         SOCKET   DSECT                                                 00162000
+SOWORK   DSECT                                                          00163000
+SOSAVE   DS       0CL64                                                 00164000
+SOR0     DS       F                                                     00165000
+SOR1     DS       F                                                     00166000
+SOR2     DS       F                                                     00167000
+SOR3     DS       F                                                     00168000
+SOR4     DS       F                                                     00169000
+SOR5     DS       F                                                     00170000
+SOR6     DS       F                                                     00171000
+SOR7     DS       F                                                     00172000
+SOR8     DS       F                                                     00173000
+SOR9     DS       F                                                     00174000
+SOR10    DS       F                                                     00175000
+SOR11    DS       F                                                     00176000
+SOR12    DS       F                                                     00177000
+SOR13    DS       F                                                     00178000
+SOR14    DS       F                                                     00179000
+SOR15    DS       F                                                     00180000
+SOWGENL  DS       CL40                                                  00181000
+SOWMFG   DS       CL64                                                  00182000
+SOSTAMP  DS       D                                                     00183000
+SOQUEUE  DS       A                                                     00184000
+SOFLAG   DS       X                                                     00185000
+SOZERO   EQU      X'01'                                                 00186000
+SODEFECB DS       14F                                                   00187000
+SOSUBSID DS       0XL16                    Sub System Id Area           00188000
+SOSSID1  DS       XL2                      - Key                        00189000
+SOSSNAME DS       CL4                      - Name                       00190000
+SOSSVERS DS       AL1                      - Version Number             00191000
+SOSSREL  DS       AL1                      - Release Number             00192000
+SOSSMOD  DS       AL1                      - Modification Number        00193000
+SOSSVARL DS       XL1                      - Length of Flags            00194000
+SOSSFL01 DS       XL1                      - Flag 1                     00195000
+SOSSFL02 DS       XL1                      - Flag 2                     00196000
+SOSSFL03 DS       XL1                      - Flag 3                     00197000
+SOSSFL04 DS       XL1                      - Flag 4                     00198000
+SOSSLCON DS       AL2                      - Number of library concats  00199000
+SOSMFG   DS       CL64                                                  00200000
+SOWKCCBL DS       F                        CCBLOK address               00201000
+SOGENECB DS       F                                                     00202000
+SOSNDECB DS       F                                                     00203000
+SORCVECB DS       F                                                     00204000
+SOWORKLN EQU      *-SOWORK                                              00205000
+*                                                                       00206000
+*        Return Codes                                                   00207000
+*                                                                       00208000
+SORTGOOD EQU      0                        Good Return code             00209000
+SORTIGTV EQU      4                        Partition Getvis Allocation  00210000
+SORTLOAD EQU      8                        Failed to Load SOCKET00      00211000
+SORTLOCK EQU      12                       Lock could not be obtained   00212000
+SORTSTOR EQU      16                       System Getvis Allocation     00213000
+SORTTRDY EQU      20                       Task ID Failure              00214000
+SORTSUBS EQU      24                       Subsystem Failure            00215000
+SORTFORM EQU      28                       Parameter list format error  00216000
+SORTCLSD EQU      32                       No descriptor, closed        00217000
+&TEMP    CSECT                                                          00218000
+         AIF      ('&MF' EQ 'L').SSKIP3                                 00219000
+.SSOCKGO ANOP                                                           00220000
+         AIF      ('&CICS' EQ 'YES').SCICS1                             00221000
+         AIF      ('&IDMS' EQ 'YES').SIDMS1                             00222000
+         AIF      ('&RELO' EQ 'NO').NOREL1                              00223000
+         LA       0,SOWORKLN                                            00224000
+         LA       1,SOSSID                                              00225000
+         AIF      (&CNDSECT).DS1                                        00226000
+         AGO      .DS00                                                 00227000
+.NOREL1  ANOP                                                           00228000
+         L        0,=A(SOWORKLN)           Load the workarea length     00229000
+         AIF      (&CNDSECT).DS1                                        00230000
+         L        1,=A(SOSSID)             Point to the pool ID  *LJL*  00231000
+.DS00    ANOP                                                           00232000
+         GETVIS   ADDRESS=(1),             Address                     *00233000
+               LENGTH=(0),                 Length                      *00234000
+               SPID=(1)                    Specify subpool ID           00235000
+         AGO      .DN1                                                  00236000
+.DS1     ANOP                                                           00237000
+         GETVIS   ADDRESS=(1),             Address                     *00238000
+               LENGTH=(0),                 Length                      *00239000
+               SPID=SOSSID                 Specify the subpool id       00240000
+.DN1     ANOP                                                           00241000
+         LTR      15,15                    Test the return code         00242000
+         BNZ      F&SYSNDX                 Big Fail.....                00243000
+         AGO      .SJOIN1                                               00244000
+.SIDMS1  ANOP                                                           00245000
+         #GETSTG  LEN=SOWORKLN,ADDR=(1),PLIST=&SYSPLST                  00246000
+         AGO      .SJOIN1                                               00247000
+.SCICS1  ANOP                                                           00248000
+*                                                                       00249000
+*   EXEC CICS     GETMAIN                                               00250000
+*              SHARED                                                   00251000
+*              SET(1)                                                   00252000
+*              FLENGTH(SOWORKLN)                                        00253000
+         DFHECALL =X'0C0290000800009300',(PTR4__RF,1),,,               *00254000
+               (FB_4,=A(SOWORKLN))                                      00255000
+.SJOIN1  ANOP                                                           00256000
+         XC       0(256,1),0(1)            Clear the work area          00257000
+         XC       256(SOWORKLN-256,1),256(1) Clear the work area        00258000
+         ST       1,&DESC                  Save the workarea address    00259000
+         STM      0,15,SOSAVE-SOWORK(1)    Save the registers           00260000
+         LR       3,1                      Copy the descriptor address  00261000
+.*                                                                      00262000
+.*       Setup for Socket Queue locator                                 00263000
+.*                                                                      00264000
+         MVC      SOR15-SOWORK(4,3),=A(SORTLOAD)                        00265000
+         MVC      SOWGENL-SOWORK(40,3),SOGENL Copy the Gen Area         00266000
+         AIF      ('&USESYS' EQ 'NO').NOUSESY                           00267000
+         L        1,X'14'(0,0)             Load the comreg address      00268000
+         L        1,X'70'(0,1)             Load the sysparm address     00269000
+         CLI      0(1),X'02'               Is this a sysid parm         00270000
+         BNE      NOU&SYSNDX               No, then skip the update     00271000
+         MVC      (SOWGENL-SOWORK)+2+6(2,3),1(1) Copy the sysid         00272000
+NOU&SYSNDX DS     0H                                                    00273000
+.NOUSESY ANOP                                                           00274000
+.*                                                                      00275000
+.*       Locate the Socket Queue                                        00276000
+.*                                                                      00277000
+         L        1,X'80'                  Load the SYSCOM address      00278000
+         SR       2,2                      Clear the worker             00279000
+         ICM      2,B'0111',X'F5'(1) IJBSVAAD Load the sva address      00280000
+         L        1,X'8'(,2) DSVASDL       Load the SDL list address    00281000
+         LA       1,4(,1)                  Move to first entry          00282000
+SD&SYSNDX DS      0H                                                    00283000
+         CLC      0(8,1),(SOWGENL-SOWORK)+2(3) Check our name           00284000
+         BE       FD&SYSNDX                Equal, then found            00285000
+         BH       U&SYSNDX                 High, then not found         00286000
+         AH       1,X'1E'(,2) DSVALENT     Bump to the next entry       00287000
+         B        SD&SYSNDX                Continue looping...          00288000
+.*                                                                      00289000
+.*       Queue has been found in SVA                                    00290000
+.*                                                                      00291000
+FD&SYSNDX DS      0H                                                    00292000
+         L        1,X'1C'(,1) SDLELPT      Load the queue address       00293000
+         LR       4,1                      Copy the anchor address      00294000
+         ST       4,SOQUEUE-SOWORK(,3)     Save the queue address       00295000
+         CLI      SQSHUT-SQBLOK(4),X'FF'   Are we in shutdown           00296000
+         BE       U&SYSNDX                 Yes, then Error              00297000
+         CLC      SQNAME-SQBLOK(6,4),=CL6'SOCKET' Is this a socket?     00298000
+         BNE      U&SYSNDX                 No, then Error               00299000
+         LM       0,15,SOSAVE-SOWORK(3)    Reload the saved registers   00300000
+.*                                                                      00301000
+.*       Setup Parameter List                                           00302000
+.*                                                                      00303000
+.SJOIN   ANOP                                                           00304000
+         AIF      ('&MFG' EQ '').SPARMB                                 00305000
+         LA       1,&MFG                   Load the parm list address   00306000
+         XC       0(SOPLEN,1),0(1)         Clear the parm list          00307000
+         B        G&SYSNDX                                              00308000
+         AGO      .SJOIN2                                               00309000
+.SPARMB  ANOP                                                           00310000
+         LA       1,Z&SYSNDX               Address the parm list        00311000
+         XC       0(SOPLEN,1),0(1)         Clear the parm list          00312000
+         B        G&SYSNDX                                              00313000
+         DS       0D                                                    00314000
+Z&SYSNDX DS       (SOPLEN)X                Parameter area               00315000
+.*                                                                      00316000
+.*       Process the parameter list                                     00317000
+.*                                                                      00318000
+.SJOIN2  ANOP                                                           00319000
+G&SYSNDX DS       0H                                                    00320000
+         AIF      (&CNDSECT).DS2                                        00321000
+.*                                                                      00322000
+.*       SOPSDID & SPOSPID not used after 1.5D                          00323000
+.*                                                                      00324000
+         AIF      ('&RELO' EQ 'NO').NOREL2                              00325000
+         MVC      SOPSDID-SOPARM(8,1),SOSDID Copy subpool name          00326000
+         MVC      SOPSPID-SOPARM(8,1),SOSPID Copy subpool name          00327000
+         AGO      .DN2                                                  00328000
+.NOREL2  ANOP                                                           00329000
+         L        15,=A(SOSDID)         Point to the subpool name *LJL* 00330000
+         MVC      SOPSDID-SOPARM(8,1),0(15)  Copy subpool name    *LJL* 00331000
+         L        15,=A(SOSPID)         Point to the subpool name *LJL* 00332000
+         MVC      SOPSPID-SOPARM(8,1),0(15)  Copy subpool name    *LJL* 00333000
+         AGO      .DN2                                                  00334000
+.DS2     ANOP                                                           00335000
+         MVC      SOPSDID-SOPARM(8,1),SOSDID Copy the subpool name      00336000
+         MVC      SOPSPID-SOPARM(8,1),SOSPID Copy the subpool name      00337000
+.DN2     ANOP                                                           00338000
+         MVC      SOPSYSID-SOPARM(2,1),=CL2'SO' Eye Catcher             00339000
+         MVI      SOPVERID-SOPARM(1),X'01' Version                      00340000
+         MVI      SOPRELID-SOPARM(1),X'02' Release                      00341000
+         MVC      SOPDESC-SOPARM(4,1),&DESC Copy the desc               00342000
+.*                                                                      00343000
+.*       Handle Data=                                                   00344000
+.*                                                                      00345000
+         AIF      ('&DATA' EQ '').SBLD                                  00346000
+         AIF      ('&DATA'(1,1) EQ '''').SSTRING                        00347000
+         AIF      ('&DATA'(1,1) EQ '(').SBLOCK                          00348000
+         AIF      ('&ACTION' NE 'RECEIVE').SDATAFA                      00349000
+         AIF      ('&NAME' EQ 'UDP').SDATACH                            00350000
+         AIF      ('&NAME' NE 'TCP').SDATAFA                            00351000
+.SDATACH ANOP                                                           00352000
+         AIF      ('&DATA' EQ 'NULL').SBLD                              00353000
+.SDATAFA ANOP                                                           00354000
+         MNOTE    12,'Unknown DATA= specification'                      00355000
+         MEXIT                                                          00356000
+.*                                                                      00357000
+.SSTRING ANOP                                                           00358000
+         B        J&SYSNDX                 Jump the data                00359000
+K&SYSNDX DC       C&DATA                                                00360000
+L&SYSNDX EQU      *-K&SYSNDX                                            00361000
+.*                                                                      00362000
+J&SYSNDX DS       0H                                                    00363000
+         LA       0,K&SYSNDX               Address the data             00364000
+         ST       0,SOPDADDR-SOPARM(,1)    Save the address             00365000
+         AIF      ('&RELO' EQ 'NO').NOREL3                              00366000
+         LA       0,L&SYSNDX               Get the length               00367000
+         ST       0,SOPDLEN-SOPARM(1)      And save it                  00368000
+         AGO      .SBLD                                                 00369000
+.NOREL3  ANOP                                                           00370000
+         MVC      SOPDLEN-SOPARM(4,1),=A(L&SYSNDX) Insert length        00371000
+         AGO      .SBLD                                                 00372000
+.*                                                                      00373000
+.SBLOCK  ANOP                                                           00374000
+         AIF      ('&DATA(1)'(1,1) EQ '(').SRDS1                        00375000
+         MVC      SOPDADDR-SOPARM(4,1),&DATA(1) Insert the address      00376000
+         AGO      .SRDS2                                                00377000
+.SRDS1   ANOP                                                           00378000
+         ST       &DATA(1),SOPDADDR-SOPARM(1)   Insert the address      00379000
+.SRDS2   ANOP                                                           00380000
+         AIF      ('&DATA(2)'(1,1) EQ '(').SRDS3                        00381000
+         MVC      SOPDLEN-SOPARM(4,1),&DATA(2)  Insert the length       00382000
+         AGO      .SRDS9                                                00383000
+.SRDS3   ANOP                                                           00384000
+         ST       &DATA(2),SOPDLEN-SOPARM(1)    Insert the length       00385000
+.SRDS9   ANOP                                                           00386000
+.*                                                                      00387000
+.*       Update the block with data                                     00388000
+.*                                                                      00389000
+.SBLD    ANOP                                                           00390000
+         AIF      ('&ACTIVE' NE 'YES').SFLG1                            00391000
+&OFLAG   SETC     '&OFLAG.+SOOFACT'                                     00392000
+.SFLG1   ANOP                                                           00393000
+         AIF      ('&PUSH' NE 'YES').SFLG2                              00394000
+&OFLAG   SETC     '&OFLAG.+SOOPUSH'                                     00395000
+.SFLG2   ANOP                                                           00396000
+         AIF      ('&URGENT' NE 'YES').SFLG3                            00397000
+&OFLAG   SETC     '&OFLAG.+SOOURGN'                                     00398000
+.SFLG3   ANOP                                                           00399000
+         AIF      ('&SHORT' NE 'YES').SFLG4                             00400000
+&OFLAG   SETC     '&OFLAG.+SOOSHORT'                                    00401000
+.SFLG4   ANOP                                                           00402000
+         AIF      ('&NEGOT' NE 'YES').SFLG5                             00403000
+&OFLAG   SETC     '&OFLAG.+SOONEGOT'                                    00404000
+.SFLG5   ANOP                                                           00405000
+         AIF      ('&AXE' NE 'YES').SFLG6                               00406000
+&OFLAG   SETC     '&OFLAG.+SOOAXE'                                      00407000
+.SFLG6   ANOP                                                           00408000
+         AIF      ('&TIMED' NE 'YES').SFLG7                             00409000
+&OFLAG   SETC     '&OFLAG.+SOOTIMEO'                                    00410000
+.SFLG7   ANOP                                                           00411000
+         AIF      ('&HALFC' NE 'YES').SFLG8                             00412000
+&OFLAG   SETC     '&OFLAG.+SOOHALFC'                                    00413000
+.SFLG8   ANOP                                                           00414000
+         MVI      SOPFLAG-SOPARM(1),&OFLAG Set the outbound flags       00415000
+         AIF      ('&LOCAL' EQ 'NO').SNOLOFL                            00416000
+         CLI      IVCMD,C' '               Are we really local?         00417000
+         BE       O&SYSNDX                 Yes, then go do it           00418000
+         MVI      SOPLOCAL-SOPARM(1),SOLOCNO Set the local flag         00419000
+         B        P&SYSNDX                 Skip                         00420000
+O&SYSNDX MVI      SOPLOCAL-SOPARM(1),SOLOC&LOCAL Set the local flag     00421000
+         AGO      .SNOFDFL                                              00422000
+.SNOLOFL ANOP                                                           00423000
+         MVI      SOPLOCAL-SOPARM(1),SOLOC&LOCAL Set the local flag     00424000
+.SNOFDFL ANOP                                                           00425000
+         AIF      ('&ACTION' NE 'CLOSE').NFAST                          00426000
+         AIF      (&FASTCLS EQ 0).NFAST                                 00427000
+         MVI      SOPNTALK-SOPARM(1),X'FF' Indicate "fast" close        00428000
+.NFAST   ANOP                                                           00429000
+.*                                                                      00430000
+P&SYSNDX DS       0H                                                    00431000
+         AIF      ('&ECB' EQ '').SSKIPE1                                00432000
+         BLDARG   ADDRIND,&ECB,SOPECB,0,SOPARM                          00433000
+.SSKIPE1 ANOP                                                           00434000
+         AIF      ('&ECB2' EQ '').SSKIPEC                               00435000
+         BLDARG   ADDRIND,&ECB2,SOPECB2,0,SOPARM                        00436000
+.SSKIPEC ANOP                                                           00437000
+         BLDARG   NUMBER,&LOPORT,SOPLPORT,2,SOPARM                      00438000
+         BLDARG   NUMBER,&FOPORT,SOPFPORT,2,SOPARM                      00439000
+         BLDARG   NUMBER,&TIMEOUT,SOPTIMEO,4,SOPARM                     00440000
+         BLDARG   ADDRREF,&FOIP,SOPFOIP,4,SOPARM                        00441000
+         AIF      ('&NAME' EQ 'TCP').SBLDTCP                            00442000
+         AIF      ('&NAME' EQ 'UDP').SBLDUDP                            00443000
+         AIF      ('&NAME' EQ 'TELNET').SBLDTEL                         00444000
+         AIF      ('&NAME' EQ 'RPC').SBLDRPC                            00445000
+         AIF      ('&NAME' EQ 'CLIENT').SBLDCMD                         00446000
+         AIF      ('&NAME' EQ 'FTP').SBLDFTP                            00447000
+         AIF      ('&NAME' EQ 'RAW').SBLDRAW                            00448000
+         AIF      ('&NAME' EQ 'CONTROL').SBLDCON                        00449000
+         MEXIT                                                          00450000
+.*                                                                      00451000
+.SBLDRPC ANOP                                                           00452000
+         MVI      SOPTYPE-SOPARM(1),SOTRPC  Set the type for RPC        00453000
+         AGO      .SBLDTDN                                              00454000
+.*                                                                      00455000
+.SBLDCMD ANOP                                                           00456000
+         MVI      SOPTYPE-SOPARM(1),SOTCMD  Set the type for Client     00457000
+         AGO      .SBLDTDN                                              00458000
+.*                                                                      00459000
+.SBLDTCP ANOP                                                           00460000
+         MVI      SOPTYPE-SOPARM(1),SOTTCP  Set the type for TCP        00461000
+         AGO      .SBLDTDN                                              00462000
+.*                                                                      00463000
+.SBLDUDP ANOP                                                           00464000
+         MVI      SOPTYPE-SOPARM(1),SOTUDP  Set the type for UDP        00465000
+         AGO      .SBLDTDN                                              00466000
+.*                                                                      00467000
+.SBLDTEL ANOP                                                           00468000
+         MVI      SOPTYPE-SOPARM(1),SOTTELNT Set the type for Telnet    00469000
+         AGO      .SBLDTDN                                              00470000
+.*                                                                      00471000
+.SBLDFTP ANOP                                                           00472000
+         MVI      SOPTYPE-SOPARM(1),SOTFTP Set the type for FTP         00473000
+         AGO      .SBLDTDN                                              00474000
+.*                                                                      00475000
+.SBLDRAW ANOP                                                           00476000
+         MVI      SOPTYPE-SOPARM(1),SOTRAW  Set the type for Raw Input  00477000
+         AGO      .SBLDTDN                                              00478000
+.*                                                                      00479000
+.SBLDCON ANOP                                                           00480000
+         MVI      SOPTYPE-SOPARM(1),SOTCONT Set the type for Control In 00481000
+         AGO      .SBLDTDN                                              00482000
+.SBLDTDN ANOP                                                           00483000
+.*                                                                      00484000
+&TM      SETC     '&ACTION'(1,4)                                        00485000
+         MVI      SOPREQST-SOPARM(1),SOR&TM Set the request type        00486000
+.*                                                                      00487000
+         OI       SOPBIT1-SOPARM(1),SOPR&RMODE Set SOBLOK residence     00488000
+.*                                                                      00489000
+.*       Call the socket                                                00490000
+.*                                                                      00491000
+         ICM      15,B'1111',&DESC         Load the descriptor          00492000
+         BZ       ER&SYSNDX                None, then error             00493000
+         ICM      15,B'1111',SOQUEUE-SOWORK(15) Load the queue addr     00494000
+         BZ       ER&SYSNDX                None, then error             00495000
+         ST       15,SOPQUEUE-SOPARM(,1)   Save the queue address       00496000
+         ICM      15,B'1111',SQSOCKET-SQBLOK(15) Load the routine addr  00497000
+         BZ       ER&SYSNDX                None, then error             00498000
+         BASSM    14,15                    Call the socket routine      00499000
+         AIF      ('&SOBLADR' EQ '0').NOSAVS2                           00500000
+         ST       1,&SOBLADR               Save the soblok address      00501000
+.NOSAVS2 ANOP                                                           00502000
+         AIF      (&FASTCLS EQ 0).NOPOST                                00503000
+         AIF      ('&ECB' EQ '').NOPOST1                                00504000
+         BLDARG   ARGUMENT,&ECB,1          Address the ECB              00505000
+         OI       2(1),X'80'               Post operation complete      00506000
+.NOPOST1 ANOP                                                           00507000
+         AIF      ('&ECB2' EQ '').NOPOST2                               00508000
+         BLDARG   ARGUMENT,&ECB2,1         Address the ECB              00509000
+         OI       2(1),X'80'               Post operation complete      00510000
+.NOPOST2 ANOP                                                           00511000
+.NOPOST  ANOP                                                           00512000
+         AIF      ('&WAIT' NE 'YES').NOWAIT2                            00513000
+         AIF      ('&ECB' EQ '').NOWAIT2   No ECB passed                00514000
+.*                                                                      00515000
+.*       Handle the wait code                                           00516000
+.*                                                                      00517000
+         BLDARG   ARGUMENT,&ECB,1          Address the ECB              00518000
+         AIF      ('&CICS' EQ 'YES').WCICS1                             00519000
+         AIF      ('&IDMS' NE 'YES').NWAIT                              00520000
+         MNOTE    8,'IDMS code cannot specify WAIT=YES'                 00521000
+         MEXIT                                                          00522000
+.NWAIT   ANOP                                                           00523000
+         WAIT     (1)                      Wait for the operation       00524000
+         AGO      .WDONE1                                               00525000
+.WCICS1  ANOP                                                           00526000
+*                                                                       00527000
+*        EXEC     CICS WAIT EVENT ECADDR(1)                             00528000
+         ST       1,DFHEITP1                                            00529000
+         LA       1,DFHEIPL                                             00530000
+         LA       14,=X'120280000800008040'                             00531000
+         LA       15,DFHEITP1                                           00532000
+         STM      14,15,0(1)                                            00533000
+         OI       4(1),X'80'               Last argument                00534000
+         L        15,=V(DFHEI1)                                         00535000
+         BALR     14,15                    Invoke EXEC Interface        00536000
+         BLDARG   ARGUMENT,&ECB,1          Address the ECB              00537000
+*                                                                       00538000
+.WDONE1  ANOP                                                           00539000
+         SR       15,15                    Clear the return code        00540000
+         IC       15,SRCODE-SRBLOK(,1)     Load the return code         00541000
+.NOWAIT2 ANOP                                                           00542000
+         B        DN&SYSNDX                Skip the error spot          00543000
+ER&SYSNDX LA       15,SORTCLSD              Set the closed flag         00544000
+DN&SYSNDX DS      0H                                                    00545000
+         AIF      ('&ACTION' EQ 'OPEN').SCOMP                           00546000
+         AIF      ('&ACTION' EQ 'CLOSE').SCOMP                          00547000
+H&SYSNDX LTR      15,15                    Set the condition code       00548000
+         MEXIT                                                          00549000
+.SCOMP   ANOP                                                           00550000
+         B        V&SYSNDX                 Go pass normal               00551000
+.*                                                                      00552000
+.*       General Error Point                                            00553000
+.*                                                                      00554000
+U&SYSNDX DS       0H                                                    00555000
+         LM       0,15,SOSAVE-SOWORK(3)    Reload the saved registers   00556000
+V&SYSNDX DS       0H                                                    00557000
+         AIF      ('&ACTION' NE 'CLOSE').SNOTCLS                        00558000
+         L        1,&DESC                  Load the descriptor          00559000
+         AIF      ('&CICS' EQ 'YES').SCICS2                             00560000
+         AIF      ('&IDMS' EQ 'YES').SIDMS2                             00561000
+         SR       0,0                      Clear a worker               00562000
+         ST       0,&DESC                  Clear the descriptor         00563000
+         AIF      ('&RELO' EQ 'NO').NOREL4                              00564000
+         LA       0,SOWORKLN               Point to the length          00565000
+         AGO      .CALLFR                  And proceed                  00566000
+.NORELO4 ANOP                                                           00567000
+         L        0,=A(SOWORKLN)           Load the workarea length     00568000
+.CALLFR  ANOP                                                           00569000
+         LR       14,15                    Save the return code         00570000
+         FREEVIS  ADDRESS=(1),LENGTH=(0)                                00571000
+         LTR      15,14                    Load and set return code     00572000
+         AGO      .SJOIN3                                               00573000
+.SIDMS2  ANOP                                                           00574000
+         #FREESTG  ADDR=(1)                Free up storage              00575000
+         AGO      .SJOIN3                                               00576000
+.SCICS2  ANOP                                                           00577000
+         ST       15,&DESC                 Save the return code         00578000
+         LR       15,1                     Copy the address             00579000
+*                                                                       00580000
+*   EXEC CICS     FREEMAIN                                              00581000
+*              DATA(0(15))                                              00582000
+         DFHECALL =X'0C0480000800004000',(______RF,0(15))               00583000
+         L        15,&DESC                 Restore the return code      00584000
+         SR       0,0                      Clear the worker             00585000
+         ST       0,&DESC                  Clear the descriptor         00586000
+.SJOIN3  ANOP                                                           00587000
+.SNOTCLS ANOP                                                           00588000
+         B        H&SYSNDX                 Skip the big fail            00589000
+F&SYSNDX LA       15,SORTIGTV              Failed to obtain getvis      00590000
+H&SYSNDX LTR      15,15                    Set the condition code       00591000
+.SSKIP3  ANOP                                                           00592000
+         MEXIT                                                          00593000
+.*                                                                      00594000
+.*       Errors                                                         00595000
+.*                                                                      00596000
+.SNERR1  ANOP                                                           00597000
+         MNOTE    12,'ECB= PARAMETER MISSING OR INVALID'                00598000
+         MEXIT                                                          00599000
+.SNERR2  ANOP                                                           00600000
+         MNOTE    12,'ID= PARAMETER MISSING OR INVALID'                 00601000
+         MEXIT                                                          00602000
+.SNERR3  ANOP                                                           00603000
+         MNOTE    12,'DESC= PARAMETER MISSING OR INVALID'               00604000
+         MEXIT                                                          00605000
+.SNERR4  ANOP                                                           00606000
+         MNOTE    12,'DATA= PARAMETER MISSING OR INVALID'               00607000
+         MEXIT                                                          00608000
+.*                                                                      00609000
+.*       Set the Socket SYSID Number                                    00610000
+.*                                                                      00611000
+.SETSID  ANOP                                                           00612000
+&LABEL   DS       0H                                                    00613000
+         MVC      SOGENL+2+6(2),&NAME      Insert the new SYSID         00614000
+         MVC      SOSPID+4(2),&NAME        Insert the new SYSID         00615000
+         MVC      SOSDID+4(2),&NAME        Insert the new SYSID         00616000
+         MVC      SOSSID+4(2),&NAME        Insert the new SYSID         00617000
+         MEXIT                                                          00618000
+.*                                                                      00619000
+.*       Insert the Constants                                           00620000
+.*                                                                      00621000
+.INSERT  ANOP                                                           00622000
+&LABEL   DS       0H                                                    00623000
+         MVC      SOGENL(SOGENLL),&EY.GENL Copy the constant            00624000
+         MVC      SOSPID(SOSPIDL),&EY.SPID Copy the constant            00625000
+         MVC      SOSDID(SOSDIDL),&EY.SDID Copy the constant            00626000
+         MVC      SOSSID(SOSSIDL),&EY.SSID Copy the constant            00627000
+         MEXIT                                                          00628000
+.*                                                                      00629000
+.*       Form the Constants in Dsect                                    00630000
+.*                                                                      00631000
+.FORM    ANOP                                                           00632000
+&CNDSECT SETB     1                                                     00633000
+         DS       0D                                                    00634000
+SOGENL   DS       (SOGENLL)X                                            00635000
+         DS       0D                                                    00636000
+SOSPID   DS       (SOSPIDL)X                                            00637000
+         DS       0D                                                    00638000
+SOSDID   DS       (SOSDIDL)X                                            00639000
+         DS       0D                                                    00640000
+SOSSID   DS       (SOSSIDL)X                                            00641000
+         MEXIT                                                          00642000
+*                                                                       00643000
+*        Return Codes                                                   00644000
+*                                                                       00645000
+SORTGOOD EQU      0                        Good Return code             00646000
+SORTIGTV EQU      4                        Partition Getvis Allocation  00647000
+SORTLOAD EQU      8                        Failed to Load SOCKET00      00648000
+SORTLOCK EQU      12                       Lock could not be obtained   00649000
+SORTSTOR EQU      16                       System Getvis Allocation     00650000
+SORTTRDY EQU      20                       Task ID Failure              00651000
+SORTSUBS EQU      24                       Subsystem Failure            00652000
+SORTFORM EQU      28                       Parameter list format error  00653000
+SORTCLSD EQU      32                       No descriptor, closed        00654000
+.*                                                                      00655000
+.*       DSECT Definition                                               00656000
+.*                                                                      00657000
+.DSECT   ANOP                                                           00658000
+         AIF      (&SODSECT).DSDONE                                     00659000
+&SODSECT SETB     1                                                     00660000
+         SOPARM   ,                        Generate DSECT               00661000
+*------------------------------------------*                            00662000
+*        Additional Equates                *                            00663000
+*------------------------------------------*                            00664000
+*SOPREQST DS       AL1                      Request for call            00665000
+SOROPEN  EQU      1                        - Open                       00666000
+SORCLOS  EQU      2                        - Close                      00667000
+SORSEND  EQU      3                        - Send                       00668000
+SORRECE  EQU      4                        - Receive                    00669000
+SORSTAT  EQU      5                        - Status                     00670000
+SORABOR  EQU      6                        - Abort                      00671000
+*SOPTYPE  DS       AL1                      Type of call                00672000
+SOTTCP   EQU      1                        - TCP                        00673000
+SOTUDP   EQU      2                        - UDP                        00674000
+SOTTELNT EQU      3                        - TELNET                     00675000
+SOTFTP   EQU      4                        - FTP                        00676000
+SOTRAW   EQU      5                        - RAW Connection             00677000
+SOTCMD   EQU      6                        - Client                     00678000
+SOTRPC   EQU      7                        - RPC                        00679000
+SOTCONT  EQU      8                        - Control                    00680000
+*SOPFLAG  DS       X                        Outbound Flags              00681000
+SOOFACT  EQU      X'01'                    - Activate/Passive Connect   00682000
+SOOPUSH  EQU      X'02'                    - Push Flag                  00683000
+SOOURGN  EQU      X'04'                    - Urgent Flag                00684000
+SOOSHORT EQU      X'08'                    - Short Operation            00685000
+SOONEGOT EQU      X'10'                    - Negotiation Flag           00686000
+SOOAXE   EQU      X'20'                    - Axe The Connection @ Close 00687000
+SOOTIMEO EQU      X'40'                    - Request Timeout for idle   00688000
+SOOHALFC EQU      X'80'                    - Respect half close         00689000
+*SOPLOCAL DS       X                        Local Call Flag             00690000
+SOLOCYES EQU      X'FF'                    - Yes                        00691000
+SOLOCNO  EQU      X'00'                    - No                         00692000
+*------------------------------------------*                            00693000
+*        Socket Response Map of ECB        *                            00694000
+*------------------------------------------*                            00695000
+SRBLOK   DSECT                                                          00696000
+SRECB    DS       0F                       Full word ECB                00697000
+         DS       H                        Reserved                     00698000
+SRFLAG0  DS       X                        Response Flags               00699000
+SRTRAFIC EQU      X'80'                    - Traffic Flag               00700000
+         DS       X                        Reserved                     00701000
+*        TCP/UDP Parameters                                             00702000
+SRLOPORT DS       H                        Local Port Address           00703000
+SRFOPORT DS       H                        Foreign Port Address         00704000
+SRFOIP   DS       A                        Foreign IP Address           00705000
+*                                                                       00706000
+SRCOUNT  DS       H                        Byte Count of data received  00707000
+SRFLAGS  DS       X                        Response Flags               00708000
+SRPUSH   EQU      X'01'                    - Push Flag                  00709000
+SRURGENT EQU      X'02'                    - Urgent Flag                00710000
+SRNVT    EQU      X'03'                    - NVT Traffic                00711000
+SRBINARY EQU      X'04'                    - Binary Traffic             00712000
+SRCODE   DS       AL1                      Response Return Code         00713000
+SRCLOSED EQU      32                       - Indicate socket closed     00714000
+SRCANCEL EQU      36                       - Indicate socket canceled   00715000
+*        Telnet Parameters                                              00716000
+SRARPARM DS       0X                       Arp Parameters               00717000
+         DS       3F                                                    00718000
+SRLENGTH DS       F                        Full word length             00719000
+         ORG      SRARPARM                                              00720000
+SRTERMTY DS       CL40                     Terminal Type Specification  00721000
+*                                                                       00722000
+*        Return codes for Open                                          00723000
+*                                                                       00724000
+SROPGOOD EQU      0                        Sucessful Execution          00725000
+SROPFAIL EQU      4                        Not Established              00726000
+SROPTIME EQU      12                       Connection Was Timed Out     00727000
+SROPSERR EQU      24                       General failure              00728000
+SROPSHUT EQU      28                       TCP/IP shutting down         00729000
+SROPNOSO EQU      28                       No SOCKET interface          00730000
+*                                                                       00731000
+*        Return codes for Close                                         00732000
+*                                                                       00733000
+SRCLGOOD EQU      0                        Sucessful Execution          00734000
+SRCLNFND EQU      4                        Connection Not Found         00735000
+SRCLNOPN EQU      16                       DESC contains nulls          00736000
+SRCLSHUT EQU      28                       TCP/IP shutting down         00737000
+*                                                                       00738000
+*        Return codes for Send                                          00739000
+*                                                                       00740000
+SRSEGOOD EQU      0                        Sucessful Execution          00741000
+SRSENFND EQU      4                        Connection Not Found         00742000
+SRSENIPA EQU      8                        IP Address Not Found         00743000
+SRSEFAIL EQU      12                       Execution Failure            00744000
+SRSENOPN EQU      16                       DESC contains nulls          00745000
+SRSEBFOR EQU      20                       Duplicate ECB address        00746000
+SRSESHUT EQU      28                       TCP/IP shutting down         00747000
+*                                                                       00748000
+*        Return codes for Receive                                       00749000
+*                                                                       00750000
+SRREGOOD EQU      0                        Sucessful Execution          00751000
+SRRENFND EQU      4                        Connection Not Found         00752000
+SRREERST EQU      8                        Connection Was Reset         00753000
+SRRETIME EQU      12                       Connection Was Timed Out     00754000
+SRRENOPN EQU      16                       DESC contains nulls          00755000
+SRREBFOR EQU      20                       Duplicate ECB address        00756000
+SRRESHUT EQU      28                       TCP/IP shutting down         00757000
+*                                                                       00758000
+*        Return codes for Status                                        00759000
+*                                                                       00760000
+SRSTGOOD EQU      0                                                     00761000
+SRSTNFND EQU      4                        Connection Not Found         00762000
+SRSTERST EQU      8                        Status Error                 00763000
+SRSTNOPN EQU      16                       DESC contains nulls          00764000
+SRSTSHUT EQU      28                       TCP/IP shutting down         00765000
+*                                                                       00766000
+*        Return codes for Abort                                         00767000
+*                                                                       00768000
+SRABGOOD EQU      0                                                     00769000
+SRABERST EQU      16                                                    00770000
+SRABSHUT EQU      28                       TCP/IP shutting down         00771000
+SRBLOKLN EQU      *-SRBLOK                                              00772000
+.DSDONE  ANOP                                                           00773000
+         MEND                                                           00774000

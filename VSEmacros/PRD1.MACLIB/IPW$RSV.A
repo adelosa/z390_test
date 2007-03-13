@@ -1,0 +1,169 @@
+         MACRO                                                          00050000
+&NAME    IPW$RSV &LENGTH=,&POOL=,&WAIT=,&OWNER=,&ANCHOR=,&BDY=,        *00100000
+               &PREFIX=YES,                                            *00150000
+               &DUMMY=DUMMY                                             00200000
+.*                                                                      00250000
+.* IBM DISK OPERATING SYSTEM                                            00300000
+.* VSE/POWER - 5686-CF7-03                                              00350001
+.* IPW$RSV MACRO INSTRUCTION - RESERVE VIRTUAL STORAGE                  00400000
+.*                                                                      00450000
+.* A000000-9999999                                             @D03PIPP 00500000
+.*                                                                      00550000
+         GBLB  &NUSA               USED IN LINKING REGISTERS            00600000
+         LCLA  &RSVFCT             FUNCTION CODE                        00650000
+         LCLC  &RSVREG             REGISTER LABEL                       00700000
+.*                                                                      00750000
+         AGO   .ZZZ                                                     00800000
+*        LICENSED MATERIALS - PROPERTY OF IBM                           00850000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    00900000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 1982, 2004                    00950001
+*        SEE COPYRIGHT INSTRUCTIONS                                     01000000
+.ZZZ     ANOP                                                           01050000
+         AIF   (T'&NAME EQ 'O').NONAME BRANCH IF NO NAME SPECIFIED      01100000
+&NAME    DS    0H                                                       01150000
+.*                                                                      01200000
+.NONAME  ANOP                                                           01250000
+         AIF   (T'&LENGTH EQ 'O').RSVERR1 NO LENGTH SPECIFIED - ERROR   01300000
+         AIF   ('&LENGTH'(1,2) EQ '(R').RSV100 REGISTER NOTATION?       01350000
+         LA    R1,&LENGTH          LOAD LENGTH IN REGISTER 1            01400000
+         AGO   .RSV200             BRANCH AND CHECK NEXT OPERAND        01450000
+.*                                                                      01500000
+.RSV100  ANOP                                                           01550000
+         AIF   (K'&LENGTH NE 4).RSVERR1 LENGTH OF PARM ¬= 4 - ERROR     01600000
+         AIF   ('&LENGTH'(2,2) EQ 'R1').RSV200 IS LENGTH IN REG 1?      01650000
+&RSVREG  SETC  '&LENGTH'(2,2)      PUT REGISTER IN RSVREG               01700000
+         LR    R1,&RSVREG          LOAD LENGTH IN REGISTER 1            01750000
+.*                                                                      01800000
+.RSV200  ANOP                                                           01850000
+         AIF   (T'&POOL EQ 'O').RSV300 IS POOL OPTIONALLY SPECIFIED?    01900000
+         AIF   ('&POOL' EQ 'GEN').RSV300 IF POOL TYPE GEN THEN BRANCH   01950000
+         AIF   ('&POOL' NE 'NET').RSV210 IF POOL TYPE NOT NET           02000000
+&RSVFCT  SETA  &RSVFCT+2           INDICATE THAT POOL = NET             02050000
+         AGO   .RSV300                                                  02100000
+.RSV210  ANOP                                                           02150000
+         AIF   ('&POOL' NE 'SNA').RSV220 IF POOL TYPE SNA THEN BRANCH   02200000
+&RSVFCT  SETA  &RSVFCT+3           INDICATE THAT POOL = SNA             02250000
+         AGO   .RSV300                                                  02300000
+.RSV220  ANOP                                                           02350000
+         AIF   ('&POOL' NE 'WACB').RSV230                               02400000
+&RSVFCT  SETA  &RSVFCT+4           INDICATE THAT POOL = WACB | COCB     02450000
+         AGO   .RSV300                                                  02500000
+.RSV230  ANOP                                                           02550000
+         AIF   ('&POOL' NE 'COCB').RSV240                               02600000
+&RSVFCT  SETA  &RSVFCT+4           INDICATE THAT POOL = COCB | WACB     02650000
+         AGO   .RSV300                                                  02700000
+.RSV240  ANOP                                                           02750000
+.*                                 IF POOL TYPE ¬= MSG THEN ERROR       02800000
+         AIF   ('&POOL' NE 'MSG').RSVERR2                               02850000
+&RSVFCT  SETA  &RSVFCT+1           INDICATE THAT POOL = MSG             02900000
+.*                                                                      02950000
+.RSV300  ANOP                                                           03000000
+         AIF   (T'&WAIT EQ 'O').RSV400 IF WAIT NOT SPECIFIED - BRANCH   03050000
+         AIF   ('&WAIT' EQ 'YES').RSV400 IF WAIT = YES - BRANCH         03100000
+         AIF   ('&WAIT' EQ 'COND').RSV320 IF WAIT = COND -> BR @D22PIQW 03150000
+         AIF   ('&WAIT' NE 'NO').RSVERR3 WAIT NOT = NO THEN ERROR       03200000
+&RSVFCT  SETA  &RSVFCT+256         INDICATE WAIT = NO                   03250000
+         AGO   .RSV400             AND CONTINUE                @D22PIQW 03300000
+.*                                                                      03350000
+.RSV320  ANOP                                                           03400000
+&RSVFCT  SETA  &RSVFCT+2048        INDICATE WAIT = COND        @D22PIQW 03450000
+.*                                                                      03500000
+.RSV400  ANOP                                                           03550000
+         AIF   (T'&OWNER EQ 'O').RSV600 IF NOT SPECIFIED THEN BRANCH.   03600000
+.*                                 OWNER AND ANCHOR ARE EXCLUSIVE, SO   03650000
+         AIF   ((T'&ANCHOR NE 'O')).RSVERR4 IF ANCHOR SPECIFIED - ERROR 03700000
+.*                                 IF LENGTH OF OWNER ¬= 4 OR           03750000
+.*                                 OWNER IS NOT REG. NOTATION - ERROR   03800000
+         AIF   ((K'&OWNER NE 4) OR ('&OWNER'(1,2) NE '(R')).RSVERR5     03850000
+&RSVREG  SETC  '&OWNER'(2,2)       PUT REGISTER SPECIFIED INTO RSVREG   03900000
+         LA    R4,(TCHD-TCDS)(&RSVREG) LOAD START OF CHAIN IN REG 4     03950000
+.*                                                                      04000000
+.RSV500  ANOP                                                           04050000
+         OI    TCCB,TCCA           INDICATE OWNER ADDR WAS SPECIFIED    04100000
+         AGO   .RSV800             BRANCH FOR FINAL PROCESSING          04150000
+.*                                                                      04200000
+.RSV600  ANOP                                                           04250000
+.*                                 IF NOT SPECIFIED BRANCH TO           04300000
+         AIF   (T'&ANCHOR EQ 'O').RSV800 FINAL PROCESSING               04350000
+.*                                 LENGTH OF ANCHOR ¬= 4 OR             04400000
+.*                                 NO REGISTER NOTATION SPECIFIED?      04450000
+         AIF   ((K'&ANCHOR NE 4) OR ('&ANCHOR'(1,2) NE '(R')).RSVERR6   04500000
+.*                                 IF ALREADY IN REG 4 THEN             04550000
+         AIF   ('&ANCHOR'(2,2) EQ 'R4').RSV700 CONTINUE PROCESSING      04600000
+&RSVREG  SETC  '&ANCHOR'(2,2)      PUT REGISTER IN RSVREG               04650000
+         LR    R4,&RSVREG          LOAD REGISTER INTO REGISTER 4        04700000
+.*                                                                      04750000
+.RSV700   ANOP                                                          04800000
+         OI    TCCB,TCCA           INDICATE ANCHOR ADDR WAS SPECIFIED   04850000
+.*                                                                      04900000
+.*                                                                      04950000
+.RSV800  ANOP                                                           05000000
+         AIF   (T'&BDY EQ 'O').RSV850 IF NOT SPECIFIED - BRANCH         05050000
+         AIF   ('&BDY' EQ 'NO').RSV850 IF NO SPECIFIED - BRANCH         05100000
+         AIF   ('&BDY' NE 'PAGE').RSVERR7 ERROR IF NOT PAGE - BRANCH    05150000
+&RSVFCT  SETA  &RSVFCT+1024        INDICATE THAT BDY = PAGE             05200000
+.*                                                                      05250000
+.RSV850  ANOP                                                           05300000
+         AIF   ('&PREFIX' NE 'NO').RSV860                               05350000
+         OI    TCCB,TCNP           INDICATE NO STORAGE PREFIX WANTED    05400000
+.RSV860  ANOP                                                           05450000
+.*                                                                      05500000
+         LA    R0,&RSVFCT          LOAD IN REG 0 FUNCTION CODE BYTES    05550000
+         AIF   (&NUSA).RSV900                                           05600000
+         SPACE                                                          05650000
+*        LINK TO NUCLEUS SERVICE FROM OUTSIDE NUCLEUS.  HIGH-ORDER      05700000
+*        BYTE OF LINK REG MUST BE NON-ZERO.  'BAL' INSURES THIS.        05750000
+         SPACE                                                          05800000
+         BAL   R2,VS00             RESERVE VIRTUAL STORAGE              05850000
+         AGO   .RSV1000            BRANCH TO RESERVE VIRTUAL STORAGE    05900000
+.*                                                                      05950000
+.RSV900  ANOP                                                           06000000
+         SPACE                                                          06050000
+*        LINK TO NUCLEUS SERVICE FROM INSIDE NUCLEUS.  HIGH-ORDER       06100000
+*        BYTE OF LINK REG MUST BE ZERO.  'LA' INSURES THIS.             06150000
+         SPACE                                                          06200000
+         LA    R2,*+8              GET LINK ADDRESS                     06250000
+         B     VS00                RESERVE VIRTUAL STORAGE              06300000
+.*                                                                      06350000
+.RSV1000 ANOP                                                           06400000
+         SPACE                                                          06450000
+*        THE CONTENTS OF REGISTER 0, 2, 3 AND 4 (ONLY IF OWNER OR       06500000
+*        ANCHOR HAS BEEN SPECIFIED) HAVE BEEN DESTROYED.  REGISTER 1    06550000
+*        CONTAINS THE VIRTUAL STORAGE ADDRESS.                          06600000
+         MEXIT                                                          06650000
+.*                                                                      06700000
+.*                                                                      06750000
+.RSVERR1 ANOP                                                           06800000
+         MNOTE 8,'LENGTH SPECIFICATION MISSING OR INVALID'              06850000
+         SPACE 2                                                        06900000
+         MEXIT                                                          06950000
+.*                                                                      07000000
+.RSVERR2 ANOP                                                           07050000
+         MNOTE 4,'INVALID POOL SPECIFICATION, DEFAULT ASSUMED'          07100000
+         SPACE 2                                                        07150000
+         AGO   .RSV300                                                  07200000
+.*                                                                      07250000
+.RSVERR3 ANOP                                                           07300000
+         MNOTE 4,'INVALID WAIT SPECIFICATION, DEFAULT ASSUMED'          07350000
+         SPACE 2                                                        07400000
+         AGO   .RSV400                                                  07450000
+.*                                                                      07500000
+.RSVERR4 ANOP                                                           07550000
+         MNOTE 8,'OWNER AND ANCHOR PARAMETER ARE EXCLUSIVE'             07600000
+         SPACE 2                                                        07650000
+         MEXIT                                                          07700000
+.*                                                                      07750000
+.RSVERR5 ANOP                                                           07800000
+         MNOTE 8,'INVALID OWNER SPECIFICATION'                          07850000
+         SPACE 2                                                        07900000
+         MEXIT                                                          07950000
+.*                                                                      08000000
+.RSVERR6 ANOP                                                           08050000
+         MNOTE 8,'INVALID ANCHOR SPECIFICATION'                         08100000
+         SPACE 2                                                        08150000
+         MEXIT                                                          08200000
+.*                                                                      08250000
+.RSVERR7 ANOP                                                           08300000
+         MNOTE 8,'INVALID BDY SPECIFICATION, DEFAULT ASSUMED'           08350000
+         SPACE 2                                                        08400000
+         MEND                                                           08450000

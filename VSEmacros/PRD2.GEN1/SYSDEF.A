@@ -1,0 +1,614 @@
+*%GOTO SYSDFPLS ; /* PL/X COMMENT COVERING ASSEMBLER CODE               00050052
+         MACRO                                                          00100052
+&NAME    SYSDEF &ID=,          REQUESTED SERVICE                       X00150052
+               &AREA=          POINTER TO SPECIFIED AREA                00200052
+         LCLC  &LABEL                                                   00208352
+         LCLC  &SVCNUM                                                  00216652
+         LCLB  &REGADDR                                                 00224952
+         LCLB  &DSECT,&UPDATE,&QUERY                                    00237452
+         AGO    .ZZZ                                                    00250052
+*************************************************************           00300052
+*                                                           *           00350052
+*        LICENSED MATERIALS - PROPERTY OF IBM               *           00500052
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"        *           00520052
+*        5686-032 (C) COPYRIGHT IBM CORP 1993               *           00540052
+*        SEE COPYRIGHT INSTRUCTIONS                         *           00560052
+*                                                           *           00580052
+*************************************************************           00600052
+.ZZZ     ANOP                                                           00650052
+.**** START OF SPECIFICATIONS ***************************************** 00700052
+.*                                                                      00750052
+.*01* MODULE-TYPE = MACRO                                               00800052
+.*                                                                      00850052
+.*01* DESCRIPTIVE NAME = SYSDEF SERVICE MACRO                           00900052
+.*  STATUS           =  NEW MACRO - VSE/ESA 1.3.0                       00950052
+.*  FUNCTION         =  QUERY / UPDATE DATA SPACE INFORMATION           01000052
+.*                      VIA SVC 122. PARAMETER LIST IS UPDATED          01050052
+.*                      DEPENDING ON INPUT PARAMETERS.                  01100052
+.*                                    OR                                01150052
+.*                      FREE SGETVIS SPACE FOR PREVIOUS QUERY REQUEST   01200052
+.*                                    OR                                01250052
+.*                      GENERATE DSECT FOR INPUT PARAMETERS.            01300052
+.*  NOTES            =                                                  01350052
+.*  DEPENDENCIES     =                                                  01400052
+.*  RESTRICTIONS     =                                                  01450052
+.*  REGISTER CONVENT.=  REGISTER 1 USED BY MACRO AS POINTER TO          01500052
+.*                      PARAMETER LIST FOR SVC 122                      01550052
+.*                      REGISTER 15 USED AS RETURNCODE REGISTER         01600052
+.*  PATCH LABEL      =  NONE                                            01650052
+.*  MACRO TYPE       =  BILINGUAL                                       01700052
+.*  PROCESSOR        =  ASM / PLS3 / PLX                                01750052
+.*  MACRO SIZE       =                                                  01800052
+.*  ATTRIBUTES       =                                                  01850052
+.*  ENTRY POINT      =  &NAME OR DSPSYSDF                               01900052
+.*  PURPOSE          =  SEE FUNCTION                                    01950052
+.*  LINKAGE          =                                                  02000052
+.*  CALLER           =  JCL/AR                                          02050052
+.*  INPUT            =  (CALLING SEQUENCE)                              02100052
+.*    1. ASM :                                                          02150052
+.*        LABEL   SYSDEF   ID=(QUERY|UPDATE|RESUME|DSECT)               02200052
+.*                         AREA=(NAME1|(R1))                            02250052
+.*    2. PLS / PLX :                                                    02300052
+.*        ?LABEL: SYSDEF  ID(QUERY|UPDATE|RESUME|DSECT)                 02350052
+.*                        AREA((NAME1)|(R1))                            02400052
+.*                                                                      02450052
+.*  OPERANDS :                                                          02500052
+.*                                                                      02550052
+.*   ID   = INDICATES REQUESTED SERVICE                                 02600052
+.*   AREA = ADDRESS WHERE INFORMATION CAN BE RETRIEVED                  02650052
+.*          ON INPUT AND OUTPUT IS RETURNED.                            02700052
+.*          AREA MUST BE SPECIFIED FOR ID=QUERY,RESUME,UPDATE           02750052
+.*          AREA MUST NOT BE SPECIFIED FOR ID=DSECT                     02800052
+.*          SYSDEF ID=DSECT GIVES MAPPING STRUCTURE FOR AREA.           02850052
+.*                                                                      02900052
+.*                DSPSYSDF                                              02950052
+.*   AREA ---> 0  -------------------------------------------           03000052
+.*               | DSPSDSRV | DSPSDBSF | DSPSDPRM | RESERVED |          03050052
+.*             4  -------------------------------------------           03100052
+.*               | DSPSDDTA                                  |          03150052
+.*           OPEN -------------------------------------------           03200052
+.*                                                                      03250052
+.*                                                                      03300052
+.*             DSPSDSRV = X'80' FOR UPDATE, SET BY SYSDEF MACRO         03350052
+.*                        X'40' FOR QUERY, SET BY SYSDEF MACRO          03400052
+.*                                                                      03450052
+.*             DSPSDDTA CONTAINS INPUT DATA FOR QUERY/UPDATE REQUEST    03650052
+.*                                                                      03700052
+.*             DSPSYSDF IS SET BY CALLER, EXCEPT BITS MENTIONED ABOVE.  03750052
+.*                                                                      03800052
+.*                                                                      03850052
+.*                                                                      03900052
+.*  OUTPUT(ASSEMBLER)=  PARMLIST SPECIFIED BY AREA IS UPDATED           03950052
+.*                      ACCORDING TO REQUEST                            04000052
+.*                                                                      04050052
+.*   AREA ---> 0 ---------------------------------------------          04100052
+.*               | DSPSDSRV | DSPSDBSF | DSPSDPRM | RESERVED |          04150052
+.*             4 ---------------------------------------------          04200052
+.*               | DSPSDDTA                                  |          04250052
+.*           OPEN --------------------------------------------          04300052
+.*                                                                      04350052
+.*                                                                      04400052
+.*             DSPSDSRV  UNCHANGED                                      04450052
+.*                                                                      04500052
+.*             DSPSDBSF  UNCHANGED                                      04550052
+.*                                                                      04600052
+.*             DSPSDPRM  UPDATED BY SVC 122 IF MISMATCHES BETWEEN       04650052
+.*                       REQUEST AND PARAMETERS OCCURED.                04700052
+.*                                                                      04750052
+.*             DSPSDDTA  UPDATED BY SVC 122. IF PARAMETER SPECIFICATION 04800052
+.*                       WAS CORRECT, DATA IS RETURNED.                 04850052
+.*                       FOR A LAYOUT OF DATA SEE MACROS MAPQRYDS       04866652
+.*                       AND MAPDSSIB                                   04883252
+.*                                                                      04900052
+.*  OUTPUT(EXECUTION)=                                                  04950052
+.*                                                                      05000052
+.*             ID = QUERY                                               05050052
+.*                                                                      05100052
+.*             SYSDEF MACRO SETS BIT DSPSDQRY OF DSPSDSRV IN PARAMETER  05150052
+.*             LIST AND ISSUES SVC 122. ADDRESS VALIDATION FOR          05200052
+.*             PARAMETER LIST IS DONE BY SVC 122.                       05250052
+.*             IF ADDRESS OF PARAMETER LIST IS INVALID, SYSDEF MACRO IS 05300052
+.*             CANCELLED.                                               05350052
+.*                                                                      05400052
+.*             ID = UPDATE                                              05450052
+.*                                                                      05500052
+.*             SYSDEF MACRO SETS BIT DSPSDDEF OF DSPSDSRV IN PARAMETER  05550052
+.*             LIST AND ISSUES SVC 122. ADDRESSS VALIDATION FOR         05600052
+.*             PARAMETER LIST IS DONE BY SYSDEF SVC.                    05650052
+.*             IF ADDRESS OF PARAMETER LIST IS INVALID, SYSDEF MACRO IS 06150052
+.*             CANCELLED.                                               06200052
+.*                                                                      06250052
+.*             ID = DSECT                                               06300052
+.*                                                                      06350052
+.*             SYSDEF MACRO GENERATES DSECT DSPSYSDF.                   06400052
+.*                                                                      06450052
+.*                                                                      06500052
+.*  EXIT NORMAL      =  COMPILER :                                      06550052
+.*                      ID = DSECT:                                     06600052
+.*                      GENERATE DSECT DSPSYSDF                         06650052
+.*                      ID = UPDATE | QUERY :                           06700052
+.*                      UPDATED FIELDS IN DSPSYSDF                      06750052
+.*                      EXECUTION:                                      06800052
+.*                      REGISTER 15  =  0                               06850052
+.*                                                                      06900052
+.*  EXIT ERROR       =  COMPILER :                                      06950052
+.*                      MNOTES ARE ISSUED INDICATING THE ERROR          07000052
+.*                      8, ID PARAMETER NOT SPECIFIED OR INCORRECT      07050052
+.*                      8, AREA PARAMETER NOT SPECIFIED OR INCORRECT    07100052
+.*                      EXECUTION:                                      07150052
+.*                      REGISTER 15  =  4    SGETVIS/SFREEVIS PROBLEM   07200052
+.*                                      8    HEADER INFORMATION OF USER 07250052
+.*                                           SUPPLIED AREA INCORRECT    07300052
+.*                                     12    REQUESTOR NOT AUTHORIZED   07350052
+.*                                     16    ESA SERVICES NOT AVAILABLE 07400052
+.*                                     20    ADDRESS OF INPUT CONTROL   07450052
+.*                                           BLOCK INVALID              07500052
+.*                                     24    DATA INFORMATION OF USER   07550052
+.*                                           SUPPLIED AREA INCORRECT    07600052
+.*                                                                      07650052
+.*                                                                      07700052
+.*  EXTERNAL REFEREN.=  NONE                                            07750052
+.*  ROUTINES         =  SVC 122                                         07800052
+.*  DATA AREAS       =  NONE                                            07850052
+.*  CONTROL BLOCKS   =  NONE                                            07900052
+.*  TABLES           =  DSPSYSDF                                        07950052
+.*  MACROS           =  NONE                                            08000052
+.*  CHANGE ACTIVITIES=  NEW MACRO   VSE/ESA 1.3.0                       08050052
+.*                                                                      08100052
+.*  LAST UPDATE      =  01/12/92                                        08150052
+.*                                                                      08200052
+.*                                                                      08250052
+.** END OF SPECIFICATIONS ********************************************* 08300052
+&REGADDR SETB  0                                                        08350052
+&DSECT   SETB  ('&ID' EQ 'DSECT')                                       08400052
+&QUERY   SETB  ('&ID' EQ 'QUERY')                                       08500052
+&UPDATE  SETB  ('&ID' EQ 'UPDATE')                                      08550052
+&SVCNUM  SETC  '122'                                                    08600052
+         SPACE 3                                                        08650052
+         AIF   ('&ID' EQ '').ERR0                                       08700052
+         AIF   ('&AREA' EQ '').NOAREA                                   08750052
+         AIF   (&DSECT).ERR1                                            08800052
+         AIF   ('&AREA'(1,1) NE '(').NOREG                              08850052
+&REGADDR SETB  1                                                        08900052
+.NOREG   AIF   (&UPDATE OR &QUERY).PROCESS                              08950052
+         AGO   .ERR0                                                    09000052
+.NOAREA  AIF   (&DSECT).DSECT                                           09050052
+         AGO   .ERR1                                                    09100052
+.*************************************************************          09150052
+.*                                                                      09200052
+.* ID=DSECT                                                             09250052
+.*                                                                      09300052
+.*************************************************************          09400052
+.DSECT   ANOP                                                           09401552
+         AIF   (T'&NAME EQ 'O').NONAME                                  09403052
+&LABEL   SETC  '&NAME'                                                  09404552
+         AGO   .YESNAME                                                 09406052
+.NONAME  ANOP                                                           09407552
+&LABEL   SETC  'DSPSYSDF'                                               09409052
+.YESNAME ANOP                                                           09410552
+         SPACE 3                                                        09412052
+&LABEL   DSECT ,                                                        09413552
+         DS    0F                                                       09415052
+DSPSDSRV DS    X                                                        09416552
+***************************************************************         09418052
+*                                                                       09419552
+* EQUATIONS FOR SERVICE DETERMINATION                                   09421052
+*                                                                       09422552
+***************************************************************         09424052
+DSPSDDEF EQU   X'80'          JCL/AR SYSDEF FUNCTIONS                   09425552
+DSPSDQRY EQU   X'40'          JCL/AR QUERY FUNCTIONS                    09427052
+*        EQU   X'20'          RESERVED                                  09428552
+*        EQU   X'10'          RESERVED                                  09430052
+*        EQU   X'08'          RESERVED                                  09431552
+*        EQU   X'04'          RESERVED                                  09433052
+*        EQU   X'02'          RESERVED                                  09434552
+*        EQU   X'01'          RESERVED                                  09436052
+*                                                                       09437552
+DSPSDBSF DS    X                                                        09439052
+***************************************************************         09440552
+*                                                                       09442052
+* EQUATIONS FOR QUERY REQUEST                                           09443552
+*                                                                       09445052
+***************************************************************         09446552
+         ORG   DSPSDBSF                                                 09448052
+DSPSDQSF DS    X                                                        09449552
+DSPSDQDS EQU   X'80'          QUERY DSPACE CMD SPEC/ NO PARMS           09451052
+DSPSDQAC EQU   X'40'          GET SYSTEM DSPACE ACTUALS                 09452552
+*        EQU   X'20'          RESERVED                                  09454052
+DSPSDQPN EQU   X'10'          GET BLOCK WITH # OF DSPS / PART.          09455552
+DSPSDQLP EQU   X'08'          GET DATA SPACE INFORMATION                09457052
+*        EQU   X'04'          RESERVED                                  09458552
+*        EQU   X'02'          RESERVED                                  09460052
+*        EQU   X'01'          RESERVED                                  09461552
+***************************************************************         09463052
+*                                                                       09464552
+* EQUATIONS FOR SYSDEF REQUEST                                          09466052
+*                                                                       09467552
+***************************************************************         09469052
+         ORG   DSPSDBSF                                                 09470552
+DSPSDDSF DS    X                                                        09472052
+*        EQU   X'80'          RESERVED                                  09473552
+*        EQU   X'40'          RESERVED                                  09475052
+*        EQU   X'20'          RESERVED                                  09476552
+*        EQU   X'10'          RESERVED                                  09478052
+*        EQU   X'08'          RESERVED                                  09479552
+*        EQU   X'04'          RESERVED                                  09481052
+*        EQU   X'02'          RESERVED                                  09482552
+*        EQU   X'01'          RESERVED                                  09484052
+*                                                                       09485552
+DSPSDPRM DS    X                                                        09487052
+***************************************************************         09488552
+*                                                                       09490052
+* EQUATIONS FOR QUERY REQUEST                                           09491552
+*                                                                       09493052
+***************************************************************         09494552
+         ORG   DSPSDPRM                                                 09496052
+DSPSDQPM DS    X                                                        09497552
+DSPSDSID EQU   X'80'          SYSLOGID SPECIFIED                        09499052
+*        EQU   X'40'          RESERVED                                  09500552
+DSPSDALL EQU   X'20'          ALL SPECIFIED                             09502052
+DSPSDNAM EQU   X'10'          NAME GIVEN                                09503552
+DSPSDOWN EQU   X'08'          OWNER GIVEN                               09505052
+*        EQU   X'04'          RESERVED                                  09506552
+*        EQU   X'02'          RESERVED                                  09508052
+*        EQU   X'01'          RESERVED                                  09509552
+***************************************************************         09511052
+*                                                                       09512552
+* EQUATIONS FOR SYSDEF REQUEST                                          09514052
+*                                                                       09515552
+***************************************************************         09517052
+         ORG   DSPSDPRM                                                 09518552
+DSPSDDPA DS    X                                                        09520052
+DSPSDDSZ EQU   X'80'          DSIZE SPECIFIED                           09521552
+DSPSDMAX EQU   X'40'          MAX SPECIFIED                             09523052
+DSPSDPMX EQU   X'20'          PARTMAX SPECIFIED                         09524552
+DSPSDCMX EQU   X'10'          COMMAX SPECIFIED                          09526052
+DSPSDDFT EQU   X'08'          DFSIZE SPECIFIED                          09527552
+DSPSDVDS EQU   X'04'          NUMBER OF VIRTUAL DISKS                   09529052
+*        EQU   X'02'          RESERVED                                  09530552
+*        EQU   X'01'          RESERVED                                  09532052
+*                                                                       09533552
+***************************************************************         09535052
+*                                                                       09536552
+* RESERVED BYTE FOR FUTURE ENHANCEMENTS                                 09538052
+*                                                                       09539552
+***************************************************************         09541052
+         DS    X              RESERVED                                  09542552
+*        EQU   X'80'          RESERVED                                  09544052
+*        EQU   X'40'          RESERVED                                  09545552
+*        EQU   X'20'          RESERVED                                  09547052
+*        EQU   X'10'          RESERVED                                  09548552
+*        EQU   X'08'          RESERVED                                  09550052
+*        EQU   X'04'          RESERVED                                  09551552
+*        EQU   X'02'          RESERVED                                  09553052
+*        EQU   X'01'          RESERVED                                  09554552
+*                                                                       09556052
+***************************************************************         09557552
+*                                                                       09559052
+* DATA DEFINITIONS FOR SYSDEF REQUEST                                   09560552
+*                                                                       09562052
+***************************************************************         09563552
+DSPSDDTA MAPDSSIB DSECT=INLINE,PREFIX=DSPS                              09565052
+***************************************************************         09566552
+*                                                                       09568052
+* DATA DEFINITIONS FOR QUERY REQUEST                                    09569552
+*                                                                       09571052
+***************************************************************         09572552
+DSPSDDNM DS    CL8             NAME OF DATASPACE                        09574052
+DSPSDDLG DS    CL2             SYSLOGID                                 09575552
+DSPSDDOW DS    CL2             SYSLOG ID OF OWNER                       09577052
+         DS    4X              RESERVED                                 09578552
+DSPSDDAD DS    F               ADDRESS OF RETURNED DATA AREA            09580052
+         ORG   *-4                                                      09581552
+         DS    F               RESERVED                                 09583052
+DSPSDDLN DS    F               LENGTH OF RETURNED DATA AREA             09584552
+DSPSDDA2 DS    F               ADDRESS OF PARTITION STRING WITH         09586052
+DSPSDDL2 DS    F               SYSLOGIDS AND THE LENGTH IN BYTES        09587552
+         DS    F               RESERVED                                 09589052
+*                                                                       09590552
+DSPSDLEN EQU   *-DSPSDSRV                                               09592052
+         MEXIT                                                          09593552
+.*************************************************************          09600052
+.*                                                                      09650052
+.*   PROCESS  ID=QUERY, ID=UPDATE, ID=RESUME                            16300052
+.*                                                                      16350052
+.************************************************************           16400052
+.PROCESS ANOP                                                           16450052
+&NAME    DS    0H                      MACRO ALIGNMENT                  16500052
+.************************************************************           16550052
+.*  CHECK REGISTER NOTATION                                             16600052
+.************************************************************           16650052
+         AIF   (&REGADDR).PROCREG                                       16700052
+         LA    1,&AREA                                                  16750052
+         AGO   .PROCDSE                                                 16800052
+.PROCREG LR    1,&AREA(1)                                               16850052
+.************************************************************           16900052
+.* SET FUNCTION BYTE IN DSECT SPECIFIED BY AREA                         16950052
+.************************************************************           17000052
+.PROCDSE ANOP                                                           17050052
+         AIF   (&UPDATE).PROCUPD                                        17100052
+         MVI   0(1),X'40'           MVI DSPSDSRV,DSPSDQRY               17150052
+         AGO   .PROCSVC                                                 17250052
+.PROCUPD MVI   0(1),X'80'           MVI DSPSDSRV,DSPSDDEF               17300052
+.************************************************************           17450052
+.* ISSUE SVC                                                            17500052
+.************************************************************           17550052
+.PROCSVC ANOP                                                           17600052
+         SR    15,15                                                    17650052
+         SVC   &SVCNUM                                                  17700052
+         SPACE 3                                                        17750052
+         MEXIT                                                          17800052
+*************************************************************           17850052
+*                                                                       17900052
+* SYSDEF MACRO ERROR CONDITIONS                                         17950052
+*                                                                       18000052
+*************************************************************           18050052
+.ERR0    ANOP                                                           18100052
+         MNOTE 8,'ID PARAMETER INCORRECT OR NOT SPECIFIED'              18150052
+         MEXIT                                                          18200052
+.ERR1    ANOP                                                           18250052
+         MNOTE 8,'AREA PARAMETER INCORRECT OR NOT SPECIFIED'            18300052
+         MEXIT                                                          18350052
+         MEND                                                           18400052
+***************************************************************         18450052
+*                                                                       18500052
+*   PL/S PART OF MACRO FOLLOWS                                          18550052
+*                                                                       18600052
+***************************************************************         18650052
+*                                    END OF PL/AS COMMENT            */ 18700052
+*%SYSDFPLS : ;                                                          18750052
+*%SYSDEF: MACRO KEYS(ID,AREA) TRACE;                                    18800052
+* /* LIST MACRO INVOCATION IN SOURCE                                 */ 18850052
+* ANS('/*'||MACLABEL||' '||MACNAME||' '||MACLIST||' '||MACKEYS||        18900052
+*      '*/') COL(MACLMAR);                                              18950052
+* ANS('/*                                                   */')        19000052
+* COL(MACLMAR);                                                         19050052
+* ANS('/*      SUPERVISOR - SYSDEF - 5686-007-06            */')        19100052
+* COL(MACLMAR);                                                         19150052
+* ANS('/*                                                   */')        19200052
+* COL(MACLMAR);                                                         19250052
+* /*-----------------------------------------------------------------*/ 19300052
+* /* DECLARE LOCAL VARIABLES                                         */ 19350052
+* /*-----------------------------------------------------------------*/ 19400052
+* DCL (SVCNUM,TRUE,REGADDR) FIXED;                                      19450052
+* DCL (REGNUM) CHAR;                                                    19500052
+* SVCNUM=122;                                                           19550052
+* TRUE=1;                                                               19600052
+* REGADDR = 0;                                                          19650052
+* DEF='''80''X';                                                        19700052
+* QRY='''40''X';                                                        19750052
+* /*-----------------------------------------------------------------*/ 19850052
+* /* CHECK ID AND AREA PARAMETER SPECIFICATION                       */ 19900052
+* /*-----------------------------------------------------------------*/ 19950052
+* IF NUMBER(ID)=0 THEN GO TO MERR0;       /* ID PARM MISSING         */ 20000052
+* IF NUMBER(AREA) = 0 THEN GO TO NOAREA;  /* AREA OMITTED            */ 20050052
+* IF ID(1)='DSECT'                                                      20100052
+*    THEN GO TO MERR1;                                                  20150052
+* IF ((ID(1)='QUERY') | (ID(1)='UPDATE'))                               20200052
+*    THEN GO TO PROCESS;                                                20250052
+*    ELSE GO TO MERR0;                                                  20300052
+* NOAREA:                                                               20350052
+* IF ID(1)='DSECT'                                                      20400052
+*    THEN GO TO DSECT;                                                  20450052
+*    ELSE GO TO MERR1;                                                  20500052
+*                                                                       20550052
+* /*-----------------------------------------------------------------*/ 20600052
+* /* PROCESS ID=DSECT                                                */ 20650052
+* /*-----------------------------------------------------------------*/ 20700052
+*                                                                       20750052
+* DSECT:                                                                20800052
+* ANS('DCL 1 DSPSYSDF BASED BDY(WORD),')COL(MACLMAR) SKIP;              20850052
+* ANS(COMMENT('                             '))COL(45);                 20883352
+*                                                                       20916652
+* ANS('2 DSPSDSRV BIT(8),')COL(8) SKIP;                                 20950052
+* ANS(COMMENT(' REQUESTED SERVICE           '))COL(45);                 20983352
+*                                                                       21016652
+* ANS('3 DSPSDDEF BIT(1),')COL(10)SKIP;                                 21050052
+* ANS(COMMENT(' JCL/AR SYSDEF COMMAND       '))COL(45);                 21083352
+*                                                                       21116652
+* ANS('3 DSPSDQRY BIT(1),')COL(10)SKIP;                                 21150052
+* ANS(COMMENT(' JCL/AR QUERY  COMMAND       '))COL(45);                 21183352
+*                                                                       21216652
+* ANS('3 *        BIT(6),')COL(10)SKIP;                                 21250052
+* ANS(COMMENT(' RESERVED FOR PROGRAM CALL   '))COL(45);                 21300052
+*                                                                       21350052
+* ANS('2 DSPSDBSF BIT(8),')COL(8)SKIP;                                  21400052
+* ANS(COMMENT(' BITS ARE DEFINED BELOW      '))COL(45);                 21450052
+*                                                                       21500052
+* ANS('2 DSPSDPRM BIT(8),')COL(8)SKIP;                                  21550052
+* ANS(COMMENT(' BITS ARE DEFINED BELOW      '))COL(45);                 21600052
+*                                                                       21650052
+* ANS('2 *        BIT(8),')COL(8)SKIP;                                  21700052
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 21750052
+*                                                                       21800052
+*                                                                       21850052
+* ANS('? MAPDSSIB DSECT(INLINE) PREFIX(DSPS);')COL(MACLMAR);            21900052
+*                                                                       21950052
+*                                                                       22000052
+* ANS('2 DSPSDDNM CHAR(8),')COL(8) SKIP;                                23250052
+* ANS(COMMENT(' NAME OF DATA SPACE          '))COL(45);                 23283352
+*                                                                       23316652
+* ANS('2 DSPSDDLG CHAR(2),')COL(8) SKIP;                                23350052
+* ANS(COMMENT(' SYSLOGID                    '))COL(45);                 23383352
+*                                                                       23416652
+* ANS('2 DSPSDDOW CHAR(2),')COL(8) SKIP;                                23450052
+* ANS(COMMENT(' SYSLOGID OF DATA SPACE OWNER '))COL(45);                23483352
+*                                                                       23516652
+* ANS('2 *        CHAR(4),')COL(8) SKIP;                                23550052
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 23583352
+*                                                                       23616652
+* ANS('2 DSPSDDAD FIXED(32),')COL(8) SKIP;                              23650052
+* ANS(COMMENT(' ADDRESS OF REPLY BUFFER     '))COL(45);                 23700052
+*                                                                       23750052
+* ANS('2 DSPSDDLN FIXED(32),')COL(8) SKIP;                              23850052
+* ANS(COMMENT(' LENGTH OF REPLY BUFFER      '))COL(45);                 23867752
+*                                                                       23885452
+* ANS('2 DSPSDDA2 FIXED(32),')COL(8) SKIP;                              23903352
+* ANS(COMMENT(' ADDRESS OF SYSLOGID AREA    '))COL(45);                 23905552
+*                                                                       23907752
+* ANS('2 DSPSDDL2 FIXED(32),')COL(8) SKIP;                              23909952
+* ANS(COMMENT(' LENGTH OF SYSLOGID AREA     '))COL(45);                 23912152
+*                                                                       23914352
+* ANS('2 *        CHAR(4);')COL(8) SKIP;                                23916652
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 23944452
+*                                                                       23972252
+*/********************************************************************/ 24000052
+*/**     DOS/VSE SYSDEF QUERY REQUEST PARAMETER BITS                 */ 24050052
+*/********************************************************************/ 24100052
+*                                                                       24125052
+* ANS('DCL 1 DSPSDQSF DEFINED(DSPSDBSF),')COL(MACLMAR) SKIP;            24150052
+* ANS(COMMENT('                             '))COL(45);                 24183352
+*                                                                       24216652
+* ANS('2 DSPSDQDS BIT(1),')COL(8) SKIP;                                 24250052
+* ANS(COMMENT(' GET SYSTEM DEFAULTS         '))COL(45);                 24283352
+*                                                                       24316652
+* ANS('2 DSPSDQAC BIT(1),')COL(8) SKIP;                                 24350052
+* ANS(COMMENT(' GET SYSTEM ACTUALS          '))COL(45);                 24383352
+*                                                                       24416652
+* ANS('2 *        BIT(1),')COL(8) SKIP;                                 24449952
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 24483252
+*                                                                       24516552
+* ANS('2 DSPSDQPN BIT(1),')COL(8) SKIP;                                 24550052
+* ANS(COMMENT(' GET NR OF DSPS / PART FOR                               24580052
+*               ALL PARTITIONS              '))COL(45);                 24610052
+*                                                                       24640052
+* ANS('2 DSPSDQLP BIT(1),')COL(8) SKIP;                                 24670052
+* ANS(COMMENT(' GET DATA SPACES INFORMATION                             24687552
+*               BLOCKS                      '))COL(45);                 24705052
+*                                                                       24722552
+* ANS('2 *        BIT(1),')COL(8) SKIP;                                 24740052
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 24763352
+*                                                                       24786652
+* ANS('2 *        BIT(1),')COL(8) SKIP;                                 24809952
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 24833252
+*                                                                       24856552
+* ANS('2 *        BIT(1);')COL(8) SKIP;                                 24879852
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 24903152
+*                                                                       24926452
+*/********************************************************************/ 24950052
+*/**     DOS/VSE SYSDEF SYSDEF REQUEST PARAMETER BITS                */ 25000052
+*/********************************************************************/ 25050052
+*                                                                       25075052
+* ANS('DCL 1 DSPSDDSF DEFINED(DSPSDBSF),')COL(MACLMAR) SKIP;            25100052
+* ANS(COMMENT('                             '))COL(45);                 25133352
+*                                                                       25166652
+* ANS('2 *        BIT(8);')COL(8) SKIP;                                 25200052
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 25233352
+*                                                                       25266652
+*/********************************************************************/ 25300052
+*/**     DOS/VSE SYSDEF QUERY REQUEST PARAMETER BITS                 */ 25350052
+*/********************************************************************/ 25400052
+*                                                                       25425052
+* ANS('DCL 1 DSPSDQPM DEFINED(DSPSDPRM),')COL(MACLMAR) SKIP;            25450052
+* ANS(COMMENT('                             '))COL(45);                 25483352
+*                                                                       25516652
+* ANS('2 DSPSDSID BIT(1),')COL(8) SKIP;                                 25550052
+* ANS(COMMENT(' SYSLOG PARAMETER GIVEN      '))COL(45);                 25583352
+*                                                                       25616652
+* ANS('2 *        BIT(1),')COL(8) SKIP;                                 25649952
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 25683252
+*                                                                       25716552
+* ANS('2 DSPSDALL BIT(1),')COL(8) SKIP;                                 25750052
+* ANS(COMMENT(' ALL PARAMETER GIVEN         '))COL(45);                 25783352
+*                                                                       25816652
+* ANS('2 DSPSDNAM BIT(1),')COL(8) SKIP;                                 25850052
+* ANS(COMMENT(' NAME PARAMETER GIVEN        '))COL(45);                 25883352
+*                                                                       25916652
+* ANS('2 DSPSDOWN BIT(1),')COL(8) SKIP;                                 25950052
+* ANS(COMMENT(' OWNER SPECIFIED             '))COL(45);                 25983352
+*                                                                       26016652
+* ANS('2 *        BIT(3);')COL(8) SKIP;                                 26050052
+* ANS(COMMENT(' RESERVED                    '))COL(45);                 26100052
+*                                                                       26150052
+*/********************************************************************/ 26200052
+*/**     DOS/VSE SYSDEF SYSDEF REQUEST PARAMETER BITS                */ 26250052
+*/********************************************************************/ 26300052
+*                                                                       26325052
+* ANS('DCL 1 DSPSDDPA DEFINED(DSPSDPRM),')COL(MACLMAR) SKIP;            26350052
+* ANS(COMMENT('                             '))COL(45);                 26383352
+*                                                                       26416652
+* ANS('2 DSPSDDSZ BIT(1),')COL(8) SKIP;                                 26450052
+* ANS(COMMENT(' DSIZE PARAMETER SPECIFIED   '))COL(45);                 26483352
+*                                                                       26516652
+* ANS('2 DSPSDMAX BIT(1),')COL(8) SKIP;                                 26550052
+* ANS(COMMENT(' MAX PARAMETER SPECIFIED     '))COL(45);                 26583352
+*                                                                       26616652
+* ANS('2 DSPSDPMX BIT(1),')COL(8) SKIP;                                 26650052
+* ANS(COMMENT(' PMAX PARAMETER SPECIFIED    '))COL(45);                 26683352
+*                                                                       26716652
+* ANS('2 DSPSDCMX BIT(1),')COL(8) SKIP;                                 26750052
+* ANS(COMMENT(' COMMAX PARAMETER SPECIFIED  '))COL(45);                 26783352
+*                                                                       26816652
+* ANS('2 DSPSDDFT BIT(1),')COL(8) SKIP;                                 26850052
+* ANS(COMMENT(' DFSIZE PARAMETER SPECIFIED  '))COL(45);                 26875052
+*                                                                       26900052
+* ANS('2 DSPSDVDS BIT(1),')COL(8) SKIP;                                 26925052
+* ANS(COMMENT(' VDISK PARAMETER SPECIFIED   '))COL(45);                 26941652
+*                                                                       26958252
+* ANS('2 *        BIT(2);')COL(8) SKIP;                                 26975052
+* ANS(COMMENT(' RESERVED                    '))COL(35);                 27025052
+*                                                                       27075052
+* RETURN CODE(0);                                                       27950052
+*                                                                       28000052
+* /*-----------------------------------------------------------------*/ 28050052
+* /* PROCESS ID=QUERY, ID=UPDATE                                     */ 28100052
+* /*-----------------------------------------------------------------*/ 28150052
+*                                                                       28200052
+* PROCESS:                                                              28250052
+*                                                                       28300052
+* ANS('DCL 1 SYSD'||MACINDEX||' BASED BDY(WORD),')COL(MACLMAR) SKIP;    28350052
+* ANS('/*                             */')COL(35);                      28400052
+* ANS('2 SSRV'||MACINDEX||' BIT(8),')COL(8) SKIP;                       28450052
+* ANS('/* UPDATE OR QUERY             */')COL(35);                      28500052
+* ANS('2 SBSF'||MACINDEX||' BIT(8),')COL(8)SKIP;                        28550052
+* ANS('/* QUERY RESUME                */')COL(35);                      28600052
+* ANS('2 *        CHAR(26);')COL(8)SKIP;                                28650052
+* ANS('/* NOT USED                    */')COL(35);                      28700052
+* ANS('DCL REG1'||MACINDEX||' REG(1) PTR(31);')RESCAN SKIP;             28750052
+* ANS('/* SPECIFIY REGISTER 1       */') COL(35);                       28800052
+* IF AREA(1,1:1)='(' THEN DO;                                           28850052
+*    REGADDR = TRUE;                                                    28900052
+*    REGNUM = AREA(1,1);                                                28950052
+*    END;                                                               29000052
+* ANS('DCL REGF'||MACINDEX||' REG(15) PTR(31);')RESCAN SKIP;            29050052
+* ANS('/* SPECIFIY REGISTER 15      */') COL(35);                       29100052
+* ANS('RFY (REG1'||MACINDEX||') RSTD;')RESCAN SKIP;                     29150052
+* ANS('/* RESTRICT REGISTER 1       */') COL(35);                       29200052
+* ANS('RFY (REGF'||MACINDEX||') RSTD;')RESCAN SKIP;                     29250052
+* ANS('/* RESTRICT REGISTER 15      */') COL(35);                       29300052
+* IF MACLABEL¬=''                                                       29350052
+*    THEN DO;                                                           29400052
+*         ANS(''||MACLABEL||';') COL(MACLMAR) RESCAN SKIP;              29450052
+*         ANS('/* LABEL SPECIFIED           */') COL(35);               29500052
+*         END;                                                          29550052
+* IF REGADDR = TRUE THEN                                                29600052
+* ANS('GEN(LR    1,'||REGNUM||');')RESCAN SKIP;                         29650052
+* ELSE                                                                  29700052
+* ANS('REG1'||MACINDEX||' = ADDR('||AREA(1)||');')RESCAN SKIP;          29750052
+* ANS('RFY SYSD'||MACINDEX||' BASED(REG1'||MACINDEX||');')RESCAN SKIP;  29800052
+* IF ID(1)='UPDATE'                                                     29850052
+*    THEN ANS('SSRV'||MACINDEX||' = '||DEF||';')RESCAN SKIP;            29900052
+*    ELSE ANS('SSRV'||MACINDEX||' = '||QRY||';')RESCAN SKIP;            29950052
+* ANS('REGF'||MACINDEX||' = 0;')RESCAN SKIP COL(2);                     30250052
+* ANS('/* CLEAR REGISTER 15         */') COL(35);                       30300052
+* ANS('SVC(SVCNUM);')RESCAN SKIP COL(2);                                30350052
+* ANS('/* SET UP SVC                */') COL(35);                       30400052
+* ANS('RFY (REG1'||MACINDEX||') UNRSTD;')RESCAN SKIP COL(2);            30450052
+* ANS('/* FREE REGISTER 1           */') COL(35);                       30500052
+* ANS('RFY (REGF'||MACINDEX||') UNRSTD;')RESCAN SKIP COL(2);            30550052
+* ANS('/* FREE REGISTER 15          */') COL(35);                       30600052
+* RETURN CODE(0);                                                       30650052
+*                                                                       30700052
+* /*-----------------------------------------------------------------*/ 30750052
+* /* MACRO NOTES:                                                    */ 30800052
+* /*-----------------------------------------------------------------*/ 30850052
+*                                                                       30900052
+* MERR0:                                                                30950052
+* ANS MSG('ID PARAMETER INCORRECT OR NOT SPECIFIED');                   31000052
+* ANS ('/* ID PARAMETER INCORRECT OR NOT SPECIFIED */') COL(MACLMAR);   31050052
+* RETURN CODE(8);                                                       31100052
+* MERR1:                                                                31150052
+* ANS MSG('AREA PARAMETER INCORRECT OR NOT SPECIFIED');                 31200052
+* ANS ('/* AREA PARAMETER INCORRECT OR NOT SPECIFIED */') COL(MACLMAR); 31250052
+* RETURN CODE(8);                                                       31300052
+*%END;                                                                  31350052

@@ -1,0 +1,1516 @@
+         MACRO                                                          00001001
+         SGTIMERX                                                       00002001
+         TITLE 'VSE/ESA - SGTIMERX: VSE SERVICES FOR MVS TIMER EXITS'   00003001
+*********************************************************************** 00004001
+*                                                                     * 00005001
+*        LICENSED MATERIALS - PROPERTY OF IBM                         * 00006001
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 00007001
+*        5686-066 (C) COPYRIGHT IBM CORP. 1996, 2001                  * 00008005
+*        SEE COPYRIGHT INSTRUCTIONS                                   * 00009001
+*                                                                     * 00010001
+*********************************************************************** 00011001
+.* /* START OF SPECIFICATIONS ***************************************** 00012001
+.*                                                                      00013001
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00014001
+.*                                                                      00015001
+.*01* DESCRIPTIVE NAME = TIMER SERVICES FOR API FAMILY                  00016001
+.*                                                                      00017001
+.*   ENTRY POINTS: STIMSET                                              00018001
+.*                 STIMCANC                                             00019001
+.*                                                                      00020001
+.*01* CHANGE ACTIVITY = AS FOLLOWS                                      00021001
+.*    API FAMILY  -  MVS PLATFORM                              @D64ADOW 00022001
+.*                                                                      00023001
+.** END OF SPECIFICATIONS ********************************************* 00024001
+          SPACE                                                         00025001
+*********************************************************************** 00026001
+*  ROUTINE NAME: STIMSET   VSE/ESA VERSION 2 RELEASE 2                  00027001
+*  FUNCTION:                                                            00028001
+*     -  STIMER / STIMERM SET                                           00029001
+*        ESTABLISH TIMER / TIMER EXIT                                   00030001
+*  AMODE = 31, PRIMARY ONLY                                             00031001
+*  INPUT:                                                               00032001
+*    - STIMER AND STIMERM                                               00033001
+*        R6  - ADDRESS DISPATCHER                                       00034001
+*        R8  - ADDRESS TIB                                              00035001
+*        RA  - ADDRESS TCB                                              00036001
+*        RB  - ADDRESS OF USER SAVE AREA                                00037001
+*        RD  - BASE OF SGTIMERX                                         00038001
+*    - STIMER                                                           00039001
+*        R0  :  BYTE 0   - FLAGS                                        00040001
+*                          B'.....0..'  : STIMER  (LEVEL 0)             00041001
+*                          B'0.......'  : STIMER   OLD I/F              00042001
+*                          B'1.......'  : STIMER   NEW I/F              00043001
+*                                                                       00044001
+*                          B'.....000'  : STIMER - TASK                 00045001
+*                          B'.....001'  : STIMER - WAIT                 00046001
+*                          B'.....011'  : STIMER - REAL                 00047001
+*                                                                       00048001
+*                          B'....10..'  : STIMER - ERRET                00049001
+*                                                                       00050001
+*                          B'.000.0..'  : STIMER - TUI                  00051001
+*                          B'.001.0..'  : STIMER - BIN                  00052001
+*                          B'.010.0..'  : STIMER - MIC                  00053001
+*                          B'.011.0..'  : STIMER - DIN                  00054001
+*                          B'.110.0..'  : STIMER - GMT                  00055001
+*                          B'.111.0..'  : STIMER - TOD                  00056001
+*                                                                       00057001
+*        R1  :  ADDRESS OF TIME VALUE                                   00058001
+*        RF  :  ADDRESS OF EXIT ROUTINE OR 0                            00059001
+*                                                                       00060001
+*    - STIMERM                                                          00061001
+*        R0  :  BYTE 0   - FLAGS                                        00062001
+*                          B'.....1..'  : STIMER  (LEVEL 1)             00063001
+*                          B'0.......'  : STIMER   OLD I/F              00064001
+*                          B'1.......'  : STIMER   NEW I/F              00065001
+*        R1  :  ADDRESS OF PARAMETER LIST                               00066001
+*               MAPPING SEE DSECT XTIPARML                              00067001
+*********************************************************************** 00068001
+         EJECT                                                          00069001
+         DC    CL8'SGTIMERX'                                            00070001
+         DC    C'09/29/2000'      LAST APAR FIX / DEV CHANGE   @D66CDOW 00071004
+SGTIMERX DS    0H                 BASE FOR MVS TIMER SERVICES           00072001
+         USING DISP,R6            SET BASE FOR DISPATCHER               00073001
+         USING TCBADR,RA          SET BASE FOR TCB                      00074001
+         USING SVEARA,RB          ESTABLISH ADDR TO SAVEAREA            00075001
+         USING SGTIMERX,RD        SET BASE FOR ROUTINE                  00076001
+         SPACE 1                                                        00077001
+STIMSET  DS    0H                 ROUTINE ENTRY POINT                   00078001
+         SPACE 1                                                        00079001
+         L     RC,TCBATCBE                                              00080001
+         USING TCBXADR,RC         PROVIDE ADDR TO TCBX                  00081001
+         LM    RF,R1,SVER0F       GET USER'S PARM REGS                  00082001
+*                                                                       00083001
+*        BUILD PARAMETER LIST                                           00084001
+*                                                                       00085001
+         TM    TCBXSAUS,TCBXXSAU  SAVE AREA USED                        00086001
+         BNO   STIMS010           NO USE IT                             00087001
+         BAS   R5,SYSERROR        YES, PROBALY SYSTEM ERROR             00088001
+STIMS010 DS    0H                                                       00089001
+         OI    TCBXSAUS,TCBXXSAU  SAVE AREA IS USED NOW                 00090001
+         LA    RE,TCBXXSA         LOCAL WORKAREA                        00091001
+         USING XTIPARML,RE                                              00092001
+         XC    TCBXXSA,TCBXXSA    CLEAR WORK AREA                       00093001
+         LR    R2,R0                                                    00094001
+         N     R2,STIMSLV1        IS IT A STIMERM                       00095001
+         BZ    STIMS040           NO, ITS STIMER --->                   00096001
+***                               YES, STIMERM                          00097001
+         LA    R2,STIMMACM        PROVIDE MACRO                         00098001
+         ST    R2,XTIPMNAM        ... NAME                              00099001
+         MVC   XTIPARML(XTIPLEN),0(R1) COPY PARM LIST                   00100001
+         SLR   R2,R2                                                    00101001
+         ICM   R2,B'0011',TCBXTMAK CURRENT STIMERM STRING               00102001
+         CL    R2,STIMHFF         ANY FREE TIMER                        00103001
+         BE    STIXERR8           NO,  =========>                       00104001
+         L     R3,STIMH80                                               00105001
+STIMS020 DS    0H                                                       00106001
+         SRL   R3,1                                                     00107001
+         LR    R0,R3              CALCULATE                             00108001
+         OR    R0,R2              ... FREE                              00109001
+         CLR   R0,R2              ... TIQE ID                           00110001
+         BE    STIMS020                                                 00111001
+         STH   R3,XTIPCID         PROVIDE SECOND HALF OF NEW ID         00112001
+         B     STIMS060                                                 00113001
+STIMS040 DS    0H                 STIMER ONLY                           00114001
+         LA    R2,STIMMACS        PROVIDE MACRO                         00115001
+         ST    R2,XTIPMNAM        ... NAME                              00116001
+         ST    R0,XTIPFLGS        BUILD                                 00117001
+         ST    R1,XTIPAVAL        ...                                   00118001
+         ST    RF,XTIPAXIT        ... PARAMETER                         00119001
+STIMS060 DS    0H                 COMMON STIMER AND STIMERM             00120001
+         BAS   R9,STIMCHK         CHECK STIMER/STIMERM ALLOWED          00121001
+         DROP  R6                                                       00122001
+         TM    XTIPFLGS,XTIPREAL  WAIT SPECIFIED                        00123001
+         BNM   STIMS064           NO, --->                              00124001
+         BAS   R9,STIMCHKW        CHECK STIMER/M WAIT=YES ALLOWED       00125001
+         LA    RF,STIMWAIT-6      PREPARE DUMMY EXIT ADDR               00126001
+         ST    RF,XTIPAXIT        ... FOR TIMER EXITS WITH WAIT=YES     00127001
+STIMS064 DS    0H                                                       00128001
+         TM    XTIPFLGS,XTIPSGMT  GMT OR TOD SPECIFIED (GMT AND TOD     00129001
+***                               ARE UNIQELY DEFINED THRU XTIPSGMT)    00130001
+         BNO   STIMS070           NO, --->                              00131001
+         TM    XTIPFLGS,XTIPREAL  REAL TIME INTERVAL SPECIFIED          00132001
+         BNZ   STIMS080           YES, --->                             00133001
+         B     STIXERR7           NO, ERROR --->                        00134001
+STIMS070 DS    0H                                                       00135001
+         TM    XTIPFLGS,XTIPSGMT  LT OR GMT SPECIFIED (GMT AND LT       00136001
+***                               ARE UNIQELY DEFINED THRU XTIPSGMT)    00137001
+         BO    STIMS080           YES, --------->                       00138001
+         TM    XTIPFLGS,XTIPSDIN  DINVTL SPECIFIED                      00139001
+         BO    STIMS080           YES, --------->                       00140001
+         L     R2,XTIPAVAL        FOR TUI, BIN OR MIC                   00141001
+         L     R0,0(,R2)          GET PASSED VALUE                      00142001
+         TM    XTIPFLGS,XTIPSMIC  MIC SPECIFIED                         00143001
+         BZ    STIMS090           NO,  --------->                       00144001
+         LM    R2,R3,0(R2)        GET PASSED VALUE                      00145001
+***                               R2,R3 ALREADY IN TOD UNITS            00146001
+         B     STIMS100                                                 00147001
+STIMS080 DS    0H                                                       00148001
+         BAS   R9,CNVGMTBN        CONVERT VALUE                         00149001
+*SGLINK CNVGMTBN,INPUT=(R9,RA,RD,RE),WORK=(R1-R6),OUTPUT=(R0)           00150001
+         TM    XTIPFLGS,XTIPSGMT  LT  OR GMT SPECIFIED                  00151001
+         BNO   STIMS090           NO,  --------->                       00152001
+         CL    R0,STIM24H         MORE THAN 24H                         00153001
+         BH    STIXERR6           YES, =========>                       00154001
+STIMS090 DS    0H                                                       00155001
+         BAS   R9,CNVTOTOD        CONVERT TIME INTO                     00156001
+***                               ...TOD FORMAT IN R2,R3                00157001
+*SGLINK CNVTOTOD,INPUT=(R0,R9,RA,RD,RE),WORK=(R4,R5),OUTPUT=(R2,R3)     00158001
+         SPACE 1                                                        00159001
+STIMS100 DS    0H                                                       00160001
+         TM    XTIPFLGS,XTIPREAL  REAL TIME INTERVAL SPECIED            00161001
+         BNZ   STIMS110           YES, --------->                       00162001
+***                               PROCESS TASK TIMER                    00163001
+         LTR   R2,R2              MICVL VALUE LARGER 7FFFFFFF FFFFFFFF  00164001
+         BNM   STIMS180           NO , ---------->                      00165001
+         B     STIXERR5           YES, ==========>                      00166001
+         SPACE 1                                                        00167001
+STIMS110 DS    0H                 REAL TIMER ONLY                       00168001
+         TM    XTIPFLGS,XTIPSGMT  GMT OR TOD/LT SPECIFIED               00169001
+         BO    STIMS130           YES, ---------->                      00170001
+***                               PROVIDE EXPIRATION TIME               00171001
+         STCK  CLOCK              GET CURRENT CLOCK VALUE               00172001
+         LM    R4,R5,CLOCK                                              00173001
+         ALR   R3,R5              TOD VALUE 2ND HALF                    00174001
+         BC    12,STIMS120        NO CARRY OVERFLOW                     00175001
+         AL    R4,F1              ADD ONE FOR CARRY OVERFLOW            00176001
+STIMS120 DS    0H                                                       00177001
+         ALR   R2,R4              TOD VALUE 1ST HALF                    00178001
+         BC    3,STIXERR5         CARRY OVERFLOW,                       00179001
+*                                 ERROR,  =========>                    00180001
+         B     STIMS180                                                 00181001
+         SPACE 1                                                        00182001
+***                               PROVIDE GMT-DELTA +                   00183001
+***                               ...MIDNIGHT-VALUE + SPECIFIED VALUE   00184001
+STIMS130 DS    0H                                                       00185001
+         L     R8,ASVCX                                                 00186001
+         USING SGSVCX,R8          PROVIDE ADDR TO SGSVCX                00187001
+         L     R4,MIDNIGHT        MIDNIGHT VALUE 1ST HALF               00188001
+         L     R5,MIDNIGHT+4      MIDNIGHT VALUE 2ND HALF               00189001
+         SLDL  R4,12              PROVIDE VALUE IN TOD FORMAT           00190001
+         TM    XTIPFLGS,XTIPSTOD  TOD/LT SPECIFIED                      00191001
+         BNO   STIMS160           YES, ---------->                      00192001
+***                               DETERMINE GMT-DELTA                   00193001
+         SLR   R0,R0                                                    00194001
+         LR    R1,R0                                                    00195001
+         LH    R1,SYSTEMZN        ZONE VALUE IN MINUTES                 00196001
+         M     R0,STIMMICS        ... TO MICS                           00197001
+         SLDL  R0,12              PROVIDE VALUE IN TOD FORMAT           00198001
+         SLR   R5,R1              MIDNIGHT VALUE 2ND HALF               00199001
+         BC    12,STIMS150        NO CARRY OVERFLOW                     00200001
+         AL    R0,F1              ADD ONE FOR CARRY OVERFLOW            00201001
+STIMS150 DS    0H                                                       00202001
+         SLR   R4,R0              MIDNIGHT VALUE 1ST PART               00203001
+         DROP  R8                 RESET ADDR TO SGSVC                   00204001
+STIMS160 DS    0H                                                       00205001
+***                               ADD SPECIFIED CLOCK VALUE             00206001
+         ALR   R3,R5              TOD VALUE 2ND HALF                    00207001
+         BC    12,STIMS170        NO CARRY OVERFLOW                     00208001
+         AL    R4,F1              ADD ONE FOR CARRY OVERFLOW            00209001
+STIMS170 DS    0H                                                       00210001
+         ALR   R2,R4              TOD VALUE 1ST HALF                    00211001
+         BC    3,STIXERR5         CARRY OVERFLOW,                       00212001
+*                                 ERROR,  =========>                    00213001
+STIMS180 DS    0H                                                       00214001
+***            REAL TIMER - R2/R3 CONTAINS EXPIRATION TIME              00215001
+***            TASK TIMER - R2/R3 CONTAINS TIME INTERVAL IN TOD FORM    00216001
+         CLI   XTIPLEV1,XTIPSLV1  MULTIPLE TIMER                        00217001
+         BE    STIMS200           YES, --------->                       00218001
+         ICM   R7,B'1111',TCBXTASI SINGLE TIMER ALREADY DEFINED         00219001
+         BZ    STIMS200           NO, RETRIEVE NEW TIQE                 00220001
+         LA    R7,0(,R7)          CLEAR TASK TIMER INDICATOR            00221001
+         USING EXITBLK,R7         ESTABLISH ADDR. TO TIQE               00222001
+         CLI   TIQTYPE,TIQTASK    OVERWRITE OF TASK TIMER TIQE          00223001
+         BNE   STIMS190           NO, --->                              00224001
+         NI    TCBXTASI,XFF-TCBXTQTK RESET TASK TIMER INDICATION        00225001
+         B     STIMS240                                                 00226001
+STIMS190 DS    0H                                                       00227001
+         TM    TIQTYPE,TIQWAIT    OVERWRITE OF TIQE WITH WAIT=YES       00228001
+         BNO   STIMS240           NO, TAKE TIQE --->                    00229001
+         BAS   R9,STIMCOPY        YES, STATUS OF TASK EITHER TO         00230001
+***                               ... OC EXIT SAVE AREA                 00231001
+***                               ... OR ACTIVE TI EXIT SAVE AREA       00232001
+***                               ... OR TASK'S 1ST SAVE AREA           00233001
+         B     STIMS240                                                 00234001
+         SPACE                                                          00235001
+STIMS200 DS    0H                                                       00236001
+*                                                                       00237001
+*     SYSTEM GET SGETVIS FOR TIQE                                       00238001
+*                                                                       00239001
+         LA    R0,TIQELEN         LENGTH OF TIQE                        00240001
+         SLR   RF,RF              FCT-CODE FOR :SGETVIS,LOC=ANY         00241001
+         L     RC,ASGEXIT         GET BASE OF                           00242001
+         L     RC,AEXITGVI-SGEXIT(,RC) ... SUBROUTINE                   00243001
+         BASSM R8,RC              RETRIEVE STORAGE FOR TIQE             00244001
+*SGLINK EXITGVIS,INPUT=(R0,R8,RA,RC,RF),OUTPUT=(R1,RF),WORK=R0          00245001
+         L     RC,TCBATCBE        RELOAD TCBX ADDR                      00246001
+         LTR   R8,RF              STORAGE RETRIEVED                     00247001
+         BNZ   STIXERR2           NO,  =========>                       00248001
+         LR    R7,R1              TIQE ADDR TO CORRECT REGISTER         00249001
+         LH    R1,TID             SETUP FIRST                           00250001
+         STH   R1,TIQIDEN-EXITBLK(,R7) ... PART OF IDEN                 00251001
+         STH   R1,XTIPTID         ...                                   00252001
+*                                                                       00253001
+*     GETVIS FOR SAVE AREA IN SPACE GETVIS WITH PARTKEY                 00254001
+*                                                                       00255001
+         TM    XTIPFLGS,XTIPREAL  WAIT SPECIFIED                        00256001
+         BM    STIMS240           YES --->                              00257001
+         LA    R0,MVSSALNX        LENGTH OF SAVEREA                     00258001
+         LA    RF,12              GETMAIN : SUBPOOL241,LOC=BELOW        00259001
+         L     RC,ASGEXIT         GET BASE OF                           00260001
+         L     RC,AEXITGVI-SGEXIT(,RC) ... SUBROUTINE                   00261001
+         BASSM R8,RC              RETRIEVE STORAGE FOR SAVE AREA        00262001
+*SGLINK EXITGVIS,INPUT=(R0,R8,RA,RC,RF),OUTPUT=(R1,RF),WORK=R0          00263001
+         L     RC,TCBATCBE        RELOAD TCBX ADDR                      00264001
+         LTR   R8,RF              STORAGE RETRIEVED                     00265001
+         BNZ   STIXERR1           NO,  =========>                       00266001
+         ST    R1,TIQAUSA         SAVE EXITS WORK AREA                  00267001
+         SPACE                                                          00268001
+STIMS240 DS    0H                 FILL EXIT CB                          00269001
+         L     R5,XTIPAXIT        ADDRESS OF EXIT ROUTINE               00270001
+         LA    R0,0(,R5)          ...                                   00271001
+         NI    EXITADR,EXITACT    KEEP EXIT ACTIVE                      00272001
+         XC    EXITADR+1(3),EXITADR+1 ... INDICATOR                     00273001
+         O     R0,EXITADR         ...                                   00274001
+         ST    R0,EXITADR         EXIT ADDR TO EXIT CB                  00275001
+         LA    R0,TIQSAVAR        GET SAVE AREA ADDR                    00276001
+         ST    R0,EXITSAV                                               00277001
+         NI    EXITFLG,EXITGETV   SETUP FLAGBYTE                        00278001
+         TM    TCBEXFLG,TCBEXAM   REQUESTOR IN AMODE 31                 00279001
+         BZ    STIMS260           NO,  --------->                       00280001
+         OI    EXITFLG,EXITANY    INDICATE AMODE ANY                    00281001
+STIMS260 DS    0H                                                       00282001
+         OI    EXITFLG,EXITMSAV   INDICATE EXTENDED SAVE AREA           00283001
+         STM   R2,R3,TIQOUTT      EXPIRATION-TIME/TIME-INTERVAL         00284001
+         MVC   EXITKEY,SVEPSW+1   SAVE KEY + MWP BITS                   00285001
+         MVC   EXITASCM,SVEPSW+2  SAVE ASC MODE AND PROG MASK           00286001
+         NI    EXITASCM,XCF       ...                                   00287001
+         MVI   EXITFLG1,EXTITYPE  INDICATE TIMER EXIT                   00288001
+         MVI   TIQTYPE,TIQSMVS    INDICATE STIMER                       00289001
+         CLI   XTIPLEV1,XTIPSLV1  STIMERM REQUEST                       00290001
+         BNE   STIMS266           NO,  --------->                       00291001
+         MVI   TIQTYPE,TIQMMVS    INDICATE STIMERM                      00292001
+         LH    R2,TCBXTMAK        CURRENT MASK                          00293001
+         LH    R3,XTIPCID         SELECTED MASK                         00294001
+         STH   R3,TIQIDEN+2       COMPLETE IDEN                         00295001
+         OR    R2,R3              UPDATE                                00296001
+         STH   R2,TCBXTMAK        ... MASK, DON'T CANCEL FROM NOW       00297001
+         OC    TCBXMMAK,TCBXTMAK  REMEMBER THAT BIT WAS EVER USED       00298001
+         L     R2,XTIPAIDQ        PASS IDEN                             00299001
+         MVC   0(4,R2),TIQIDEN    ... TO USER                           00300001
+STIMS266 DS    0H                                                       00301001
+         TM    XTIPFLGS,XTIPREAL  CHECK SPECFIED TYPE                   00302001
+         BZ    STIMS270           TASK TIMER --->                       00303001
+         BO    STIMS280           REAL TIMER, WAIT=NO                   00304001
+***                               REAL TIMER, WAIT=YES                  00305001
+         OI    TIQTYPE,TIQWAIT    INDICATE WAIT-TIQE                    00306001
+         OI    TCBXFLG3,TCBXTIMW  STIMER/STIMERM WITH WAIT SPECIFIED    00307001
+         B     STIMS280                                                 00308001
+STIMS270 DS    0H                                                       00309001
+         MVI   TIQTYPE,TIQTASK    INDICATE TASK TIMER                   00310001
+         O     R7,BIT0OMSK        ...SET TCBXTQTK ON                    00311001
+STIMS280 DS    0H                                                       00312001
+         CLI   XTIPLEV1,XTIPSLV1  STIMERM REQUEST                       00313001
+         BNE   STIMS300           NO,  --------->                       00314001
+         MVC   TIQPARM(4),XTIPAPRM COPY PARAMETER INTO TIQE             00315001
+         BAS   R9,ENQTIQE         ENQ TIQE IN MULTIPLE TIMER CHAIN      00316001
+*SGLINK ENQTIQE,S,INPUT=(R7,R9,RA,RC,RD),WORK=(R1,R2)                   00317001
+         B     STIMS320                                                 00318001
+STIMS300 DS    0H                                                       00319001
+         ST    R7,TCBXTASI        SET POINTER FOR STIMER REQ            00320001
+         NI    EXITFLG,XFF-DELINT RESET INTERRUPT DELAYED BIT FOR       00321001
+***                               STIMER UNCONDITIONALLY                00322001
+STIMS320 DS    0H                                                       00323001
+         LR    R3,R7              SAVE TIQE IN PROCESS                  00324001
+         ICM   R9,B'1111',TCBXTQCA GET TIQE ENQ'D IN TIMER CHAIN        00325001
+         BZ    STIMS340           TASK NOT ENQ'D --->                   00326001
+         CR    R7,R9              IS OUR TIQE ENQ'D                     00327001
+         BE    STIMS330           YES, --->                             00328001
+         CLC   TIQOUTT,TIQOUTT-EXITBLK(R9) OUR EXPIRATION TIME EARLIER  00329001
+         BNL   STIMS350           NO, --->                              00330001
+STIMS330 DS    0H                                                       00331001
+         TM    EXITADR-EXITBLK(R9),EXITACT IS EXIT RTN ACTIVE           00332001
+         BO    STIMS350           YES, EXIT RTN MUST COMPLETE --->      00333001
+         TM    EXITFLG-EXITBLK(R9),DELINT INTERRUPT ALREADY OCCURRED    00334001
+         BO    STIMS350           YES, EXIT RTN MUST COMPLETE --->      00335001
+         BAS   R9,DEQTICHN        DEQUEUE FROM TIMER CHAIN              00336001
+*SGLINK DEQTICHN,S,INPUT=(R9,RA,RD)                                     00337001
+STIMS340 DS    0H                                                       00338001
+         BAS   R9,FNDTILOW        FIND TIQE WITH LOWEST EXPIRATION TIME 00339001
+*SGLINK FNDTILOW,INPUT=(R9,RA,RD),OUTPUT=(R7)                           00340001
+         LTR   R7,R7              ANY TIQE FOUND                        00341001
+         BZ    STIMS350           NO, SKIP ENQ                          00342001
+         BAS   R9,ENQTICHN        ENQ TASK IN TIMER CHAIN               00343001
+*SGLINK ENQTICHN,INPUT=(R7,R9,RA,RD)                                    00344001
+STIMS350 DS    0H                                                       00345001
+         LR    R7,R3              RESTORE TIQE ADDR                     00346001
+         TM    XTIPFLGS,XTIPREAL  WAIT PARAMETER SPECIFIED              00347001
+         BNM   STIMEXIT           NO , --------->                       00348001
+***                               YES, PROCESS WAIT PARAMETER           00349001
+         LA    R1,TIQSAVAR        GET TIMER EXIT SAVE AREA ADDR         00350001
+         USING SVUARA,R1                                                00351001
+         MVC   SVUAPSW,SVEPSW     SAVE PSW FROM STIMER/STIMERM          00352001
+         L     R2,SVUAPSW+4       SKIP INSTRUCTIONS                     00353001
+         A     R2,F6              ... INSERTED FOR VSE                  00354001
+         ST    R2,SVUAPSW+4       ... TO RECOGNIZE MVS SVC'S            00355001
+         MVC   SVUPSW(4),INTINFO  SAVE INTERRUPT STATUS                 00356001
+         MVC   SVUPSW+4(4),TCBMVSIS ...                                 00357001
+         MVC   SVUR00(36),SVER00  SAVE REG 0-8                          00358001
+         MVC   SVUR09(24),SVER09  SAVE REG 9-14                         00359001
+         XC    SVUR0F(4),SVUR0F   CLEAR REG 15                          00360001
+         L     R2,TCBARSAV        ADDR OF ACC REG SAVEAREA              00361001
+         MVC   SVUAREG,0(R2)      ... AND SAVE ACC REGS                 00362001
+         DROP  R1                                                       00363001
+         MVC   SVEPSW2(4),XTIPAXIT EXIT RTN ADDR TO SAVE AREA           00364001
+         OI    SVEPSW2,X80        FORCE 31 BIT MODE                     00365001
+         LA    R1,TIQTECB         ADDR OF INTERNAL TECB                 00366001
+         ST    R1,SVER01          ... TO REG1                           00367001
+         ST    RD,SVER0D          BASE ADDR TO REG13                    00368001
+         B     STIMEXIT           ----------->                          00369001
+         SPACE                                                          00370001
+         DROP  R7                 RESET ADDR TO TIQE                    00371001
+         DROP  RA                 RESET BASE FOR TCB                    00372001
+         DROP  RB                 DROP ADDR TO SAVEAREA                 00373001
+         DROP  RC                 RESET BASE FOR TCBX                   00374001
+         DROP  RE                 RESET ADDR TO PARMLIST                00375001
+         EJECT                                                          00376001
+*---------------------------------------------------------------------* 00377001
+*  ROUTINE NAME: STIMCANC  VSE/ESA VERSION 2 RELEASE 2                  00378001
+*  FUNCTION:                                                            00379001
+*     -  TTIMER / STIMERM TEST / STIMERM CANCEL                         00380001
+*  AMODE = ANY, PRIMARY ONLY                                            00381001
+*  ENTRY POINTS                                                         00382001
+*     -  STIMCANC                                                       00383001
+*  INPUT:                                                               00384001
+*            R6  :  ADDRESS DISPATCHER                                  00385001
+*            R8  :  ADDRESS TIB                                         00386001
+*            RA  :  ADDRESS TCB                                         00387001
+*            RB  :  ADDRESS ADDRESS USER'S SA                           00388001
+*     - TTIMER:                                                         00389001
+*            R1  :  BYTE 3   - FLAGS                                    00390001
+*                              B'....0...'  : TTIMER  (LEVEL 0)         00391001
+*                                                                       00392001
+*                              B'000001..'  : TTIMER - ERRET            00393001
+*                              B'00000.1.'  : TTIMER - MIC              00394001
+*                              B'00000..1'  : TTIMER - CANCEL           00395001
+*                                                                       00396001
+*            R0  :  ADDRESS WHERE REST TIME VALUE SHOULD                00397001
+*                   BE STORED                                           00398001
+*                                                                       00399001
+*     - STIMERM                                                         00400001
+*            R1  :  BYTE 3   - FLAGS                                    00401001
+*                              B'....1...'  : STIMER  (LEVEL 1)         00402001
+*            R0  :  ADDRESS OF PARAMETER LIST                           00403001
+*                                                                       00404001
+*            BYTE  0    - FLAGS  B'1001..0.'  : TUINTVL                 00405001
+*                                B'1000..1.'  : MICVLL                  00406001
+*                                B'100..1..'  : ERRET                   00407001
+*                                B'100.0..0'  : TEST                    00408001
+*                                B'100.0..1'  : CANCEL ID               00409001
+*                                B'100.1..1'  : CANCEL ID=ALL           00410001
+*            BYTE  1- 2 - RESERVED - MUST BE X'0'                       00411001
+*            BYTE  3      LEVEL NUMBER - MUST BE X'01'                  00412001
+*            BYTE  4- 7 - ADDRESS OF STORAGE FOR ID                     00413001
+*            BYTE  7- B - ADDRESS WHERE REST TIME VALUE SHOULD          00414001
+*                         BE STORED                                     00415001
+*            BYTE  B- F - ADDRESS OF EXIT ROUTINE                       00416001
+*            BYTE 10-13 - USER PARAMETER FOR EXIT ROUTINE               00417001
+*            BYTE 14-17 - RESERVED                                      00418001
+*---------------------------------------------------------------------* 00419001
+         SPACE 2                                                        00420001
+         USING DISP,R6            SET BASE TO DISPATCHER                00421001
+         USING TCBADR,RA          SET BASE FOR TCB                      00422001
+         USING SVEARA,RB                                                00423001
+         SPACE 1                                                        00424001
+STIMCANC DS    0H                 ROUTINE ENTRY POINT                   00425001
+         L     RC,TCBATCBE                                              00426001
+         USING TCBXADR,RC         PROVIDE ADDR TO TCBX                  00427001
+         LM    R1,R2,SVER00       GET USER'S PARM REGS                  00428001
+         LR    R0,R2              ...                                   00429001
+         DROP  RB                 DROP ADDR TO SAVEAREA                 00430001
+         TM    TCBXSAUS,TCBXXSAU  SAVE AREA USED                        00431001
+         BNO   SCANC010           NO USE IT                             00432001
+         BAS   R5,SYSERROR        YES, PROBALY SYSTEM ERROR             00433001
+SCANC010 DS    0H                                                       00434001
+         OI    TCBXSAUS,TCBXXSAU  SAVE AREA IS USED NOW                 00435001
+         LA    RE,TCBXXSA         LOCAL WORKAREA                        00436001
+         USING XTIPARML,RE                                              00437001
+**************************************************************          00438001
+***            BUILD PARAMETER LIST                          *          00439001
+**************************************************************          00440001
+*                                                                       00441001
+         XC    TCBXXSA,TCBXXSA    INITIALIZE PARAMETER LIST             00442001
+         N     R0,STIMCLV1        IS IT A STIMERM                       00443001
+         BZ    SCANC020           NO,  --------->                       00444001
+         LA    R7,STIMMACM        PROVIDE MACRO                         00445001
+         ST    R7,XTIPMNAM        ... NAME                              00446001
+         MVC   XTIPARML(XTIPLEN),0(R1) COPY PARM LIST                   00447001
+         TM    XTIPFLGS,XTIPIDAL  STIMERM CANCEL ALL                    00448001
+         BO    SCANC030           YES, --------->                       00449001
+         L     R4,XTIPAIDQ        ADDRESS OF TIQ-ID                     00450001
+         L     R2,0(,R4)          GET IDEN                              00451001
+         ST    R2,XTIPTID         ... AND SAVE IT                       00452001
+         CLM   R2,B'1100',TID     CHECK WHETHER PASSED TIMER ID IS PART 00453001
+***                               OF VALID TIQE-ID'S                    00454001
+         BNE   STIXERR3           NOT VALID    =========>               00455001
+         SLR   R3,R3 ...                                                00456001
+         ICM   R3,B'0011',TCBXMMAK ...                                  00457001
+         NR    R3,R2              ...                                   00458001
+         BZ    STIXERR3           NOT VALID    ==========>              00459001
+         B     SCANC030                                                 00460001
+SCANC020 DS    0H                                                       00461001
+         STC   R2,XTIPFLGS        BUILD                                 00462001
+         ST    R1,XTIPAVAL        ... PARAMETER                         00463001
+         MVI   XTIPLEV1,X00       ... LIST                              00464001
+         LA    R7,STIMMACT        PROVIDE MACRO                         00465001
+         ST    R7,XTIPMNAM        ... NAME                              00466001
+SCANC030 DS    0H                                                       00467001
+         BAS   R9,STIMCHK         CHECK STIMER/STIMERM ALLOWED          00468001
+         DROP  R6                                                       00469001
+         CLI   XTIPLEV1,X01       IS IT STIMERM                         00470001
+         BNE   SCANC100           NO,  --------->                       00471001
+         TM    XTIPFLGS,XTIPIDAL  STIMERM CANCEL ALL                    00472001
+         BNO   SCANC100           NO,  --------->                       00473001
+         SPACE 2                                                        00474001
+*---------------------------------------------------------------------* 00475001
+*     PROCESS STIMERM CANCEL ALL                                      * 00476001
+*---------------------------------------------------------------------* 00477001
+         SPACE 2                                                        00478001
+         LA    R8,TCBXTAMU        ANCHOR TO MULTIPLE TIQE'S             00479001
+SCANC040 DS    0H                                                       00480001
+         L     R7,0(,R8)          FIRST/NEXT TIQE                       00481001
+         LTR   R7,R7              ANY MORE AVAILABLE                    00482001
+         BZ    SCANC080           NO,  --------->                       00483001
+         USING EXITBLK,R7         ESTABLISH ADDR TO TIQE                00484001
+         C     R7,TCBXTQCA        TIQE CURRENTLY IN TIMER CHAIN         00485001
+         BNE   SCANC060           NOT IN TIMER CHAIN  --->              00486001
+         TM    EXITADR,EXITACT    IS EXIT RTN ACTIVE                    00487001
+         BNO   SCANC050           NOT ACTIVE>                           00488001
+         NI    EXITADR,XFF-EXITACT INDICATE DELAYED FREEVIS             00489001
+         XC    EXITADR+1(3),EXITADR+1 ...                               00490001
+         LA    R8,EXITNEXT        NEW ANCHOR                            00491001
+         B     SCANC040           --------->                            00492001
+SCANC050 DS    0H                                                       00493001
+         BAS   R9,DEQTICHN        DEQUEUE FROM TIMER CHAIN              00494001
+*SGLINK DEQTICHN,S,INPUT=(R9,RA,RD)                                     00495001
+         SPACE                                                          00496001
+SCANC060 DS    0H                                                       00497001
+         TM    TIQTYPE,TIQWAIT    TIQ WITH WAIT=YES                     00498001
+         BNO   SCANC070           NO                                    00499001
+         BAS   R9,STIMCOPY        YES, STATUS OF TASK EITHER TO         00500001
+***                               ... OC EXIT SAVE AREA                 00501001
+***                               ... OR ACTIVE TI EXIT SAVE AREA       00502001
+***                               ... OR TASK'S 1ST SAVE AREA           00503001
+SCANC070 DS    0H                                                       00504001
+         BAS   R9,DEQTIQE         DEQUEUE STIMER/STIMERM EXIT FROM TCBX 00505001
+*SGLINK DEQTIQE,INPUT=(R7,R9,RA,RC,RD),WORK=(R0,R1,R2,RF)               00506001
+         SPACE                                                          00507001
+         B     SCANC040           ---> CONTINUE LOOP                    00508001
+         SPACE 1                                                        00509001
+SCANC080 DS    0H                                                       00510001
+         ICM   R9,B'1111',TCBXTQCA ALREADY IN TIMER CHAIN               00511001
+         BNZ   SCANC090           YES, --->                             00512001
+         BAS   R9,FNDTILOW        FIND TIQE WITH LOWEST EXPIRATION TIME 00513001
+*SGLINK FNDTILOW,INPUT=(R9,RA,RD),OUTPUT=(R7)                           00514001
+         LTR   R7,R7              ANY TIQE FOUND                        00515001
+         BZ    SCANC090           NO, SKIP ENQ                          00516001
+         BAS   R9,ENQTICHN        ENQ TASK IN TIMER CHAIN               00517001
+*SGLINK ENQTICHN,INPUT=(R7,R9,RA,RD)                                    00518001
+SCANC090 DS    0H                                                       00519001
+         B     STIMEXIT           --------->                   @DY45037 00520001
+         SPACE 2                                                        00521001
+*---------------------------------------------------------------------* 00522001
+*     PROCESS STIMERM ID / TTIMER                                     * 00523001
+*---------------------------------------------------------------------* 00524001
+         SPACE 1                                                        00525001
+SCANC100 DS    0H                                                       00526001
+         L     R7,TCBXTASI        GET ADDR OF                           00527001
+         LA    R7,0(,R7)          ... SINGLE TIQE                       00528001
+         CLI   XTIPLEV1,XTIPSLV1  STIMERM REQUEST                       00529001
+         BNE   SCANC140           NO,                                   00530001
+         L     RB,XTIPTID         GET TIQE ID                           00531001
+         SPACE 1                                                        00532001
+         ICM   R7,B'1111',TCBXTAMU GET FIRST MULTIPLE TIQE              00533001
+         BZ    SCANC140           NO TIQE AVAILABLE --->                00534001
+SCANC120 DS    0H                                                       00535001
+         USING EXITBLK,R7         SET BASE FOR TIQE                     00536001
+         C     RB,TIQIDEN         IS IT SEARCHED TIQE                   00537001
+         BE    SCANC140           YES, --->                             00538001
+         ICM   R7,B'1111',EXITNEXT NEXT TIQE                            00539001
+         BNZ   SCANC120           CONTINUE LOOP                         00540001
+SCANC140 DS    0H                                                       00541001
+         LTR   R7,R7              ANY TIQE FOUND (ITS POSSIBLE          00542001
+***                               THAT TTIMER IS GIVEN AND NO           00543001
+***                               TIQE DEFINED)                         00544001
+         BZ    SCANC300           NO TIQE AVAILABLE, PROVIDE            00545001
+***                               ...RESTTIME = 0 (IN XTIPRTIM)         00546001
+         C     R7,TCBXTQCA        TASK DUE TO OUR TIQE IN TIMER-CHN     00547001
+         BNE   SCANC150           NO, --->                              00548001
+         TM    EXITADR,EXITACT    RELATED EXIT RTN ACTIVE               00549001
+         BO    SCANC160           YES, PROVIDE RESTIME=0       @DY45190 00550001
+SCANC150 DS    0H                                                       00551001
+         BAS   R8,GETRTIME        GET REST TIME                         00552001
+*SGLINK GETRTIME,INPUT=(R5,R7,R8,RA,RD),WORK=(R0-R4,R9)                 00553001
+SCANC160 DS    0H                                                       00554001
+         TM    XTIPFLGS,XTIPCNCL  TEST FUNCTION                         00555001
+         BZ    SCANC300           YES  --------->                       00556001
+         SPACE 1                                                        00557001
+*---------------------------------------------------------------------* 00558001
+*     PROCESS STIMERM CANCEL-ID / TTIMER CANCEL                       * 00559001
+*---------------------------------------------------------------------* 00560001
+         SPACE 1                                                        00561001
+         TM    TIQTYPE,TIQWAIT    TIQE WITH WAIT=YES                    00562001
+         BO    SCANC300           IGNORE CANCEL (TEST IS PERFORMED)     00563001
+         CLI   TIQTYPE,TIQTASK    TASK TIMER TIQE                       00564001
+         BNE   SCANC180           NO, --->                              00565001
+         BAS   R9,DEQTIQE         DEQUEUE TIQE FROM TCBX & FREE SPACE   00566001
+*SGLINK DEQTIQE,INPUT=(R7,R9,RA,RC,RD),WORK=(R0,R1,R2,RF)               00567001
+         B     SCANC300           ENTER COMMON PATH                     00568001
+SCANC180 DS    0H                                                       00569001
+         OC    XTIPRTIM,XTIPRTIM  INTERVAL NOT EXPIRED                  00570001
+         BNZ   SCANC200           YES, ---> CANCEL TIQE                 00571001
+         MVI   XTIPRTIM+7,X01     FORCE CANCEL (VSE IMPLEMENTATION)     00572001
+SCANC200 DS    0H                                                       00573001
+         C     R7,TCBXTQCA        TIQE CURRENTLY IN TIMER CHAIN         00574001
+         BNE   SCANC210           NOT IN TIMER CHAIN  --->              00575001
+         TM    EXITADR,EXITACT    RELATED EXIT RTN ACTIVE               00576001
+         BO    SCANC250           YES --->                              00577001
+         BAS   R9,DEQTICHN        DEQUEUE FROM TIMER CHAIN              00578001
+*SGLINK DEQTICHN,S,INPUT=(R9,RA,RD)                                     00579001
+SCANC210 DS    0H                                                       00580001
+         BAS   R9,DEQTIQE         DEQUEUE STIMER/STIMERM TIQE FROM      00581001
+***                               TCBX AND FREE SPACE                   00582001
+*SGLINK DEQTIQE,INPUT=(R7,R9,RA,RC,RD),WORK=(R0,R1,R2,RF)               00583001
+         SPACE                                                          00584001
+         BAS   R9,FNDTILOW        FIND TIQE WITH LOWEST EXPIRATION TIME 00585001
+*SGLINK FNDTILOW,INPUT=(R9,RA,RD),OUTPUT=(R7)                           00586001
+         LTR   R7,R7              ANY TIQE FOUND                        00587001
+         BZ    SCANC300           NO, SKIP ENQ                          00588001
+         BAS   R9,ENQTICHN        ENQ TASK IN TIMER CHAIN               00589001
+*SGLINK ENQTICHN,INPUT=(R7,R9,RA,RD)                                    00590001
+         B     SCANC300                                                 00591001
+SCANC250 DS    0H                                                       00592001
+         NI    EXITADR,EXITACT    INDICATE DELAYED FREEVIS     @DY45037 00593001
+         XC    EXITADR+1(3),EXITADR+1 ...                               00594001
+         SPACE 1                                                        00595001
+*---------------------------------------------------------------------* 00596001
+*     COMMON PROCESSING FOR TEST AND CANCEL                           * 00597001
+*---------------------------------------------------------------------* 00598001
+         SPACE 1                                                        00599001
+SCANC300 DS    0H                                                       00600001
+         L     R4,XTIPAVAL        ADDR OF FIELD EXPECTING REST TIME     00601001
+         TM    XTIPFLGS,XTITCMIC  MIC REQUESTED                         00602001
+         BZ    SCANC320           NO,  --------->                       00603001
+         LA    R3,8-1             GET LENGTH-1 AND FROM ADDR            00604001
+         LA    R5,XTIPRTIM        ... IN CASE OF MIC                    00605001
+         B     SCANC350           --------->                            00606001
+SCANC320 DS    0H                                                       00607001
+         CLI   XTIPLEV1,X01       STIMERM                               00608001
+         BE    SCANC340           YES, --------->                       00609001
+         L     R4,TCBSAVE         REQUESTOR'S SA                        00610001
+         USING SVEARA,R4          ESTABLISH ADDR TO SAVEAREA            00611001
+         LA    R4,SVER00          RETURN VALUE IN R0                    00612001
+         DROP  R4                 RESET ADDR TO WORKAREA                00613001
+SCANC340 DS    0H                                                       00614001
+         LA    R3,4-1             GET LENGTH-1 AND FROM ADDR            00615001
+         LA    R5,XTIPRTIM+4      ... IN CASE OF TU                     00616001
+SCANC350 DS    0H                                                       00617001
+         LTR   R4,R4              TO ADDR AVAILABLE                     00618001
+         BZ    SCNCEXIT           NO, ----->                            00619001
+         EX    R3,SCANCMVC        MOVE REST TIME                        00620001
+         B     SCNCEXIT           --------->                            00621001
+SCANCMVC MVC   0(0,R4),0(R5)      MOVE TIMER VALUE                      00622001
+         SPACE 2                                                        00623001
+         DROP  RA                 RESET ADDR TO TCB                     00624001
+         DROP  RC                 RESET ADDR TO TCBX                    00625001
+         DROP  RE                 RESET ADDR TO PARMLIST                00626001
+         EJECT                                                          00627001
+*---------------------------------------------------------------------* 00628001
+*     RETURN TO SGMVSAPI                                                00629001
+*---------------------------------------------------------------------* 00630001
+         SPACE 1                                                        00631001
+         USING TCBXADR,RC                                               00632001
+         USING XTIPARML,RE                                              00633001
+STIMEXIT DS    0H                 SET FUNCTION EXIT                     00634001
+SCNCEXIT DS    0H                 TEST/CANCEL FUNCTION EXIT             00635001
+         SLR   RF,RF              BECAUSE ERRET NOT SUPPORTED           00636001
+         NI    TCBXSAUS,XFF-TCBXXSAU FREE UP SAVE AREA                  00637001
+         L     R6,DISPAD                                                00638001
+         L     R9,ASGMVSAP        BASE OF SGMVSAPI                      00639001
+         USING SGMVSAPI,R9                                              00640001
+         B     SGMAPIEX           ==========> RETURN SGMVSAPI-EXIT      00641001
+         DROP  R9                                                       00642001
+         DROP  RC                 RESET ADDR TO TCBX                    00643001
+         DROP  RE                                                       00644001
+         EJECT                                                          00645001
+*---------------------------------------------------------------------* 00646001
+*  CHECK FOR VALID REQUESTOR                                            00647001
+*  FUNCTION:                                                            00648001
+*     -  CANCEL REQUESTOR IF STIMER/STIMERM/TTIMER NOT ALLOWED          00649001
+*  INPUT   R9:   RETURN ADDR                                            00650001
+*          RA:   TCB ADDR                                               00651001
+*  WORK :  R2                                                           00652001
+*---------------------------------------------------------------------* 00653001
+         SPACE 2                                                        00654001
+         USING TCBADR,RA                                                00655001
+         USING TCBXADR,RC                                               00656001
+STIMCHK  DS    0H                 ROUTINE ENTRY POINT                   00657001
+         TM    TCBABEX,EXITACT    AB EXIT ACTIVE                        00658001
+         BO    STIXER12           YES, =========>  ILLEGAL SVC          00659001
+         TM    TCBFLAG6,TCBPSTAC  VENDOR EXIT ACTIVE                    00660001
+         BO    STIXER17           YES, =========>  ILLEGAL SVC          00661001
+         TM    TCBEXITF,TCBPOACT  POST EXIT ACTIVE                      00662001
+         BO    STIXER18           YES ---> CANCEL                       00663001
+         TM    TCBEXITF,TCBEXACT  ETXR EXIT ACTIVE                      00664001
+         BO    STIXER19           YES ---> CANCEL                       00665001
+         BR    R9                                                       00666001
+         SPACE 3                                                        00667001
+STIMCHKW DS    0H                                                       00668001
+         TM    TCBXFLG3,TCBXTIMW  STIMER/STIMERM WITH WAIT ALREADY      00669001
+***                               DEFINED (STIMER/M IN TIMER EXIT RTN)  00670001
+         BO    STIXERR9           YES, ONLY ONE TIMER EXIT WITH WAIT    00671001
+***                               ALLOWED --->                          00672001
+         ICM   R2,B'1111',TCBXTQCA GET TIQE USED FOR TIMER CHAIN        00673001
+         BZ    STIMCHW6                                                 00674001
+         TM    EXITADR-EXITBLK(R2),EXITACT STIMER/M WITH WAIT=YES NOT   00675001
+         BO    STIXER10           ... ALLOWED WHILE TIMER EXIT ACTIV    00676001
+STIMCHW6 DS    0H                                                       00677001
+         CLC   TID,LTID           DOES TASK CURRENTLY OWN LTA  @D66CDOW 00678002
+         BE    STIXER11           YES, WAIT=YES NOT ALLOWED             00679001
+         TM    VTAMFLG,VTURX+VTAPP REQUEST FROM VTAM APPENDAGE          00680001
+         BNZ   STIXER14           YES, --->  CANCEL                     00681001
+         CLI   TCBEXITF,TCBOCACT  OC EXIT ACTIVE                        00682001
+         BE    STIXER15           YES, --->  CANCEL                     00683001
+         CLI   TCBEXITF,TCBPCACT  PC EXIT ACTIVE                        00684001
+         BE    STIXER16           YES, --->  CANCEL                     00685001
+         BR    R9                                                       00686001
+         DROP  RA                                                       00687001
+         DROP  RC                                                       00688001
+         EJECT                                                          00689001
+*---------------------------------------------------------------------* 00690001
+*  ROUTINE NAME: COPY TASK STATUS FROM WAIT-TIQE                        00691001
+*                    EITHER TO OC-EXIT SAVE AREA                        00692001
+*                    OR        TI-EXIT SAVE AREA                        00693001
+*                    OR        TASK'S 1ST SAVE AREA                     00694001
+*  FUNCTION:                                                            00695001
+*     -  COPY STATUS FROM TIQE RELATED TO TIMER EXIT WITH WAIT=YES      00696001
+*     -  TO PROPER SAVE AREA                                            00697001
+*  INPUT:  R7:   TIQE WITH WAIT=YES                                     00698001
+*          R9:   RETURN ADDR                                            00699001
+*          RA:   TCB ADDR                                               00700001
+*          RD:   SGTIMERX                                               00701001
+*---------------------------------------------------------------------* 00702001
+         SPACE 2                                                        00703001
+STIMCOPY DS    0H                 ROUTINE ENTRY POINT                   00704001
+         USING EXITBLK,R7                                               00705001
+         USING TCBADR,RA                                                00706001
+         STM   R0,R9,SVCWORKA     SAVE SOME WORK REGISTER               00707001
+         L     R2,TCBATCBE        GET TCBX ADDR                         00708001
+         USING TCBXADR,R2                                               00709001
+         L     R5,PCBPTR                                                00710001
+         USING PCBADR,R5                                                00711001
+         ICM   R5,B'1111',PCBOCPTR IS OC-EXIT AVAILABLE                 00712001
+         DROP  R5                                                       00713001
+         BZ    STIMCP10           NO, --->                              00714001
+         TM    EXITFLG-EXITBLK(R5),EXITTIMW EXIT ACTIVATED WHILE        00715001
+***                               TASK IN WAIT DUE TO WAIT=YES          00716001
+         BO    STIMCP80           YES, COPY SAVE AREA                   00717001
+STIMCP10 DS    0H                                                       00718001
+         ICM   R5,B'1111',TCBXTQCA GET ACTIVE TIMER EXIT                00719001
+         BZ    STIMCP20                                                 00720001
+         TM    EXITFLG-EXITBLK(R5),EXITTIMW EXIT ACTIVATED WHILE        00721001
+***                               TASK IN WAIT DUE TO WAIT=YES          00722001
+         BO    STIMCP80           YES, COPY SAVE AREA                   00723001
+STIMCP20 DS    0H                                                       00724001
+         L     R8,TCBSAVE         GET USERS 1ST SAVE AREA               00725001
+         USING SVEARA,R8                                                00726001
+         L     R4,EXITSAV         GET SAVE AREA FROM WAIT-TIQE          00727001
+         USING SVUARA,R4                                                00728001
+         MVC   INTINFO(4),SVUPSW  REESTABLISH INTERRUPT INFO            00729001
+         MVC   TCBMVSIS(4),SVUPSW+4 ...                                 00730001
+         MVC   SVEPSW(8),SVUAPSW  ... PSW                               00731001
+         MVC   SVER00(36),SVUR00  ... REG 0 - 8                         00732001
+         MVC   SVER09(28),SVUR09  ... REG 9 - 15                        00733001
+         L     R3,TCBARSAV        ... ACCESS REGISTER                   00734001
+         MVC   0(64,R3),SVUAREG   ...                                   00735001
+         DROP  R4                                                       00736001
+         DROP  R8                                                       00737001
+STIMCP60 DS    0H                                                       00738001
+         NI    EXITFLG,XFF-EXITTIMW RESET INDICATOR                     00739001
+         NI    TCBXFLG3,XFF-TCBXTIMW NO TIQE WITH WAIT=YES              00740001
+         LM    R0,R9,SVCWORKA     RESTORE REGISTER                      00741001
+         BR    R9                                                       00742001
+         SPACE                                                          00743001
+STIMCP80 DS    0H                 COPY STATUS TO EXIT BLOCK             00744001
+         L     R4,EXITSAV         GET SAVE AREA OF WAIT-TIQE            00745001
+         USING SVUARA,R4                                                00746001
+         L     R8,EXITSAV-EXITBLK(,R5) SAVE AREA OF ACTIVE TIQE         00747001
+         MVC   EXITSPSW-EXITBLK(8,R5),SVUAPSW PSW AT EXIT ACTIVATION    00748001
+         MVC   SVUPSW-SVUARA(8,R8),SVUPSW GET BC-MODE PSW               00749001
+         TM    EXITFLG-EXITBLK(R5),EXITMSAV                             00750001
+         BNO   STIMCP90                                                 00751001
+         MVC   SVUAPSW-SVUARA(8,R8),SVUAPSW PSW TO EXTENDED SAVE AREA   00752001
+         XC    SVUPSW+5-SVUARA(3,R8),SVUPSW+5-SVUARA(R8) CLEAR          00753001
+***                                 ADDRESS PORTION OF BC-MODE-PSW      00754001
+         MVC   SVUAREG-SVUARA(64,R8),SVUAREG COPY ACC REGISTER          00755001
+STIMCP90 DS    0H                                                       00756001
+         MVC   SVUR00-SVUARA(64,R8),SVUR00 COPY REGISTER 0-15           00757001
+         IC    R1,SVUPSW+1          INSTRUCTION LENGTH                  00758001
+         SLL   R1,5                 ... TO                              00759001
+         STC   R1,SVUPSW2-SVUARA(R8) ... BC-MODE PSW                    00760001
+         OC    SVUPSW2-SVUARA(1,R8),SVUPSW+2-SVUARA(R8) COND CODE       00761001
+***                                 TO PROPER LOCATION IN BC-MODE PSW   00762001
+         MVC   SVUPSW+2-SVUARA(2,R8),SVUPSW+2 INTERRUPTION CODE         00763001
+***                                 TO BC-MODE PSW                      00764001
+         B     STIMCP60                                                 00765001
+         DROP  R2                                                       00766001
+         DROP  R4                                                       00767001
+         DROP  R7                                                       00768001
+         DROP  RA                                                       00769001
+         EJECT                                                          00770001
+*---------------------------------------------------------------------* 00771001
+*  ROUTINE NAME: STIMWAIT  VSE/ESA VERSION 2 RELEASE 2                  00772001
+*  FUNCTION:                                                            00773001
+*     -  SET TASK IN WAIT STATE FOR                                     00774001
+*                     STIMER WAIT                                       00775001
+*                     STIMERM WAIT=YES                                  00776001
+*  ENTRY POINTS                                                         00777001
+*     -  STIMWAIT                                                       00778001
+*     -                                                                 00779001
+*  INPUT:                                                               00780001
+*          R1:   ADDRESS OF TECB IN RELATED TIQE                        00781001
+*          RD:   ADDRESS OF SGTIMERX                                    00782001
+*---------------------------------------------------------------------* 00783001
+         SPACE 2                                                        00784001
+STIMWAIT DS    0H                 ROUTINE ENTRY POINT                   00785001
+***      WAIT  (1)                SET TASK IN WAIT STATE, R1 IS LOADED  00786001
+***                               WITH A TECB ADDR NEVER POSTED         00787001
+         WAIT  (1)                                                      00788001
+         BAS   R5,SYSERROR        MUST NOT OCCUR                        00789001
+         EJECT                                                          00790001
+*---------------------------------------------------------------------* 00791001
+*  ROUTINE NAME: CNVGMTBN  VSE/ESA VERSION 2 RELEASE 2                  00792001
+*  FUNCTION:                                                            00793001
+*     -  CONVERTS TIME VALUE OF FORMAT GMT/LT/DINTVL                    00794001
+*        INTO BINARY WITH UNIT OF HUNDRED OF SECOND                     00795001
+*  AMODE = ANY                                                          00796001
+*  MODE:                                                                00797001
+*     -  PRIMARY ONLY                                                   00798001
+*  ENTRY POINTS                                                         00799001
+*     -  CNVGMTBN                                                       00800001
+*  LINKAGE SEQUENCE:                                                    00801001
+*            BAS   R9,CNVGMTBN                                          00802001
+*  INPUT:                                                               00803001
+*            R9  =   RETURN ADDRESS                                     00804001
+*            RA  =   TCB ADDR                                           00805001
+*            RD  =   BASE OF SGTIMERX                                   00806001
+*            RE  =   ADDRESS OF USER'S PARMLIST                         00807001
+*  OUTPUT:                                                              00808001
+*       -    R0  =   BINARY TIMER VALUE IN UNITS OF HUNDREDS            00809001
+*                    OF SECONDS                                         00810001
+*  EXIT: RETURN TO CALLER                                               00811001
+*  ERROR EXITS:                                                         00812001
+*---------------------------------------------------------------------* 00813001
+         SPACE 2                                                        00814001
+         USING TCBADR,RA          SET BASE FOR TCB                      00815001
+         USING XTIPARML,RE                                              00816001
+         SPACE 1                                                        00817001
+CNVGMTBN DS    0H                 ROUTINE ENTRY POINT                   00818001
+*SGLINK CNVGMTBN,S,INPUT=(R9,RA,RD,RE),WORK=(R1-R6),OUTPUT=(R0)         00819001
+         SPACE 1                                                        00820001
+         L     R2,XTIPAVAL        ADDRESS OF TIME INTERVALL             00821001
+         SLR   R0,R0                                                    00822001
+         LR    R4,R0                                                    00823001
+         LR    R6,R4                                                    00824001
+         LA    R3,5               SET UP LOOP COUNTER                   00825001
+CONVGMT0 DS    0H                                                       00826001
+*---------------------------------------------------------------------* 00827001
+*     CONVERT RELATED PART                                              00828001
+*---------------------------------------------------------------------* 00829001
+         IC    R6,LENXTAB(R3)      GET LENGTH OF FIELD TO BE PACKED     00830001
+         LR    R5,R6                                                    00831001
+         BCTR  R5,0                /390 LENGTH                          00832001
+         EX    R5,CONVPACK         GET PART OF TIME VALUE               00833001
+         OI    STIMDWRD+7,X0F      PROVIDE VALID ZONE                   00834001
+         CVB   R5,STIMDWRD         CONVERT TO BINARY                    00835001
+PCKTIM00 DS    0H                  PROGRAM CHECK ADDR                   00836001
+*---------------------------------------------------------------------* 00837001
+*     CONSIDER MULTIPLIER                                               00838001
+*---------------------------------------------------------------------* 00839001
+         LR    R1,R3                                                    00840001
+         SLL   R1,2               OFFSET IN MULTIPLIER TABLE            00841001
+         M     R4,MULXTAB(R1)     CONSIDER MULTIPLIER                   00842001
+         ALR   R0,R5              RESULT AS BIANRY VALUE                00843001
+*---------------------------------------------------------------------* 00844001
+*     BUMP TO NEXT PART OF TIMER VALUE                                  00845001
+*---------------------------------------------------------------------* 00846001
+         ALR   R2,R6              NEXT PART                             00847001
+         BCT   R3,CONVGMT0        ALL DONE, NO ---------->              00848001
+         SPACE 1                                                        00849001
+         BR    R9                 RETURN  ==========>                   00850001
+*---------------------------------------------------------------------* 00851001
+         SPACE 1                                                        00852001
+         DS    0F                                                       00853001
+CONVPACK PACK  STIMDWRD(8),0(0,R2) GET PART OF TIME VALUE               00854001
+LENXTAB  DC    XL1'0'                                                   00855001
+         DC    XL1'1'                                                   00856001
+MULXTAB  DS    0F                                                       00857001
+         DC    XL1'1'                                                   00858001
+         DC    XL1'2'                                                   00859001
+         DC    XL1'2'                                                   00860001
+         DC    XL1'2'                                                   00861001
+         DC    A(1)               MULTIPLIER FOR HUNDREDTH OF SEC       00862001
+         DC    A(10)              MULTIPLIER FOR TENTH     OF SEC       00863001
+         DC    A(100)             MULTIPLIER FOR SECONDS                00864001
+         DC    A(6000)            MULTIPLIER FOR MINUTES                00865001
+         DC    A(360000)          MULTIPLIER FOR HOURS                  00866001
+*---------------------------------------------------------------------* 00867001
+         DROP  RA                 RESET BASE FOR TCB                    00868001
+         DROP  RE                                                       00869001
+         EJECT                                                          00870001
+*---------------------------------------------------------------------* 00871001
+*  ROUTINE NAME: CNVTOTOD  VSE/ESA VERSION 2 RELEASE 2                  00872001
+*  FUNCTION:                                                            00873001
+*     -  CONVERTS TIME VALUE                                            00874001
+*        INTO BINARY WITH FORMAT OF TIME OF DAY CLOCK                   00875001
+*  AMODE = ANY                                                          00876001
+*  MODE:                                                                00877001
+*     -  PRIMARY ONLY                                                   00878001
+*  ENTRY POINTS                                                         00879001
+*     -  CNVTPTOD        - PARAMETER LIST PROVIDED                      00880001
+*  LINKAGE SEQUENCE:                                                    00881001
+*            BAS   R9,CNVTOTOD                                          00882001
+*  INPUT:                                                               00883001
+*            R0  =   BINARY VALUE   (IN 10**-2 SEC)                     00884001
+*            R9  =   RETURN ADDRESS                                     00885001
+*            RA  =   TCB ADDR                                           00886001
+*            RD  =   BASE OF MODULE                                     00887001
+*            RE  =   ADDRESS OF USER'S PARMLIST                         00888001
+*  OUTPUT:                                                              00889001
+*            R2,R3 - BINARY TIMER VALUE IN FORMAT OF TOD                00890001
+*  EXIT: RETURN TO CALLER                                               00891001
+*  ERROR EXITS: -                                                       00892001
+*---------------------------------------------------------------------* 00893001
+         SPACE 2                                                        00894001
+         USING TCBADR,RA          SET BASE FOR TCB                      00895001
+         USING XTIPARML,RE                                              00896001
+         SPACE 1                                                        00897001
+CNVTOTOD DS    0H                 ROUTINE ENTRY POINT                   00898001
+*SGLINK CNVTOTOD,S,INPUT=(R0,RA,RD,RE,RF),WORK=(R4-R5),OUTPUT=(R2,R3)   00899001
+         TM    XTIPFLGS,XTIPSTOD  TUI SPECIFIED                         00900001
+         BZ    CNVTOD00           YES, --------->                       00901001
+         SLR   R2,R2                                                    00902001
+         LR    R3,R0                                                    00903001
+         M     R2,STIM4096        CONVERT INTO TOD UNITS                00904001
+         BR    R9                 ==========>   RETURN                  00905001
+         SPACE 1                                                        00906001
+CNVTOD00 DS    0H                                                       00907001
+         SPACE 1                                                        00908001
+         L     R5,XTIPAVAL        ADDRESS OF TIME INTERVALL             00909001
+         SLR   R2,R2                                                    00910001
+         L     R3,0(,R5)          REQUESTED TIME INTERVALL              00911001
+*---------------------------------------------------------------------* 00912001
+*     CONVERT TU INTO TOD                                               00913001
+*---------------------------------------------------------------------* 00914001
+         N     R3,XTIMEHIH        RESET HIGH ORDERD BIT                 00915001
+         M     R2,STIMTUIS        TU  * 26.01446 * 2**26                00916001
+*                                 ... IN ORDER TO GET HIGH PRECISION    00917001
+         SRDL  R2,14              ... *2**(-14)                         00918001
+*                                 ... = MICS IN TOD FORMAT (2**12)      00919001
+         TM    0(R5),X80          TU > 32K -1                           00920001
+         BZR   R9                 NO,  ==========>  RETURN              00921001
+*---------------------------------------------------------------------* 00922001
+*     CONSIDER HIGHEST BIT OF TU                                        00923001
+*---------------------------------------------------------------------* 00924001
+         AL    R3,XKTURH                                                00925001
+         BC    12,CONVTT0X        NO CARRY OVERFLOW ------->            00926001
+         AL    R2,F1              ADD ONE                               00927001
+         AL    R2,XKTULH          HANDLE CARRY OVERFLOW                 00928001
+CONVTT0X DS    0H                                                       00929001
+         SPACE 1                                                        00930001
+         BR    R9                 =========>        RETURN              00931001
+*---------------------------------------------------------------------* 00932001
+         SPACE 1                                                        00933001
+         DS    0F                                                       00934001
+XTIMEHIH DC    X'7FFFFFFF'                                              00935001
+XKTURH   DC    X'55556000'                                              00936001
+XKTULH   DC    X'0000D055'                                              00937001
+*---------------------------------------------------------------------* 00938001
+         DROP  RA                 RESET BASE FOR TCB                    00939001
+         DROP  RE                                                       00940001
+         EJECT                                                          00941001
+*---------------------------------------------------------------------* 00942001
+*  ROUTINE NAME: GETRTIME  VSE/ESA VERSION 2 RELEASE 2                  00943001
+*  FUNCTION:                                                            00944001
+*     -  GET REST TIME VALUE OF SPECIFIED TIMER                         00945001
+*        INTO BINARY WITH FORMAT OF TOD                                 00946001
+*  AMODE = ANY                                                          00947001
+*  MODE:                                                                00948001
+*     -  PRIMARY ONLY                                                   00949001
+*  ENTRY POINTS                                                         00950001
+*     -  GETRTIME                                                       00951001
+*  LINKAGE SEQUENCE:                                                    00952001
+*            BAS   R8,GETRTIME                                          00953001
+*  INPUT:                                                               00954001
+*            R7  =   ADDRESS OF TIQE                                    00955001
+*            R8  =   RETURN ADDRESS                                     00956001
+*            RA  =   ADDRESS OF TCB                                     00957001
+*            RD  =   BASE OF MODULE                                     00958001
+*            RE  =   INTERNAL PARAMETER LIST                            00959001
+*  OUTPUT:                                                              00960001
+*            REST TIME IN XTIPRTIM                                      00961001
+*  EXIT: RETURN TO CALLER                                               00962001
+*  ERROR EXITS: -                                                       00963001
+*---------------------------------------------------------------------* 00964001
+         SPACE 2                                                        00965001
+         USING EXITBLK,R7         SET BASE FOR TIQE                     00966001
+         USING TCBADR,RA          SET BASE FOR TCB                      00967001
+         USING XTIPARML,RE        SET BASE FOR PARAMETER LIST           00968001
+         SPACE 1                                                        00969001
+GETRTIME DS    0H                 ROUTINE ENTRY POINT                   00970001
+*SGLINK GETRTIME,S,INPUT=(R7,R8,RA,RD,RE),WORK=(R0-R4,R9)               00980001
+         LM    R0,R1,TIQOUTT      CURRENT VALUE                         00981001
+*                                 ... TASK TIMER : RESTTIME             00982001
+*                                 ... REAL TIMER : TOD EXPIRATION       00983001
+         CLI   TIQTYPE,TIQTASK    TASK TIMER REQUEST                    00984001
+         BE    GETRT200           YES, --------->                       00985001
+         SPACE 1                                                        00986001
+*     PROCESS REAL TIMER                                                00987001
+         SPACE 1                                                        00988001
+GETRT000 DS    0H                 ROUTINE ENTRY POINT                   00989001
+         STCK  CLOCK              GET CURRENT TOD                       00990001
+         SL    R1,CLOCK+4                                               00991001
+         BC    11,GETRT100        UNDERFLOW  --------->                 00992001
+         BCTR  R0,0                                                     00993001
+GETRT100 DS    0H                                                       00994001
+         SL    R0,CLOCK                                                 00995001
+         SPACE 1                                                        00996001
+*    ADJUST VALUE TO AT LEAST ONE MICROSECOND                           00997001
+         SPACE 1                                                        00998001
+GETRT200 DS    0H                                                       00999001
+         LTR   R0,R0                                                    01000001
+         BM    GETRT300           TAKE 0, --------->           @DY44889 01001001
+         BP    GETRT230                                                 01002001
+         CL    R1,STIMICTO        GREATER THAN 1 MICROSEC               01003001
+         BNL   GETRT230           YES, --------->                       01004001
+GETRT220 DS    0H                                                       01005001
+         SLR   R0,R0                                                    01006001
+         L     R1,STIMICTO        TAKE 1 MICROSEC                       01007001
+GETRT230 DS    0H                                                       01008001
+         STM   R0,R1,XTIPRTIM                                           01009001
+         SPACE 1                                                        01010001
+         TM    XTIPFLGS,XTITCMIC  MIC INTERVALL REQUESTED               01011001
+         BOR   R8                 YES, =========>                       01012001
+*                                 ... ALL DONE,  EXIT                   01013001
+         SPACE 1                                                        01014001
+*     CONVERT MIC INTO TUIS                                             01015001
+*     CHECK IF RTIME SMALLER THAN 2 THOUSAND*SEC**(-1)                  01016001
+         LTR   R0,R0                                                    01017001
+         BNZ   GETRT250           NO,  --------->                       01018001
+         CL    R1,STIM2THO                                              01019001
+         BH    GETRT250           NO,  --------->                       01020001
+         LA    R1,1               YES, PROVIDE ONE TUI                  01021001
+         B     GETRT280                                                 01022001
+GETRT250 DS    0H                                                       01023001
+         CLC   XTIPRTIM(8),STIMHIGH VALUE TO HIGH FOR TUI               01024001
+         BNH   GETRT260        NO,  --------->                          01025001
+         SLR   R1,R1                                                    01026001
+         BCTR  R1,0            RETURN  X'FFFFFFFF'                      01027001
+***      LA    RF,4            RETURN CODE = 4 (NOT SUPPORTED IN VSE)   01028001
+         B     GETRT280        =============>                           01029001
+GETRT260 DS    0H                                                       01030001
+*                              TOD FORMAT IST 2**12 MICS                01031001
+         SLDL  R0,13           TOD * 2**13                              01032001
+         D     R0,STIMTUIS     ... / 26.04166*2**26                     01033001
+         SLL   R1,1            ... *2  =>  TUI                          01034001
+GETRT280 DS    0H                                                       01035001
+         SLR   R0,R0                                                    01036001
+         STM   R0,R1,XTIPRTIM     PROVIDE TUI                           01037001
+         BR    R8                 =========>                            01038001
+         SPACE 1                                                        01039001
+GETRT300 DS    0H                 SUPPLY REST-TIME 0           @DY44889 01040001
+         SLR   R0,R0                                           @DY44889 01041001
+         SLR   R1,R1                                           @DY44889 01042001
+         B     GETRT230                                        @DY44889 01042101
+         SPACE 1                                                        01042201
+         DROP  R7                 RESET ADDR TO TIQE                    01042301
+         DROP  RA                 RESET ADDR TO TCB                     01042401
+         DROP  RE                                                       01042501
+         EJECT                                                          01042601
+*---------------------------------------------------------------------* 01042701
+*  ROUTINE NAME: ENQTIQE                                                01042801
+*  FUNCTION:                                                            01042901
+*     -  ENQUEUE TIQE INTO STIMERM-CHAIN (TCBXTAMU)                     01043001
+*  ENTRY POINTS                                                         01044001
+*     -  ENQTIQE                                                        01045001
+*  LINKAGE SEQUENCE:                                                    01046001
+*            BAS   R9,ENQTIQE                                           01047001
+*  INPUT:                                                               01048001
+*            R7  =   ADDRESS OF TIQE                                    01049001
+*            R9  =   RETURN ADDRESS                                     01050001
+*            RA  =   ADDRESS OF TCB                                     01051001
+*            RC  =   ADDRESS OF TCBX                                    01052001
+*            RD  =   BASE OF SGTIMERX                                   01053001
+*  WORK:                                                                01054001
+*            R1  R2                                                     01055001
+*---------------------------------------------------------------------* 01056001
+         SPACE 1                                                        01057001
+         USING EXITBLK,R7         SET BASE FOR TIQE                     01058001
+         USING TCBADR,RA          SET BASE FOR TCB                      01059001
+         USING TCBXADR,RC         SET BASE FOR TCBX                     01060001
+         SPACE 1                                                        01061001
+ENQTIQE  DS    0H                 ROUTINE ENTRY POINT                   01062001
+*SGLINK ENQTIQE,S,INPUT=(R7,R9,RA,RC,RD),WORK=(R1,R2)                   01063001
+         LA    R2,TCBXTAMU        GET ANCHOR OF STIMERM CHAIN           01064001
+ENQTIQ40 DS    0H                                                       01065001
+         L     R1,0(,R2)          GET FIRST/NEXT TIQE                   01066001
+         LTR   R1,R1              FIRST/LAST TIQE                       01067001
+         BZ    ENQTIQ80           YES ENQUE OUR TIQE                    01068001
+         CLC   TIQOUTT(8),TIQOUTT-EXITADR(R1)                           01069001
+         BL    ENQTIQ80           ENQUEUE IT ------>                    01070001
+         LA    R2,EXITNEXT-EXITBLK(,R1) SET UP NEXT ANCHOR              01071001
+         B     ENQTIQ40           CONTINUE LOOP ----->                  01072001
+ENQTIQ80 DS    0H                                                       01073001
+         ST    R1,EXITNEXT        UPDATE CHAIN PTR IN OUR TIQE          01074001
+         ST    R7,0(,R2)          INSERT OUR TIQE IN CHAIN              01075001
+         BR    R9                 RETURN  =========>                    01076001
+         DROP  R7                 RESET BASE FOR TIQE                   01077001
+         DROP  RA                 RESET BASE FOR TCB                    01078001
+         DROP  RC                                                       01079001
+         EJECT                                                          01080001
+*---------------------------------------------------------------------* 01081001
+*  ROUTINE NAME: DEQTIQE                                                01082001
+*  FUNCTION:                                                            01083001
+*     -  DEQUEUE TIQE FROM STIMERM-CHAIN (TCBXTAMU)                     01084001
+*     -               OF STIMER (TCBXTASI)                              01085001
+*     -  RESET CORRESPONDING ID IN TCBXTMAK                             01086001
+*  ENTRY POINTS                                                         01087001
+*     -  DEQTIQE                                                        01088001
+*  LINKAGE SEQUENCE:                                                    01089001
+*            BAS   R9,DEQTIQE                                           01090001
+*  INPUT:                                                               01091001
+*            R7  =   ADDRESS OF TIQE                                    01092001
+*            R9  =   RETURN ADDRESS                                     01093001
+*            RA  =   ADDRESS OF TCB                                     01094001
+*            RC  =   ADDRESS OF TCBX                                    01095001
+*            RD  =   BASE OF SGTIMERX                                   01096001
+*  WORK:                                                                01097001
+*            R0  R1  R2  RF                                             01098001
+*---------------------------------------------------------------------* 01099001
+         SPACE 1                                                        01100001
+         USING EXITBLK,R7         SET BASE FOR TIQE                     01101001
+         USING TCBADR,RA                                                01102001
+         USING TCBXADR,RC                                               01103001
+DEQTIQE  DS    0H                 ENTRY POINT                           01104001
+*SGLINK DEQTIQE,S,INPUT=(R7,R9,RA,RC,RD),WORK=(R0,R2,RF)                01105001
+         L     R1,TCBXTASI        HANDLING                              01106001
+         LA    R1,0(,R1)          ... STIMER                            01107001
+         CR    R7,R1              ...                                   01108001
+         BNE   DEQTIQ10           NO, ITS STIMERM                       01109001
+         XC    TCBXTASI,TCBXTASI  CLEAR SINGLE TIMER ANCHOR             01110001
+         B     DEQTIQ50                                                 01111001
+DEQTIQ10 DS    0H                                                       01112001
+         LA    R2,TCBXTAMU        GET ANCHOR OF STIMERM CHAIN           01113001
+DEQTIQ20 DS    0H                                                       01114001
+         L     R1,0(,R2)          GET FIRST/NEXT STIMERM TIQE           01115001
+         CR    R7,R1              IS IT OUR TIQE                        01116001
+         BE    DEQTIQ30           YES, DEQUEUE TIQE                     01117001
+         LA    R2,EXITNEXT-EXITBLK(,R1)                                 01118001
+         B     DEQTIQ20                                                 01119001
+DEQTIQ30 DS    0H                                                       01120001
+         L     R1,EXITNEXT        GET SUCCESSOR                         01121001
+         ST    R1,0(,R2)          ... TO PREDECESSOR                    01122001
+         LH    R1,TCBXTMAK        GET CURRENT USED ID'S                 01123001
+         L     R2,TIQIDEN         GET ID OF TIQE                        01124001
+         XR    R1,R2              RESET OUR ID                          01125001
+         STH   R1,TCBXTMAK        ... IN TCBX                           01126001
+DEQTIQ50 DS    0H                                                       01127001
+         ICM   R1,B'1111',TIQAUSA ADDR OF SAVE AREA                     01128001
+         BZ    DEQTIQ70                                                 01129001
+         LR    R2,R8              SAVE WORK REGISTER                    01130001
+         LA    R0,MVSSALNX        LENGTH OF SAVE AREA                   01131001
+         LA    RF,20              FREEMAIN FUNCTION CODE                01132001
+         L     RC,ASGEXIT         GET BASE OF                           01133001
+         L     RC,AEXITGVI-SGEXIT(,RC) ... SUBROUTINE                   01134001
+         BASSM R8,RC              FREE SAVE AREA SPACE                  01135001
+*SGLINK EXITFVIS,INPUT=(R0,R2,R8,RA,RC,RF),OUTPUT=RF,WORK=(R0,R1)       01136001
+         L     RC,TCBATCBE        RESTORE TCBX ADDR                     01137001
+         LR    R8,R2              RESTORE REG 8                         01138001
+         SPACE                                                          01139001
+DEQTIQ70 DS    0H                                                       01140001
+         LH    R0,EXITLENG        GET LENGTH OF TIQE                    01141001
+         DROP  R7                                                       01142001
+         SPACE                                                          01143001
+*        SFREEVIS LENGTH=(0),ADDRESS=(7)                                01144001
+         SFREEVIS LENGTH=(0),ADDRESS=(7)                                01145001
+*END OF SFREEVIS MACRO                                                  01146001
+         SPACE 1                                                        01147001
+         BR    R9                 RETURN  =========>                    01148001
+         DROP  RA                                                       01149001
+         DROP  RC                                                       01150001
+         EJECT                                                          01151001
+*---------------------------------------------------------------------* 01152001
+*  ROUTINE NAME: FNDTILOW                                               01153001
+*  FUNCTION:                                                            01154001
+*     -  FIND TIQE WITH LOWEST EXPIRATION TIME                          01155001
+*  ENTRY POINTS                                                         01156001
+*     -  FNDTILOW                                                       01157001
+*  LINKAGE SEQUENCE:                                                    01158001
+*            BAS   R9,FNDTILOW                                          01159001
+*  INPUT:                                                               01160001
+*            R9  =   RETURN ADDRESS                                     01161001
+*            RA  =   ADDRESS OF TCB                                     01162001
+*            RD  =   BASE OF SGTIMERX                                   01163001
+*  OUTPUT:                                                              01164001
+*            R7  =   TIQE ADDR                                          01165001
+*---------------------------------------------------------------------* 01166001
+         SPACE 1                                                        01167001
+         USING TCBADR,RA                                                01168001
+FNDTILOW DS    0H                 ENTRY POINT                           01169001
+*SGLINK FNDTILOW,S,INPUT=(R9,RA,RD),OUTPUT=(R7)                         01170001
+         STM   R1,R6,SVCWORKA     SAVE SOME WORK REGISTER               01171001
+         L     R5,TCBATCBE        GET ADDR OF TCBX                      01172001
+         USING TCBXADR,R5                                               01173001
+         ICM   R7,B'1111',TCBXTAVS GET VSE TIMER EXIT CB                01174001
+         USING EXITBLK,R7                                               01175001
+         BZ    FNDTIL20           NOT DEFINED                           01176001
+         OC    TIQOUTT(8),TIQOUTT TIME INTERVALL                        01177001
+***                               SPECIFIED                             01178001
+         BNZ   FNDTIL20           YES, --->                             01179001
+         SLR   R7,R7              NO TIMER SPECIFIED                    01180001
+FNDTIL20 DS    0H                                                       01181001
+         ICM   R2,B'1111',TCBXTASI GET STIMER EXIT CB                   01182001
+         BNP   FNDTIL60           ZERO --->  NOT DEFINED                01183001
+***                               MINUS ---> TASK TIMER                 01184001
+         OC    TIQOUTT-EXITBLK(8,R2),TIQOUTT-EXITBLK(R2) TIME INTERVALL 01185001
+***                               SPECIFIED                             01186001
+         BZ    FNDTIL60           NO, DON'T USE IT                      01187001
+         LTR   R7,R7              ALREADY ANY TIQE FOUND                01188001
+         BZ    FNDTIL40           NO,  --->                             01189001
+         CLC   TIQOUTT(8),TIQOUTT-EXITBLK(R2) TIME INTERVALL            01190001
+***                               LOWER                                 01191001
+         BNH   FNDTIL60           NO, KEEP TIQE                         01192001
+FNDTIL40 DS    0H                                                       01193001
+         LR    R7,R2              NEW TIQE WITH LOWER EXPIRATION TIME   01194001
+FNDTIL60 DS    0H                                                       01195001
+         ICM   R2,B'1111',TCBXTAMU GET FIRST STIMERM TIQE               01196001
+         BZ    FNDTIL90           NOT DEFINED                           01197001
+         OC    TIQOUTT-EXITBLK(8,R2),TIQOUTT-EXITBLK(R2) TIME INTERVALL 01198001
+***                               SPECIFIED                             01199001
+         BZ    FNDTIL90           NO, DON'T USE IT                      01200001
+         LTR   R7,R7              ALREADY ANY TIQE FOUND                01201001
+         BZ    FNDTIL80           NO,  --->                             01202001
+         CLC   TIQOUTT(8),TIQOUTT-EXITBLK(R2) TIME INTERVALL            01203001
+***                               LOWER                                 01204001
+         BNH   FNDTIL90           NO, KEEP TIQE                         01205001
+FNDTIL80 DS    0H                                                       01206001
+         LR    R7,R2              NEW TIQE WITH LOWER EXPIRATION TIME   01207001
+FNDTIL90 DS    0H                                                       01208001
+         LM    R1,R6,SVCWORKA                                           01209001
+         BR    R9                                                       01210001
+         DROP  R5                                                       01211001
+         DROP  R7                                                       01212001
+         DROP  RA                                                       01213001
+         EJECT                                                          01214001
+*---------------------------------------------------------------------* 01215001
+*  ROUTINE NAME: ENQTICHN                                               01216001
+*  FUNCTION:                                                            01217001
+*     -  RETURN IF TASK ALREADY IN TIMER CHAIN                          01218001
+*     -  ENQUEUE TASK INTO TIMER CHAIN                                  01219001
+*     -  SET CLOCK COMPARATOR IF EXPIRATION TIME SMALLER THAN           01220001
+*        CURRENT CLOCK COMPARATOR                                       01221001
+*  ENTRY POINTS                                                         01222001
+*     -  ENQTICHN                                                       01223001
+*  LINKAGE SEQUENCE:                                                    01224001
+*            BAS   R9,ENQTICHN                                          01225001
+*  INPUT:                                                               01226001
+*            R7  =   TIQE TO BE USED FOR ENQ                            01227001
+*            R9  =   RETURN ADDRESS                                     01228001
+*            RA  =   ADDRESS OF TCB                                     01229001
+*            RD  =   BASE OF SGTIMERX                                   01230001
+*---------------------------------------------------------------------* 01231001
+         SPACE 1                                                        01232001
+         USING EXITBLK,R7                                               01233001
+         USING TCBADR,RA                                                01234001
+ENQTICHN DS    0H                 ENTRY POINT                           01235001
+*SGLINK ENQTICHN,S,INPUT=(R7,R9,RA,RD)                                  01236001
+         STM   R1,R6,SVCWORKA     SAVE SOME WORK REGISTER               01237001
+         L     R5,TCBATCBE        GET ADDR OF TCBX                      01238001
+         USING TCBXADR,R5                                               01239001
+         ICM   R1,B'1111',TCBXTQCA TASK ALREADY IN TIMER CHAIN          01240001
+         BNZ   ENQTIM90           YES, --->                             01241001
+         ST    R7,TCBXTQCA        THIS TIQE IS IN TIMERCHAIN            01242001
+         L     R6,TCBTIB          GET RELATED TIB ADDR                  01243001
+         USING TIBADR,R6                                                01244001
+         MVC   TIBITREQ,TIQOUTT   EXPIRATION TIME TO TIB                01245001
+         L     R4,AEXTRTN         GET TIMER                             01246001
+         USING EXTRTN,R4          ... CHAIN                             01247001
+         LA    R4,ITREQPTR        ... ANCHOR                            01248001
+         DROP  R4                                                       01249001
+ENQTIM20 DS    0H                                                       01250001
+         L     R2,0(,R4)          GET FIRST IN TIMER CHAIN              01251001
+         CLC   TIBITREQ,TIBITREQ-TIBADR(R2) NEW INTERVAL SMALLER        01252001
+         BL    ENQTIM60           YES, ENQUE HERE                       01253001
+         BNE   ENQTIM30           NO, GOTO NEXT ENTRY                   01254001
+         C     R2,ASNSTIB         IS IT SENSE TASK TIB                  01255001
+         BE    ENQTIM60           YES ENQUE HERE                        01256001
+ENQTIM30 DS    0H                                                       01257001
+         LA    R4,TIBITCHN-TIBADR(,R2) UPDATE ANCHOR POINT              01258001
+         B     ENQTIM20           CHECK NEXT ENTRY IN TIMER CHAIN       01259001
+ENQTIM60 DS    0H                                                       01260001
+         ST    R6,0(,R4)          ENQUEUE OUR TASK                      01261001
+         ST    R2,TIBITCHN        ENQUEUE REST OF CHAIN TO OUR TIB      01262001
+         STCKC CLOCK              GET CURRENT CLOCK COMPARATOR          01263001
+         L     R4,AEXTRTN         GET FIRST IN                          01264001
+         USING EXTRTN,R4          ... TIMER                             01265001
+         L     R6,ITREQPTR        ... CHAIN                             01266001
+         DROP  R4                                                       01267001
+         CLC   TIBITREQ,CLOCK     NEW EXPIRATION TIME SMALLER           01268001
+         BNL   ENQTIM90           NO, SETTING NOT REQ'D                 01269001
+         MVC   CLOCK,TIBITREQ     MOVE TO FIELD ON DW-BOUNDARY          01270001
+*        SGVSEPT PROBE=6          INFORM PERFORMANCE TOOL               01271001
+         SGVSEPT PROBE=6                                                01272001
+*** END OF SGVSEPT MACRO                                                01273001
+         SCKC  CLOCK              SET NEW CLOCK COMPARATOR VALUE        01274001
+ENQTIM90 DS    0H                                                       01275001
+         LM    R1,R6,SVCWORKA     RESTORE WORK REGISTER                 01276001
+         BR    R9                 RETURN  =========>                    01277001
+         SPACE 1                                                        01278001
+         DROP  R5                                                       01279001
+         DROP  R6                                                       01280001
+         DROP  R7                                                       01281001
+         DROP  RA                                                       01282001
+         EJECT                                                          01283001
+*---------------------------------------------------------------------* 01284001
+*  ROUTINE NAME: DEQTICHN                                               01285001
+*  FUNCTION:                                                            01286001
+*     -  DEQUEUE TASK FROM TIMER CHAIN                                  01287001
+*  ENTRY POINTS                                                         01288001
+*     -  DEQTICHN                                                       01289001
+*  LINKAGE SEQUENCE:                                                    01290001
+*            BAS   R9,DEQTICHN                                          01291001
+*  INPUT:                                                               01292001
+*            R9  =   RETURN ADDRESS                                     01293001
+*            RA  =   TCB ADDR                                           01294001
+*            RD  =   BASE OF SGTIMERX                                   01295001
+*---------------------------------------------------------------------* 01296001
+         SPACE 1                                                        01297001
+         USING TCBADR,RA                                                01298001
+DEQTICHN DS    0H                 ENTRY POINT                           01299001
+*SGLINK DEQTICHN,S,INPUT=(R9,RA,RD)                                     01300001
+         STM   R1,R6,SVCWORKA     SAVE SOME WORK REGISTER               01301001
+         L     R5,TCBATCBE        GET ADDR OF TCBX                      01302001
+         USING TCBXADR,R5                                               01303001
+         L     R6,TCBTIB          GET RELATED TIB ADDR                  01304001
+         USING TIBADR,R6                                                01305001
+         ICM   R1,B'1111',TIBITCHN GET SUCCESOR IN TIMER Q              01306001
+         BZ    DEQTIM90           NOT IN TIMER-Q --->                   01307001
+         L     R2,AEXTRTN         GET SMICR BASE                        01308001
+         USING EXTRTN,R2                                                01309001
+         LA    R3,ITREQPTR        ANCHOR TO TIMER CHAIN                 01310001
+         DROP  R2                                                       01311001
+DEQTIM20 DS    0H                 ENTRY POINT                           01312001
+         L     R2,0(,R3)          GET FIRST/NEXT TIB IN TIMER CHAIN     01313001
+         CR    R2,R6              IS IT OUR TIB                         01314001
+         BE    DEQTIM30           YES, --->                             01315001
+         LA    R3,TIBITCHN-TIBADR(,R2) NEW ANCHOR POINT                 01316001
+         B     DEQTIM20                                                 01317001
+DEQTIM30 DS    0H                                                       01318001
+         ST    R1,0(,R3)          STORE IT TO PREDECESSOR               01319001
+         XC    TIBITCHN,TIBITCHN  TASK IS NOT IN TIMER CHAIN            01320001
+DEQTIM90 DS    0H                                                       01321001
+         XC    TCBXTQCA,TCBXTQCA  NO TIQE QUEUED ANYMORE                01322001
+         LM    R1,R6,SVCWORKA     RELOAD WORK REGISTER                  01323001
+         BR    R9                 RETURN  =========>                    01324001
+         SPACE 1                                                        01325001
+         DROP  R5                                                       01326001
+         DROP  R6                                                       01327001
+         DROP  RA                                                       01328001
+         EJECT                                                          01329001
+*---------------------------------------------------------------------* 01330001
+*     ERROR EXITS                                                     * 01331001
+*---------------------------------------------------------------------* 01332001
+         USING TCBADR,RA          BASE FOR TCB                          01333001
+*---------------------------------------------------------------------* 01334001
+STIXER19 DS    0H                                                       01335001
+         LA    R1,D2C5R50A        ERROR INDICATOR   2C5-50A             01336001
+         B     STIXERR                                                  01337001
+         SPACE 2                                                        01338001
+*---------------------------------------------------------------------* 01339001
+STIXER18 DS    0H                                                       01340001
+         LA    R1,D2C5R509        ERROR INDICATOR   2C5-509             01341001
+         B     STIXERR                                                  01342001
+         SPACE 2                                                        01343001
+*---------------------------------------------------------------------* 01344001
+STIXER17 DS    0H                                                       01345001
+         LA    R1,D2C5R508        ERROR INDICATOR   2C5-508             01346001
+         B     STIXERR                                                  01347001
+         SPACE 2                                                        01348001
+*---------------------------------------------------------------------* 01349001
+STIXER16 DS    0H                                                       01350001
+         LA    R1,D2C5R507        ERROR INDICATOR   2C5-507             01351001
+         B     STIXERR                                                  01352001
+         SPACE 2                                                        01353001
+*---------------------------------------------------------------------* 01354001
+STIXER15 DS    0H                                                       01355001
+         LA    R1,D2C5R506        ERROR INDICATOR   2C5-506             01356001
+         B     STIXERR                                                  01357001
+         SPACE 2                                                        01358001
+*---------------------------------------------------------------------* 01359001
+STIXER14 DS    0H                                                       01360001
+         LA    R1,D2C5R505        ERROR INDICATOR   2C5-505             01361001
+         B     STIXERR                                                  01362001
+         SPACE 2                                                        01363001
+*---------------------------------------------------------------------* 01364001
+STIXER13 DS    0H                 ENTERED FROM PROG CHECK HANDLER       01365001
+         MVI   RID+1,REENTRID     RESTORE RID                           01366001
+         LM    R9,R8,ERA          RELOAD REGISTER FROM PROG CHECK       01367001
+         LA    R1,D0C7R007        ERROR INDICATOR   0C7-007             01368001
+         L     RC,ASTIXERR                                              01369001
+         BSM   0,RC               ENTER 31BIT MODE                      01370001
+         SPACE 2                                                        01371001
+*---------------------------------------------------------------------* 01372001
+STIXER12 DS    0H                                                       01373001
+         LA    R1,D2C5R503        ERROR INDICATOR   2C5-503             01374001
+         B     STIXERR                                                  01375001
+         SPACE 2                                                        01376001
+*---------------------------------------------------------------------* 01377001
+STIXER11 DS    0H                                                       01378001
+         LA    R1,D2C5R502        ERROR INDICATOR   2C5-502             01379001
+         B     STIXERR                                                  01380001
+         SPACE 2                                                        01381001
+*---------------------------------------------------------------------* 01382001
+STIXER10 DS    0H                                                       01383001
+         LA    R1,D2C5R501        ERROR INDICATOR   2C5-501             01384001
+         B     STIXERR                                                  01385001
+         SPACE 2                                                        01386001
+*---------------------------------------------------------------------* 01387001
+STIXERR9 DS    0H                                                       01388001
+         LA    R1,D2C5R500        ERROR INDICATOR   2C5-500             01389001
+         B     STIXERR                                                  01390001
+         SPACE 2                                                        01391001
+*---------------------------------------------------------------------* 01392001
+STIXERR8 DS    0H                                                       01393001
+         LA    R1,D32ER11C        ERROR INDICATOR   32E-11C             01394001
+         B     STIXERR                                                  01395001
+         SPACE 2                                                        01396001
+*---------------------------------------------------------------------* 01397001
+STIXERR7 DS    0H                                                       01398001
+         LA    R1,D12FR004        ERROR INDICATOR   12F-004             01399001
+         B     STIXERR                                                  01400001
+         SPACE 2                                                        01401001
+*---------------------------------------------------------------------* 01402001
+STIXERR6 DS    0H                                                       01403001
+         LA    R1,D12FR00C        ERROR INDICATOR   12F-00C             01404001
+         L     RE,TCBATCBE                                              01405001
+         USING TCBXADR,RE                                               01406001
+         LA    RE,TCBXXSA                                               01407001
+         USING XTIPARML,RE                                              01408001
+         CLI   XTIPLEV1,XTIPSLV1  STIMERM REQUEST                       01409001
+         DROP  RE                                                       01410001
+         BNE   STIXERR            NO,  --------->                       01411001
+         LA    R1,D32ER10C        ERROR INDICATOR   32E-10C             01412001
+         B     STIXERR                                                  01413001
+         SPACE 2                                                        01414001
+*---------------------------------------------------------------------* 01415001
+STIXERR5 DS    0H                                                       01416001
+         LA    R1,D12FR028        ERROR INDICATOR   12F-028             01417001
+         L     RE,TCBATCBE                                              01418001
+         USING TCBXADR,RE                                               01419001
+         LA    RE,TCBXXSA                                               01420001
+         USING XTIPARML,RE                                              01421001
+         CLI   XTIPLEV1,XTIPSLV1  STIMERM REQUEST                       01422001
+         DROP  RE                                                       01423001
+         BNE   STIXERR            NO,  --------->                       01424001
+         LA    R1,D32ER128        ERROR INDICATOR   32E-128             01425001
+         B     STIXERR                                                  01426001
+         SPACE 2                                                        01427001
+*---------------------------------------------------------------------* 01428001
+STIXERR3 DS    0H                                                       01429001
+         LA    R1,D32ER224        ERROR INDICATOR   32E-224 (TEST)      01430001
+         L     RE,TCBATCBE                                              01431001
+         USING TCBXADR,RE                                               01432001
+         LA    RE,TCBXXSA                                               01433001
+         USING XTIPARML,RE                                              01434001
+         TM    XTIPFLGS,XTIPCNCL  STIMERM CANCEL REQUEST                01435001
+         DROP  RE                                                       01436001
+         BZ    STIXERR            NO, --------->                        01437001
+         LA    R1,D32ER324        ERROR INDICATOR   32E-324 (CANCEL)    01438001
+         B     STIXERR                                                  01439001
+         SPACE 2                                                        01440001
+*---------------------------------------------------------------------* 01441001
+STIXERR2 DS    0H                                                       01442001
+         LA    R1,D2C5R410        ERROR INDICATOR   2C5-410             01443001
+         B     STIXERR1A                                                01444001
+         SPACE 2                                                        01445001
+*---------------------------------------------------------------------* 01446001
+STIXERR1 DS    0H                                                       01447001
+         LA    R0,TIQELEN         LENGTH OF TIQE                        01448001
+         SPACE                                                          01449001
+*        SFREEVIS LENGTH=(0),ADDRESS=(7)                                01450001
+         SFREEVIS LENGTH=(0),ADDRESS=(7)                                01451001
+*END OF SFREEVIS MACRO                                                  01452001
+         SPACE                                                          01453001
+         LA    R1,D2C5R411        ERROR INDICATOR   2C5-411             01454001
+STIXERR1A DS   0H                                                       01455001
+         L     RB,TCBSAVE         GET SAVE AREA ADDR                    01456001
+         USING SVEARA,RB                                                01457001
+         ST    R8,SVER0F          PASS GETVIS RETCODE TO USER           01458001
+         DROP  RB                                                       01459001
+******   B     STIXERR                                                  01460001
+         SPACE 2                                                        01461001
+*---------------------------------------------------------------------* 01462001
+STIXERR  DS    0H                                                       01463001
+         L     RC,TCBATCBE        ADDR OF TCB EXTENSION                 01464001
+         USING TCBXADR,RC                                               01465001
+         TM    TCBXSAUS,TCBXXSBU  SAVE AREA FREE                        01466001
+         BO    STIX0010           NO, --->                              01467001
+         MVC   TCBXXSB,TCBXXSA    SAVE PARAMETER LIST FOR DEBUGGING     01468001
+STIX0010 DS    0H                                                       01469001
+         LA    RE,TCBXXSA         GET PARAMETER LIST ADDR               01470001
+         USING XTIPARML,RE                                              01471001
+         LA    R6,XTIPMNAM        GET MACRO                             01472001
+         DROP  RE                 ...                                   01473001
+         LM    R2,R3,0(R6)        ... NAME                              01474001
+         NI    TCBXSAUS,XFF-TCBXXSAU FREE WORK AREA                     01475001
+         DROP  RC                                                       01476001
+         SLR   R6,R6              INDICATE NO SUBREASON CODE            01477001
+         L     RC,ASGEXIT         SUPPLY ERR48                          01478001
+         L     RC,ACOMER48-SGEXIT(,RC) ...                              01479001
+         BSM   0,RC               GOTO CANCEL USER                      01480001
+*SGLINK COMERR48,INPUT=(R1,R2,R3,RC)                                    01481001
+         SPACE                                                          01482001
+         DROP  RA                                                       01483001
+         DROP  RD                                                       01484001
+         EJECT                                                          01485001
+*---------------------------------------------------------------------* 01486001
+*     DATA FIELDS                                                       01487001
+*---------------------------------------------------------------------* 01488001
+         DS    0D                                                       01489001
+STIMDWRD DC    D'0'                                                     01490001
+STIMSLV1 DC    B'00000100',XL3'0'                                       01491001
+STIMCLV1 DC    XL3'00',B'00001000'                                      01492001
+STIMHFF  DC    XL4'0000FFFF'                                            01493001
+STIMFFF  DC    XL4'FFFFFFFF'                                            01494001
+STIMH80  DC    XL4'00010000'                                            01495001
+STIM24H  DC    XL4'0083D600'     24 H IN UNITS OF 10**-2 SECS           01496001
+STIM4096 DC    A(40960000)       10**-2 SEC IN TOD FORMAT               01497001
+STIMMACS DC    CL8'STIMER'                                              01498001
+STIMMACT DC    CL8'TTIMER'                                              01499001
+STIMMACM DC    CL8'STIMERM'                                             01500001
+         DS    0F                                                       01501001
+ASTIXERR DC    A(STIXERR+X'80000000')                                   01502001
+STIMICTO DC    X'00001000'        1 MICROSEC IN TOD FORMAT              01503001
+STIMMICS DC    A(1000000*60)      1 MINUTE IN UNITS OF MICS (10**-6)    01504001
+STIMHIGH DC    X'0001A0AAAAABF000'                                      01505001
+STIMTUIS DC    X'682AAAAB'                                              01506001
+STIM2THO DC    X'00035000'                                              01507001
+         SPACE                                                          01508001
+*---------------------------------------------------------------------* 01509001
+*     EQUATES                                                           01510001
+*---------------------------------------------------------------------* 01511001
+*                                                                       01512001
+STILV1EQ EQU   1                                                        01513001
+MVSSALN  EQU   72                                                       01514001
+MVSSALNX EQU   MVSSALN+8                                                01515001
+         MEND                                                           01516001

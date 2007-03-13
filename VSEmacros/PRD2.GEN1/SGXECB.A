@@ -1,0 +1,592 @@
+         MACRO                                                          00010019
+         SGXECB &TYPE=                                         @D64ADOW 00020019
+*********************************************************************** 00030019
+*                                                                     * 00040019
+*        LICENSED MATERIALS - PROPERTY OF IBM                         * 00050019
+*        "RESTRICTED MATERIALS OF IBM"                                * 00060022
+*        5686-066                                                     * 00070022
+*        (C) COPYRIGHT IBM CORP. 1977, 2001                           * 00071022
+*                                                                     * 00090019
+*********************************************************************** 00100019
+         GBLA  &AGXECB            XECB SUPPORT                          00110019
+         GBLB  &SGXECB            COMP NAME FOR PRINT OPTION   @D37ZDOW 00120019
+.* /* START OF SPECIFICATIONS ***************************************** 00130019
+.*                                                                      00140019
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00150019
+.*                                                                      00160019
+.*01* DESCRIPTIVE NAME = CROSS PARTITION COMMUNICATION ROUTINES         00170019
+.*                                                                      00180019
+.*01* NOTES                                                             00190019
+.*                                                                      00200019
+.*02* CHANGE ACTIVITY:                                                  00210019
+.*    INCORRECT RETURN CODES FOR TYPE=CHECK                    @DA34923 00220019
+.*    INCORRECT PUTSPOOL GETSPOOL PROCESSING                   @DA36716 00230019
+.*    ALLOW SYSTEM TASK AS OWNER OF A XECB                     @DA38679 00240019
+.*    5.1.0 ADAPTIONS                                          @D51IDOW 00250019
+.*    XECB IN OTHER ADDRESS SPACE -> RETURN CODE X'12'         @DA39116 00260019
+.*    INHIBIT XECB USAGE IN DYNAMIC PARTITIONS                 @DA40900 00270019
+.*    CHECK FOR SHARED SPACE FAILS                             @DY45712 00271023
+.**** END OF SPECIFICATIONS ***************************************** / 00280019
+         AIF   ('&TYPE' EQ 'XECBTAB').DSECT                    @D64ADOW 00290019
+         AIF   (NOT &SGXECB).NOPRINT                           @D37ZDOW 00300019
+         PRINT GEN                                             @D37ZDOW 00310019
+.NOPRINT ANOP                                                  @D37ZDOW 00320019
+         DC    C'SGXECB  '                                              00330019
+         DC    C'06/11/2001'  LAST APAR/DEVELOPMENT CHANGE MM/DD/YY     00340023
+*                                                                       00350019
+*  DUMMY SECTION OF XECB-ENTRY                                          00360019
+*                                                                       00370019
+.DSECT   ANOP                                                  @D64ADOW 00380019
+XECBDSEC    DSECT                  LAYOUT OF XECB-SLOT         @D14CDHD 00390019
+XECBNAME    DS    XL8              XECB NAME                   @D14CDHD 00400019
+XECBTYPE    DS    XL1              TYPE CODE                   @D14CDHD 00410019
+XECBADDR    DS    AL3              XECB ADDRESS                @D14CDHD 00420019
+XECBOWNR    DS    XL2              OWNER TIK                   @D14CDHD 00430019
+XECBWPTK    DS    XL2              TIK OF COMMUNICATOR         @D14CDHD 00440019
+XECBFPTR    DS    XL4              FORWARD POINTER             @D14CDHD 00450019
+XECBBPTR    DS    XL4              BACKWARD POINTER            @D14CDHD 00460019
+XECBLENG    EQU   *-XECBDSEC       LENGTH OF SLOT              @D14CDHD 00470019
+         AIF   ('&TYPE' NE 'XECBTAB').DSECT1                   @D64ADOW 00480019
+         MEXIT                                                 @D64ADOW 00490019
+.DSECT1  ANOP                                                  @D64ADOW 00500019
+&SYSECT     CSECT                                                       00510019
+*                                                                       00520019
+*                                                                       00530019
+         ENTRY SGXECB                                          @D36SDJO 00540019
+SGXECB   BR    RC                BRANCH TO SVC ROUTINE         @D34RDFG 00550019
+         USING SGXECB,RD         COMMON BASE WITHIN SGXECB     @D34RDFG 00560019
+         USING TCBADR,RA                                       @D36IDFR 00570019
+         USING SVEARA,RB         INPUT REGISTER                @D36IDJO 00580019
+         USING DISP,R6                                         @D36IDFG 00590019
+         USING XECBDSEC,RE    XECB TABLE DUMMY SECTION         @D34XDJO 00600019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 00610019
+*   CROSS PARTITION COMMUNICATION MACROS.                      @D34XDJO 00620019
+       SPACE   1                                               @D34XDJO 00630019
+*   THREE SVC'S ARE AVAILABLE TO SUPPORT THE XECB MACROS:      @D34XDJO 00640019
+*   SVC 92:   XECBTAB                                          @D34XDJO 00650019
+*   SVC 93    XPOST                                            @D34XDJO 00660019
+*   SVC 94    XWAIT                                            @D34XDJO 00670019
+*                                                              @D34XDJO 00680019
+*   GATING CONVENTION:                                         @D34XDJO 00690019
+*   THE XECB SVC'S ARE GATED TO AVOID SIMULTANEOUS UPDATE      @D34XDJO 00700019
+*   OF THE SUPERVISOR XECB TABLE.                              @D34XDJO 00710019
+*   IF THE GATE IS CLOSED, CONTROL IS TRANSFERED TO THE        @D34XDJO 00720019
+*   ROUTINE RESVCX, TO REISSUE THE SVC.                                 00730019
+*                                                              @D34XDJO 00740019
+*   REGISTER CONVENTIONS:                                      @D34XDJO 00750019
+*   R0       WORK REGISTER                                     @D36IDJO 00760019
+*   R1       PARAMETER REGISTER                                @D34XDJO 00770019
+*   R2       WORK REGISTER                                     @D34XDJO 00780019
+*   R3       WORK REGISTER                                     @D34XDJO 00790019
+*   R4       WORK REGISTER                                     @D34XDJO 00800019
+*   R5       WORK REGISTER                                     @D34XDJO 00810019
+*   R6       EXIT ADDRESS TO DISPATCHER                        @D34XDJO 00820019
+*   R7       LINK REG TO COMMON SUBROUTINE OF SVC' 93 AND 94.  @D34XDJO 00830019
+*   R8       LINK REGISTER TO VALID ROUTINE, AND CURRENT TIB   @D34XDJO 00840019
+*   R9       LINK REGISTER TO SUBROUTINES                      @D34XDJO 00850019
+*   RA       TCB ADDRESS  (INPUT REGISTER)                     @D36IDFR 00860019
+*   RB       PARTITION SAVE AREA ADDRESS (INPUT REGISTER)      @D36IDJO 00870019
+*   RC       WORK REGISTER                                     @D34XDJO 00880019
+*   RD       BASE REGISTER OF SVC'S 92, 93, 94.                @D34XDJO 00890019
+*   RE       ADDRESS OF XECBTAB ENTRY, RETURN REGISTER         @D34XDJO 00900019
+*   RF       RETURN REGISTER                                   @D34XDJO 00910019
+*                                                              @D34XDJO 00920019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 00930019
+          SPACE 5                                              @D34XDJO 00940019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 00950019
+*   SVC 92: XECB TABLE MANIPULATION                            @D34XDJO 00960019
+*           DEFINE, DELETE, DELETALL, CHECK, RESET.            @D34XDJO 00970019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 00980019
+*                                                              @D34XDJO 00990019
+SVC92     L     R2,PCBPTR       CHECK FOR DYNAMIC PARTITION    @DA40900 01000019
+          USING PCBADR,R2                                      @DA40900 01010019
+          TM    PCEFLAG,PCEDYNP                                @DA40900 01020019
+          BNO   SVC92A          NO, ->                         @DA40900 01030019
+          USING TIBADR,R8                                      @DA40900 01040019
+          TM    TIBFLAG1,EOTACT TERMINATOR ACTIVE              @DA40900 01050019
+          BOR   R6              YES, EXIT TO DISPATCHER        @DA40900 01060019
+          B     ERR21           NO , CANCEL                    @DA40900 01070019
+          DROP  R8                                             @DA40900 01080019
+          DROP  R2                                             @DA40900 01090019
+SVC92A    LA    R2,D11(R1)      END OF PARAMETER LIST          @DA40900 01100019
+          LR    R0,R8           SAVE TIB ADDRESS               @D36IDJO 01110019
+          BAL   R8,VALIDSVA     VALIDATE PARAMETER LIST        @D36ZDOW 01120019
+          LR    R8,R0           RESTORE TIB ADDRESS            @D36IDJO 01130019
+          MVI   RID+D1,G92BND   SET ROUTINE SVC92 BOUND        @D34XDJO 01140019
+          L     R5,ASRQTAB      ADDRESS OF RES.QUEUE TABLE     @D61RDFG 01150019
+          LA    R5,SRQG92-SRQTAB(,R5) POINT TO WAIT QUEUE      @D61RDFG 01160019
+          USING RQADR,R5                                       @D61RDFG 01170019
+          TM    RSCDESC,FREEBIT IS GATE OPEN ?                 @D66ODOW 01180022
+          BNO   RESVCX          NO, REISSUE SVC                @D66ODOW 01190022
+          DROP  R5                                             @D61RDFG 01200019
+          CLI   D8(R1),XDELTALL TYPE EQ DELETALL               @D34XDJO 01210019
+          BE    SVC92DLA        YES                            @D34XDJO 01220019
+          BAL   R9,FNDLOOP      SCAN SUPERVISOR XECB TABLE .   @D34XDJO 01230019
+          LR    RC,R1           ADDRESS PARAMETER LIST BY RC   @D34XDJO 01240019
+          SR    R1,R1           DEFAULT RETURN INFO IS ZERO    @D34XDJO 01250019
+          TM    D8(RC),XCHECK   CHECK                          @D34XDJO 01260019
+          BO    SVC92CH         YES                            @D34XDJO 01270019
+          TM    D8(RC),XDELETE+XRESET                          @D34XDJO 01280019
+          BM    SVC92DL                                        @D34XDJO 01290019
+          CLI   D8(RC),XPOSTER ACCESS=XPOST                    @D34XDJO 01300019
+          BE    SVC92AA        YES                             @D34XDJO 01310019
+          CLI   D8(RC),XWAITER ACCESS=XWAIT                    @D34XDJO 01320019
+          BNE   ERR21          ILLEGAL SVC                     @D34XDJO 01330019
+*                                                              @D34XDJO 01340019
+*   XECBTAB TYPE=DEFINE                                        @D34XDJO 01350019
+*                                                              @D34XDJO 01360019
+SVC92AA   LTR   RF,RF           ENTRY FOUND IN XECB TABLE      @D34XDJO 01370019
+          BZ    SVC92FD1        YES,ERROR                      @D34XDJO 01380019
+*   VALIDATE USER SPECIFIED XECB                       .       @D34XDJO 01390019
+          ICM   R1,M7,D9(RC)    XECB ADDRESS            .      @D34XDJO 01400019
+          LA    R2,D3(R1)       END ADDRESS OF XECB            @D34XDJO 01410019
+          LR    R0,R8           SAVE TIB ADDRESS               @D31BDOW 01420019
+          BAL   R8,VALID        VALIDATE XECB (R1,R2)          @D34XDJO 01430019
+          LR    R8,R0           RESTORE TIB ADDRESS            @D31BDOW 01440019
+*   ALLOCATE A NEW ENTRY                                       @D37CDFG 01450019
+          LR    R3,R1           SAVE XECB-ADDR                 @DA24486 01460019
+          LA    R0,XECBLENG     LOAD REQUIRED LENGTH           @D37CDFG 01470019
+          SGETVIS LENGTH=(0),ADDRESS=(RE),SPID=SPXECB          @D14CDHD 01480019
+          LR    R1,R3           RESTORE XECB-ADDR              @DA24486 01490019
+          LTR   RF,RF           ALLOCATION SUCCESSFUL          @D37CDFG 01500019
+          BNZ   SVC92RC8        NO, RETURN WITH RC=8           @D37CDFG 01510019
+*                                                              @D149DHD 01520019
+* INSERT NEW ELEMENT AT TOP OF CHAIN                           @D149DHD 01530019
+*                                                              @D149DHD 01540019
+          L     R4,XECBSLOT                                    @D149DHD 01550019
+          LTR   R4,R4                                          @D14CDHD 01560019
+          BZ    SETTOP          HANDLE FIRST ENTRY             @D14CDHD 01570019
+          ST    R4,XECBFPTR     FORWARD PTR IN NEW FIRST ENTRY @D14CDHD 01580019
+          ST    RE,XECBBPTR-XECBDSEC(R4) BACKWORD PTR IN OLD 1.@D14CDHD 01590019
+SETTOP    ST    RE,XECBSLOT     PTR TO NEW FIRST ENTRY         @D14CDHD 01600019
+*                                                              @D149DHD 01610019
+*   BUILD NEW XECB TABLE ENTRY                                 @D34XDJO 01620019
+SVC92C    MVC   XECBNAME(L12),D0(RC) MOVE CONTENTS OF USER'S   @D37CDFG 01630019
+*                               PARAMETER LIST                 @D34XDJO 01640019
+          MVC   XECBOWNR(L2),TID                               @D36IDFR 01650019
+SVC92OK   SR    RF,RF           RETURN CODE EQ ZERO            @D34XDJO 01660019
+*                                                              @D34XDJO 01670019
+SVC92EX   STM   RE,RF,SVER0E    STORE RETURN INFO TO S.A.      @D34XDJO 01680019
+          ST    R1,SVER01       STORE RETURN INFO INTO S.A.    @D34XDJO 01690019
+          BR    R6              EXIT TO DISPATCHER             @D34XDJO 01700019
+*                                                              @D34XDJO 01710019
+SVC92FD1  LA    RF,4            RETURN CODE                    @D34XDJO 01720019
+          B     SVC92FD2                                       @D34XDJO 01730019
+*                                                              @D34XDJO 01740019
+SVC92RC8  LA    RF,8            RETURN CODE                    @D34XDJO 01750019
+SVC92FD2  SR    RE,RE           CLEAR PARAMETER REG            @D34XDJO 01760019
+          B     SVC92EX         BACK TO DISPATCHER             @D34XDJO 01770019
+*                                                              @D34XDJO 01780019
+*   XECBTAB  TYPE=DELETE/RESET                                 @D34XDJO 01790019
+*                                                              @D34XDJO 01800019
+SVC92DL   EQU   *                                              @D34XDJO 01810019
+          LTR   RF,RF           ENTRY IN XECB TAB FOUND        @D34XDJO 01820019
+          BNZ   SVC92EX         NO,RETURN WITH RC=4            @D34XDJO 01830019
+          CLC   XECBOWNR(L2),TID  IS THIS TASK THE OWNER       @D36IDFR 01840019
+          BNE   SVC92RC8        NO,RETURN WITH RC=8            @D34XDJO 01850019
+          BAL   R9,POSTSUB1     WAKE UP WAITING TASKS          @D34XDJO 01860019
+          TM    D8(RC),XDELETE  TYPE=DELETE                    @D34XDJO 01870019
+          BO    SVC92NRM        YES                            @D34XDJO 01880019
+          XC    XECBWPTK(L2),XECBWPTK CLEAR COMMUNICATION FIELD@D34XDJO 01890019
+          NI    XECBTYPE,XFF-XABNORM  RESET ABNORMAL TERM FLAG @D34XDJO 01900019
+          B     SVC92RE                                        @D34XDJO 01910019
+SVC92NRM  BAL   R9,DELELE                                      @D34XDJO 01920019
+SVC92RE   SR    RE,RE           RETURN INFO TO USER SAVE AREA  @D34XDJO 01930019
+          B     SVC92OK                                        @D34XDJO 01940019
+        SPACE 2                                                @D34XDJO 01950019
+*                                                              @D34XDJO 01960019
+*   XECBTAB  TYPE=DELETALL                                     @D34XDJO 01970019
+*                                                              @D34XDJO 01980019
+SVC92DLA  EQU   *               TYPE=DELETALL                  @D34XDJO 01990019
+          L     RE,XECBSLOT     POINT TO FIRST XECB TAB ENTRY  @D34XDJO 02000019
+XTTIK     LTR   RE,RE           END OF CHAIN                   @D37CDFG 02010019
+          BZR   R6              IF YES, EXIT TO DISPATCHER     @D37CDFG 02020019
+          CLC   XECBOWNR(L2),TID  IS THIS TASK OWNER           @D36IDFR 02030019
+          BNE   XTTWP           NO                             @D34XDJO 02040019
+          BAL   R9,POSTSUB      WAKE UP WAITING TASK           @D34XDJO 02050019
+          BAL   R9,DELELE       DELETE THIS ENTRY              @D34XDJO 02060019
+          LR    RE,R3           GO TO NEXT ENTRY               @D14CDHD 02070019
+          B     XTTIK           PROCESS NEXT TABLE ENTRY       @D14CDOW 02080019
+*   ISSUING TASK IS NOT OWNER OF XECB                          @D34XDJO 02090019
+XTTWP     EQU   *                                              @D34XDJO 02100019
+          ICM   R5,M15,APOWTB   IS POWER ACTIVE                @D34XDJO 02110019
+          BZ    XNOPOW          BRANCH IF NO                   @D34XDJO 02120019
+          LH    RC,XECBOWNR     TID OF OWNER                   @D36IDFR 02130019
+          SLL   RC,2                                           @D66ODOW 02140022
+          AL    RC,ATIBATAB                                    @D66ODOW 02150022
+          L     R8,0(,RC)       TIB POINTER OF OWNER           @D66ODOW 02160022
+          USING TIBADR,R8                                      @D36IDFG 02170019
+          TM    TIBFLAG2,PWRMTASK  POWER MAIN TASK             @D36IDJO 02180019
+          BNO   XNOPOW             NO                          @D36IDJO 02190019
+          DROP  R8                                             @D36IDFG 02200019
+          CLC   XECBWPTK,TID    IS ISSUING TASK COMMUNICATOR   @DA28841 02210019
+          BNE   XTNXT           NEXT XECB TAB ENTRY IF NOT     @DA28841 02220019
+XRPOW     OI    PAEB-PADS+D2(R5),TRABIT POST MASTER ECB        @D34XDJO 02230019
+          ICM   R4,M7,XECBADDR  GET XECB ADDRESS               @D34XDJO 02240019
+          OI    D2(R4),TRABIT+ABNECB TRABIT AND TERM INDICATOR @D36ZDOW 02250019
+          LR    R0,RE           SAVE RE                        @D36IDJO 02260019
+          BAL   RF,IOPOST1      POST POWER IF I/O BOUND        @D36IDFG 02270019
+*SGLINK   IOPOST1,INPUT=(R6,R8,RF),WORK=RE                              02280019
+          LR    RE,R0           RESTORE RE                     @D36IDJO 02290019
+          B     XRESETC                                        @D34XDJO 02300019
+*                                                              @D34XDJO 02310019
+XNOPOW    CLC   XECBWPTK,TID    IS ISSUING TASK COMMUNICATOR   @D36IDFR 02320019
+          BNE   XTNXT           NO,TRY NEXT TABLE ENTRY        @D34XDJO 02330019
+          TM    XECBTYPE,XWAITER IS OWNER EQ WAITER            @D34XDJO 02340019
+          BNO   XRESETC         IF NO, BRANCH                  @D34XDJO 02350019
+          ICM   R1,M7,XECBADDR  ADDRESS OF XECB                @D34XDJO 02360019
+          TM    2(R1),TRABIT    XECB ALREADY POSTED            @D34XDJO 02370019
+          BO    XRESETC         YES, NO ACTION REQUIRED        @D34XDJO 02380019
+          OI    XECBTYPE,XABNORM XPOSTER TERMINATED            @D34XDJO 02390019
+          LH    R8,XECBOWNR     GET TID OF TASK TO BE POSTED   @D36IDFG 02400019
+          LR    R0,RE           SAVE RE                        @D36IDJO 02410019
+          BAL   RF,IOPOST0      POST TASK READY IF I/O BOUND   @D36IDFG 02420019
+*SGLINK   IOPOST0,INPUT=(R6,R8,RF),WORK=(R8,RE)                         02430019
+          LR    RE,R0           RESTORE RE                     @D36IDJO 02440019
+XRESETC   XC    XECBWPTK,XECBWPTK CLEAR COMMUNICATION FIELD    @D34XDJO 02450019
+XTNXT     L     RE,XECBFPTR     POINT TO NEXT ENTRY IN CHAIN   @D14CDOW 02460019
+          L     R8,TIBPTR       RESTORE CURRENT TIB POINTER    @D31BDOW 02470019
+          B     XTTIK           LOOP THRU XECB CHAIN           @D37CDFG 02480019
+*                                                              @D34XDJO 02490019
+*   XECBTAB  TYPE=CHECK                                        @D34XDJO 02500019
+*                                                              @D34XDJO 02510019
+SVC92CH   EQU   *                                              @D34XDJO 02520019
+          LTR   RF,RF           ENTRY FOUND IN TABLE           @D34XDJO 02530019
+          BNZ   SVC92EX         NO, RC=4                       @D34XDJO 02540019
+*         XECB SUPPORT ONLY FOR                                         02550019
+*              COMMUNICATION PRIVATE TO PRIVATE IN SAME SPACE           02560019
+*              COMMUNICATION BETWEEN POWER SHARED AND PRIVAT PARTITION  02570019
+*              COMMUNICATION BETWEEN POWER SHARED AND SHARED PARTITION  02580019
+*              COMMUNICATION BETWEEN SYSTEM-TASK (MUST BE OWNER)        02590019
+*                               ... AND PRIVATE/SHARED PARTITION        02600019
+          CLC   XECBOWNR,ARTIDH IS OWNER A SYSTEM TASK         @D51IDOW 02610019
+          BNH   SVC92CH8                                       @D14NDOW 02620019
+          LH    R1,XECBOWNR     TASK ID OF PARTNER             @D14NDOW 02630019
+          SLL   R1,2                                           @D66ODOW 02640022
+          AL    R1,ATIBATAB                                    @D66ODOW 02650022
+          L     R1,0(,R1)       TIB ADDR OF PARTNER            @D66ODOW 02660022
+          USING TIBADR,R1                                      @D14NDOW 02670019
+          L     R2,TIBPCB                                      @D14NDOW 02680019
+          DROP  R1                                             @D14NDOW 02690019
+          USING PCBADR,R2                                      @D14NDOW 02700019
+          L     R2,PCBASCB                                     @D14NDOW 02710019
+          DROP  R2                                             @D14NDOW 02720019
+          L     R3,PCBPTR       CURRENT ADDRESSABILITY SCOPE   @D14NDOW 02730019
+          USING PCBADR,R3                                      @D14NDOW 02740019
+          L     R3,PCBASCB                                     @D14NDOW 02750019
+          DROP  R3                                             @D14NDOW 02760019
+          LA    RF,8            POSSIBLY AN ERROR              @DA34923 02770019
+          LTR   R2,R2           OWNER SHARED                   @DY45712 02780023
+          BZ    SVC92CH5        YES,                           @DY45712 02790023
+          LTR   R3,R3           COMMUNICATOR SHARED            @DY45712 02800023
+          BZ    SVC92CH5        YES,                           @DY45712 02810023
+          CR    R2,R3           BOTH IN SAME PRIVATE SPACE     @D51IDOW 02820019
+          BE    SVC92CH8        YES,                           @D51IDOW 02830019
+          B     SVC92CH9        NO,                            @D51IDOW 02840019
+SVC92CH5  EQU   *                                              @D14NDOW 02850019
+          USING TIBADR,R1                                      @D14NDOW 02860019
+          TM    TIBFLAG2,PWRMTASK ONE PARTNER MUST BE POWER    @D51IDOW 02870019
+          DROP  R1                                             @D14NDOW 02880019
+          BO    SVC92CH8                                       @D51IDOW 02890019
+          USING TIBADR,R8                                      @D31BDOW 02900019
+          TM    TIBFLAG2,PWRMTASK ONE PARTNER MUST BE POWER    @D51IDOW 02910019
+          DROP  R8                                             @D31BDOW 02920019
+          BNO   SVC92CH9                                       @D14NDOW 02930019
+SVC92CH8  SLR   RF,RF                                          @D14NDOW 02940019
+SVC92CH9  EQU   *                                              @D14NDOW 02950019
+          LTR   RF,RF           VALIDITY CHECK SUCCESSFULL?    @D14NDOW 02960019
+          BNZ   SVC92EX                                        @D14NDOW 02970019
+          ICM   R1,M7,XECBADDR  RETURN XECB ADDRESS TO USER    @D34XDJO 02980019
+          B     SVC92EX                                        @D34XDJO 02990019
+          SPACE 3                                                       03000019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D149DOW 03010019
+*         SUBROUTINE : DELETE XECBTAB ENTRY                    @D149DOW 03020019
+*                  INPUT  RE ADDR OF XECBTAB ENTRY             @D149DOW 03030019
+*                         R9 RETURN ADDR                       @D149DOW 03040019
+*                  WORK   RF                                   @D149DOW 03050019
+*                  OUTPUT R3 SUCCESSOR XECBTAB ENTRY           @D149DOW 03060019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D149DOW 03070019
+DELELE    DS    0H                                             @D14CDHD 03080019
+          L     R3,XECBFPTR     GET FORWARD POINTER            @D14CDHD 03090019
+          L     RF,XECBBPTR     GET BACKWARD POINTER           @D14CDHD 03100019
+          LTR   R3,R3           LAST IN CHAIN?                 @D14CDHD 03110019
+          BZ    FPTRZERO        YES, BRANCH                    @D14CDHD 03120019
+          LTR   RF,RF           FIRST IN CHAIN?                @D14CDHD 03130019
+          BNZ   FPTRNTZ1        NO, BRANCH                     @D14CDHD 03140019
+          ST    R3,XECBSLOT     NEXT ENTRY IS NOW THE FIRST    @D14CDHD 03150019
+          ST    RF,XECBBPTR-XECBDSEC(R3) CLEAR BACKWARD PTR    @D14CDHD 03160019
+          B     FREEMEM         FREE THE SPACE                 @D14CDHD 03170019
+FPTRNTZ1  ST    RF,XECBBPTR-XECBDSEC(R3) UPDATE SUCCESSOR      @D14CDHD 03180019
+          B     FPTRNTZ2                                       @D14CDHD 03190019
+FPTRZERO  LTR   RF,RF           FIRST AND LAST IN CHAIN?       @D149DHD 03200019
+          BNZ   FPTRNTZ2        NO, NOW LAST IN CHAIN          @D14CDHD 03210019
+          ST    RF,XECBSLOT     CHAIN IS EMPTY NOW             @D14CDHD 03220019
+          B     FREEMEM         FREE THE SPACE                 @D14CDHD 03230019
+FPTRNTZ2  ST    R3,XECBFPTR-XECBDSEC(RF) UPDATE PREDECESSOR    @D149DHD 03240019
+FREEMEM   LA    R0,XECBLENG                                    @D14CDHD 03250019
+          SFREEVIS ADDRESS=(RE),LENGTH=(0)                     @D14CDHD 03260019
+          BR    R9              RETURN                         @D14CDHD 03270019
+          SPACE 5                                              @D34XDJO 03280019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 03290019
+*   SVC 93:   XPOST                                            @D34XDJO 03300019
+*   POST THE CROSS PARTITION ECB                               @D34XDJO 03310019
+*   THIS SVC ROUTINE LOOKS FOR AN XECB NAME IN THE XECB TABLE. @D34XDJO 03320019
+*   IF AN ENTRY IS FOUND, IT POSTS THE XECB                    @D34XDJO 03330019
+*   AND POSTS THE WAITING TASK READY TO RUN.                   @D34XDJO 03340019
+*   REGISTERS ON ENTRY:                                        @D34XDJO 03350019
+*   R1: START ADDRESS OF PARAMETER LIST                        @D34XDJO 03360019
+*   WORK REGISTERS:                                            @D34XDJO 03370019
+*   R7: LINKREG TO SV9394                                      @D34XDJO 03380019
+*   R9: LINKREG TO XECCHK AND POSTSUB.                         @D34XDJO 03390019
+*   RF: INTERNAL PARAMETER REGISTER                            @D34XDJO 03400019
+*   REGISTERS ON EXIT                                          @D34XDJO 03410019
+*   R1,RE : ZERO                                               @D34XDJO 03420019
+*   RF: RETURN CODE                                            @D34XDJO 03430019
+*       0:   SUCCESSFUL COMPLETION                             @D34XDJO 03440019
+*       4:   XECB TABLE ENTRY NOT FOUND                        @D34XDJO 03450019
+*       8:   COMMUNICATION TASK TERMINATED WITHOUT XPOSTING    @D34XDJO 03460019
+*       C:   WRONG ADDRESS SPACE                                        03470019
+*       D,E: TASK NOT AUTHORIZED                               @D34XDJO 03480019
+*                                                              @D34XDJO 03490019
+SVC93     EQU   *                                              @D34XDJO 03500019
+          BAL   R7,SV9394       COMMON SUBROUT. FOR 93 AND 94  @D34XDJO 03510019
+          IC    RF,XECBTYPE     GET SPECIFIED TYPE             @D34XDJO 03520019
+          BAL   R9,XECCHK       CHECK AUTHORIZATION            @D34XDJO 03530019
+          LTR   RF,RF           IF NOT SUCCESSFUL, RETURN      @D34XDJO 03540019
+          BNZ   SV9394B                                        @D34XDJO 03550019
+          NI    XECBTYPE,XFF-XABNORM  RESET ABNORMAL TERM FLAG @D34XDJO 03560019
+          SR    R1,R1                                          @D34XDJO 03570019
+          ICM   R1,M7,XECBADDR  ADDRESS OF XECB                @D34XDJO 03580019
+          OI    2(R1),TRABIT    POST XECB                      @D34XDJO 03590019
+          BAL   R9,POSTSUB      AWAKE WAITING TASKS            @D34XDJO 03600019
+          SR    RF,RF           RETURN CODE = ZERO             @D36IDJO 03610019
+          B     SV9394B                                        @D34XDJO 03620019
+*                                                                       03630019
+*  CREATE THE SUBPOOL-ID FIELD                                 @D149DHD 03640019
+*                                                                       03650019
+SPXECB    CRSPID NAME=ISXECB                                   @D51IDOW 03660019
+*                                                                       03670019
+         SPACE 5                                               @D34XDJO 03680019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 03690019
+*   SVC 94:  XWAIT.                                            @D34XDJO 03700019
+*                                                              @D34XDJO 03710019
+*   WAIT FOR A CROSS PARTITION ECB.                            @D34XDJO 03720019
+*   IF THE XECB IS POSTED ALREADY, PROCESSING RESUMES WITH     @D34XDJO 03730019
+*   THE NEXT SEQUENTIAL INSTRUCTION.                           @D34XDJO 03740019
+*   IF THE XECB IS NOT YET POSTED, THE TASK WAITS FOR          @D34XDJO 03750019
+*   THE XECB TO BE POSTED.                                     @D34XDJO 03760019
+*   PROCESSING RESUMES WITH A REISSUE SVC.                     @D34XDJO 03770019
+*   REGISTER CONVENTION: SAME AS SVC93                         @D34XDJO 03780019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 03790019
+SVC94     EQU   *                                              @D34XDJO 03800019
+          BAL   R7,SV9394       COMMON SUBROUTINE OF SVC93/94  @D34XDJO 03810019
+          IC    RF,XECBTYPE     GET ACCESS TYPE                @D34XDJO 03820019
+          SRL   RF,2            ADJUST                         @D34XDJO 03830019
+          BAL   R9,XECCHK       CHECK AUTHORIZATION            @D34XDJO 03840019
+          LTR   RF,RF           WAS TASK AUTHORIZED            @D34XDJO 03850019
+          BNZ   SV9394B         NO, RETURN ERROR INFO          @D34XDJO 03860019
+          ICM   R1,M7,XECBADDR  XECB ADDRESS                   @D34XDJO 03870019
+          TM    2(R1),TRABIT    TRAFFIC BIT ALREADY POSTED     @D34XDJO 03880019
+          BO    SV9394B         YES, RETURN TO USER            @D34XDJO 03890019
+          TM    XECBTYPE,XABNORM XPOSTER HAS TERMINATED        @D34XDJO 03900019
+          BNO   XCONT           NO, REISSUE SVC                @D34XDJO 03910019
+          LA    RF,8            RC=8, COMMUNICATION BROKEN     @D34XDJO 03920019
+          NI    XECBTYPE,XFF-XABNORM  RESET                    @D34XDJO 03930019
+          OI    2(R1),TRABIT    WAKE UP TASK                   @D34XDJO 03940019
+          B     SV9394B         RETURN TO USER                 @D34XDJO 03950019
+XCONT     ST    RE,SVER0E       SAVE XECB TABLE SLOT           @D34XDJO 03960019
+          L     R5,ASRQTAB      ADDRESS OF RES.QUEUE TABLE     @D61RDFG 03970019
+          LA    R5,SRQWAIT-SRQTAB(,R5) POINT TO COMM.WAIT QUEUE@D61RDFG 03980019
+          B     RESVCX          REISSUE SVC                    @D36IDFG 03990019
+          SPACE 3                                              @D34XDJO 04000019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 04010019
+*   CROSS PARTITION ECB.  SUBROUTINES                          @D34XDJO 04020019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 04030019
+         SPACE 3                                               @D34XDJO 04040019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 04050019
+*   SV9394:  COMMON SUBROUTINE FOR SVC93 AND SVC94.            @D34XDJO 04060019
+* * * * * * * * * * * * * * *  * * * * * * * * * * * * * * *   @D34XDJO 04070019
+SV9394    L     R2,PCBPTR       CHECK FOR DYNAMIC PARTITION    @DA40900 04080019
+          USING PCBADR,R2                                      @DA40900 04090019
+          TM    PCEFLAG,PCEDYNP                                @DA40900 04100019
+          BO    ERR21           YES, CANCEL                    @DA40900 04110019
+          DROP  R2                                             @DA40900 04120019
+          LA    R2,D7(R1)       END OF PARAMETER LIST          @DA40900 04130019
+          LR    R0,R8           SAVE TIBPTR                    @D36IDJO 04140019
+          BAL   R8,VALIDSVA     VALIDATE USER'S PARAMETER LIST @D36ZDOW 04150019
+          LR    R8,R0           RESTORE TIBPTR                 @D36IDJO 04160019
+          MVI   RID+D1,G92BND   GATING THE XECB TABLE          @D34XDJO 04170019
+          L     R5,ASRQTAB      ADDRESS OF RES.QUEUE TABLE     @D61RDFG 04180019
+          LA    R5,SRQG92-SRQTAB(,R5)  POINT TO WAIT QUEUE     @D61RDFG 04190019
+          USING RQADR,R5                                       @D61RDFG 04200019
+          TM    RSCDESC,FREEBIT IS GATE OPEN ?                 @D66ODOW 04201022
+          BNO   RESVCX          NO, REISSUE SVC                @D66ODOW 04202022
+          DROP  R5                                             @D61RDFG 04230019
+          BAL   R9,FNDLOOP      SCAN XECB TABLE                @D34XDJO 04240019
+          LTR   RF,RF           DID WE FIND AN XECB TAB ENTRY  @D34XDJO 04250019
+          BNZ   SV9394B         NO GIVE PROPER RETURN CODE     @D14NDOW 04260019
+          LH    RC,XECBOWNR     TASK ID OF OWNER               @D31BDOW 04270019
+          CH    RC,TID          NO CHECK IF OWNER ACTIVE       @D31BDOW 04280019
+          BER   R7              YES, CURRENT TASK IS OWNER     @D14NDOW 04290019
+*     CURRENT TASK IS COMMUNICATOR (I.E. OWNER NOT ACTIVE)              04300019
+          SLL   RC,2                                           @D66ODOW 04310022
+          AL    RC,ATIBATAB                                    @D66ODOW 04320022
+          L     RC,0(,RC)        TIB OF OWNER                  @D66ODOW 04330022
+          USING TIBADR,RC                                      @D14NDOW 04340019
+          L     R3,TIBPCB        PCBASCB MUST BE SHARED OR EQ. @D14NDOW 04350019
+*                                ... TO TIBSCB OF COMMUNICATOR          04360019
+          DROP  RC                                             @D31BDOW 04370019
+          USING PCBADR,R3                                      @D14NDOW 04380019
+          ICM   R9,15,PCBASCB    ASCB OF OWNER                 @DY45712 04390023
+          BZ    SV9394C          IF SHARED --->                @DY45712 04410023
+          DROP  R3                                             @DA36716 04420019
+          USING TIBADR,R8                                               04430019
+          C     R9,TIBSCB        SAME SPACE REQUIRED           @D14NDOW 04440019
+          DROP  R8                                                      04450019
+          BNE   SV9394R                                        @DA39116 04460019
+          BR    R7                                             @D14NDOW 04470019
+SV9394C   CLC   XECBOWNR,ARTIDH IS OWNER A SYSTEM TASK         @D51IDOW 04480019
+          BLR   R7              YES, --->                      @DA38679 04490019
+          ICM   R5,M15,APOWTB   IS POWER ACTIVE                @DA36716 04500019
+          BZ    ERR21                                          @DA36716 04510019
+          USING TIBADR,RC                                      @DA36716 04520019
+          TM    TIBFLAG2,PWRMTASK  OWNER IS POWER MAIN TASK    @DA36716 04530019
+          BOR   R7                 YES                         @DA36716 04540019
+          DROP  RC                                             @D31BDOW 04550019
+          USING TIBADR,R8          ADDRESSABILITY CURRENT TIB  @D31BDOW 04560019
+          TM    TIBFLAG2,PWRMTASK  POWER CURRENTLY ACTIVE      @DA36716 04570019
+          BOR   R7                 YES                         @DA36716 04580019
+          B     ERR21                                          @DA36716 04590019
+          DROP  R8                                             @D31BDOW 04600019
+SV9394R   LA    RF,X'0C'        SET UP RETURN CODE             @D51IDOW 04610019
+SV9394B   ST    RF,SVER0F       STORE RETURN CODE TO S.A.      @D34XDJO 04620019
+          SR    RF,RF           ON RETURN FROM XWAIT OR XPOST  @D34XDJO 04630019
+          ST    RF,SVER01       REGISTER 1                     @D34XDJO 04640019
+          ST    RF,SVER0E       AND REGISTER 14 ARE ZERO       @D34XDJO 04650019
+          BR    R6              EXIT TO DISPATCHER             @D34XDJO 04660019
+        SPACE 3                                                @D34XDJO 04670019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 04680019
+*   FNDLOOP SUBROUTINE                                         @D34XDJO 04690019
+*   THIS ROUTINE SCANS THE XECB TABLE FOR AN ENTRY WITH        @D34XDJO 04700019
+*   A GIVEN XECB NAME.                                         @D34XDJO 04710019
+*      REGISTERS ON ENTRY:                                     @D34XDJO 04720019
+*         R1: ADDRESS OF USERS PARAMETER LIST                  @D34XDJO 04730019
+*         R9: LINK ADDRESS                                     @D34XDJO 04740019
+*      REGISTERS ON EXIT                                       @D34XDJO 04750019
+*         RE: XECBTAB ENTRY ADDRESS OR ZERO                    @D34XDJO 04760019
+*         RF: RETURN CODE:                                     @D34XDJO 04770019
+*             RC=0: ENTRY FOUND IN TABLE                       @D34XDJO 04780019
+*             RC=4: ENTRY NOT FOUND IN TABLE                   @D34XDJO 04790019
+*                                                              @D34XDJO 04800019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 04810019
+FNDLOOP   EQU   *                                              @D34XDJO 04820019
+          L     RE,XECBSLOT     BEGIN ADDRESS OF XECB TABLE    @D34XDJO 04830019
+          XR    RF,RF           ASSUME EVERYTHING O.K.         @D34XDJO 04840019
+FNDLOOP1  LTR   RE,RE           END OF CHAIN                   @D37CDFG 04850019
+          BZ    FNDLOOP3        IF YES, ENTRY NOT FOUND        @D37CDFG 04860019
+          CLC   XECBNAME,0(R1)  TABLE ENTRY EQ SEARCH ARG      @D34XDJO 04870019
+          BER   R9              YES, RETURN TO CALLER          @D34XDJO 04880019
+FNDLOOP2  L     RE,XECBFPTR     POINT TO NEXT ENTRY            @D14CDOW 04890019
+          B     FNDLOOP1        LOOP AROUND                    @D37CDFG 04900019
+FNDLOOP3  LA    RF,4            RC=4, ENTRY NOT FOUND          @D37CDFG 04910019
+          BR    R9                                             @D34XDJO 04920019
+        SPACE 3                                                @D34XDJO 04930019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 04940019
+*   POSTSUB SUBROUTINE.                                        @D34XDJO 04950019
+*   THIS ROUTINE CHECKS WHETHER THERE IS A TASK WAITING        @D34XDJO 04960019
+*   FOR AN XECB.                                               @D34XDJO 04970019
+*   IF IT FINDS A WAITING TASK, IT POSTS THIS TASK'S           @D34XDJO 04980019
+*   PIB READY TO RUN.                                          @D34XDJO 04990019
+*   REGISTERS ON ENTRY:                                        @D34XDJO 05000019
+*   R9: LINK ADDRESS                                           @D34XDJO 05010019
+*   RE: ADDRESS OF XECB TABLE ENTRY                            @D34XDJO 05020019
+*   WORK REGISTERS: R0,R2,RF                                   @D34XDJO 05030019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 05040019
+*                                                              @D34XDJO 05050019
+*   ENTRY FROM TYPE=DELETALL/XPOST                             @D34XDJO 05060019
+POSTSUB  TM    XECBTYPE,XPOSTER  IS OWNER EQ POSTER .          @D34XDJO 05070019
+         BO    INNLOOP           YES, FIND THE WAITING TASK.   @D34XDJO 05080019
+         LH    R8,XECBOWNR       GET OWNER'S TID               @D36IDFR 05090019
+         B     INNLOOP1                                        @D34XDJO 05100019
+*   ENTRY FROM DELETE/RESET                                    @D34XDJO 05110019
+POSTSUB1 TM    XECBTYPE,XPOSTER  IS OWNER EQ POSTER            @D34XDJO 05120019
+         BNO   POSTEXIT          NO, RETURN TO CALLER          @D31BDOW 05130019
+INNLOOP  LH    R8,XECBWPTK       GET WAITERS TID/PIK           @D36IDFR 05140019
+         LTR   R8,R8             IS THERE A WAITER             @D34XDJO 05150019
+         BZ    POSTEXIT          NO,RETURN TO CALLER           @D31BDOW 05160019
+INNLOOP1 LR    R0,RE            SAVE RE                        @D36IDJO 05170019
+         BAL   RF,IOPOST0        POST WAITER IF I/O BOUND      @D36IDFG 05180019
+*SGLINK  IOPOST0,INPUT=(R6,R8,RF),WORK=(R8,RE)                          05190019
+         LR    RE,R0            RESTORE RE                     @D36IDJO 05200019
+         ICM   R2,M15,APOWTB     LOOK FOR POWER                @D34XDJO 05210019
+         BE    POSTEXIT          RETURN IF POWER IS NOT ACTIVE @D31BDOW 05220019
+         USING TIBADR,R8         OUTPUT FROM IOPOST0 IS R8     @D36IDFR 05230019
+         TM    TIBFLAG2,PWRMTASK POWER MAIN TASK               @D36IDJO 05240019
+         BNO   POSTEXIT          NO, RETURN TO CALLER          @D31BDOW 05250019
+         DROP  R8                                              @D36IDFR 05260019
+         OI    PAEB-PADS+2(R2),TRABIT POST POWER READY TO RUN  @D34XDJO 05270019
+POSTEXIT L     R8,TIBPTR        RESTORE CURRENT TIB POINTER    @D31BDOW 05280019
+         BR    R9                RETURN TO CALLER              @D34XDJO 05290019
+         SPACE 3                                               @D34XDJO 05300019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 05310019
+*   XECCHK: SUBROUTINE TO CHECK AUTHORIZATION.                 @D34XDJO 05320019
+*   THIS ROUTINE IS ENTERED FROM XWAIT AND FROM XPOST          @D34XDJO 05330019
+*   IT IS CHECKED, WHETHER THE ISSUING TASK IS AUTHORIZED      @D34XDJO 05340019
+*   TO ISSUE XWAIT OR XPOST.                                   @D34XDJO 05350019
+*      REGISTERS ON ENTRY:                                     @D34XDJO 05360019
+*         R9: LINK REGISTER                                    @D34XDJO 05370019
+*         RF: ACCESS TYPE PARAMETER REGISTER                   @D34XDJO 05380019
+*      WORK REGISTERS:                                         @D34XDJO 05390019
+*         R2 AND R5                                            @D34XDJO 05400019
+*      REGISTERS ON EXIT:                                      @D34XDJO 05410019
+*         RF: RETURN INFO                                      @D34XDJO 05420019
+*            RF=0             TASK IS AUTHORIZED               @D34XDJO 05430019
+*            RF= X'D' OR X'E' TASK IS NOT AUTHORIZED           @D34XDJO 05440019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 05450019
+XECCHK    EQU   *               .                              @D34XDJO 05460019
+          N     RF,XEMASK       REMOVE ALL BUT 2 BITS          @D34XDJO 05470019
+          LH    R2,TID          GET TASK ID OF ISSUING TASK    @D36IDFR 05480019
+          CH    RF,XECTYP       IS OWNER ALLOWED               @D34XDJO 05490019
+          BE    XCHK1           GO CHECK TASK ID               @D34XDJO 05500019
+          CH    R2,XECBOWNR     THIS TASK OWNER                @D34XDJO 05510019
+          BE    XCHKRJ          YES, REJECT                    @D34XDJO 05520019
+          CLI   XECBWPTK+1,0    COMMUNICATING TASK ENTERED     @D34XDJO 05530019
+          BE    XCEX1           NO, STORE TASK ID              @D34XDJO 05540019
+          CH    R2,XECBWPTK     WAS IT THIS TASK BEFORE        @D34XDJO 05550019
+          BE    XCEXIT          IF YES, EXIT                   @D34XDJO 05560019
+XCHKRJ    LA    RF,12(RF)       SEVERE ERROR                   @D34XDJO 05570019
+          BR    R9                                             @D34XDJO 05580019
+*                                                              @D34XDJO 05590019
+XCHK1     CH    R2,XECBOWNR     IS THIS TASK OWNER             @D34XDJO 05600019
+          BNE   XCHKRJ          NO, REJECT                     @D34XDJO 05610019
+          B     XCEXIT          ELSE RETURN                    @D34XDJO 05620019
+     SPACE 1                                                   @D34XDJO 05630019
+XCEX1     STH   R2,XECBWPTK     STORE COMMUNICATING TASK ID    @D34XDJO 05640019
+XCEXIT    SR    RF,RF           RETURN CODE ZERO  O.K.         @D34XDJO 05650019
+          BR    R9              RETURN TO CALLER               @D34XDJO 05660019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 05670019
+*   XECB -  EQUATES AND CONSTANTS.                             @D34XDJO 05680019
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  @D34XDJO 05690019
+*                                                              @D34XDJO 05700019
+XCHECK   EQU   X'80'             TYPE=CHECK                    @D34XDJO 05710019
+XDELTALL EQU   X'48'             TYPE=DELETALL                 @D34XDJO 05720019
+XDELETE  EQU   X'40'             TYPE=DELETE                   @D34XDJO 05730019
+XRESET   EQU   X'10'             TYPE=RESET                    @D34XDJO 05740019
+XINUSE   EQU   X'80'                                           @D34XDJO 05750019
+XABNORM  EQU   X'40'                                           @D34XDJO 05760019
+XWAITER  EQU   X'06'                                           @D34XDJO 05770019
+XPOSTER  EQU   X'09'                                           @D34XDJO 05780019
+*                                                              @D34XDJO 05790019
+XECBSLOT  DC    A(0)             BEGIN OF XECB TABLE           @D37CDFG 05800019
+XEMASK    DC    F'3'             REMOVE ALL BUT 2 BITS         @D34XDJO 05810019
+XECTYP    DC    H'1'                                           @D34XDJO 05820019
+          DROP  RE                                             @D34XDJO 05830019
+          DROP  RD                    .                        @D35CDFG 05840019
+          DROP  RA                                             @D35CDFG 05850019
+          DROP  R6                                                      05860019
+          DROP  RB                                             @D36IDJO 05870019
+.NOXECB   ANOP     END OF XECB CODE  .                         @D34XDJO 05880019
+         AIF   (NOT &SGXECB).PRINT                             @D37ZDOW 05890019
+         PRINT NOGEN                                           @D37ZDOW 05900019
+.PRINT   ANOP                                                  @D37ZDOW 05910019
+         MEND                                                           05920019

@@ -1,0 +1,107 @@
+         MACRO                                                          00010000
+&NAME    IPRODKEY &ERROR,                  INVALID POSITIONAL PARAMETER*00020000
+               &PRODUCT=,                                              *00030000
+               &SAVE=                                                   00040000
+         LCLA  &PROD                                                    00050000
+         LCLC  &SAVEAR                                                  00060000
+         LCLC  &SAVEPTR            SAVE AREA PTR                        00070000
+         LCLC  &A                  INSTRUCTION MODIFIER                 00071000
+         LCLC  &INDEX                                                   00071105
+         LCLC  &INDEX1                                                  00071207
+.*                                                                      00072000
+*        SUPERVISOR - IPRODKEY - 5686-066-06                            00073000
+         AGO   .NOCOPY                                                  00074000
+*********************************************************************** 00075000
+*                                                                     * 00076000
+*        LICENSED MATERIALS - PROPERTY OF IBM                         * 00077000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 00078000
+*        5686-066 (C) COPYRIGHT IBM CORP. 2000                        * 00079000
+*        SEE COPYRIGHT INSTRUCTIONS                                   * 00080000
+*                                                                     * 00090000
+*********************************************************************** 00100000
+.NOCOPY  ANOP                                                           00110000
+.* /* START OF SPECIFICATIONS ***************************************** 00120000
+.*                                                                    * 00130000
+.* MODULE-TYPE = SUPERVISOR INTERFACE MACRO                           * 00140000
+.*                                                                    * 00150000
+.* DESCRIPTIVE NAME = PRODUCT KEY VERIFICATION                        * 00160005
+.*                                                                    * 00170000
+.* STATUS = NEW IN VSE/AF 6.5.0, 5686-066-06                          * 00180000
+.*                                                                    * 00190000
+.* SYNTAX OF MACRO                                                    * 00200000
+.* <NAME> IPRODKEY PRODUCT=DB2,                                       * 00210000
+.*                SAVE=((13)|NAME)                                    * 00220000
+.*                                                                    * 00230000
+.* FUNCTION: CHECKS WHETHER THE SPECIFIED PRODUCT IS KEY              * 00240000
+.*                 ENABLED.                                           * 00250000
+.*       INPUT : PRODUCT NAME                                         * 00260000
+.*       OUTPUT: RETURN CODE IN REGISTER 15                           * 00270000
+.*                                                                    * 00280000
+.*       RETURN CODE IN REGISTER 15:                                  * 00290000
+.*        0  PRODUCT IS KEY ENABLED                                   * 00300000
+.*        8  PRODUCT IS NOT KEY ENABLED                               * 00310000
+.*       16  SYSTEM IS PRE VSE/ESA 2.5                                * 00320007
+.*       20  KEY VALIDATION PHASE IS NOT LOADED INTO THE SVA          * 00321007
+.*                                                                    * 00340000
+.*                                                                    * 00350000
+.* REGISTER USAGE                                                     * 00360000
+.*       REGISTER 0   PRODUCT IDENTIFIER                              * 00370005
+.*       REGISTER 1   WORK REGISTER                                   * 00370105
+.*       REGISTER 13  SAVE AREA POINTER                               * 00371005
+.*       REGISTER 14,15 LINKAGE REGISTER                              * 00380005
+.*       REGISTER 15  RETURN CODE REGISTER                            * 00390005
+.*                                                                    * 00410000
+.* CHANGE ACTIVITIES:                                                 * 00420000
+.* A000000-999999                                              @D65ADMZ 00430007
+.*                                                                    * 00440000
+.**** END OF SPECIFICATIONS ******************************************* 00450000
+         AIF   (T'&ERROR EQ 'O').PRODK0                                 00460000
+         MNOTE 8,'POSITIONAL PARAMETER SPECIFIED - MACRO IGNORED'       00470000
+         MEXIT                                                          00480000
+.PRODK0  ANOP                                                           00490000
+         AIF   (T'&PRODUCT NE 'O').PRODK5                               00500000
+         MNOTE 8,' PRODUCT OPERAND MISSING, GENERATION SUPPRESSED'      00510000
+         MEXIT                                                          00520000
+.PRODK5  AIF   ('&PRODUCT' EQ 'DB2').PRODK10                            00530000
+         MNOTE 8,'INVALID PRODUCT SPECIFIED, GENERATION SUPPRESSED'     00540000
+         MEXIT                                                          00550000
+.PRODK10 ANOP                                                           00560000
+&PROD    SETA  0             DB2 IDENTIFICATION                         00570000
+         AIF   (T'&SAVE NE 'O').PRODK15                                 00580000
+         MNOTE 8,' SAVE OPERAND MISSING, GENERATION SUPPRESSED'         00590000
+         MEXIT                                                          00600000
+.PRODK15 ANOP                                                           00610000
+         AIF   ('&SAVE'(1,1) NE '(').PRODK20   REG NOTATION?            00620000
+&SAVEAR  SETC  '0&SAVE'                                                 00630000
+&SAVEPTR SETC  '&SAVE(1)'         GET SAVE AREA POINTER                 00640000
+&A       SETC  'R'                GET INSTRUCTION MODIFIER              00650000
+         AGO   .PRODK25                                                 00660000
+.PRODK20 ANOP                                                           00670000
+&SAVEAR  SETC  '&SAVE'                                                  00680000
+&SAVEPTR SETC  '&SAVE'            GET SAVE AREA POINTER                 00690000
+&A       SETC  'A'                GET INSTRUCTION MODIFIER              00700000
+.PRODK25 ANOP                                                           00710000
+&INDEX   SETC  'IPRO&SYSNDX'                                            00711004
+&INDEX1  SETC  'IPR1&SYSNDX'                                            00712007
+         AIF   ('&NAME' EQ '').PRODK30                                  00720000
+&NAME    DS    0H'0'                                                    00730006
+.PRODK30 ANOP                                                           00740000
+         LA    15,16                    SYSTEM IS PRE VSE/ESA 2.5       00750007
+         STM   9,8,&SAVEAR              SAVE ALL REGISTERS              00760000
+         L&A   13,&SAVEPTR              SAVE AREA POINTER               00770000
+         LA    0,&PROD                  PRODUCT IDENTIFIER              00780006
+         ASYSCOM 1                                                      00790000
+         L     15,IJBRFTAB-SYSCOM(,1)   ADDRESS OF RFTABLE              00800006
+         CLI   RFREL-RFTABLE(15),X'3D'  RELEASE AT LEAST VSE/ESA 2.5    00801000
+         BL    &INDEX                   NO                              00810004
+         ICM   15,15,X'D0'(1)           GET ROUTINE ADDRESS             00840007
+         BNZ   &INDEX1                  ROUTINE AVAILABLE               00850007
+         LA    15,20                    ROUTINE NOT AVAILABLE           00850107
+         ST    15,24(,13)               SET RETURN CODE                 00850207
+         B     &INDEX                                                   00850307
+&INDEX1  DS    0H                                                       00851007
+         BASSM 14,15                                                    00860000
+&INDEX   DS    0H                                                       00861004
+         LM    9,8,0(13)                                                00870003
+         SPACE 3                                                        00880000
+         MEND                                                           00890000

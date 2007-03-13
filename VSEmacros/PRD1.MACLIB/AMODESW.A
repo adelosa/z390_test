@@ -1,0 +1,536 @@
+         MACRO                                                          00100052
+&LABEL   AMODESW &SERVICE,&SAVE=,&REG=,&REGS=,&ADDRESS=,&AMODE=,&WR=,  +00150052
+               &DAT=,&ENV=,&TEST=LOWCORE,&INNER=NO             @D52VDPP 00177752
+         GBLB  &IJBSGEN                                        @D52VDPP 00205552
+         GBLB  &BGXA                                           @D52VDPP 00211052
+         GBLB  &BGVM                                           @D52VDPP 00216552
+         LCLC  &RETNREG          RETURN REGISTER               @V6PXJRU 00222052
+         LCLC  &AMODREG          REGISTER CONTAINING AMODE     @V6PXJRU 00227552
+         LCLC  &WREG                                           @D52VDPP 00233052
+         LCLC  &SAVEREG,&LINKREG                               @V6PXJRU 00238552
+         LCLC  &S,&A,&B,&C,&D                                  @V6PXJRU 00244052
+         LCLC  &SLL                                            @D52SDPP 00247052
+         AGO .ZZZ                                              @D52VDPP 00250052
+.*       IBM DISK OPERATING SYSTEM                                  *   00300052
+*********************************************************************   00350052
+*                                                                   *   00400052
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                *   00450052
+*        5686-032 (C) COPYRIGHT IBM CORP. 1992                      *   00500052
+*        ALL RIGHTS RESERVED                                        *   00550052
+*        LICENSED MATERIALS - PROPERTY OF IBM                       *   00600052
+*        SEE COPYRIGHT INSTRUCTIONS, G120-2083                      *   00650052
+*                                                                   *   00700052
+*********************************************************************   00750052
+.ZZZ     ANOP                                                  @D52VDPP 00800052
+.*                                                                      00850052
+.*****START OF SPECIFICATIONS***************************************@   00900052
+.*                                                                  @   00950052
+.*   MACRO  NAME -       AMODESW                                    @   01000052
+.*                                                                  @   01050052
+.*   DESCRIPTIVE NAME -  ADDRESSING MODE SWITCHING                  @   01100052
+.*                                                                  @   01150052
+.*   FUNCTION         -  AMODESW MACRO WILL USE THE BASSM AND BSM   @   01200052
+.*                       INSTRUCTIONS IN ESA MODE TO ALLOW ADDRESS  @   01250052
+.*                       MODE SWITCHING. THE SET FUNCTION WILL CAUSE@   01300052
+.*                       AN INLINE SWITCH IN ADDRESSING MODE.  @V6PXJRU 01350052
+.*                       THE CALL FUNCTION IS USED TO MAKE A ROUTINE@   01400052
+.*                       CALL WITH A PROPER MODE SWITCH. THE RETURN @   01450052
+.*                       FUNCTION IS USED TO RETURN FROM A FUNCTION @   01500052
+.*                       THAT WAS CALLED BY THE CALL FUNCTION.      @   01550052
+.*                       THE QRY FUNCTION WILL TELL THE USER   @V6PXJRU 01600052
+.*                       WHICH KIND OF ADDRESSABILITY THEY ARE @V6PXJRU 01650052
+.*                       RUNNING.                              @V6PXJRU 01700052
+.*                       THE TEST FUNCTION WILL TELL THE USER  @V6PXJRU 01750052
+.*                       ON WHICH KIND OF SYSTEM HE IS RUNNING @V6PXJRU 01800052
+.*                                                             @V6PXJRU 01850052
+.*   MODULE TYPE      -  MACRO                                      @   01900052
+.*                                                                  @   01950052
+.*   PROCESSOR        -  ASSEMBLER F OR H                      @V6PXJRU 02000052
+.*                                                                  @   02050052
+.*   CHANGE ACTIVITY  -  NONE                                       @   02100052
+.*                                                                  @   02150052
+.*   MACRO SYNTAX     -                                             @   02200052
+.*                                                                  @   02250052
+.*    < LABEL > AMODESW BRANCH,ADDR=ADDR,REG=(REG)             @D52VDPP 02300052
+.*                                                             @D52VDPP 02350052
+.*    < LABEL > AMODESW SET,DAT=ON                             @D52VDPP 02400052
+.*                              OFF                            @D52VDPP 02450052
+.*                                                             @D52VDPP 02500052
+.*    < LABEL > AMODESW SET,AMODE=24,SAVE=(REG),WORKR=(REG)         @   02550052
+.*                                31                                @   02600052
+.*                               (REG)                              @   02650052
+.*                                                                  @   02700052
+.*    < LABEL > AMODESW CALL,AMODE=24,ADDRESS=ADDR,REGS=(RET,LINK)  @   02750052
+.*                                 31                               @   02800052
+.*                                (REG)                             @   02850052
+.*                                                                  @   02900052
+.*    < LABEL > AMODESW RETURN,AMODE=24,REG=(RETURN_REG)            @   02950052
+.*                                   31                             @   03000052
+.*                                  (REG)                           @   03050052
+.*    < LABEL > AMODESW QRY                                         @   03100052
+.*                                                             @D52VDPP 03150052
+.*    < LABEL > AMODESW TEST                                        @   03200052
+.*                                                                  @   03250052
+.*   MNOTES           -  ARE AT THE END OF THE MACRO - 6.0     @V6PXJRU 03300052
+.*                                                                  @   03350052
+.*   NOTE: FOR TEST=SYSCOM, A WORK REGISTER MUST BE SPECIFIED  @D52SDPP 03362552
+.*         IN CASE OF THE SERVICES SET, BRANCH, RETURN         @D52SDPP 03375052
+.*                                                                  @   03387552
+.*   OPERATION  -                                              @V6PXJRU 03400052
+.*                                                                  @   03450052
+.* 1.0 CHECK FOR VALID SERVICE REQUEST AND AMODE SPECIFICATION @V6PXJRU 03500052
+.* 2.0 PROCESS SET REQUESTS                                    @V6PXJRU 03550052
+.*     2.01 CHECK AND PROCESS NEW DAT FUNCTION                 @V6PXJRU 03600052
+.*     2.1  CHECK FOR PARAMETER CONFLICTS                      @V6PXJRU 03650052
+.*     2.2  GET SAVE REG VALUE - (REG) OR 0 NOT SAVED          @V6PXJRU 03700052
+.*     2.3  CHECK FOR XA VIRTUAL MACHINE                       @V6PXJRU 03750052
+.*     2.4  GET AMODE VALUE  - 24,31 OR (REG)                  @V6PXJRU 03800052
+.*     2.5  COMPLETE REQUEST WITH BSM                          @V6PXJRU 03850052
+.* 3.0 PROCESS CALL REQUESTS                                   @V6PXJRU 03900052
+.*     3.1  CHECK FOR PARAMETER CONFLICTS                      @V6PXJRU 03950052
+.*     3.2  GET RETURN AND LINK REG VALUES - DEFAULT (14,15)   @V6PXJRU 04000052
+.*     3.3  GET LINK ADDRESS - IF SUPPLIED -ADDRESS OR (REG)   @V6PXJRU 04050052
+.*     3.4  CHECK FOR XA VIRTUAL MACHINE                       @V6PXJRU 04100052
+.*     3.5  GET AMODE - IF SUPPLIED - 24,31 OR (REG)           @V6PXJRU 04150052
+.*     3.6  COMPLETE CALL REQUEST WITH BASM -XA OR BALR -370   @V6PXJRU 04200052
+.* 4.0 PROCESS RETURN REQUESTS                                 @V6PXJRU 04250052
+.*     4.1  CHECK FOR PARAMETER CONFLICTS                      @V6PXJRU 04300052
+.*     4.2  GET RETURN REG VALUE - IF SUPPLIED OR SKIP         @V6PXJRU 04350052
+.*     4.3  CHECK FOR XA VIRTUAL MACHINE                       @V6PXJRU 04400052
+.*     4.4  GET AMODE  - IF SUPPLIED - 24,31,(REG) OR SKIP     @V6PXJRU 04450052
+.*     4.5  COMPLETE RETURN REQUEST WITH BSM - XA ONLY         @V6PXJRU 04500052
+.* 5.0 PROCESS QRY REQUESTS                                    @V6PXJRU 04550052
+.* 5.5 PROCESS TEST REQUESTS                                   @D52VDPP 04600052
+.* 5.5 PROCESS BRANCH REQUESTS                                 @D52VDPP 04650052
+.* 6.0 MNOTES                                                  @V6PXJRU 04700052
+.*                                                             @V6PXJRU 04750052
+.*****END OF SPECIFICATIONS*****************************************@   04800052
+&S       SETC 'DMS'                                                     05250052
+&A       SETC '&SYSNDX.A'                                      @V6PXJRU 05300052
+&B       SETC '&SYSNDX.B'                                               05350052
+&C       SETC '&SYSNDX.C'                                      @V6PXJRU 05400052
+&D       SETC '&SYSNDX.D'                                      @V6PXJRU 05450052
+&SLL     SETC 'YES'                                            @D52SDPP 05475052
+.**************************************************************@V6PXJRU 05500052
+.* 1.0 CHECK FOR VALID SERVICE REQUEST AND AMODE SPECIFICATION @V6PXJRU 05550052
+.**************************************************************@V6PXJRU 05600052
+         AIF ('&LABEL' EQ '').SEVNLBL                          @V6PXJRU 07075052
+&LABEL   DS    0H                                              @V6PXJRU 07100052
+.SEVNLBL ANOP                                                  @D52SDPP 07125052
+         AIF (N'&SYSLIST GT 1).ERR1   TOO MANY POSITIONAL PARMS@V6PXJRU 07127252
+&WREG    SETC '15'                                             @D52VDPP 07129452
+         AIF (('&ENV' NE '') AND ('&SERVICE' NE 'SET')).ERR23  @D52SDPP 07131652
+         AIF ('&WR' EQ '').NOWKOK                              @D52VDPP 07133852
+         AIF ('&WR'(1,1) NE '(').ERR18                         @D52VDPP 07136052
+         AIF ('&TEST' EQ 'LOWCORE').WORKRG3                    @D52VDPP 07136252
+         AIF ('&TEST' NE 'SYSCOM').ERR26                       @D52VDPP 07136452
+         AIF ('&SERVICE' EQ 'SET').WORKRG2                              07136652
+         AIF ('&SERVICE' EQ 'RETURN').WORKRG2                           07136852
+         AIF ('&SERVICE' EQ 'TEST').WORKRG2                    @D52VDPP 07137052
+         AIF ('&SERVICE' EQ 'CALL').WORKRG2                    @D52VDPP 07137252
+         AGO  .ERR18                                           @D52SDPP 07137452
+.WORKRG3 ANOP                                                  @D52VDPP 07137652
+         AIF ('&SERVICE' EQ 'SET').WORKRG2                     @D52VDPP 07138252
+         AIF (('&INNER' EQ 'YES') AND ('&SERVICE' EQ 'TEST')).WORKRG2   07139352
+         MNOTE 0,'WR=, PARAMETER NOT NEEDED ON THIS REQUEST'   @D52VDPP 07140952
+.WORKRG2 ANOP                                                  @D52VDPP 07142652
+&WREG    SETC '&WR(1)'                                         @D52VDPP 07144852
+.NOWKOK  ANOP                                                  @D52VDPP 07147052
+         AIF ('&AMODE' EQ '').SEVCHK                           @V6PXJRU 07150052
+         AIF (('&AMODE' EQ '24') OR ('&AMODE' EQ '31')).SEVCHK1 D52VDPP 07200052
+         AIF ('&AMODE'(1,1) EQ '(').SEVCHK1                    @D52VDPP 07250052
+         AGO .ERR3                                             @D52VDPP 07300052
+.SEVCHK1 ANOP                                                  @D52VDPP 07350052
+         AIF (N'&AMODE GT 1).ERR3                              @V6PXJRU 07400052
+.SEVCHK  ANOP                                                           07450052
+         AIF ('&SERVICE' EQ 'CALL').CALL                                07500052
+         AIF ('&SERVICE' EQ 'RETURN').RETURN                            07550052
+         AIF ('&SERVICE' EQ 'QRY').QRY                         @V6PXJRU 07600052
+         AIF ('&SERVICE' EQ 'TEST').TEST                       @D52VDPP 07650052
+         AIF ('&SERVICE' EQ 'BRANCH').BRANCH                   @D52VDPP 07700052
+.**************************************************************@V6PXJRU 07750052
+.* 2.0 PROCESS SET REQUESTS                                    @V6PXJRU 07800052
+.**************************************************************@V6PXJRU 07850052
+.*                                                             @D52SDPP 07858352
+.* WORKREGISTER USAGE: NEEDED IN ALL CASES, EXCEPT             @D52SDPP 07866652
+.*    NOT NEEDED FOR DAT REQUEST                               @D52SDPP 07874952
+.*    NOT NEEDED, IF USED WITHIN SUPERVISOR AND MODE=ESA       @D52SDPP 07883252
+.**************************************************************@D52VDPP 07891552
+.SET     ANOP                                                  @V6PXJRU 07900052
+.*     2.01 CHECK FOR NEW DAT FUNCTION                         @D52VDPP 07950052
+         AIF ('&DAT' EQ '').NODAT                              @D52VDPP 08000052
+         AIF ('&DAT' NE 'ON' AND '&DAT' NE 'OFF').ERR20        @D52VDPP 08050052
+         AIF (NOT &IJBSGEN).DATEND                             @D52VDPP 08100052
+         AIF (&BGVM).DATEND                                    @D52VDPP 08150052
+.*       SEE IF ALL OTHER PARAMETERS ARE OMITTED               @D52VDPP 08200052
+         AIF ('&ADDRESS' NE '').ERR1                           @D52VDPP 08250052
+         AIF ('&REGS' NE '').ERR1                              @D52VDPP 08300052
+         AIF ('&AMODE' NE '').ERR1                             @D52VDPP 08350052
+         AIF ('&SAVE' NE '').ERR1                              @D52VDPP 08400052
+         AIF ('&WR' NE '').ERR1                                @D52VDPP 08450052
+         AIF ('&REG' NE '').ERR1                               @D52VDPP 08500052
+.*                                                             @D52VDPP 08550052
+         AIF ('&DAT' EQ 'OFF').DATOFF                          @D52VDPP 08600052
+         STOSM PSWMASK,SMDAT                                   @D52VDPP 08650052
+         AGO .DATEND                                           @D52VDPP 08700052
+.DATOFF  ANOP                                                  @D52VDPP 08750052
+         STNSM PSWMASK,X'FF'-SMDAT                             @D52VDPP 08800052
+.DATEND  ANOP                                                  @D52VDPP 08850052
+         MEXIT                                                 @D52VDPP 08900052
+.*     2.1  CHECK FOR PARAMETER CONFLICTS                      @V6PXJRU 08950052
+.NODAT   ANOP                                                  @V6PXJRU 09000052
+         AIF ('&WR' NE '').NOWKSET                             @D52VDPP 09004152
+.*       MNOTE 4,'WR=, PARAMETER NEEDED, BUT MISSING. WR=(15) ASSUMED'  09008252
+.NOWKSET ANOP                                                  @D52SDPP 09012352
+         AIF (('&ENV' NE 'ESA') AND ('&ENV' NE '')).ERR24      @D52SDPP 09016652
+         AIF (('&ENV' NE '') AND (&IJBSGEN)).ERR25             @D52SDPP 09033252
+         AIF ('&ADDRESS' NE '').ERR4                           @V6PXJRU 09050052
+         AIF ('&REGS' NE '').ERR5                              @V6PXJRU 09100052
+         AIF ('&REG' NE '').ERR6                               @V6PXJRU 09150052
+         AIF ('&AMODE' EQ '').ERR7                             @V6PXJRU 09200052
+         AIF ('&SAVE' NE '').CHKSAVE                           @V6PXJRU 09250052
+.*     2.2  GET SAVE REG VALUE - (REG) OR 0-DEFAULT            @V6PXJRU 09300052
+&SAVEREG SETC  '0'                                             @V6PXJRU 09350052
+         AGO .CHKXA                                            @V6PXJRU 09400052
+.CHKSAVE ANOP                                                  @V6PXJRU 09450052
+         AIF ('&SAVE'(1,1) NE '(').ERR8                        @V6PXJRU 09500052
+         AIF (N'&SAVE GT 1).ERR8                               @V6PXJRU 09550052
+&SAVEREG SETC  '&SAVE(1)'                                      @V6PXJRU 09600052
+.*     2.3  CHECK FOR XA VIRTUAL MACHINE                       @V6PXJRU 09650052
+.CHKXA   ANOP                                                  @V6PXJRU 09700052
+         AIF (&IJBSGEN).SUPA                                   @D52VDPP 09750052
+.WKREGA  ANOP                                                  @D52VDPP 09800052
+         AIF ('&ENV' EQ 'ESA').SUP1A                           @D52SDPP 09825052
+         AMODESW TEST,WR=(&WREG),TEST=&TEST,INNER=YES          @D52VDPP 09862552
+         BNO   &S&A                                            @D52VDPP 09900052
+         AGO   .SUP1A                                          @D52VDPP 09950052
+.SUPA    ANOP                                                  @D52VDPP 10000052
+         AIF (NOT &BGXA).BSM1                                  @D52VDPP 10050052
+.*     2.4  GET AMODE VALUE    - 24, 31, OR (REG)              @V6PXJRU 10100052
+.SUP1A   ANOP                                                  @V6PXJRU 10150052
+         AIF ('&AMODE'(1,1) NE '(').AMNUM                      @V6PXJRU 10200052
+.AMREG   ANOP                                                  @V6PXJRU 10250052
+         AIF (&IJBSGEN).AMREG1                                 @D52VDPP 10300052
+         LR   &WREG,&AMODE(1)     PICK UP AMODE FROM REG       @V6PXJRU 10350052
+         N    &WREG,=XL4'80000000' SAVE AMODE SETTING ONLY     @V6PXJRU 10400052
+         O    &WREG,=A(&S&A)      SET ADDRESS FOR BSM          @V6PXJRU 10450052
+         AGO  .BSM                                             @V6PXJRU 10500052
+.AMREG1  ANOP                                                  @D52VDPP 10550052
+         LA   &WREG,&S&A          PICK UP AMODE FROM REG       @V6PXJRU 10600052
+         LTR  &AMODE(1),&AMODE(1)   SAVE AMODE SETTING ONLY    @V6PXJRU 10650052
+         BNM  &S&B                SET ADDRESS FOR BSM          @D52SDPP 10700052
+         O    &WREG,BIT0OMSK                                   @D52VDPP 10750052
+&S&B     EQU  *                                                @D52VDPP 10800052
+         AGO  .BSM                                             @V6PXJRU 10850052
+.AMNUM   ANOP                                                  @V6PXJRU 10900052
+         AIF (&IJBSGEN).AMNUM1                                 @D52VDPP 10950052
+         LA   &WREG,&S&A          SET ADDRESS FOR BSM          @V6PXJRU 11000052
+         AIF ('&AMODE' EQ '24').BSM                            @V6PXJRU 11050052
+         O    &WREG,=XL4'80000000' TURN ON AMODE 31            @V6PXJRU 11100052
+         AGO  .BSM                                             @D52VDPP 11150052
+.AMNUM1  ANOP                                                  @D52VDPP 11200052
+         LA   &WREG,&S&A          SET ADDRESS FOR BSM          @V6PXJRU 11250052
+         AIF ('&AMODE' EQ '24').BSM                            @V6PXJRU 11300052
+         O    &WREG,BIT0OMSK        TURN ON AMODE 31           @V6PXJRU 11350052
+.BSM     ANOP                                                  @V6PXJRU 11400052
+.*     2.5  COMPLETE REQUEST WITH BSM                          @V6PXJRU 11450052
+.* DC FOR THE BSM FOR USE WITH ASSEMBLER F                     @V6PXJRU 11500052
+         DC   0H'0',X'0B',AL.4(&SAVEREG,&WREG)      XA ONLY    @V6PXJRU 11550052
+.BSM1    ANOP                                                  @D52VDPP 11600052
+&S&A     EQU  *                                                @V6PXJRU 11650052
+         MEXIT                                                 @V6PXJRU 11700052
+.**************************************************************@V6PXJRU 11750052
+.* 3.0 PROCESS CALL REQUESTS                                   @V6PXJRU 11800052
+.**************************************************************@V6PXJRU 11850052
+.*                                                             @D52SDPP 11860052
+.* WORKREGISTER NOT NEEDED                                     @D52SDPP 11870052
+.*                                                             @D52SDPP 11880052
+.**************************************************************@D52VDPP 11890052
+.CALL    ANOP                                                  @V6PXJRU 11900052
+.*     3.1  CHECK FOR PARAMETER CONFLICTS                      @V6PXJRU 11950052
+         AIF   ('&DAT' NE '').ERR20                            @V6PXJRU 12000052
+         AIF   ('&SAVE' NE '').ERR9                            @V6PXJRU 12050052
+         AIF   ('&REG' NE '').ERR10                            @V6PXJRU 12100052
+         AIF   (N'&REGS GT 2).ERR14                            @V6PXJRU 12150052
+         AIF   ('&REGS(1)' NE '').GETRETN                      @V6PXJRU 12200052
+.*     3.2  GET RETURN AND LINK REG VALUES - DEFAULT (14,15)   @V6PXJRU 12250052
+&RETNREG SETC  '14'                                            @V6PXJRU 12300052
+         AGO   .CHKLINK                                        @V6PXJRU 12350052
+.GETRETN ANOP                                                  @V6PXJRU 12400052
+&RETNREG SETC  '&REGS(1)'                                      @V6PXJRU 12450052
+.CHKLINK ANOP                                                  @V6PXJRU 12500052
+         AIF   ('&REGS(2)' NE '').GETLINK                      @V6PXJRU 12550052
+&LINKREG SETC  '15'                                            @V6PXJRU 12600052
+         AGO   .CHKADDR                                        @V6PXJRU 12650052
+.GETLINK ANOP                                                  @V6PXJRU 12700052
+&LINKREG SETC  '&REGS(2)'                                      @V6PXJRU 12750052
+.*     3.3  GET LINK ADDRESS - IF SUPPLIED -ADDRESS OR (REG)   @V6PXJRU 12800052
+.CHKADDR ANOP                                                  @V6PXJRU 12850052
+         AIF   ('&ADDRESS' EQ '').CHKXAC                       @V6PXJRU 12900052
+         AIF   (N'&ADDRESS GT 1).ERR15                         @V6PXJRU 12950052
+         AIF   ('&ADDRESS'(1,1) EQ '(').ADDREG                 @V6PXJRU 13000052
+         LA    &LINKREG,&ADDRESS      GET TARGET ADDRESS       @V6PXJRU 13050052
+&SLL     SETC  'NO'                                            @D52SDPP 13075052
+         AGO   .CHKXAC                                         @V6PXJRU 13100052
+.ADDREG  ANOP                                                  @V6PXJRU 13150052
+         LR    &LINKREG,&ADDRESS(1)   GET TARGET ADDRESS       @V6PXJRU 13200052
+.*     3.4  CHECK FOR XA VIRTUAL MACHINE                       @V6PXJRU 13250052
+.CHKXAC  ANOP                                                  @V6PXJRU 13300052
+         AIF (&IJBSGEN).SUPB                                   @D52VDPP 13350052
+.WKREGB  ANOP                                                  @D52VDPP 13400052
+         AMODESW TEST,WR=(&WREG),TEST=&TEST,INNER=YES          @D52VDPP 13450052
+         BNO   &S&B                                            @D52VDPP 13500052
+         AGO   .CHKXAC2                                        @D52VDPP 13550052
+.SUPB    ANOP                                                  @D52VDPP 13600052
+         AIF (NOT &BGXA).BRET1                                 @D52VDPP 13650052
+.*     3.5  GET AMODE - IF SUPPLIED - 24,31,(REG) OR SKIP      @V6PXJRU 13700052
+.CHKXAC2 ANOP                                                  @V6PXJRU 13750052
+         AIF   ('&AMODE' EQ '').BRET                           @V6PXJRU 13800052
+         AIF   ('&AMODE'(1,1) EQ '(').AMODER                   @V6PXJRU 13850052
+         AIF   ('&AMODE' EQ '24').CHKXAC3                      @V6PXJRU 13883352
+         AIF   ('&AMODE' NE '31').ERR3                         @V6PXJRU 13916652
+         AIF (&IJBSGEN).CHKXAC1                                @D52VDPP 13950052
+         O     &LINKREG,=XL4'80000000' SET AMODE 31            @V6PXJRU 14000052
+         AGO   .BRET                                           @V6PXJRU 14050052
+.CHKXAC3 ANOP                                                  @V6PXJRU 14060052
+         AIF   ('&SLL' EQ 'NO').BRET                           @D52SDPP 14066652
+         SLL   &LINKREG,1              SET AMODE 24            @D52SDPP 14073252
+         SRL   &LINKREG,1              BUT DO NOT USE A LITERAL@D52SDPP 14080052
+         AGO   .BRET                                           @D52SDPP 14090052
+.CHKXAC1 ANOP                                                  @D52VDPP 14100052
+         O     &LINKREG,BIT0OMSK       SET AMODE 31            @V6PXJRU 14150052
+         AGO   .BRET                                           @V6PXJRU 14200052
+.AMODER  ANOP                                                  @V6PXJRU 14250052
+         AIF   (NOT &IJBSGEN).AMODPP1                          @D52VDPP 14257152
+         LTR   &AMODE(1),&AMODE(1)                             @D52VDPP 14264252
+         BNM   &S&D                                            @D52VDPP 14271352
+         O     &LINKREG,BIT0OMSK                               @D52VDPP 14278452
+         AGO   .BRET                                           @D52VDPP 14285552
+.AMODPP1 ANOP                                                  @D52VDPP 14292652
+         LR    &RETNREG,&AMODE(1)     SET AMODE IN RETURN REG  @V6PXJRU 14300052
+         AIF (&IJBSGEN).AMODER1                                @D52VDPP 14350052
+         N     &RETNREG,=XL4'80000000' CLEAR ALL BUT AMODE     @V6PXJRU 14400052
+         N     &LINKREG,=XL4'7FFFFFFF' CLEAR AMODE IN REG      @V6PXJRU 14450052
+         AGO   .AMODER2                                        @D52VDPP 14500052
+.AMODER1 ANOP                                                  @D52VDPP 14550052
+         N     &RETNREG,BIT0OMSK      CLEAR ALL BUT AMODE      @V6PXJRU 14600052
+         N     &LINKREG,BIT0OFF       CLEAR AMODE IN REG       @V6PXJRU 14650052
+.AMODER2 ANOP                                                  @V6PXJRU 14700052
+         OR    &LINKREG,&RETNREG      SET AMODE IN REG         @V6PXJRU 14750052
+.*     3.6  COMPLETE CALL REQUEST WITH BASM -XA OR BALR -370   @V6PXJRU 14800052
+.BRET    ANOP                                                  @V6PXJRU 14850052
+&S&D     DC    0H'0',X'0C',AL.4(&RETNREG,&LINKREG) BASSM -XA   @V6PXJRU 14900052
+         AIF   (&IJBSGEN AND &BGXA).BRET2                      @D52VDPP 14950052
+&S&A     EQU   *                                               @D52VDPP 15000052
+         LA    &RETNREG,&S&C.-&S&A.(&RETNREG)                  @D52VDPP 15050052
+         BR    &RETNREG                                        @D52VDPP 15100052
+.BRET1   ANOP                                                  @D52VDPP 15150052
+&S&B     EQU   *                                               @V6PXJRU 15200052
+         BALR  &RETNREG,&LINKREG      BALR -370                @V6PXJRU 15250052
+.BRET2   ANOP                                                  @D52VDPP 15300052
+&S&C     EQU   *                                               @V6PXJRU 15350052
+         MEXIT                                                 @V6PXJRU 15400052
+.**************************************************************@V6PXJRU 15450052
+.* 4.0 PROCESS RETURN REQUESTS                                 @V6PXJRU 15500052
+.**************************************************************@V6PXJRU 15550052
+.*                                                             @D52SDPP 15560052
+.* WORKREGISTER NOT NEEDED                                     @D52SDPP 15570052
+.*                                                             @D52SDPP 15580052
+.**************************************************************@D52VDPP 15590052
+.RETURN  ANOP                                                  @V6PXJRU 15600052
+.*     4.1  CHECK FOR PARAMETER CONFLICTS                      @V6PXJRU 15650052
+         AIF ('&DAT' NE '').ERR20                              @V6PXJRU 15700052
+         AIF ('&SAVE' NE '').ERR11                             @V6PXJRU 15750052
+         AIF ('&REGS' NE '').ERR12                             @V6PXJRU 15800052
+         AIF ('&ADDRESS' NE '').ERR13                          @V6PXJRU 15850052
+.*     4.2  GET RETURN REG VALUE - IF SUPPLIED OR SKIP         @V6PXJRU 15900052
+         AIF ('&REG' NE '').SETRET                             @V6PXJRU 15950052
+&RETNREG SETC  '14'                                            @V6PXJRU 16000052
+         AGO   .CHKXAR                                         @V6PXJRU 16050052
+.SETRET  ANOP                                                  @V6PXJRU 16100052
+         AIF ('&REG'(1,1) NE '(' OR N'&REG GT 1).ERR16         @V6PXJRU 16150052
+&RETNREG SETC  '&REG(1)'                                       @V6PXJRU 16200052
+.*     4.3  CHECK FOR XA VIRTUAL MACHINE                       @V6PXJRU 16250052
+.CHKXAR  ANOP                                                  @V6PXJRU 16300052
+         AIF (&IJBSGEN).SUPC                                   @D52VDPP 16350052
+.WKREGC  ANOP                                                  @D52VDPP 16400052
+         AMODESW TEST,WR=(&WREG),TEST=&TEST,INNER=YES          @D52VDPP 16450052
+         BNOR  &RETNREG                                        @D52VDPP 16500052
+         AGO   .CHKXAR3                                        @D52VDPP 16550052
+.SUPC    ANOP                                                  @D52VDPP 16600052
+         AIF (&BGXA).CHKXAR3                                   @D52VDPP 16650052
+         BR   &RETNREG            NO ,LEAVE AMODE ALONE        @V6PXJRU 16700052
+         MEXIT                                                 @D52VDPP 16750052
+.*     4.4  GET AMODE  - IF SUPPLIED - 24,31,(REG) OR SKIP     @V6PXJRU 16800052
+.CHKXAR3 ANOP                                                  @D52VDPP 16850052
+         AIF  ('&AMODE' EQ '').BSMRET                          @V6PXJRU 16900052
+         AIF  ('&AMODE'(1,1) NE '(').AMNUMR                    @V6PXJRU 16950052
+&AMODREG SETC '&AMODE(1)'            PASS AMODE REG NUMBER     @V6PXJRU 17000052
+         AIF  (&IJBSGEN).CHKXAR1                               @D52VDPP 17050052
+         N    &AMODE(1),=XL4'80000000' CLEAR ALL BUT AMODE BIT @V6PXJRU 17100052
+         N    &RETNREG,=XL4'7FFFFFFF' CLEAR AMODE BIT          @V6PXJRU 17150052
+         OR   &RETNREG,&AMODE(1)     SET AMODE FOR RETURN      @V6PXJRU 17200052
+         AGO  .BSMRET                                          @V6PXJRU 17250052
+.CHKXAR1 ANOP                                                  @D52VDPP 17300052
+         N    &AMODE(1),BIT0OMSK     CLEAR ALL BUT AMODE BIT   @V6PXJRU 17350052
+         N    &RETNREG,BIT0OFF       CLEAR AMODE BIT           @V6PXJRU 17400052
+         OR   &RETNREG,&AMODE(1)     SET AMODE FOR RETURN      @V6PXJRU 17450052
+         AGO  .BSMRET                                          @V6PXJRU 17500052
+.AMNUMR  ANOP                                                  @V6PXJRU 17550052
+         AIF  (&IJBSGEN).AMNUMR1                               @D52VDPP 17650052
+         AIF  ('&AMODE' EQ '24').AMNUMR3                       @V6PXJRU 17666652
+         AIF  ('&AMODE' NE '31').ERR3                          @V6PXJRU 17683252
+         O    &RETNREG,=XL4'80000000' SET AMODE 31             @V6PXJRU 17700052
+         AGO  .AMNUMR2                                         @D52VDPP 17750052
+.AMNUMR3 ANOP                                                  @D52VDPP 17762552
+         N    &RETNREG,=XL4'7FFFFFFF' SET AMODE 24             @V6PXJRU 17775052
+         AGO  .AMNUMR2                                         @D52VDPP 17787552
+.AMNUMR1 ANOP                                                  @D52VDPP 17800052
+         AIF  ('&AMODE' EQ '24').AMNUMR4                       @V6PXJRU 17816652
+         AIF  ('&AMODE' NE '31').ERR3                          @V6PXJRU 17833252
+         O    &RETNREG,BIT0OMSK       SET AMODE 31             @V6PXJRU 17850052
+         AGO  .BSMRET                                          @D52SDPP 17860052
+.AMNUMR4 ANOP                                                  @D52VDPP 17870052
+         N    &RETNREG,BIT0OFF        SET AMODE 24             @V6PXJRU 17880052
+         AGO  .BSMRET                                          @D52SDPP 17890052
+.AMNUMR2 ANOP                                                  @D52VDPP 17900052
+.*     4.5  COMPLETE RETURN REQUEST WITH BSM - XA ONLY         @V6PXJRU 17950052
+.BSMRET  ANOP                                                  @V6PXJRU 18000052
+.* DC FOR THE BSM INSTRUCTION FOR USE WITH ASSEMBLER F         @V6PXJRU 18050052
+         DC   0H'0',X'0B',AL.4(0,&RETNREG) BSM FOR XA ONLY     @V6PXJRU 18100052
+         MEXIT                                                 @V6PXJRU 18150052
+.**************************************************************@V6PXJRU 18200052
+.* 5.0 PROCESS QRY REQUESTS                                    @V6PXJRU 18250052
+.**************************************************************@V6PXJRU 18300052
+.*                                                             @D52SDPP 18310052
+.* WORKREGISTER NOT NEEDED                                     @D52SDPP 18320052
+.*                                                             @D52SDPP 18330052
+.**************************************************************@D52VDPP 18340052
+.QRY     ANOP                                                  @V6PXJRU 18350052
+         AIF ('&AMODE' NE '').ERR17                            @D52VDPP 18400052
+         AIF ('&ADDRESS' NE '').ERR17                          @D52VDPP 18450052
+         AIF ('&REG' NE '').ERR17                              @D52VDPP 18500052
+         AIF ('&REGS' NE '').ERR17                             @D52VDPP 18550052
+         AIF ('&SAVE' NE '').ERR17                             @D52VDPP 18600052
+         AIF ('&DAT' NE '').ERR20                              @D52VDPP 18650052
+         AIF   (&IJBSGEN).QRY1                                 @D52VDPP 18700052
+         L     1,=F'1073741824'    1ST BYTE=X'00'=24  X'40'=31 @V6PXJRU 18750052
+         AGO   .QRY2                                           @D52VDPP 18800052
+.QRY1    ANOP                                                  @D52VDPP 18850052
+         L     1,BIT1ON          1ST BYTE=X'00'=24  X'40'=31   @V6PXJRU 18900052
+.QRY2    ANOP                                                  @D52VDPP 18950052
+         LA    1,0(1)            WILL ZERO OUT IN 24 BIT MODE  @V6PXJRU 19000052
+         SLL   1,1               24 BIT=ALL 0'S 31 BIT=1+ALL 0S@V6PXJRU 19050052
+         MEXIT                                                 @V6PXJRU 19100052
+.**************************************************************@D52VDPP 19150052
+.* 5.5 PROCESS TEST REQUESTS                                   @D52VDPP 19166652
+.**************************************************************@D52VDPP 19183252
+.*                                                             @D52SDPP 19199852
+.* WORKREGISTER NOT NEEDED                                     @D52SDPP 19216452
+.*                                                             @D52SDPP 19233052
+.**************************************************************@D52VDPP 19250052
+.TEST    ANOP                                                  @D52VDPP 19300052
+         AIF ('&AMODE' NE '').ERR17                            @D52VDPP 19350052
+         AIF ('&ADDRESS' NE '').ERR17                          @D52VDPP 19400052
+         AIF ('&REG' NE '').ERR17                              @D52VDPP 19450052
+         AIF ('&REGS' NE '').ERR17                             @D52VDPP 19500052
+         AIF ('&SAVE' NE '').ERR17                             @D52VDPP 19550052
+         AIF ('&DAT' NE '').ERR20                              @D52VDPP 19600052
+         AIF ('&TEST' EQ 'LOWCORE').TESTLC                     @D52VDPP 19638852
+.*       THE TEST FOR XA CAPABILITY HAS TO BE PERFORMED IN     @D52VDPP 19677652
+.*       SYSCOM.                                               @D52VDPP 19716452
+         ASYSCOM &WREG                                         @D52VDPP 19755252
+*        TM    IJBFLG06,IJBXMODE                               @D52VDPP 19794052
+         TM    47(&WREG),X'40'    XA HARDWARE ?                @D52VDPP 19832852
+         AGO   .SYSNOS4                                        @D52VDPP 19871652
+.TESTLC  ANOP                                                  @D52VDPP 19910452
+         TM    577(0),X'02'       TM SUPVFLAG,XAACTIVE         @D52VDPP 19950052
+.SYSNOS4 ANOP                                                  @D52VDPP 20000052
+         MEXIT                                                 @D52VDPP 20050052
+.**************************************************************@D52VDPP 20450052
+.* 5.6 PROCESS BRANCH REQUESTS                                 @D52VDPP 20466652
+.**************************************************************@D52VDPP 20483252
+.*                                                             @D52SDPP 20499852
+.* WORKREGISTER NOT NEEDED                                     @D52SDPP 20516452
+.*                                                             @D52SDPP 20533052
+.**************************************************************@D52VDPP 20550052
+.BRANCH  ANOP                                                  @D52VDPP 20600052
+         AIF ('&AMODE' EQ '').ERR22                            @D52VDPP 20650052
+         AIF ('&AMODE' NE '24').ERR3                           @D52VDPP 20700052
+         AIF ('&ADDRESS' EQ '').ERR21                          @D52VDPP 20750052
+         AIF ('&REGS' NE '').ERR17                             @D52VDPP 20800052
+         AIF ('&SAVE' NE '').ERR17                             @D52VDPP 20850052
+         AIF ('&DAT' NE '').ERR20                              @D52VDPP 20900052
+         AIF ('&REG' NE '').BRAREG                             @V6PXJRU 20950052
+&RETNREG SETC  '15'                                            @V6PXJRU 21000052
+         AGO   .BRAGOON                                        @V6PXJRU 21050052
+.BRAREG  ANOP                                                  @V6PXJRU 21100052
+         AIF ('&REG'(1,1) NE '(' OR N'&REG GT 1).ERR16         @V6PXJRU 21150052
+&RETNREG SETC  '&REG(1)'                                       @V6PXJRU 21200052
+.BRAGOON ANOP                                                  @D52VDPP 21250052
+         AIF   (NOT &IJBSGEN).NOTSUP                                    21300052
+.XA31ON  ANOP                                                           21350052
+         AIF   (NOT &BGXA).NOTXA                                        21400052
+         LA    &RETNREG,&ADDRESS  GET BRANCH ADDR                       21450052
+         DC    0H'0',X'0B',AL.4(0,&RETNREG)                             21500052
+         MEXIT                                                          21550052
+.NOTXA   ANOP                                                           21600052
+         B     &ADDRESS           BRANCH  TO ROUTINE       B24          21650052
+.NOTSUP  ANOP                                                  @D52VDPP 21700052
+         MEXIT                                                 @D52VDPP 21750052
+.**************************************************************@V6PXJRU 21800052
+.* 6.0 MNOTES                                                  @V6PXJRU 21850052
+.**************************************************************@V6PXJRU 21900052
+.ERR1    MNOTE 8,'TOO MANY POSITIONAL PARAMETERS SPECIFIED'             21950052
+         MEXIT                                                          22000052
+.ERR2    ANOP                                                           22050052
+         MNOTE 8,'AMODESW FUNCTION IS NOT "SET" , "CALL" , "QRY" '      22100052
+         MNOTE 8,' , "RETURN" , "TEST" OR "BRANCH" '                    22150052
+         MEXIT                                                          22200052
+.ERR3    MNOTE 8,'AMODE=, PARAMETER IS INCORRECTLY SPECIFIED'           22250052
+         MEXIT                                                          22300052
+.ERR4    MNOTE 8,'ADDRESS=, PARAMETER IS NOT VALID WITH "SET" FUNCTION' 22350052
+         MEXIT                                                          22400052
+.ERR5    MNOTE 8,'REGS=, PARAMETER IS NOT VALID WITH "SET" FUNCTION'    22450052
+         MEXIT                                                          22500052
+.ERR6    MNOTE 8,'REG=, PARAMETER IS NOT VALID WITH "SET" FUNCTION'     22550052
+         MEXIT                                                          22600052
+.ERR7    MNOTE 8,'THE REQUIRED "AMODE" PARAM. HAS NOT BEEN SPECIFIED'   22650052
+         MEXIT                                                          22700052
+.ERR8    MNOTE 8,'SAVE=, PARAMETER IS INCORRECTLY SPECIFIED'            22750052
+         MEXIT                                                          22800052
+.ERR9    MNOTE 8,'SAVE=, PARAMETER IS NOT VALID WITH "CALL" FUNCTION'   22850052
+         MEXIT                                                          22900052
+.ERR10   MNOTE 8,'REG=, PARAMETER IS NOT VALID WITH "CALL" FUNCTION'    22950052
+         MEXIT                                                          23000052
+.ERR11   MNOTE 8,'SAVE=, PARAMETER IS NOT VALID WITH "RETURN" FUNCTION' 23050052
+         MEXIT                                                          23100052
+.ERR12   MNOTE 8,'REGS=, PARAMETER IS NOT VALID WITH "RETURN" FUNCTION' 23150052
+         MEXIT                                                          23200052
+.ERR13   MNOTE 8,'ADDRESS=, PARAMETER NOT VALID WITH "RETURN" FUNCTION' 23250052
+         MEXIT                                                          23300052
+.ERR14   MNOTE 8,'REGS=, PARAMETER IS INCORRECTLY SPECIFIED'            23350052
+         MEXIT                                                          23400052
+.ERR15   MNOTE 8,'ADDRESS=, PARAMETER IS INCORRECTLY SPECIFIED'         23450052
+         MEXIT                                                          23500052
+.ERR16   MNOTE 8,'REG=, PARAMETER IS INCORRECTLY SPECIFIED'             23550052
+         MEXIT                                                          23600052
+.ERR17   MNOTE 8,'THE QRY FUNCTION HAS NO KEYWORD PARAMETERS'           23650052
+         MEXIT                                                          23700052
+.ERR18   MNOTE 8,'WR=, PARAMETER IS INCORRECTLY SPECIFIED'              23750052
+         MEXIT                                                          23800052
+.ERR20   MNOTE 8,'DAT=, PARAMETER IS INCORRECTLY SPECIFIED'             23850052
+         MEXIT                                                          23900052
+.ERR21   MNOTE 8,'ADDRESS=, PARAMETER MUST BE SPECIFIED ON BRANCH'      23950052
+         MEXIT                                                          24000052
+.ERR22   MNOTE 8,'AMODE=, PARAMETER MUST BE SPECIFIED ON BRANCH'        24050052
+         MEXIT                                                          24100052
+.ERR23   MNOTE 8,'ENV=, PARAMETER MAY ONLY BE SPECIFIED ON SET'         24107152
+         MEXIT                                                          24114252
+.ERR24   MNOTE 8,'ENV=, PARAMETER IS INCORRECTLY SPECIFIED'             24121352
+         MEXIT                                                          24128452
+.ERR25   MNOTE 8,'ENV=, PARAMETER IS SPECIFIED WITHIN SUPERVISOR'       24135552
+         MEXIT                                                          24142652
+.ERR26   MNOTE 8,'TEST=, PARAMETER IS INCORRECTLY SPECIFIED'            24159252
+         MEXIT                                                          24175852
+         MEND                                                           24192652

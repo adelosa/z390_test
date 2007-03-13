@@ -1,0 +1,803 @@
+         MACRO                                                          00001000
+&LABEL IPFILE &TYPE,&PARM,                                             X00002000
+               &USERID==CL16' ',                                       X00003000
+               &PASSWD==CL16' ',                                       X00004000
+               &PIECE1==CL8' ',                                        X00005000
+               &PIECE2==CL8' ',                                        X00006000
+               &PIECE3==CL8' ',                                        X00007000
+               &PIECE4==CL8' ',                                        X00008000
+               &PIECE5==CL8' ',                                        X00009000
+               &PIECE6==CL8' ',                                        X00010000
+               &SPIECE1==CL8' ',                                       X00011000
+               &SPIECE2==CL8' ',                                       X00012000
+               &SPIECE3==CL8' ',                                       X00013000
+               &SPIECE4==CL8' ',                                       X00014000
+               &SPIECE5==CL8' ',                                       X00015000
+               &SPIECE6==CL8' ',                                       X00016000
+               &SPIECE7==CL8' ',                                       X00017000
+               &SPIECE8==CL8' ',                                       X00018000
+               &SPIECE9==CL8' ',                                       X00019000
+               &SPIECEA==CL8' ',                                       X00020000
+               &SPIECEB==CL8' ',                                       X00021000
+               &SPIECEC==CL8' ',                                       X00022000
+               &SPIECED==CL8' ',                                       X00023000
+               &SPIECEE==CL8' ',                                       X00024000
+               &SPIECEF==CL8' ',                                       X00025000
+               &SPIECEG==CL8' ',                                       X00026000
+               &SPIECEH==CL8' ',                                       X00027000
+               &SPIECEI==CL8' ',                                       X00028000
+               &SPIECEJ==CL8' ',                                       X00029000
+               &SPIECEK==CL8' ',                                       X00030000
+               &SPIECEL==CL8' ',                                       X00031000
+               &SPIECEM==CL8' ',                                       X00032000
+               &FNAME==CL8' ',                                         X00033000
+               &RECFM==CL2'FB',                                        X00034000
+               &LRECL==F'80',                                          X00035000
+               &BLOCK==F'80',                                          X00036000
+               &BUFFER==A(0),                                          X00037000
+               &LENGTH==F'0',                                          X00038000
+               &DISP=KEEP,                                             X00039000
+               &OPLEN==F'0',                                           X00040000
+               &OPDATA==A(0),                                          X00041000
+               &PARMH==H'0',                                           X00042000
+               &PARMF==F'0',                                           X00043000
+               &NEWNAME==CL44' ',                                      X00044000
+               &LOCATE==CL44' ',                                       X00045000
+               &OFFSET=,                                               X00046000
+               &RECNO=,                                                X00047000
+               &NPHOLD=FRNPHOLD,                                       X00048000
+               &NAMELEN==F'0',                                         X00049000
+               &NOW=NO,                                                X00050000
+               &LOC=,                                                  X00051000
+               &WDISP=YES,                                             X00052000
+               &ERRMSG=YES,                                            X00053000
+               &FORMAT=NEW,                                            X00054000
+               &ASCII=,        Used for Buffered READDIR (Y,N)         X00055000
+               &UNIX=NO,       Used for Buffered READDIR (Y,N)         X00056000
+               &NLST=NO,       Used for Buffered READDIR (Y,N)         X00057000
+               &PATTERN==A(0), Used for Buffered READDIR (pointer)     X00058000
+               &CC=,                                                   X00059000
+               &SAVE=,                                                 X00060000
+               &REALWAIT=NO,                                           X00061000
+               &ADDRESS=                                                        
+         GBLC     &VER                                                  00062000
+.*--------------------------------------------------------------------* 00063000
+.*                                                                    * 00064000
+.*       IPFILE   Macro  -- Issue a File Request                      * 00065000
+.*                                                                    * 00066000
+.*--------------------------------------------------------------------* 00067000
+.*        Copyright 1995 -- Connectivity Systems Incorporated         * 00068000
+.*--------------------------------------------------------------------* 00069000
+         AIF      ('&TYPE' EQ 'DSECT').DSECT                            00070000
+         AIF      ('&TYPE' EQ 'ALLOCATE').ALLOC                         00071000
+         AIF      ('&TYPE' EQ 'DEALLOCATE').DEALLOC                     00072000
+.*                                                                      00073000
+.*       Setup a process request                                        00074000
+.*                                                                      00075000
+&LABEL   L        1,&ADDRESS               Load the FRBLOK address      00076000
+         USING    FRBLOK,1                                              00077000
+         MVI      FRCODE,X'00'             Clear the return code        00078000
+         XC       FRECB(4),FRECB           Clear the ECB                00079000
+         AIF      ('&TYPE' EQ 'SHUTDOWN').SHUT                          00080000
+.*                                                                      00081000
+.*       Setup the FIBLOK pointer                                       00082000
+.*                                                                      00083000
+         LA       15,FIBLOK                Address the directory block  00084000
+         ST       15,FRFIBLOK              Save the directory pointer   00085000
+.*                                                                      00086000
+.*       Further analyze the request                                    00087000
+.*                                                                      00088000
+         AIF      ('&TYPE' EQ 'WRITE_FILE').CHKRD                       00089000
+         AIF      ('&TYPE' EQ 'RENAME_FILE').CHKRD                      00090000
+         AIF      ('&TYPE' EQ 'RENAME').CHKRD                           00091000
+         AIF      ('&TYPE' EQ 'DELETE_FILE').CHKRD                      00092000
+         AIF      ('&TYPE' EQ 'DELETE').CHKRD                           00093000
+         AGO      .ANAL                                                 00094000
+.*                                                                      00095000
+.*       If the FIBLOK is read_only, get out of here                    00096000
+.*                                                                      00097000
+.CHKRD   ANOP                                                           00098000
+         LA       15,8                      Default to error            00099000
+         CLI      FIREADLY,0                Is this in R/W mode ?       00100000
+         BNZ      Y&SYSNDX                  No...get out                00101000
+.*                                                                      00102000
+.*       Further analyze the request                                    00103000
+.*                                                                      00104000
+.ANAL    ANOP                                                           00105000
+         AIF      ('&TYPE' EQ 'CLOSE_DIR').CLDIR                        00106000
+         AIF      ('&TYPE' EQ 'CLOSE_FILE').CLFILE                      00107000
+         AIF      ('&TYPE' EQ 'READ_DIR').RDDIR                         00108000
+         AIF      ('&TYPE' EQ 'READ_FILE').RDFILE                       00109000
+         AIF      ('&TYPE' EQ 'WRITE_FILE').WRFILE                      00110000
+         AIF      ('&TYPE' EQ 'NOTE_FILE').NOTEFIL                      00111000
+         AIF      ('&TYPE' EQ 'POINT_FILE').POINTFI                     00112000
+         AIF      ('&TYPE' EQ 'NOTE').NOTEFIL                           00113000
+         AIF      ('&TYPE' EQ 'POINT').POINTFI                          00114000
+.*                                                                      00115000
+.*       Setup Fields for open calls                                    00116000
+.*                                                                      00117000
+         MVC      FRPARM3(2),&PARMH        Copy the Halfword Value      00118000
+         MVC      FRPARM4(4),&PARMF        Copy the Fullword Value      00119000
+         MVC      FRUSERID(16),&USERID     Copy the Userid              00120000
+         MVC      FRPASSWD(16),&PASSWD     Copy the Password            00121000
+         MVC      FRFNAME(8),&FNAME        Copy the DLBL File Name      00122000
+         MVC      FRDPIE1(8),&PIECE1       Copy the Directory Piece 1   00123000
+         MVC      FRDPIE2(8),&PIECE2       Copy the Directory Piece 2   00124000
+         MVC      FRDPIE3(8),&PIECE3       Copy the Directory Piece 3   00125000
+         MVC      FRDPIE4(8),&PIECE4       Copy the Directory Piece 4   00126000
+         MVC      FRDPIE5(8),&PIECE5       Copy the Directory Piece 5   00127000
+         MVC      FRDPIE6(8),&PIECE6       Copy the Directory Piece 6   00128000
+         AIF      ('&FORMAT' EQ 'OLD').DOOLD                            00129000
+         PIECESET FRSPIE1,&SPIECE1                                      00130000
+         PIECESET FRSPIE2,&SPIECE2                                      00131000
+         PIECESET FRSPIE3,&SPIECE3                                      00132000
+         AIF      ('&FORMAT' EQ 'NEW').DOCONT                           00133000
+         PIECESET FRSPIE4,&SPIECE4                                      00134000
+         PIECESET FRSPIE5,&SPIECE5                                      00135000
+         PIECESET FRSPIE6,&SPIECE6                                      00136000
+         PIECESET FRSPIE7,&SPIECE7                                      00137000
+         PIECESET FRSPIE8,&SPIECE8                                      00138000
+         PIECESET FRSPIE9,&SPIECE9                                      00139000
+         PIECESET FRSPIE10,&SPIECEA                                     00140000
+         PIECESET FRSPIE11,&SPIECEB                                     00141000
+         PIECESET FRSPIE12,&SPIECEC                                     00142000
+         PIECESET FRSPIE13,&SPIECED                                     00143000
+         PIECESET FRSPIE14,&SPIECEE                                     00144000
+         PIECESET FRSPIE15,&SPIECEF                                     00145000
+         PIECESET FRSPIE16,&SPIECEG                                     00146000
+         PIECESET FRSPIE17,&SPIECEH                                     00147000
+         PIECESET FRSPIE18,&SPIECEI                                     00148000
+         PIECESET FRSPIE19,&SPIECEJ                                     00149000
+         PIECESET FRSPIE20,&SPIECEK                                     00150000
+         PIECESET FRSPIE21,&SPIECEL                                     00151000
+         PIECESET FRSPIE22,&SPIECEM                                     00152000
+         AGO      .CHECKIT                                              00153000
+.DOOLD   ANOP                                                           00154000
+         MVC      FRSPIE1(8),&SPIECE1      Copy the File Piece 1        00155000
+         MVC      FRSPIE2(8),&SPIECE2      Copy the File Piece 2        00156000
+         MVC      FRSPIE3(8),&SPIECE3      Copy the File Piece 3        00157000
+.DOCONT  ANOP                                                           00158000
+         MVC      FRSPIE4(8),&SPIECE4      Copy the File Piece 4        00159000
+         MVC      FRSPIE5(8),&SPIECE5      Copy the File Piece 5        00160000
+         MVC      FRSPIE6(8),&SPIECE6      Copy the File Piece 6        00161000
+         MVC      FRSPIE7(8),&SPIECE7      Copy the Directory Piece 7   00162000
+         MVC      FRSPIE8(8),&SPIECE8      Copy the Directory Piece 8   00163000
+         MVC      FRSPIE9(8),&SPIECE9      Copy the Directory Piece 9   00164000
+         MVC      FRSPIE10(8),&SPIECEA     Copy the Directory Piece 10  00165000
+         MVC      FRSPIE11(8),&SPIECEB     Copy the Directory Piece 11  00166000
+         MVC      FRSPIE12(8),&SPIECEC     Copy the Directory Piece 12  00167000
+         MVC      FRSPIE13(8),&SPIECED     Copy the Directory Piece 13  00168000
+         MVC      FRSPIE14(8),&SPIECEE     Copy the Directory Piece 14  00169000
+         MVC      FRSPIE15(8),&SPIECEF     Copy the Directory Piece 15  00170000
+         MVC      FRSPIE16(8),&SPIECEG     Copy the Directory Piece 16  00171000
+         MVC      FRSPIE17(8),&SPIECEH     Copy the Directory Piece 17  00172000
+         MVC      FRSPIE18(8),&SPIECEI     Copy the Directory Piece 18  00173000
+         MVC      FRSPIE19(8),&SPIECEJ     Copy the Directory Piece 19  00174000
+         MVC      FRSPIE20(8),&SPIECEK     Copy the Directory Piece 20  00175000
+         MVC      FRSPIE21(8),&SPIECEL     Copy the Directory Piece 21  00176000
+         MVC      FRSPIE22(8),&SPIECEM     Copy the Directory Piece 22  00177000
+.CHECKIT ANOP                                                           00178000
+         AIF      ('&OPLEN' EQ '').NOOPLEN                              00179000
+.*                                                                      00180000
+.*       Insert the operation data                                      00181000
+.*                                                                      00182000
+         MVC      FROPLEN(4),&OPLEN        Copy the operation length    00183000
+         ICM      14,B'1111',&OPDATA       Load the operation data addr 00184000
+         BZ       F&SYSNDX                 Go move on                   00185000
+         ICM      15,B'1111',&OPLEN        Load the operation length    00186000
+         BZ       F&SYSNDX                 Go move on                   00187000
+         LR       0,1                      Copy the FRBLOK address      00188000
+         LA       1,FROPDATA               Address the data area        00189000
+.*                                                                      00190000
+.*       Process each 256 byte piece                                    00191000
+.*                                                                      00192000
+N&SYSNDX CL       15,=F'256'               Check the size               00193000
+         BNH      P&SYSNDX                 Less or equal then complete  00194000
+         MVC      0(256,1),0(14)           Copy the first 256 bytes     00195000
+         LA       1,256(,1)                Bump to next spot            00196000
+         LA       14,256(,14)              Bump to next spot            00197000
+         SL       15,=F'256'               Drop the length              00198000
+         BZ       H&SYSNDX                 Done, then complete          00199000
+         B        N&SYSNDX                 Continue processing...       00200000
+.*                                                                      00201000
+.*       Process the last piece                                         00202000
+.*                                                                      00203000
+P&SYSNDX BCTR     15,0                     Drop the length              00204000
+         EX       15,M&SYSNDX              Move the data in             00205000
+         B        H&SYSNDX                 Skip the execute             00206000
+M&SYSNDX MVC      0(0,1),0(14)             Move the data                00207000
+H&SYSNDX LR       1,0                      Restore the FRBLOK address   00208000
+F&SYSNDX DS       0H                                                    00209000
+.NOOPLEN ANOP                                                           00210000
+.*                                                                      00211000
+.*       Further analyze the request                                    00212000
+.*                                                                      00213000
+         AIF      ('&TYPE' EQ 'OPEN_DIR').OPDIR                         00214000
+         AIF      ('&TYPE' EQ 'ASK_DIR').ASKDIR                         00215000
+         AIF      ('&TYPE' EQ 'RENAME_FILE').RENFILE                    00216000
+         AIF      ('&TYPE' EQ 'RENAME').RENFILE                         00217000
+         AIF      ('&TYPE' EQ 'DELETE_FILE').DELFILE                    00218000
+         AIF      ('&TYPE' EQ 'DELETE').DELFILE                         00219000
+         AIF      ('&TYPE' EQ 'SITE').SITE                              00220000
+         MVC      FRRECFM(2),&RECFM        Copy the record format       00221000
+         MVC      FRLRECL(4),&LRECL        Copy the Record Length       00222000
+         MVC      FRBLOCK(4),&BLOCK        Copy the Block Size          00223000
+         AIF      ('&TYPE' EQ 'OPEN_FILE').OPFILE                       00224000
+         DROP     1                                                     00225000
+         MNOTE    8,'Unrecognized Request Type'                         00226000
+         MEXIT                                                          00227000
+.*                                                                      00228000
+.*       Shutdown File Handler                                          00229000
+.*                                                                      00230000
+.SHUT    ANOP                                                           00231000
+         MVI      FRTYPE,FRFINISH          Set appropriate request      00232000
+         MVC      FRDRIVER(8),&PARM        Copy the parameter           00233000
+         AGO      .PROCESS                                              00234000
+.*                                                                      00235000
+.*       Ask Directory                                                  00236000
+.*                                                                      00237000
+.ASKDIR  ANOP                                                           00238000
+         MVI      FRTYPE,FRASKDIR          Set appropriate request      00239000
+         AGO      .PROCESS                                              00240000
+.*                                                                      00241000
+.*       Delete File                                                    00242000
+.*                                                                      00243000
+.DELFILE ANOP                                                           00244000
+         MVI      FRTYPE,FRDELETE          Set the request byte         00245000
+         AGO      .PROCESS                                              00246000
+.*                                                                      00247000
+.*       Note File                                                      00248000
+.*                                                                      00249000
+.NOTEFIL ANOP                                                           00250000
+         MVI      FRTYPE,FRNOTE            Set the request byte         00251000
+         LA       0,&NPHOLD                Point to the work field      00252000
+         ST       0,FRNPOINT               Save the NOTE address        00253000
+         AGO      .PROCESS                                              00254000
+.*                                                                      00255000
+.*       Point File                                                     00256000
+.*                                                                      00257000
+.POINTFI ANOP                                                           00258000
+         MVI      FRTYPE,FRPOINT           Set the request byte         00259000
+         LA       0,&NPHOLD                Point to the work field      00260000
+         ST       0,FRNPOINT               Save the NOTE address        00261000
+         AGO      .PROCESS                                              00262000
+.*                                                                      00263000
+.*       Rename File                                                    00264000
+.*                                                                      00265000
+.RENFILE ANOP                                                           00266000
+         MVI      FRTYPE,FRRENAME          Set the request byte         00267000
+         AIF      ('&NEWNAME'(1,1) NE '(').REN1                         00268000
+         MVC      FRENTRY(44),0&NEWNAME    Get the new name             00269000
+         MVC      FRNAMLEN(4),&NAMELEN     And save it                  00270000
+         AGO      .PROCESS                                              00271000
+.REN1    ANOP                                                           00272000
+         LA       14,&NEWNAME              Point to the new name        00273000
+         MVC      FRENTRY(44),0(14)        Get the new name             00274000
+         MVC      FRNAMLEN(4),&NAMELEN     And save it                  00275000
+         AGO      .PROCESS                                              00276000
+.*                                                                      00277000
+.*       File: Open                                                     00278000
+.*                                                                      00279000
+.OPFILE  ANOP                                                           00280000
+         MVC      FRENTRY(44),&NEWNAME     Get the new name             00281000
+         MVC      FRNAMLEN(4),&NAMELEN     And save it                  00282000
+         MVI      FRPARM1,X'00'            Clear the parameter          00283000
+         CLC      &PIECE1.(5),=CL5'$NULL'  Is this a special file       00284000
+         BE       U&SYSNDX                 Yes, then process it         00285000
+         XC       FROSTART(8),FROSTART     Clear the start              00286000
+         XC       FROEND(8),FROEND         Clear the end                00287000
+         XC       FROCOMP(8),FROCOMP       Clear the complete time      00288000
+         AIF      ('&CC' EQ '').NOCC                                    00289000
+         MVC      FRCC(1),&CC              Insert the cc info           00290000
+.NOCC    ANOP                                                           00291000
+         AIF      ('&PARM' EQ 'INPUT').OPIN                             00292000
+         AIF      ('&PARM' EQ 'OUTPUT').OPOUT                           00293000
+.* The next two lines will override the "BUFFERED" use.  This is to     00294000
+.* to provide compatability with earlier programs that may use the      00295000
+.* BUFFERED keywords, but didn't actually expect buffered data!         00296000
+         AIF      ('&PARM' EQ 'INPUT_BUFF').OPIB                        00297000
+         AIF      ('&PARM' EQ 'OUTPUT_BUFF').OPOB                       00298000
+.*                                                                      00299000
+         AIF      ('&PARM' EQ 'INPUT_BUFFERED').OPIN                    00300000
+         AIF      ('&PARM' EQ 'OUTPUT_BUFFERED').OPOUT                  00301000
+         AIF      ('&PARM' EQ 'APPEND').OPOUTA                          00302000
+         DROP     1                                                     00303000
+         MNOTE    12,'Unknown open type'                                00304000
+         MEXIT                                                          00305000
+.OPIB    ANOP                                                           00306000
+         MVI      FRPARM1,FRP1OPIB         Specify input buffer open    00307000
+         AGO      .OPIN2                                                00308000
+.OPOB    ANOP                                                           00309000
+         MVI      FRPARM1,FRP1OPOB         Specify output buffer open   00310000
+         AGO      .OPFILEG                                              00311000
+.*                                                                      00312000
+.OPIN    ANOP                                                           00313000
+         MVI      FRPARM1,FRP1OPIN         Specify input open           00314000
+.OPIN2   ANOP                                                           00315000
+         AIF      ('&DISP' EQ 'KEEP').OPINKEE                           00316000
+         AIF      ('&DISP' EQ 'DELETE').OPINDEL                         00317000
+         AIF      ('&DISP' EQ 'HOLD').OPINHOL                           00318000
+         MVI      FRPARM2,FRP2HOLD         Default                      00319000
+         CLI      &DISP,C'H'               Right ?                      00320000
+         BE       OP_&SYSNDX               Yes...proceed                00321000
+         MVI      FRPARM2,FRP2DELE         Default                      00322000
+         CLI      &DISP,C'D'               Right ?                      00323000
+         BE       OP_&SYSNDX               Yes...proceed                00324000
+         MVI      FRPARM2,FRP2KEEP         Default                      00325000
+OP_&SYSNDX DS       0H                                                  00326000
+         AGO      .OPFILEG                                              00327000
+.OPINKEE ANOP                                                           00328000
+         MVI      FRPARM2,FRP2KEEP         Set to disp=keep             00329000
+         AGO      .OPFILEG                                              00330000
+.*                                                                      00331000
+.OPINDEL ANOP                                                           00332000
+         MVI      FRPARM2,FRP2DELE         Set to disp=delete           00333000
+         AGO      .OPFILEG                                              00334000
+.*                                                                      00335000
+.OPINHOL ANOP                                                           00336000
+         MVI      FRPARM2,FRP2HOLD         Set to disp=hold             00337000
+         AGO      .OPFILEG                                              00338000
+.*                                                                      00339000
+.OPOUT   ANOP                                                           00340000
+         MVI      FRPARM1,FRP1OPOU         Specify output open          00341000
+         AGO      .OPFILEG                                              00342000
+.*                                                                      00343000
+.OPOUTA  ANOP                                                           00344000
+         MVI      FRPARM1,FRP1OPAP         Specify output/append        00345000
+         AGO      .OPFILEG                                              00346000
+.*                                                                      00347000
+.OPFILEG ANOP                                                           00348000
+         MVI      FRTYPE,FROPEN            Set appropriate request      00349000
+.*                                                                      00350000
+         AIF      ('&ERRMSG' EQ 'YES').PROCESS                          00351000
+         MVI      FRPARM2,FRP2NMSG         Set to skip error message    00352000
+         AGO      .PROCESS                                              00353000
+.*                                                                      00354000
+.*       File: Close                                                    00355000
+.*                                                                      00356000
+.CLFILE  ANOP                                                           00357000
+         MVI      FRCODE2,X'00'            Init secondary return code   00358000
+         CLI      FRPARM1,X'00'            Is the file allready closed  00359000
+         BE       Z&SYSNDX                 Yes, then process it         00360000
+         CLC      FRDPIE1(5),=CL5'$NULL'   Is this a special file       00361000
+         BE       Z&SYSNDX                 Yes, then process it         00362000
+         AIF      ('&NOW' EQ 'YES').SKIPTCL                             00363000
+* Check for type of file (input or output)                              00364000
+         CLI      FRPARM1,FRP1OPIN         Request for input ?          00365000
+         BZ       S&SYSNDX                 Yes...proceed                00366000
+         CLI      FRPARM1,FRP1OPIB         Request for input ?          00367000
+         BZ       S&SYSNDX                 Yes...proceed                00368000
+* Must be output                                                        00369000
+         ICM      14,B'1111',FRWORKPN      Load the pointer             00370000
+         BZ       S&SYSNDX                 None, then go get more       00371000
+         CLC      FRWORKUS(4),FRWORKLN     Are there records?           00372000
+         BE       S&SYSNDX                 No, then just go close       00373000
+         MVI      FRTYPE,FRWRITE           Set appropriate request      00374000
+         STCK     IVFILEI1                 Take start time              00375000
+         CLI      IVFAKE,ON                Is this a fake IVBLOK        00376000
+         BE       I&SYSNDX                 bif yes                      00377000
+         LA       1,IVFILECB               Address the file task ecb    00378000
+         POST     (1)                                                   00379000
+         L        1,&ADDRESS               Load the FRBLOK address      00380000
+         LA       1,FRECB                  Address the file task ecb    00381000
+         AIF      ('&REALWAIT' EQ 'YES').REAL1                          00360000
+         IPWAIT   (1),DISP=&WDISP                                       00382000
+         AGO      .REALNO1                                              00362000
+.REAL1   ANOP                                                           00363000
+         WAIT     (1)                                                   00364000
+.REALNO1 ANOP                                                           00365000
+         B        IX&SYSNDX                                             00383000
+I&SYSNDX DS       0H                                                    00384000
+         L        1,&ADDRESS               Load the FRBLOK address      00385000
+         L        R15,IVFILECB             @ of FILEIO front end code   00386000
+         BALR     R14,R15                  code is in FTPBATCH          00387000
+IX&SYSNDX DS       0H                                                   00388000
+         L        1,&ADDRESS               Load the FRBLOK address      00389000
+         XC       FRECB(4),FRECB           Clear the ECB                00390000
+         XC       FRWORKPN(4),FRWORKPN     Clear the pointer            00391000
+.* Check for write failed...                                            00392000
+.* Fixed for out of sequence ksds records...                            00393000
+         MVC      FRCODE2,FRCODE           After close check this too   00394000
+.SKIPTCL ANOP                                                           00395000
+S&SYSNDX MVI      FRTYPE,FRCLOSE           Set appropriate request      00396000
+         MVI      FRPARM1,X'00'            Clear the parameter          00397000
+         XC       FRRCOUNT(4),FRRCOUNT     Clear the counter            00398000
+         XC       FRWORKPN(4),FRWORKPN     Clear the pointer            00399000
+         AGO      .PROCESS                                              00400000
+.*                                                                      00401000
+.*       File: Read                                                     00402000
+.*                                                                      00403000
+.RDFILE  ANOP                                                           00404000
+         CLC      FRDPIE1(5),=CL5'$NULL'   Is this a special file       00405000
+         BE       X&SYSNDX                 Yes, then process it         00406000
+         CLI      FRTYPE,FRCLOSE           Have we closed before?       00407000
+         BNE      NC&SYSNDX                No, then fine                00408000
+         MVI      FRCODE,24                Set the error code           00409000
+         B        C&SYSNDX                 Go pass the failure          00410000
+.*                                                                      00411000
+X&SYSNDX DS       0H                                                    00412000
+         ICM      0,B'1111',FRWORKLN       Load the length              00413000
+         BZ       V&SYSNDX                 None, then complete          00414000
+         L        14,FRLRECL               Load the record length       00415000
+         CR       0,14                     How are we doing             00416000
+         BNL      M&SYSNDX                 Small amount left?           00417000
+         LR       14,0                     Yes, then set the lrecl      00418000
+M&SYSNDX SR       0,14                     Drop the length by lrecl     00419000
+         ST       0,FRWORKLN               Save the new length          00420000
+         LR       1,14                     Copy the length              00421000
+         B        Z&SYSNDX                 Go join the good return code 00422000
+.*                                                                      00423000
+NC&SYSNDX L       14,FRRCOUNT              Load the record counter      00424000
+         AL       14,=F'1'                 Bump by one                  00425000
+         ST       14,FRRCOUNT              Save the record counter      00426000
+         AIF      ('&OFFSET' EQ '').RDREC  If no offset, proceed        00427000
+         MVI      FRPARM1,FRP1OPIB         Specify input buffer open    00428000
+         MVC      FROFFSET(4),&OFFSET      Save the offset              00429000
+         MVC      FRPARM3(2),=CL2'OF'      Indicate offset processing   00430000
+         AGO      .RDNORM                                               00431000
+.RDREC   ANOP                                                           00432000
+         AIF      ('&RECNO' EQ '').RDNORM  If no record number, proceed 00433000
+         MVI      FRPARM1,FRP1OPIB         Specify input buffer open    00434000
+         MVC      FROFFSET(4),&RECNO       Save the record number       00435000
+         MVC      FRPARM3(2),=CL2'RN'      Indicate Record number optn  00436000
+.RDNORM  ANOP                                                           00437000
+         MVC      FRBUFFER(4),&BUFFER      Copy the buffer address      00438000
+         MVC      FRLENGTH(4),&LENGTH      Copy the buffer length       00439000
+         ICM      14,B'1111',FRWORKLN      Is there a length?           00440000
+         BZ       R&SYSNDX                 None, then go get more       00441000
+         ICM      14,B'1111',FRWORKPN      Load the pointer             00442000
+         BZ       R&SYSNDX                 None, then go get more       00443000
+.*                                                                      00444000
+         CLI      FRRECFM,C'F'             Is this a fixed buffer?      00445000
+         BE       B&SYSNDX                                              00446000
+.*                                                                      00447000
+         SR       15,15                    Clear the record length      00448000
+         ICM      15,B'0011',0(14)         Load the record length       00449000
+         BZ       R&SYSNDX                 None, then go get more       00450000
+         LA       14,2(,14)                Bump the address             00451000
+         L        0,FRBUFFER               Address the buffer           00452000
+         ST       15,FRLENGTH              Save the length we're giving 00453000
+         L        1,FRLENGTH               Load the buffer length       00454000
+         XMVCL    0,14                                                  00455000
+         L        1,&ADDRESS               Restore the FRBLOK           00456000
+.*                                                                      00457000
+         L        0,FRWORKUS               Load the used length         00458000
+         S        0,FRLENGTH               Drop length by Lrecl         00459000
+         S        0,=F'2'                  Drop by the header length    00460000
+         B        E&SYSNDX                                              00461000
+.*                                                                      00462000
+B&SYSNDX L        15,FRLRECL               Load the record length       00463000
+         L        0,FRBUFFER               Address the buffer           00464000
+         L        1,FRLENGTH               Load the buffer length       00465000
+         XMVCL    0,14                                                  00466000
+         L        1,&ADDRESS               Restore the FRBLOK           00467000
+         L        15,FRLRECL               Load the record length       00468000
+         ST       15,FRLENGTH              Save the length we're giving 00469000
+.*                                                                      00470000
+         L        0,FRWORKUS               Load the used length         00471000
+         S        0,FRLRECL                Drop length by Lrecl         00472000
+E&SYSNDX ST       0,FRWORKUS               Save the used length         00473000
+         ST       14,FRWORKPN              Save the new pointer         00474000
+         MVI      FRCODE,FRGOOD            Set the return code          00475000
+         LTR      0,0                      Is this a zero length        00476000
+         BNZ      C&SYSNDX                 No, then just go join        00477000
+         XC       FRWORKPN(4),FRWORKPN     Clear the pointer            00478000
+         B        C&SYSNDX                 Join the exit code           00479000
+.*                                                                      00480000
+R&SYSNDX MVI      FRTYPE,FRREAD            Set appropriate request      00481000
+         AGO      .PROCESS                                              00482000
+.*                                                                      00483000
+.*       File: Write                                                    00484000
+.*                                                                      00485000
+.WRFILE  ANOP                                                           00486000
+         CLC      FRDPIE1(5),=CL5'$NULL'   Is this a special file       00487000
+         BE       Z&SYSNDX                 Yes, then process it         00488000
+         CLI      FRTYPE,FRCLOSE           Have we closed before?       00489000
+         BNE      NC&SYSNDX                No, then fine                00490000
+         MVI      FRCODE,24                Set the error code           00491000
+         B        C&SYSNDX                 Go pass the failure          00492000
+.*                                                                      00493000
+NC&SYSNDX L       14,FRRCOUNT              Load the record counter      00494000
+         AL       14,=F'1'                 Bump by one                  00495000
+         ST       14,FRRCOUNT              Save the record counter      00496000
+         MVC      FRBUFFER(4),&BUFFER      Copy the buffer address      00497000
+         MVC      FRLENGTH(4),&LENGTH      Copy the buffer length       00498000
+         AIF      ('&TYPE' NE 'WRITE_FILE').NOTWRIT                     00499000
+         AIF      ('&SAVE' EQ '').NOTWRIT                               00500000
+         IPUEXIT  WRIT,SAVE=&SAVE                                       00501000
+.NOTWRIT ANOP                                                           00502000
+         ICM      14,B'1111',FRWORKPN      Load the pointer             00503000
+         BZ       W&SYSNDX                 None, then go send now       00504000
+.*                                                                      00505000
+         CLI      FRRECFM,C'F'             Is this a fixed buffer?      00506000
+         BE       B&SYSNDX                                              00507000
+.*                                                                      00508000
+         L        15,FRLENGTH              Load the record length       00509000
+         LA       15,4(,15)                Bump the length              00510000
+         C        15,FRWORKUS              Check against what is left   00511000
+         BH       W&SYSNDX                 No room, so send             00512000
+         S        15,=F'4'                 Drop the record length       00513000
+         STCM     15,B'0011',0(14)         Save the length              00514000
+         LA       14,2(,14)                Move past the buffer header  00515000
+         L        0,FRBUFFER               Address the buffer           00516000
+         L        1,FRLENGTH               Load the buffer length       00517000
+         XMVCL    14,0                                                  00518000
+         L        1,&ADDRESS               Restore the FRBLOK           00519000
+.*                                                                      00520000
+         ST       14,FRWORKPN              Save the new pointer         00521000
+         XC       0(2,14),0(14)            Clear the record length      00522000
+         L        0,FRWORKUS               Load the used length         00523000
+         S        0,FRLENGTH               Drop length by Lrecl         00524000
+         S        0,=F'2'                  Drop by the header           00525000
+         ST       0,FRWORKUS               Save the used length         00526000
+         XC       FRLENGTH(4),FRLENGTH     Clear the inflight record    00527000
+         MVI      FRCODE,FRGOOD            Set the return code          00528000
+         LTR      0,0                      Is this a zero length        00529000
+         BNZ      C&SYSNDX                 No, then just go join        00530000
+         B        W&SYSNDX                                              00531000
+.*                                                                      00532000
+B&SYSNDX L        15,FRLRECL               Load the record length       00533000
+         L        0,FRBUFFER               Address the buffer           00534000
+         L        1,FRLENGTH               Load the buffer length       00535000
+         XMVCL    14,0                                                  00536000
+         L        1,&ADDRESS               Restore the FRBLOK           00537000
+.*                                                                      00538000
+         ST       14,FRWORKPN              Save the new pointer         00539000
+         L        0,FRWORKUS               Load the used length         00540000
+         S        0,FRLRECL                Drop length by Lrecl         00541000
+         ST       0,FRWORKUS               Save the used length         00542000
+         MVI      FRCODE,FRGOOD            Set the return code          00543000
+         LTR      0,0                      Is this a zero length        00544000
+         BNZ      C&SYSNDX                 No, then just go join        00545000
+.*                                                                      00546000
+W&SYSNDX MVI      FRTYPE,FRWRITE           Set appropriate request      00547000
+         AGO      .PROCESS                                              00548000
+.*                                                                      00549000
+.*       Directory: Open                                                00550000
+.*                                                                      00551000
+.OPDIR   ANOP                                                           00552000
+         AIF      ('&PARM' EQ 'BUFFERED').OPDIRB                        00553000
+         AIF      ('&PARM' EQ 'CWD').OPDIRC                             00554000
+         MVI      FRPARM1,X'00'            Clear the parameter          00555000
+         AIF      ('&PARM' NE 'BUFFERED').OPDIRN                        00556000
+.OPDIRC  ANOP                                                           00557000
+         MVI      FRPARM1,FRP1CWD          Indicate CWD request         00558000
+         AGO      .OPDIRN                                               00559000
+.OPDIRB  ANOP                                                           00560000
+         MVI      FRPARM1,FRP1DIRB         Indicate buffered OPDIR      00561000
+.OPDIRN  ANOP                                                           00562000
+         XC       FRWORKPN(4),FRWORKPN     Clear the pointer            00563000
+         XC       FROSTART(8),FROSTART     Clear the start              00564000
+         XC       FROEND(8),FROEND         Clear the end                00565000
+         XC       FROCOMP(8),FROCOMP       Clear the complete time      00566000
+         MVI      FRTYPE,FROPDIR           Set appropriate request      00567000
+         LA       14,&LOCATE               Point to the new name        00568000
+         MVC      FRENTRY(44),0(14)        Get the new name             00569000
+         LA       14,&NAMELEN              Point to the name length     00570000
+         MVC      FRNAMLEN(4),0(14)        And save it                  00571000
+         AGO      .PROCESS                                              00572000
+.*                                                                      00573000
+.*       Directory: Read Entry                                          00574000
+.*                                                                      00575000
+.RDDIR   ANOP                                                           00576000
+         AIF      ('&PARM' NE 'BUFFERED').RDDIRN                        00577000
+         AIF      ('&NLST' EQ 'YES').RDDIRNL                            00578000
+         MVI      FRPARM1,FRP1DIRB         Indicate buffered RDDIR      00579000
+         MVC      FRPARM4(4),&PATTERN      Save the pattern pointer     00580000
+         AIF      ('&ASCII' EQ '').NOASC                                00581000
+         MVC      FRCC(1),&ASCII           Insert the cc info           00582000
+.NOASC   ANOP                                                           00583000
+         AIF      ('&UNIX' EQ 'NO').RDDIRN                              00584000
+         AIF      ('&UNIX' EQ 'YES').RDDIRS                             00585000
+         CLI      &UNIX,0                  Is it set ?                  00586000
+         BZ       RI&SYSNDX                No...proceed                 00587000
+.RDDIRS  ANOP                                                           00588000
+         MVI      FRPARM1,FRP1DIRU         Indicate Unix mode           00589000
+         AGO      .RDDIRN                                               00590000
+.RDDIRNL ANOP                                                           00591000
+         MVI      FRPARM1,FRP1DIRN         Indicate NLIST mode          00592000
+         MVC      FRPARM4(4),&PATTERN      Save the pattern pointer     00593000
+         AIF      ('&ASCII' EQ '').RDDIRN                               00594000
+         MVC      FRCC(1),&ASCII           Insert the cc info           00595000
+.RDDIRN  ANOP                                                           00596000
+RI&SYSNDX LA      14,&LOCATE               Point to the new name        00597000
+         MVC      FRENTRY(44),0(14)        Get the new name             00598000
+         LA       14,&NAMELEN              Point to the name length     00599000
+         MVC      FRNAMLEN(4),0(14)        And save it                  00600000
+         MVC      FRBUFFER(4),&BUFFER      Copy the buffer address      00601000
+         MVC      FRLENGTH(4),&LENGTH      Copy the buffer length       00602000
+         ICM      14,B'1111',FRWORKAR      Is there an area?            00603000
+         BZ       R&SYSNDX                 No, then skip the cutting    00604000
+         ICM      14,B'1111',FRWORKPN      Load the pointer             00605000
+         BZ       R&SYSNDX                 None, then go get more       00606000
+         L        15,FRLRECL               Load the record length       00607000
+         L        0,FRBUFFER               Address the buffer           00608000
+         L        1,FRLENGTH               Load the buffer length       00609000
+         XMVCL    0,14                                                  00610000
+         L        1,&ADDRESS               Restore the FRBLOK           00611000
+         L        15,FRLRECL               Load the record length       00612000
+         ST       15,FRLENGTH              Save the length we're giving 00613000
+.*                                                                      00614000
+         ST       14,FRWORKPN              Save the new pointer         00615000
+         L        0,FRWORKUS               Load the used length         00616000
+         S        0,FRLRECL                Drop length by Lrecl         00617000
+         ST       0,FRWORKUS               Save the used length         00618000
+         MVI      FRCODE,FRGOOD            Set the return code          00619000
+         LTR      0,0                      Is this a zero length        00620000
+         BNZ      C&SYSNDX                 No, then just go join        00621000
+         XC       FRWORKPN(4),FRWORKPN     Clear the pointer            00622000
+         B        C&SYSNDX                 Join the exit code           00623000
+.*                                                                      00624000
+R&SYSNDX MVI      FRTYPE,FRRDDIR           Set appropriate request      00625000
+         AGO      .PROCESS                                              00626000
+.*                                                                      00627000
+.*       Directory: Close                                               00628000
+.*                                                                      00629000
+.CLDIR   ANOP                                                           00630000
+         MVI      FRTYPE,FRCLDIR           Set appropriate request      00631000
+         AGO      .PROCESS                                              00632000
+.*                                                                      00633000
+.*       Perform the SITE command                                       00634000
+.*                                                                      00635000
+.SITE    ANOP                                                           00636000
+         MVI      FRTYPE,FRSITE            Set the request byte         00637000
+         AGO      .PROCESS                                              00638000
+.*                                                                      00639000
+.*       Pass the request on                                            00640000
+.*                                                                      00641000
+.PROCESS ANOP                                                           00642000
+         STCK     FROSTART                 Save the start time          00643000
+         MVC      IVFILEI1(8),FROSTART     Copy the start time          00644000
+         CLI      IVFAKE,ON                Is this a fake IVBLOK        00645000
+         BE       J&SYSNDX                 bif yes                      00646000
+         LA       1,IVFILECB               Address the file task ecb    00647000
+         POST     (1)                                                   00648000
+         L        1,&ADDRESS               Load the FRBLOK address      00649000
+         LA       1,FRECB                  Address the file task ecb    00650000
+         AIF      ('&REALWAIT' EQ 'YES').REAL2                          00634000
+         IPWAIT   (1),DISP=&WDISP                                       00651000
+         AGO      .REALNO2                                              00636000
+.REAL2   ANOP                                                           00637000
+         WAIT     (1)                                                   00638000
+.REALNO2 ANOP                                                           00639000
+         B        K&SYSNDX                 continue here                00652000
+J&SYSNDX DS       0H                                                    00653000
+         L        1,&ADDRESS               Load the FRBLOK address      00654000
+         L        R15,IVFILECB             @ of FILEIO front end code   00655000
+         BALR     R14,R15                  code is in FTPBATCH          00656000
+K&SYSNDX DS       0H                                                    00657000
+         L        1,&ADDRESS               Load the FRBLOK address      00658000
+.*                                                                      00659000
+         STCK     FROEND                   Save the end time            00660000
+         LM       14,15,FROEND             Load the first double        00661000
+         SL       15,FROSTART+4            Subtract out the lower word  00662000
+         BC       3,SS&SYSNDX              No borrow then skip...       00663000
+         SL       14,=F'1'                 Drop upper word for carry    00664000
+SS&SYSNDX SL      14,FROSTART              Subtract out the upper word  00665000
+.*                                                                      00666000
+         AL       15,FROCOMP+4             Add in the lower word        00667000
+         BC       12,SC&SYSNDX             No carry then skip...        00668000
+         AL       14,=F'1'                 Bump upper word for carry    00669000
+SC&SYSNDX AL      14,FROCOMP               Add in the upper word        00670000
+         STM      14,15,FROCOMP            Save the result              00671000
+.*                                                                      00672000
+C&SYSNDX SR       15,15                    Clear the return code reg    00673000
+         IC       15,FRCODE                Load the return code         00674000
+         AIF      ('&TYPE' NE 'CLOSE_FILE').NOTCLF                      00675000
+         ICM      R15,B'0010',FRCODE2      Get write return code too    00676000
+.NOTCLF  ANOP                                                           00677000
+         L        1,FRLENGTH               Load the Length processed    00678000
+.*                                                                      00679000
+         AIF      ('&TYPE' NE 'READ_FILE').NOTREAD                      00680000
+         AIF      ('&SAVE' EQ '').NOTRD                                 00681000
+         IPUEXIT  READ,SAVE=&SAVE                                       00682000
+.NOTRD   ANOP                                                           00683000
+         LTR      15,15                    Test the return code         00684000
+         BNZ      O&SYSNDX                 Failure, then skip           00685000
+         LTR      1,1                      Test the length              00686000
+         BP       O&SYSNDX                 Positive the skip death      00687000
+         LA       15,8                     Set an error code            00688000
+O&SYSNDX DS       0H                                                    00689000
+.NOTREAD ANOP                                                           00690000
+.*                                                                      00691000
+         B        Y&SYSNDX                                              00692000
+V&SYSNDX DS       0H                                                    00693000
+         LA       15,4                     Set the eof                  00694000
+         B        Y&SYSNDX                                              00695000
+U&SYSNDX MVC      FRWORKLN(4),IVNULLSZ     Set the null size            00696000
+Z&SYSNDX SR       15,15                    Clear the return code        00697000
+Y&SYSNDX DS       0H                                                    00698000
+         DROP     1                                                     00699000
+         MEXIT                                                          00700000
+.*                                                                      00701000
+.*       Produce the DSECT                                              00702000
+.*                                                                      00703000
+.DSECT   ANOP                                                           00704000
+         FRBLOK   DSECT=YES                                             00705000
+         MEXIT                                                          00706000
+.*                                                                      00707000
+.*       De-Allocate a File Request Handle                              00708000
+.*                                                                      00709000
+.DEALLOC ANOP                                                           00710000
+&LABEL   DS       0H                                                    00711000
+*                                                                       00712000
+*        Locate and then drop from queue                                00713000
+*                                                                       00714000
+         LA       15,4                     Set a bad code               00715000
+         LA       14,IVFRBLOK              Load the (head of chain)     00716000
+         ICM      1,B'1111',IVFRBLOK       Load the head of chain       00717000
+L&SYSNDX BZ       D&SYSNDX                                              00718000
+         C        1,&ADDRESS               Is this our address?         00719000
+         BE       R&SYSNDX                 Yes, then let's go drop      00720000
+         LA       14,FRNEXT-FRBLOK(,1)     Load the (next in chain)     00721000
+         ICM      1,B'1111',FRNEXT-FRBLOK(1) Load the next in chain     00722000
+         B        L&SYSNDX                 Continue searching...        00723000
+*                                                                       00724000
+*        Drop the entry                                                 00725000
+*                                                                       00726000
+R&SYSNDX MVC      0(4,14),FRNEXT-FRBLOK(1) Remove our block             00727000
+         AIF      ('&OPLEN' EQ '').DEALLON                              00728000
+         L        0,=A(FRBLOKOL)           Load the block length        00729000
+         A        0,&OPLEN                 Include variable block       00730000
+         AGO      .DEALLOP                                              00731000
+.DEALLON ANOP                                                           00732000
+         L        0,=A(FRBLOKLN)           Load the block length        00733000
+.DEALLOP ANOP                                                           00734000
+*        FREEVIS  ADDRESS=(1),LENGTH=(0)                                00735000
+         IPSTOR   FREE,ADDRESS=(1),LENGTH=(0),MACID=&SYSECT             00736000
+*                                                                       00737000
+*        Completion Points                                              00738000
+*                                                                       00739000
+G&SYSNDX SR       15,15                    Clear the return code        00740000
+D&SYSNDX DS       0H                                                    00741000
+         MEXIT                                                          00742000
+.*                                                                      00743000
+.*       Allocate a File Request Handle                                 00744000
+.*                                                                      00745000
+.ALLOC   ANOP                                                           00746000
+&LABEL   DS       0H                                                    00747000
+*                                                                       00748000
+*        Obtain the New Request Block                                   00749000
+*                                                                       00750000
+         AIF      ('&OPLEN' EQ '').ALLOCN                               00751000
+         L        0,=A(FRBLOKOL)           Load the block length        00752000
+         A        0,&OPLEN                 Include variable block       00753000
+         AGO      .ALLOCC                                               00754000
+.ALLOCN  ANOP                                                           00755000
+         L        0,=A(FRBLOKLN)           Load the block length        00756000
+.ALLOCC  ANOP                                                           00757000
+         AIF      ('&LOC' EQ '').NOLOC                                  00758000
+*        GETVIS   ADDRESS=(1),                                         X00759000
+               LENGTH=(0),                                             X00760000
+               SPID=IVFRSPID,LOC=&LOC                                   00761000
+         IPSTOR   GET,LENGTH=(0),SPID='FRBLOK',MACID=&SYSECT,          *00762000
+               LOC=&LOC                                                 00763000
+         AGO      .LOCEND                                               00764000
+.NOLOC   ANOP                                                           00765000
+*        GETVIS   ADDRESS=(1),                                         X00766000
+               LENGTH=(0),                                             X00767000
+               SPID=IVFRSPID                                            00768000
+         IPSTOR   GET,LENGTH=(0),SPID='FRBLOK',MACID=&SYSECT,          *00769000
+               LOC=RES                                                  00770000
+.LOCEND  ANOP                                                           00771000
+         LTR      15,15                    Let's test the return code   00772000
+         BNZ      D&SYSNDX                 Bad, then return             00773000
+         XC       0(256,1),0(1)            Clear the new block          00774000
+         XC       256(FRBLOKLN-256,1),256(1) Clear the second half      00775000
+         MVC      FRID-FRBLOK(6,1),=CL6'FRBLOK' Set the eye catcher     00776000
+*                                                                       00777000
+*        Queue This New Request                                         00778000
+*                                                                       00779000
+A&SYSNDX L        15,IVFRBLOK              Load the current pointer     00780000
+         LR       14,1                     Copy the pointer             00781000
+         MVC      FRNEXT-FRBLOK(4,1),IVFRBLOK Copy the chain pointer    00782000
+         CS       15,14,IVFRBLOK           Update the chain pointer     00783000
+         BNZ      A&SYSNDX                 Failure, then try again      00784000
+         ST       1,&ADDRESS               Save the Block address       00785000
+         SR       15,15                    Clear the return code        00786000
+*                                                                       00787000
+*        Completion Point                                               00788000
+*                                                                       00789000
+D&SYSNDX DS       0H                                                    00790000
+         MEXIT                                                          00791000
+         MEND                                                           00792000

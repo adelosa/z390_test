@@ -1,0 +1,289 @@
+         TITLE 'LE/VSE Assembler User Exit under CICS'                  00001000
+*/*******************************************************************/  00002000
+*/*                                                                 */  00003000
+*/*    Language Environment/VSE V1 R4 M3                            */  00004000
+*/*                                                                 */  00005000
+*/*    LICENSED MATERIALS - PROPERTY OF IBM                         */  00006000
+*/*                                                                 */  00007000
+*/*    5686-066-32-75K (C) COPYRIGHT IBM CORP. 1991,  2002          */  00008000
+*/*    ALL RIGHTS RESERVED.                                         */  00009000
+*/*                                                                 */  00010000
+*/*   US Government Users Restricted Rights - Use, duplication or   */  00011000
+*/*   disclosure restricted by GSA ADP Schedule Contract with IBM   */  00012000
+*/*   Corp.                                                         */  00013000
+*/*                                                                 */  00014000
+*/*******************************************************************/  00015000
+CEEBXITA CSECT                                                          00016000
+CEEBXITA AMODE  ANY                                                     00017000
+CEEBXITA RMODE  ANY                                                     00018000
+         ENTRY  CEEBXITA                                                00019000
+*/*-----------------------------------------------------------------*/  00020000
+*/* CEECXITA - Assembler User Exit under CICS                       */  00021000
+*/*                                                                 */  00022000
+*/* Function code:                                                  */  00023000
+*/*    1 - first enclave initialization                             */  00024000
+*/*    2 - first enclave termination                                */  00025000
+*/*    3 - nested enclave initialization                            */  00026000
+*/*    4 - nested enclave termination                               */  00027000
+*/*    5 - PROCESS TERMINATION                                      */  00028000
+*/*                                                                 */  00029000
+*/* Register Usage:                                                 */  00030000
+*/*    Input                                                        */  00031000
+*/*       R1  - A(A(Assembler User Exit Plist cntrl blk)) - CEEAUE  */  00032000
+*/*             NOTE: CEEAUE  contains the address of a 256 Byte    */  00033000
+*/*                   work area initialized to zero which is used   */  00034000
+*/*                   as the CEEBXITA's Save Area                   */  00035000
+*/*       R15 - Entry Point Address                                 */  00036000
+*/*       R14 - Return Address                                      */  00037000
+*/*       R13 - Caller's save area address                          */  00038000
+*/*       R12 - Pointer to CAA                                      */  00039000
+*/*    Output                                                       */  00040000
+*/*       CEEAUE  altered                                           */  00041000
+*/*    Work Regs                                                    */  00042000
+*/*       R3 - Code Base                                            */  00043000
+*/*       R2 - Base for User Exit Control Block (CEEAUE)            */  00044000
+*/*                                                                 */  00045000
+*/* History:                                                        */  00046000
+*/*                                                                 */  00047000
+*/*   10/26/98 (PVD)  PQ23382 - Performance enhancement. Sysroute   */  00048000
+*/*                   of PQ14883. Default is return via immediate   */  00049000
+*/*                   BR 14.                                        */  00050000
+*/* *************************************************************** */  00051000
+*/*    LE/VSE Version 1 Release 4 Modification Level 1 Changes :    */  00052000
+*/*                                                                 */  00053000
+*/* @01  GWH  Update for LE/VSE 1.4.1.                              */  00054000
+*/*                                                                 */  00055000
+*/* *************************************************************** */  00056000
+*/*    LE/VSE Version 1 Release 4 Modification Level 2 Changes :    */  00057000
+*/*                                                                 */  00058000
+*/* $02  GWH  Update for LE/VSE 1.4.2.                         @02A */  00059000
+*/*                                                                 */  00060000
+*/* *************************************************************** */  00061000
+*/*    LE/VSE Version 1 Release 4 Modification Level 3 Changes :    */  00062000
+*/*                                                                 */  00063000
+*/* $03  GWH  Update for LE/VSE 1.4.3.                         @03A */  00064000
+*/*                                                                 */  00065000
+*/*-----------------------------------------------------------------*/  00066000
+         SPACE 2                                                        00067000
+         USING CEEBXITA,R3        Code Base                             00068000
+         USING CEEAUE,R2         User Exit Control Block                00069000
+         SPACE 1                                                        00070000
+*                                                                       00071000
+*-------- IMPORTANT ------ IMPORTANT ---------- IMPORTANT -----------   00072000
+*  The BR14 below is implemented as a default to reduce the LE          00073000
+*  default instruction path. Be sure to remove this when                00074000
+*  activating your CEECXITA program.                                    00075000
+*                                                                       00076000
+         BR    14                 BRANCH BACK TO LE          @PQ23382   00077000
+*                                 IMMEDIATELY                @PQ23382   00078000
+*-------- IMPORTANT ------ IMPORTANT ---------- IMPORTANT -----------   00079000
+*                                                                       00080000
+         STM   14,12,12(13)       Save Registers in caller's S.A.       00081000
+         LR    R3,R15             Set Module Base                       00082000
+         B     AROUND                                                   00083000
+         DC    CL8'CEECXITA'      Eye-catcher for Debugging             00084000
+         DC    CL8'V1.R4.M3'                                      @03C  00085000
+         DC    CL10'29/04/2002'                                   @03C  00086000
+*                                                                       00087000
+AROUND   DS    0H                                                       00088000
+         L     R2,0(,R1)          Get the parm passed                   00089000
+         L     R10,CEEAUE_A_WORK    Obtain the workarea                 00090000
+*                                 Chain the Save Areas                  00091000
+         ST    R10,8(,R13)        Old points to new                     00092000
+         ST    R13,4(,R10)        New SaveArea points to old            00093000
+         LR    R13,R10            R13 points to new SaveArea            00094000
+*                                                                       00095000
+         L    R4,CEEAUE_FUNC        Get the function code.              00096000
+         C    R4,FRST_INIT_CODE   First EnclaveInitialization Exit?     00097000
+         BE   FRST_INIT_EXIT      Yes. Branch to it?                    00098000
+*                                                                       00099000
+         C    R4,FRST_TERM_CODE   First Enclave Termination Exit?       00100000
+         BE   FRST_TERM_EXIT      Yes. Branch to it?                    00101000
+*                                                                       00102000
+         C    R4,NSTD_INIT_CODE   Nested Enclave Initialization Exit?   00103000
+         BE   NSTD_INIT_EXIT      Yes. Branch to it?                    00104000
+*                                                                       00105000
+         C    R4,NSTD_TERM_CODE   Nested Enclave Termination Exit?      00106000
+         BE   NSTD_TERM_EXIT      Yes. Branch to it?                    00107000
+*                                                                       00108000
+         C    R4,PROC_TERM_CODE   Process Termination Exit?             00109000
+         BE   PROC_TERM_EXIT      Yes. Branch to it?                    00110000
+*                                                                       00111000
+         B    RETURN              It is neither Init nor Term           00112000
+*                                 ...exit code. Simply Return           00113000
+         EJECT                                                          00114000
+*/*=================================================================*/  00115000
+*/*      First enclave initialization exit.                         */  00116000
+*/*=================================================================*/  00117000
+FRST_INIT_EXIT DS   0H                                                  00118000
+         SPACE 1                                                        00119000
+*                                                                       00120000
+*  To activate the abend codes table, uncomment the next 2 lines        00121000
+*                                                                       00122000
+*        LA    R4,ABEND_CODES     Get addr(abend codes table)           00123000
+*        ST    R4,CEEAUE_A_AB_CODES Store it in slot                    00124000
+*                                                                       00125000
+         B     RETURN                                                   00126000
+         SPACE 1                                                        00127000
+*/*=================================================================*/  00128000
+*/*      First enclave termination exit.                            */  00129000
+*/*=================================================================*/  00130000
+         SPACE 1                                                        00131000
+*                                                                       00132000
+FRST_TERM_EXIT DS   0H                                                  00133000
+         B     RETURN                                                   00134000
+         SPACE 1                                                        00135000
+*/*=================================================================*/  00136000
+*/*      Nested enclave initialization exit.                        */  00137000
+*/*=================================================================*/  00138000
+         SPACE 1                                                        00139000
+*                                                                       00140000
+NSTD_INIT_EXIT DS   0H                                                  00141000
+         B     RETURN                                                   00142000
+         SPACE 1                                                        00143000
+*/*=================================================================*/  00144000
+*/*      Nested enclave termination exit.                           */  00145000
+*/*=================================================================*/  00146000
+         SPACE 1                                                        00147000
+*                                                                       00148000
+NSTD_TERM_EXIT DS   0H                                                  00149000
+         B     RETURN                                                   00150000
+         SPACE 1                                                        00151000
+*/*=================================================================*/  00152000
+*/*      Process termination exit.                                  */  00153000
+*/*=================================================================*/  00154000
+         SPACE 1                                                        00155000
+*                                                                       00156000
+PROC_TERM_EXIT DS   0H                                                  00157000
+*        B     RETURN                                                   00158000
+*                                                                       00159000
+         SPACE 1                                                        00160000
+*/*=================================================================*/  00161000
+*/*               R E T U R N     T O    C A L L E R                */  00162000
+*/*=================================================================*/  00163000
+RETURN   DS    0H                                                       00164000
+         L     R13,4(,R13)        Get A(caller's save area)             00165000
+         LM    R14,R12,12(R13)    Restore caller's regs                 00166000
+         BR    R14                Go home                               00167000
+         EJECT                                                          00168000
+*              CONSTANTS AND WORKAREAS                                  00169000
+*                                                                       00170000
+FRST_INIT_CODE  DC  F'1'          First enclave initialization code     00171000
+FRST_TERM_CODE  DC  F'2'          First enclave termination code        00172000
+NSTD_INIT_CODE  DC  F'3'          Nested enclave initialization code    00173000
+NSTD_TERM_CODE  DC  F'4'          Nested enclave termination code       00174000
+PROC_TERM_CODE  DC  F'5'          Process termination code              00175000
+*                                                                       00176000
+*                                                                       00177000
+*   NOTE: The following table is not enabled (ignored) in CICS.         00178000
+*                                                                       00179000
+ABEND_CODES DS 0H                                                       00180000
+*                                                                       00181000
+           DC  A(((ABEND_CODES_END-ABEND_CODES)/4)-1)                   00182000
+*                                                                       00183000
+*                                                                       00184000
+ABEND_CODES_END DS 0H                                                   00185000
+*-------------------------------------------------------------------    00186000
+* Condition token constants                                             00187000
+*                                                                       00188000
+*-------------------------------------------------------------------    00189000
+* Condition token constant for 'abend trapped'.                         00190000
+*                                                                       00191000
+TOK_ABD_TRP DS 0CL8                                                     00192000
+           DC  X'0004'            Severity 4                            00193000
+           DC  X'0CB2'            Message number (3250)                 00194000
+           DC  X'61'              Case 1 token                          00195000
+*                                 Severity 4 condition                  00196000
+           DC  C'CEE'             Facility ID                           00197000
+*                                                                       00198000
+*                                                                       00199000
+* Condition token constant for 'operation exception'                    00200000
+*                                                                       00201000
+TOK_OP_EXC DS 0CL8                                                      00202000
+           DC  X'0003'            Severity 3                            00203000
+           DC  X'0C81'            Message number (3201)                 00204000
+           DC  X'59'              Case 1 token                          00205000
+*                                 Severity 3 condition                  00206000
+           DC  C'CEE'             Facility ID                           00207000
+*                                                                       00208000
+*                                                                       00209000
+* Condition token constant for 'floating point divide exception'        00210000
+*                                                                       00211000
+TOK_FP_EXC DS 0CL8                                                      00212000
+           DC  X'0003'            Severity 3                            00213000
+           DC  X'0C8F'            Message number (3215)                 00214000
+           DC  X'59'              Case 1 token                          00215000
+*                                 Severity 3 condition                  00216000
+           DC  C'CEE'             Facility ID                           00217000
+*                                                                       00218000
+*                                                                       00219000
+                     SPACE 1                                            00220000
+*===================================================================    00221000
+*         Parameter list passed to the User Exit.                       00222000
+*         Addressed by Reg 1 = A(A(CEEAUE))                             00223000
+*===================================================================    00224000
+CEEAUE               DSECT 0D                                           00225000
+CEEAUE_LEN           DS  F        Len of user exit Ctl Blk              00226000
+CEEAUE_FUNC          DS  F        Function Code                         00227000
+*                                 1 ==> Initialization Exit             00228000
+*                                 2 ==> Termination Exit                00229000
+*                                 3 ==> Init Exit for nested enclave    00230000
+*                                 4 ==> Term Exit for nested enclave    00231000
+*                                 5 ==> Process termination exit        00232000
+CEEAUE_RETC          DS  F        Return or ABEND code                  00233000
+CEEAUE_RSNC          DS  F        Return or ABEND Reason Code           00234000
+*                                                                       00235000
+CEEAUE_FLAGS         DS  0F       Flags                                 00236000
+CEEAUE_FLAG1         DS  X                                              00237000
+CEEAUE_ABTERM        EQU X'80'    0 = normal termination                00238000
+*                                 1 = abnormal termination. There       00239000
+*                                     was a condition of severity 2 or  00240000
+*                                     greater and the condition was     00241000
+*                                     not handled.                      00242000
+CEEAUE_ABND          EQU X'40'    0 = terminate pgm with Return/Reason  00243000
+*                                 1 = terminate pgm with ABEND/Reason   00244000
+CEEAUE_DUMP          EQU X'20'    0 = Do not include a dump on an ABEND 00245000
+*                                 1 = Include a dump on an ABEND        00246000
+                     SPACE 1                                            00247000
+CEEAUE_FLAG2         DS  X        Reserved                              00248000
+CEEAUE_FLAG3         DS  X        Reserved                              00249000
+CEEAUE_FLAG4         DS  X        Reserved                              00250000
+                     SPACE 1                                            00251000
+CEEAUE_A_CC_PLIST    DS  A        Ptr to Reg 1 upon invocation          00252000
+*                                 ...Initialization Exit Only           00253000
+CEEAUE_A_WORK        DS  A        Ptr to 256-byte work area             00254000
+CEEAUE_A_OPTIONS     DS  A        A(A(Run-Time Options string))         00255000
+CEEAUE_USERWD        DS  F        User word. Retained thru Termination  00256000
+CEEAUE_A_AB_CODES    DS  A        NOTE: This field is ignored in CICS.  00257000
+CEEAUE_FBCODE        DS  A        Feedback code                         00258000
+CEEAUE_PAGE          DS  F        Minimum value for page allocations    00259000
+*                                                                       00260000
+*   Condition token structure                                           00261000
+*                                                                       00262000
+TOK                  DSECT 0F                                           00263000
+TOK_DATA             DS CL8                                             00264000
+TOK_ISA              DS F                                               00265000
+*                                                                       00266000
+                     SPACE 1                                            00267000
+*/*=================================================================*/  00268000
+*/*      E N D     O F     P A R A M E T E R    L I S T             */  00269000
+*/*=================================================================*/  00270000
+                     SPACE 1                                            00271000
+CEEBXITA CSECT                                                          00272000
+R0       EQU   0                                                        00273000
+R1       EQU   1                                                        00274000
+R2       EQU   2                                                        00275000
+R3       EQU   3                                                        00276000
+R4       EQU   4                                                        00277000
+R5       EQU   5                                                        00278000
+R6       EQU   6                                                        00279000
+R7       EQU   7                                                        00280000
+R8       EQU   8                                                        00281000
+R9       EQU   9                                                        00282000
+R10      EQU   10                                                       00283000
+R11      EQU   11                                                       00284000
+R12      EQU   12                                                       00285000
+R13      EQU   13                                                       00286000
+R14      EQU   14                                                       00287000
+R15      EQU   15                                                       00288000
+         END                                                            00289000

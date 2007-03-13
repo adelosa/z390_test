@@ -1,0 +1,299 @@
+         TITLE 'SECPOWER - (CSECT)-- Copyright 1996 (c) Connectivity Sy*00001000
+               stems Incorporated'                                      00002000
+SECPOWER CSECT                                                          00003000
+         ENTRY  SECPOWER                                                00004000
+*********************************************************************** 00005000
+*                                                                     * 00006000
+*  Copyright (c) 1996 - Connectivity Systems Inc.                     * 00007000
+*                                                                     * 00008000
+*  This is a sample security exit for TCP/IP for VSE. The sample exit * 00009000
+*  performs the following basic functions.                            * 00010000
+*                                                                     * 00011000
+*  1) It allows or disallows access to FTP based on a userid table    * 00012000
+*     that is hardcoded in the exit. The table contains a list of     * 00013000
+*     POWER spool classes and userids that can access each class.     * 00014000
+*     If a userid of '*' is specified, all users can access that      * 00015000
+*     particular class. Otherwise, there must be an exact match       * 00016000
+*     between the userid and the class for access to be allowed.      * 00017000
+*                                                                     * 00018000
+*                                                                     * 00019000
+*                                                                     * 00020000
+* Program Attributes: Rent, Reus                                      * 00021000
+*                                                                     * 00022000
+*                                                                     * 00023000
+*                                                                     * 00024000
+*********************************************************************** 00025000
+         SPLEVEL SET=1                                                  00026000
+R0       EQU   0                                                        00027000
+R1       EQU   1                                                        00028000
+R2       EQU   2                                                        00029000
+R3       EQU   3                                                        00030000
+R4       EQU   4                                                        00031000
+R5       EQU   5                                                        00032000
+R6       EQU   6                                                        00033000
+R7       EQU   7                                                        00034000
+R8       EQU   8                                                        00035000
+R9       EQU   9                                                        00036000
+R10      EQU   10                                                       00037000
+R11      EQU   11                                                       00038000
+R12      EQU   12                                                       00039000
+R13      EQU   13                                                       00040000
+R14      EQU   14                                                       00041000
+R15      EQU   15                                                       00042000
+         STM   R14,R12,12(R13)         Save Callers Registers           00043000
+         LR    R12,R15                 Load a base                      00044000
+         LR    R9,R1                   Save Parm address                00045000
+         USING SXBLOK,R9               Address Security block           00046000
+         USING SECPOWER,R12                                             00047000
+*                                                                       00048000
+*********************************************************************** 00049000
+*  Since this exit is only interested in POWER security, lets check   * 00050000
+*  the file type. If it is not power, than we terminate. We can do    * 00051000
+*  this without having to obtain dynamic storage.                     * 00052000
+*********************************************************************** 00053000
+         CLI   SXTYPE,SXTYSTRT         Startup  Request?                00054000
+         BE    PROCREQ                                                  00055000
+         CLI   SXTYPE,SXTYSHUT         Shutdown Request?                00056000
+         BE    PROCREQ                                                  00057000
+         CLI   SXTYPE,SXTYPASS         Password Request?                00058000
+         BE    PROCREQ                                                  00059000
+         CLI   SXTYPE,SXTYREAD         Read     Request?                00060000
+         BE    PROCREQR                                                 00061000
+         CLI   SXTYPE,SXTYWRIT         Write    Request?                00062000
+         BE    PROCREQR                                                 00063000
+PROCREQR DS    0H                                                       00064000
+         CLI   SXFTYPE,X'08'           Is it Power?                     00065000
+         BE    PROCREQ                 Yup, this needs to be handled    00066000
+         XR    R8,R8                   Set zero return code             00067000
+         B     ENDPROGS                short cut to end of program      00068000
+PROCREQ  DS    0H                                                       00069000
+         LA    R0,512                  Amount required                  00070000
+         GETVIS ADDRESS=(1),LENGTH=(0)                                  00071000
+         LTR   R15,R15                 Did GETVIS work?                 00072000
+         BNZ   GETVFAIL                Nope, can't do much              00073000
+         LR    R11,R1                  Save address of storage          00074000
+         USING DATD,R11                Address Dynamic area             00075000
+*********************************************************************** 00076000
+*  Let's check out why the routine has been called.                   * 00077000
+*                                                                     * 00078000
+*                                                                     * 00079000
+*********************************************************************** 00080000
+         CLI   SXTYPE,SXTYPASS         Password Request?                00081000
+         BE    PASSWORD                                                 00082000
+         CLI   SXTYPE,SXTYREAD         Read     Request?                00083000
+         BE    READ                                                     00084000
+         CLI   SXTYPE,SXTYWRIT         Write    Request?                00085000
+         BE    WRITE                                                    00086000
+         CLI   SXTYPE,SXTYUPDT         Update   Request?                00087000
+         BE    UPDATE                                                   00088000
+         CLI   SXTYPE,SXTYSTRT         Startup  Request?                00089000
+         BE    START                                                    00090000
+         CLI   SXTYPE,SXTYSHUT         Shutdown Request?                00091000
+         BE    SHUT                                                     00092000
+         WTO   'Invalid call to security exit'                          00093000
+         B     RETGOOD                                                  00094000
+*                                                                       00095000
+*                                                                       00096000
+*                                                                       00097000
+PASSWORD DS    0H                                                       00098000
+*********************************************************************** 00099000
+* This is the password routine. THe only thing we need to check       * 00100000
+* here is that the userid is actually valid. Fortunately, TCP/IP      * 00101000
+* has already checked this for us, so we'll just take its word for it.* 00102000
+*********************************************************************** 00103000
+         CLI   SXPASSVF,X'FF'                Password Verified?         00104000
+         BNE   RETFAIL                       User not validated - fail  00105000
+         XR    R8,R8                         Set return code            00106000
+         B     ENDPROG                       Terminate                  00107000
+*                                                                       00108000
+*                                                                       00109000
+*                                                                       00110000
+*                                                                       00111000
+WRITE    DS    0H                                                       00112000
+READ     DS    0H                                                       00113000
+*********************************************************************** 00114000
+* This is the Read/Write routine. A read or write will be allowed if: * 00115000
+*                                                                     * 00116000
+* 1) The user is defined and the password has already been validated  * 00117000
+* 2) The POWER class is not defined in the table at the end of the    * 00118000
+*    program.                                                         * 00119000
+*                                                                     * 00120000
+* 3) The class is defined and the userid is in the table associated   * 00121000
+*    with this class.                                                 * 00122000
+*********************************************************************** 00123000
+*********************************************************************** 00124000
+* Here, we check if the userid has already been validated by          * 00125000
+* TCP/IP prior to calling the security exit. Note that the exit       * 00126000
+* could have ignored this password completely.                        * 00127000
+*********************************************************************** 00128000
+         CLI   SXPASSVF,X'FF'                Password Verified?         00129000
+         BE    USERIDOK                                                 00130000
+         B     RETFAIL                                                  00131000
+*                                                                       00132000
+*********************************************************************** 00133000
+* Here, we already know that the file is a POWER spool file. Let us   * 00134000
+* check that it is a LST file.                                        * 00135000
+*********************************************************************** 00136000
+USERIDOK DS    0H                                                       00137000
+         CLC   SXSPIE1(8),=CL8'LST'         LST queue?                  00138000
+         BNE   RETGOOD                      No, allow transfer.         00139000
+*********************************************************************** 00140000
+* Now, we will scan the CLASS table searching for the correct class   * 00141000
+* If we don't find it, we allow the transfer.                         * 00142000
+*********************************************************************** 00143000
+         LA    R2,CLSTABLE                  Load class table            00144000
+CLSLOOP  DS    0H                                                       00145000
+         CLI   0(R2),X'FF'                  End of class table          00146000
+         BE    RETGOOD                      Yup, allow transfer         00147000
+         CLC   0(1,R2),SXSPIE2              Does the class match?       00148000
+         BE    CLSMATCH                     Yes, it does!               00149000
+         LA    R2,6(R2)                     Check next class            00150000
+         B     CLSLOOP                                                  00151000
+*                                                                       00152000
+CLSMATCH DS    0H                                                       00153000
+*********************************************************************** 00154000
+* Here, we have a matching class in the table. Let us search for a    * 00155000
+* matching userid. If we find it, cool. Else, Failure                 * 00156000
+*********************************************************************** 00157000
+         L     R3,2(R2)                     Pick up address of uid tab  00158000
+UIDLOOP  DS    0H                                                       00159000
+         CLC   0(16,R3),CLSBLANK            All Blanks                  00160000
+         BE    RETFAIL                      Yup - end of table.         00161000
+         CLC   0(16,R3),SXUSERID            does the userid match?      00162000
+         BE    RETGOOD                                                  00163000
+         LA    R3,16(R3)                    next table entry            00164000
+         B     UIDLOOP                                                  00165000
+*                                                                       00166000
+UPDATE   DS    0H                                                       00167000
+         WTO   'IPSC001E An update request has been received from the SC00168000
+               ecurity exit'                                            00169000
+         B     ENDPROG                                                  00170000
+*                                                                       00171000
+START    DS    0H                                                       00172000
+         WTO   'IPSC010E Security Exit Startup - POWER SPOOL'           00173000
+         XR    R8,R8                                                    00174000
+         B     ENDPROG                                                  00175000
+*                                                                       00176000
+SHUT     DS    0H                                                       00177000
+         WTO   'IPSC011E Security Exit Shutdown - POWER SPOOL'          00178000
+         XR    R8,R8                                                    00179000
+         B     ENDPROG                                                  00180000
+*                                                                       00181000
+AUDITMSG DS    0H                                                       00182000
+*********************************************************************** 00183000
+*  Here, we've been requested to audit the current operation. We'll   * 00184000
+*  get all relevant data and write messages to the console.           * 00185000
+*********************************************************************** 00186000
+         MVC   WTO1D(WTO1CE-WTO1C),WTO1C                                00187000
+         MVC   WTO2D(WTO2CE-WTO2C),WTO2C                                00188000
+*                                                                       00189000
+         MVC   WTO1D+27(16),SXUSERID                                    00190000
+         WTO   MF=(E,WTO1D)                   Write it out.             00191000
+         MVC   WTO2D+39(1),SXSPIE2                                      00192000
+         MVC   WTO2D+51(8),SXSPIE3                                      00193000
+         WTO   MF=(E,WTO2D)                                             00194000
+         BR    R10                                                      00195000
+*                                                                       00196000
+RETGOOD  DS    0H                                                       00197000
+         XR    R8,R8                      Prepare to return a 0         00198000
+         B     ENDPROG                                                  00199000
+*                                                                       00200000
+*                                                                       00201000
+RETFAIL  DS    0H                                                       00202000
+         CLI   SXTYPE,SXTYPASS            Have already audited          00203000
+         BNE   DOAMSG                     Password Failure              00204000
+         MVC   WTO7D(WTO7CE-WTO7C),WTO7C     Bad Password               00205000
+         MVC   WTO7D+25(16),SXUSERID                                    00206000
+         WTO   MF=(E,WTO7D)                                             00207000
+         B     NOAUDITF                                                 00208000
+DOAMSG   DS    0H                                                       00209000
+         NI    RESFLAG,X'7F'              Indicate failure result       00210000
+         BAL   R10,AUDITMSG               All failures are audited      00211000
+NOAUDITF DS    0H                                                       00212000
+         LA    R8,4                       Prepare to return a 4         00213000
+         B     ENDPROG                                                  00214000
+*                                                                       00215000
+*                                                                       00216000
+GETVFAIL DS    0H                                                       00217000
+         WTO   'GETMAIN FAILED'                                         00218000
+         XR    R8,R8                                                    00219000
+         B     ENDPROG                                                  00220000
+*                                                                       00221000
+ENDPROG  DS    0H                                                       00222000
+         LA    R0,512                    Free the storage we got        00223000
+         FREEVIS  ADDRESS=(11),LENGTH=(0)                               00224000
+ENDPROGS DS    0H                        End of program shortcut        00225000
+         LR    R15,R8                    Load return code               00226000
+         L     R14,12(R13)               Reload callers regs            00227000
+         LM    R0,R12,20(R13)            Reload more regs               00228000
+         BR    R14                       Branch back to TCP/IP          00229000
+*                                                                       00230000
+*                                                                       00231000
+*                                                                       00232000
+*********************************************************************** 00233000
+* Constants                                                           * 00234000
+*********************************************************************** 00235000
+* This is the POWER Spool file and userid table. The format of the    * 00236000
+* table is:                                                           * 00237000
+*                                                                     * 00238000
+* 1 byte, power class, 1 byte reserved, 4 bytes pointer to userid     * 00239000
+* table. Userid table has a series of 16 byte userids terminated with * 00240000
+* 16 bytes of zeroes. Entire table terminates with a CLASS of X'FF'   * 00241000
+*                                                                     * 00242000
+*                                                                     * 00243000
+* WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING     * 00244000
+*                                                                     * 00245000
+* DO NOT (I REPEAT, DO NOT) FAIL TO HAVE THE TABLE TERMINATORS. THE   * 00246000
+* TERMINATOR FOR THE CLASS TABLE IS A HEX FF  . THE TERMINATOR FOR    * 00247000
+* EACH USERID TABLE IS AN ENTRY OF ALL BLANKS (16 BLANKS). FAILURE    * 00248000
+* TO DO THIS WILL PUT TCP/IP INTO AN ENDLESS LOOP!!!!!!!!!!!          * 00249000
+*                                                                     * 00250000
+*                                                                     * 00251000
+*                                                                     * 00252000
+*********************************************************************** 00253000
+CLSBLANK DC    CL16' '                                                  00254000
+CLSTABLE DS    0D                                                       00255000
+         DC    CL1'A',XL1'00',AL4(CLSALIST)                             00256000
+         DC    CL1'B',XL1'00',AL4(CLSBLIST)                             00257000
+         DC    XL1'FF'                                                  00258000
+*                                                                       00259000
+         DS    0D                                                       00260000
+CLSALIST DC    CL16'MARC'                                               00261000
+         DC    CL16'BOBDOLE'                                            00262000
+         DC    CL16'JACKKEMP'                                           00263000
+         DC    CL16'JOHNKASICH'                                         00264000
+         DC    CL16' '                                                  00265000
+*                                                                       00266000
+*                                                                       00267000
+*                                                                       00268000
+CLSBLIST DC    CL16'MARC'                                               00269000
+         DC    CL16'BOBDOLE'                                            00270000
+         DC    CL16'JACKKEMP'                                           00271000
+         DC    CL16'JOHNKASICH'                                         00272000
+         DC    CL16' '                                                  00273000
+*                                                                       00274000
+WTO1C    WTO   'IPPC001I Userid XXXXXXXXXXXXXXXX POWER Security ViolatiC00275000
+               on',MF=L                                                 00276000
+WTO1CE   EQU   *                                                        00277000
+WTO2C    WTO   'IPPC002I Power Spool Class: X, Filename XXXXXXXX',MF=L  00278000
+WTO2CE   EQU   *                                                        00279000
+*                                                                       00280000
+WTO7C    WTO   'IPSC007E User XXXXXXXXXXXXXXXX: Incorrect Password SpecC00281000
+               ified',MF=L                                              00282000
+WTO7CE   EQU   *                                                        00283000
+*                                                                       00284000
+* Note WTO10 hardcoded in mainline                                      00285000
+*                                                                       00286000
+*                                                                       00287000
+DATD     DSECT                                                          00288000
+FILETYPE DS    CL8                      Ebcidic: Type of File           00289000
+AUDITFLG DC    XL1'00'                   X'80' - Audit X'00 - Don't     00290000
+RESFLAG  DC    XL1'00'                   X'80' is allowed               00291000
+*                                                                       00292000
+WTO1D    WTO   'IPPC001I Userid XXXXXXXXXXXXXXXX POWER Security ViolatiC00293000
+               on',MF=L                                                 00294000
+WTO2D    WTO   'IPPC002I Power Spool Class: X, Filename XXXXXXXX',MF=L  00295000
+WTO7D    WTO   'IPSC007E User XXXXXXXXXXXXXXXX: Incorrect Password SpecC00296000
+               ified',MF=L                                              00297000
+         SXBLOK                                                         00298000
+         END   SECPOWER                                                 00299000

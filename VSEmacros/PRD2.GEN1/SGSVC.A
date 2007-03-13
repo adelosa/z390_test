@@ -1,0 +1,1068 @@
+         MACRO                                                          00010027
+         SGSVC                                                          00020027
+.*                                                                      00030027
+*********************************************************************** 00040027
+*                                                                     * 00050030
+*        SUPERVISOR - SGSVC - 5686-066-06                             * 00070030
+.*                                                                    * 00080030
+*        LICENSED MATERIALS - PROPERTY OF IBM                         * 00090030
+*        "RESTRICTED MATERIALS OF IBM"                                * 00100030
+*        5686-066                                                     * 00110030
+*        (C) COPYRIGHT IBM CORP. 1979, 2001                           * 00111030
+*                                                                     * 00130030
+*********************************************************************** 00140027
+.*                                                                      00150027
+.*01*    CHANGE ACTIVITY = AS FOLLOWS                          @DA35100 00160027
+.*  MSG0P77I AFTER LTA LOAD REQ FOR NON-$$B PHASE WITH SEC=YES @DA35100 00170027
+.*  SVC 46 EXTENDED BY VMCF HOOK (VM-MODE ONLY)                @DA36374 00180027
+.*  SVC 53: SUPPORT NEW FUNCTION CODE X'40' TO ACTIVATE        @DA36477 00190027
+.*          VTAM APPENDAGE ROUTINE ISTAPCKU                    @DA36477 00200027
+.*  SVC 115 PMA SUPPORT                                        @D21YDRP 00210027
+.*  ILLEGAL SVC 107 WHEN CANCEL AR COMMAND IS GIVEN            @DA37571 00220027
+.*  SPE DY37265                                                @D21IDKH 00230027
+.*  SOFTWARE RE-IPL                                            @D31QDHB 00240027
+.*  MORE PARTITION SUPPORT                                     @D51IDMZ 00250027
+.*  31 BIT SUPPORT                                             @D52VDGN 00260027
+.*  PWROFF CAUSES HARDWAIT                                     @DY42602 00270027
+.*  SVC12, SVC13 MOVED FROM SGCFCH (VSE - MODESET SERVICE )    @D61BDVB 00280027
+.*  MVS - MODESET SERVICE  (MVS SVC 107)                       @D61BDVB 00290027
+.*  MVS - MODESET SERVICE  API EXTENSIONS                      @D62ADVB 00300027
+.*  MORE THAN 255 TASKS                                        @D66ODOW 00310030
+.*                                                                      00320027
+***************************************************************         00330027
+         GBLB  &BG71                                           @D349DEM 00340027
+         GBLB  &BG370                   /370-SUPPORT           @D35CDEM 00350027
+         GBLB  &BGXA              MODE=ESA SUPPORT             @D51KDTP 00360027
+         GBLB  &BGFASTT           FAST CCW TRANSLATE           @D14NDFG 00370027
+         GBLB  &BGDEBUG           DEBUG SUPPORT                @D14ZDFG 00380027
+         GBLB  &SGSVC             PRINT CONTROL                @D14ZDFG 00390027
+         AIF   (NOT &BGDEBUG OR NOT &SGSVC).NOPRINT                     00400027
+         PRINT GEN                 PRINT MODULE                         00410027
+.NOPRINT ANOP                                                           00420027
+         ENTRY SGSVC                                           @D36ZDFG 00430027
+         DC    C'*SGSVC* '                                     @DA35100 00440027
+         DC    C'02/28/2001'      LAST APAR FIX / DEVELOPMENT CHANGE    00450029
+         SPACE 2                                                        00460027
+SGSVC    DS    0H                                              @D36IDFR 00470027
+         USING SGSVC,RD                                        @D36IDFR 00480027
+         BR    RC                                              @D36IDFR 00490027
+         TITLE 'VSE SUPERVISOR    SGSVC      VALIDATE ADDRESS RANGE   ' 00500027
+         USING DISP,R6            MAKE DISPATCHER ADDRESSABLE  @D36IDFR 00510027
+************************************************************** @D149DFG 00520027
+* SVC 26: VALIDATE ADDRESS RANGE                               @D149DFG 00530027
+* ASSUMES UNPRIVILEDGED USER                                   @D149DFG 00540027
+* INPUT: ADDRESS RANGE (R1,R2)                                 @D149DFG 00550027
+************************************************************** @D149DFG 00560027
+         SPACE 1                                                        00570027
+         USING TCBADR,RA          MAKE TCB ADDRESSIBLE         @D64ADMS 00580027
+SVC26    TM    SVOLDKEY,KEY0      IS REQUESTOR KEY ZERO?       @D35CDEM 00590027
+         BNZ   ERR21 ,            NO ILLEGAL SVC                     AC 00600027
+         BAL   R8,VALIDAD         VALIDATE THE AREA (R1,R2)    @D14BDFG 00610027
+*SGLINK  VALIDAD,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)              @D149DFG 00620027
+         B     ERR25              INVALID ADDRESS, CANCEL      @D14BDFG 00630027
+         B     ERR25              CROSSING KEY BOUNDARY,CANCEL @D14BDFG 00640027
+         L     R8,TIBPTR          TIB OF CURRENT TASK          @D14BDFG 00650027
+         USING TIBADR,R8                                       @D14BDFG 00660027
+         TM    TIBFLAG2,ICCFPP    VALIDATION FOR PSEUDO-PART.  @D14BDFG 00670027
+         BO    SVC26PP            YES, CHECK FOR PP KEY        @D14BDFG 00680027
+         TM    IJBFLG08,IJBSAENV  SKIP KEY VALIDATION IN SA..  @D61DDMZ 00690027
+         BOR   R6                 .. ENV., SINCE DTF IN SVA    @D61DDMZ 00700027
+         L     R7,ASVC26AS                                     @D64ADMS 00710027
+         BSM   0,R7               SWITCH TO AMODE 31           @D64ADMS 00720027
+SVC26AS  LH    R8,TIBRTID         GET TID OF OWNER TASK        @D64ADMS 00730027
+         DROP  R8                                              @D64ADMS 00740027
+         SLL   R8,2               SHIFT TO MAKE AN INDEX       @D64ADMS 00750027
+         AL    R8,ATIBATAB                                     @D66ODOW 00760030
+         L     R8,0(,R8)          GET POINTER TO TIB           @D66ODOW 00770030
+         L     R8,TIBTCB-TIBADR(0,R8) GET TCB POINTER FROM TIB @D64ADMS 00780027
+         L     R8,TCBATCBE-TCBADR(0,R8) GET POINTER TO TCBX    @D64ADMS 00790027
+         USING TCBXADR,R8                                      @D64ADMS 00800027
+         SRL   R5,4               SHIFT KEY TO LAST 4 BITS     @D64ADMS 00810027
+         L     R7,BIT0OMSK        MAKE BIT MASK                @D64ADMS 00820027
+         SRL   R7,0(R5)           SHIFT BIT TO PROPER POSITION @D64ADMS 00830027
+         N     R7,TCBX1CR3        TEST BIT IN PSW KEY MASK     @D64ADMS 00840027
+         DROP  R8                                              @D64ADMS 00850027
+         BNZR  R6                 VALID ADDRESS RANGE, RETURN  @D64ADMS 00860027
+         B     ERR25              TASK NOT ALLOWED TO USE KEY  @D64ADMS 00870027
+SVC26PP  LH    R7,IJBNPART        GET HIGHEST STATIC ...       @D51IDGN 00880027
+         SLL   R7,4                   PARTITION KEY            @D51IDGN 00890027
+         CR    R5,R7              IS STORAGE KEY HIGHER        @D14BDFG 00900027
+         BNH   ERR25              NO, CANCEL                   @D14BDFG 00910027
+         BR    R6                 ASSUME VALID ADDRESS, RETURN @D14BDFG 00920027
+ASVC26AS DC    A(SVC26AS+X'80000000')                          @D64ADMS 00930027
+         TITLE 'VSE SUPERVISOR    SGSVC      FORCE REDISPATCHING      ' 00940027
+************************************************************** @D149DFG 00950027
+* DUMMY SVC FOR COMRG MACRO                                    @D149DFG 00960027
+* MAY ALSO BE USED TO FORCE REDISPATCHING                      @D149DFG 00970027
+************************************************************** @D149DFG 00980027
+         SPACE 1                                               @D149DFG 00990027
+SVC33    EQU   * .                DUMMY SVC                    @D36IDFR 01000027
+         BR    R6                 EXIT                         @D35CDEM 01010027
+         TITLE 'VSE SUPERVISOR    SGSVC      OLTEP INTERFACE ROUTINE  ' 01020027
+************************************************************** @D149DJB 01030027
+*        SVC46 ISSUED BY OLTEP TRANSFERS CONTROL TO OLTEP IN        RJI 01040027
+*        SUPERVISOR STATE. CONTROL IS TRANSFERRED TO THE ADDRESS    RJI 01050027
+*        THAT OLTEP HAS PROVIDED IN GENERAL REGISTER 1 VIA A BALR-  RJI 01060027
+*        INSTRUCTION. ON RETURN FROM OLTEP EXIT TO TASK SELECTION   RJI 01070027
+*        IS TAKEN.                                                  RJI 01080027
+************************************************************** @D149DJB 01090027
+         SPACE 1                                               @D149DJB 01100027
+SVC46    EQU   * .                                                  RJI 01110027
+         TM    IJBOLTEP,OLTAC     IS OLTEP ACTIVE                   RJI 01120027
+         BZ    ERR21 .            NO, ILLEGAL SVC                   RJI 01130027
+         BALR  R7,R1 .            YES, GO TO OLTEP IN SUPERV. STATE RJI 01140027
+         BR    R6 .               EXIT TO TASK SELECT               RJI 01150027
+         TITLE 'VSE SUPERVISOR    SGSVC      CPCLOSE INTERFACE        ' 01160027
+************************************************************** @D149DJB 01170027
+*   SVC56 CPCLOSE INTERFACE FOR VM                             @D149DJB 01180027
+************************************************************** @D149DJB 01190027
+         SPACE 1                                               @D149DJB 01200027
+         USING TCBADR,RA                                       @D36IDFG 01210027
+SVC56    EQU   *                                               @D34NE58 01220027
+         TM    SUPFLAG,VMSYS      RUNNING UNDER VM             @D14ZDRP 01230027
+         BNO   SVC56NVM           NO, BRANCH                   @D14ZDRP 01240027
+         L     R2,D0(R1)          LOAD DEVICE ADDRESS          @D34NE58 01250027
+         DC    X'83230024'        ISSUE DIAGN. TO TEST DEVICE  @D34NE58 01260027
+         BC    M2,DEVOK           DEVICE SPOOLED - LOOKS OK    @D34NE58 01270027
+         LA    RF,D4              DEVICE INVALID OR DEDICATED  @D34NE58 01280027
+         B     SVC56RC            RETURN WITH ERROR RET CODE   @D34NE58 01290027
+DEVOK    CLM   R3,B'1000',UROUT   UNIT RECORD OUTPUT DEVICE    @D34NE58 01300027
+         BE    DEVGOOD            YES - SHOULD BE CLOSED       @D34NE58 01310027
+         LA    RF,D4              NOT UNIT RECORD OUTPUT       @D34NE58 01320027
+         B     SVC56RC            RETURN WITH ERROR RET CODE   @D34NE58 01330027
+DEVGOOD  EQU   *                                               @D14CDJB 01340027
+         ICM   R2,M7,D5(R1)       GET EBCDIC DEV ADDR          @D14CDJB 01350027
+         MVC   CPCMD+12(L8),D8(R1)  MOVE JOB NAME TO COMMAND   @D34NE58 01360027
+         STCM  R2,M7,CPCMD+3      MOVE DEV ADDR TO COMMAND     @D14CDJB 01370027
+         LA    R1,CPCMD           POINT TO COMMAND             @D34NE58 01380027
+         LA    R2,L'CPCMD         GET COMMAND LENGTH           @D34NE58 01390027
+         DC    X'83120008'        ISSUE CLOSE VIA DIAGNOSE     @D34NE58 01400027
+         SR    RF,RF              SET RETURN CODE TO OK        @D34NE58 01410027
+SVC56RC  L     R8,TCBSAVE         GET SAVE AREA ADDRESS        @D36IDFG 01420027
+         USING SVEARA,R8                                       @D34NEEM 01430027
+         ST    RF,SVER0F          STORE RET CODE IN REG 15     @D34NE58 01440027
+         DROP  R8                                              @D34NEEM 01450027
+         B     SAMETASK           RETURN TO USER VIA SAME TASK @D34NE58 01460027
+CPCMD    DC    C'CL XXX NAME JJJJJJJJ'                         @D34NE58 01470027
+UROUT    DC    X'10'              VM FLAG FOR UNIT RECORD      @D34NE58 01480027
+*                                 OUTPUT DEVICE TYPE           @D34NE58 01490027
+SVC56NVM DS    0H                                              @D14ZDRP 01500027
+         LA    RF,D8              NOT LINKAGE ENHANCEMENT SYS  @D34NE58 01510027
+         L     R8,TCBSAVE         RETURN WITH NON ZERO R CODE  @D36IDFG 01520027
+         USING SVEARA,R8                                       @D34NEEM 01530027
+         ST    RF,SVER0F          IN USER REGISTER 15          @D34NE58 01540027
+         DROP  R8                                              @D34NEEM 01550027
+         B     SAMETASK           RETURN TO USER VIA SAME TASK @D34NE58 01560027
+         DROP  RA                                              @D36IDFR 01570027
+         TITLE 'VSE SUPERVISOR    SGSVC      CPCOM SERVICE ROUTINE    ' 01580027
+************************************************************** @D14CDFG 01590027
+*  SVC ROUTINE FOR CPCOM MACRO                                 @D14CDFG 01600027
+*                                                              @D14CDFG 01610027
+*      AUTHORIZATION: VSE/POWER AND FTP (FILE                  @D14CDFG 01620027
+*                                                              @D14CDFG 01630027
+*      INPUT:  R1 = ADDRESS OF COMMAND                         @D14CDFG 01640027
+*              R0 = LENGTH OF COMMAND                          @D14CDFG 01650027
+*              RF = 0                                          @D14CDFG 01660027
+*                                                              @D14CDFG 01670027
+*      OUTPUT: RF = RETURN CODE                                @D14CDFG 01680027
+*                 = VM COMPLETION CODE FOR VALID REQUEST       @D14CDFG 01690027
+*                   1  FOR NOT MODE=VM OR NOT RUNNING UNDER VM @D14CDJB 01700027
+*                   2  FOR INVALID PARAMETERS                  @D14CDFG 01710027
+************************************************************** @D14CDFG 01720027
+SVC118   DS    0H                 GENERAL CP COMMAND INTERFACE @D14CDFG 01730027
+         L     R5,PCBPTR          PCB OF CURRENT PARTITION     @D14CDFG 01740027
+         USING PCBADR,R5                                       @D14CDFG 01750027
+         TM    PCBSSFLG,PWR       IS REQUESTOR POWER           @D14CDFG 01760027
+         DROP  R5                                              @D14CDFG 01770027
+         BO    SV118AOK           YES ===>                     @D14CDJB 01780027
+         L     R5,TCBPTR          TCB OF CURRENT TASK          @D14CDJB 01790027
+         USING TCBADR,R5                                       @D14CDJB 01800027
+         TM    TCBFLAG3,FTPTSK    IS REQUESTOR FTP ?           @D14CDJB 01810027
+         DROP  R5                                              @D14CDJB 01820027
+         BZ    ERR21              NO, CANCEL                   @D14CDFG 01830027
+SV118AOK EQU   *                  AUTHORIZATION OK !           @D14CDJB 01840027
+         TM    SUPFLAG,VMSYS      RUNNING UNDER VM             @D14CDJB 01850027
+         BO    CPCOMVM            YES ===>                     @D14CDJB 01860027
+         LA    RF,CPINVCOM        SIMULATE CP INVALID COMMAND  @D14CDFG 01870027
+         LA    R1,SVER0F-SVEARA   RETURN IN CALLER'S RF        @D14CDFG 01880027
+         B     RETCODE                                         @D14CDFG 01890027
+CPCOMVM  EQU   *                                               @D14CDJB 01900027
+         LTR   R0,R0              ZERO OR NEGATIV LENGTH       @D14CDFG 01910027
+         BP    CPCOM020           NO                           @D14CDFG 01920027
+CPCOM010 LA    RF,CPINVPAR        SIMULTATE CP INVALID PARAM   @D14CDFG 01930027
+CPCOM015 LA    R1,SVER0F-SVEARA   RETURN IN CALLER'S RF        @D14CDFG 01940027
+         B     RETCODE                                         @D14CDFG 01950027
+CPCOM020 C     R0,F240            LENGTH ABOVE MAXIMUM         @D14CDFG 01960027
+         BH    CPCOM010           YES, INVALID PARAMETER       @D14CDFG 01970027
+         LR    R2,R1              ADDRESS OF COMMAND AREA      @D14CDFG 01980027
+         AR    R2,R0              FIRST BYTE BEHIND            @D14CDFG 01990027
+         BCTR  R2,0               LAST BYTE OF COMMAND AREA    @D14CDFG 02000027
+         L     R8,PIBPTR2         LOAD CURRENT PIB POINTER     @D51IDGN 02010027
+         USING PIB2ADR,R8         CURRENT PIB BASE POINTER     @D51IDGN 02020027
+         L     R8,PIBPCB          LOAD CURRENT PCB POINTER     @D51IDGN 02030027
+         DROP  R8                 RELEASE PIB BASE             @D51IDGN 02040027
+         USING PCBADR,R8          CURRENT PCB BASE POINTER     @D51IDGN 02050027
+         SLR   R5,R5              CLEAR REGISTER               @D51IDGN 02060027
+         IC    R5,PCEKEY          STORAGE KEY TO BE CHECKED    @D51IDGN 02070027
+         DROP  R8                 RELEASE PCB BASE             @D51IDGN 02080027
+         BAL   R8,VALREAD         CHECK COMMAND AREA           @D14CDFG 02090027
+*SGLINK  VALREAD,INPUT=(R1,R2,R5,R6,R8),OUTPUT=(R5),WORK=(R2,R3,R4)     02100027
+         B     CPCOM010           INVALID ADDRESS RANGE        @D14CDFG 02110027
+         B     CPCOM010           INVALID ACCESS RANGE         @D14CDFG 02120027
+         LR    R3,R0              COMMAND LENGTH FOR CP        @D14CDFG 02130027
+         BCTR  R3,0               MINUS 1 FOR EXECUTE          @D14CDJB 02140027
+         EX    R3,CPCOMMV         MOVE COMMAND STRING TO V=R   @D14CDJB 02150027
+         LA    R3,D1(R3)          PLUS ONE AGAIN               @D14CDJB 02160027
+         LA    R1,CPCOMAR         COMMAND ADDRESS FOR CP       @D14CDJB 02170027
+         DC    X'83130008'        PASS COMMAND TO CP           @D14CDFG 02180027
+         LR    RF,R3              GET COMPLETION CODE          @D14CDFG 02190027
+         B     CPCOM015           PASS BACK TO CALLER          @D14CDFG 02200027
+CPINVPAR EQU   2                  RET.CODE FOR INVALID PARAM   @D14CDFG 02210027
+CPCOMMV  MVC   CPCOMAR(0),D0(R1)  MOVE COMMAND STRING TO V=R   @D14CDJB 02220027
+CPCOMAR  DS    CL240              V=R COMMAND AREA             @D14CDJB 02230027
+CPINVCOM EQU   1                  RET.CODE FOR INVALID COMMAND @D14CDFG 02240027
+         TITLE 'VSE SUPERVISOR    SGSVC      RUNMODE SERVICE ROUTINE  ' 02250027
+************************************************************** @D149DJB 02260027
+*   SVC66 SVC FOR RUNMODE MACRO                                @D149DJB 02270027
+************************************************************** @D149DJB 02280027
+         SPACE 1                                               @D149DJB 02290027
+SVC66    DS    0H                                              @D35CDJR 02300027
+         L     R8,PCBPTR          LOAD CURRENT PCB POINTER     @D51IDGN 02310027
+         USING PCBADR,R8                                       @D51IDGN 02320027
+         L     R8,PCEPIB          GET CURRENT PIB POINTER      @D51IDGN 02330027
+         USING PIBADR,R8                                       @D51IDGN 02340027
+         TM    PIBDATFL,PIBTRAM   USER TASK RUNS IN VIRT.MODE  @D51IDGN 02350027
+         BOR   R6                 YES,VIRTUAL MODE,RETURN            EM 02360027
+         DROP  R8                                              @D51IDGN 02370027
+         LA    RF,D4              IT RETURNS 4 FOR REAL MODE         EM 02380027
+         LA    R1,SVER01-SVEARA   PASS RET.CODE IN REGISTER 1        EM 02390027
+         B     RETCODE            DOTO STORE RET.CODE          @D36IDFR 02400027
+         AIF   (NOT &BG71).POW1                                @D36ZDFG 02410027
+         TITLE 'VSE SUPERVISOR    SGSVC      PUTACCT SERVICE ROUTINE  ' 02420027
+************************************************************** @D149DJB 02430027
+*   SVC90 SVC FOR PUTACCT MACRO                                @D149DJB 02440027
+************************************************************** @D149DJB 02450027
+         SPACE 1                                               @D149DJB 02460027
+SVC90    ICM   R0,M8,IC90              INDICATE SVC90          @D30EULR 02470027
+         LR    R8,R0                   COPY ECB ADDR           @D61RDOW 02480027
+         L     RF,CRADDR               PARTITION COMREG ADDR   @D30EULR 02490027
+         USING COMREG,RF               DECLARE ADDRESSABILITY  @DM11453 02500027
+         TM    POWFLG1,X'80'           ACCOUNT SUPPORT         @D30EULR 02510027
+         DROP  RF                                              @D30EULR 02520027
+         BO    SVC91A                  BRANCH IF YES           @D30EULR 02530027
+         OI    2(R8),TRABIT            POST ECB                @D61RDOW 02540027
+         BR    R6                      EXIT                    @D30EULR 02550027
+         SPACE 1                                               @D30EULR 02560027
+IC90     DC    X'90'                   SVC90 INDICATOR         @D30EULR 02570027
+IC91     DC    X'91'                   SVC91 INDICATOR         @D30EULR 02580027
+         TITLE 'VSE SUPERVISOR    SGSVC      POWER INTERFACE ROUTINE  ' 02590027
+************************************************************** @D149DJB 02600027
+*   SVC91 SVC TO PROVIDE INTERFACE WITH POWER FOR STANDARD     @D149DJB 02610027
+*         INFORMATION                                          @D149DJB 02620027
+************************************************************** @D149DJB 02630027
+         SPACE 1                                               @D149DJB 02640027
+SVC91    ICM   R0,M8,IC91              INDICATE SVC91          @D30EULR 02650027
+         LR    R8,R0                   COPY ECB ADDR           @D61RDOW 02660027
+         L     RF,CRADDR               CURRENT COMREG          @D14BDFG 02670027
+         USING COMREG,RF                                       @D14BDFG 02680027
+         TM    JCSW5,JCLACTIV          JOB CONTROL REQUEST     @D14BDFG 02690027
+         BNO   ERR21                   IF NOT, ILLEGAL SVC     @D14BDFG 02700027
+         DROP  RF                                              @D14BDFG 02710027
+SVC91A   DS    0H                      ADDR POWER TABLE        @D30EULR 02720027
+         NI    2(R8),X'FF'-TRABIT      RESET TRAFFIC BIT       @D61RDOW 02730027
+         SGSETUP SETLCTL,NEXTSCB=CURRENT,OPTION=POWER,WR1=8,   @D52GDGN*02740027
+               WR2=15                                          @D52GDGN 02750027
+         L     RF,APOWTB               ADDR POWER TABLE        @D30EULR 02760027
+         USING PADS,RF                 DECLARE ADDRESSABILITY  @D30EULR 02770027
+         L     RF,CA90                 ADDR SVC91 INTERFACE    @D30EULR 02780027
+         DROP  RF                                              @D30EULR 02790027
+         MVI   RID+1,SYSTEMID          PAGE FAULTS NOT ALLOWED @D61RDOW 02800027
+***                                    ... IN APPENDAGE                 02810027
+         BALR  R8,RF                   GO TO SVC91 INTERFACE   @D30EULR 02820027
+         L     R6,DISPAD               REALOAD DISP ADDRESS    @D52GDGN 02830027
+         BR    R6                      EXIT                    @D30EULR 02840027
+.POW1    ANOP                                                  @D30EULR 02850027
+         TITLE 'VSE SUPERVISOR    SGSVC      GET VIRTUAL ADDRESS      ' 02860027
+************************************************************** @D149DJB 02870027
+*   SVC60 SVC FOR GETADR MACRO                                 @D149DJB 02880027
+************************************************************** @D149DJB 02890027
+         SPACE 1                                               @D149DJB 02900027
+SVC60    DS    0H                                              @D36IDFR 02910027
+         USING SVEARA,RB                                       @D36IDFG 02920027
+         L     R8,SVER08          GET POINTER TO CCW           @D36IDFR 02930027
+         DROP  RB                                              @D36IDFG 02940027
+         BAL   R7,GETDADR         CALL GETDADR ROUT.           @D36IDFR 02950027
+*SGLINK  GETDADR,INPUT=(R0,R6,R7,R8),OUTPUT=RF                 @D369DFG 02960027
+         LA    R1,SVER0F-SVEARA . INDICATE PARAMETER REG.            EM 02970027
+         B     RETCODE            PASS VIRT.ADDR. TO CALLER          EM 02980027
+         TITLE 'VSE SUPERVISOR    SGSVC      CALCULATE ADDRESS ROUTINE' 02990027
+************************************************************** @D149DJB 03000027
+*   SVC69/70 FOR REALAD/VIRTAD MACRO                           @D149DJB 03010027
+************************************************************** @D149DJB 03020027
+         SPACE 1                                               @D149DJB 03030027
+         USING TCBADR,RA          GET TCB ADDRESSABILITY       @KX40487 03040027
+SVC69    DS    0H                                              @D52VDRP 03050027
+         TM    TCBEXFLG,TCBEXAM   CALLER IN 31 BIT MODE        @KX40487 03060027
+         BO    SVC69L10           YES, --->                    @KY30328 03070027
+         LA    R1,0(,R1)          CLEAR FIRST BYTE             @KX40487 03080027
+*        AMODESW SET,AMODE=31,WR=(RE)                          @KX40487 03090027
+SVC69L10 AMODESW SET,AMODE=31,WR=(RE)                          @KX40487 03100027
+         N     R1,BIT0OFF         CLEAR FIRST BIT              @KX40487 03110027
+         LRA   R0,D0(,R1)         IS PAGE IN MEMORY?           @D35CDEM 03120027
+         BNZ   SVC69RET           NO, RETURN                   @D35CDEM 03130027
+         LR    RF,R0              SAVE REAL ADDRESS            @D35CDEM 03140027
+         CR    R0,R1              VIRTUAL = REAL?              @D35CDEM 03150027
+         BE    REALAD1            YES                          @D35CDEM 03160027
+         SRL   R0,PNSHIFT         CALC. REAL PAGE NUMBER       @D14ZDJB 03170027
+         LR    RE,R0              GET                          @D35CDKH 03180027
+         SLL   RE,PNPFTESH        OFFSET IN PFTE               @D35CDKH 03190027
+         A     RE,APFT            POINT TO PFTE                @D35CDKH 03200027
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 03210027
+         AMODESW SET,DAT=OFF                                   @D52VDRP 03220027
+         USING PFTE,RE            SET BASE FOR PFTE            @D35CDKH 03230027
+*     GENSERV  TEST,FIELD=PFIXC,REG=(R0),LAB=REALAD0,BC=BNZ    @D52VDVB 03240027
+      GENSERV  TEST,FIELD=PFIXC,REG=(R0),LAB=REALAD0,BC=BNZ    @D52VDVB 03250027
+         DROP  RE                                              @D35CDKH 03260027
+*        AMODESW SET,DAT=ON                                    @D52VDRP 03270027
+         AMODESW SET,DAT=ON                                    @D52VDRP 03280027
+SVC69RET AMODESW RETURN,REG=(R6)  ===============> RETURN      @D52VDRP 03290027
+REALAD0  DS    0H                                              @D52VDVB 03300027
+*        AMODESW SET,DAT=ON                                    @D52VDRP 03310027
+         AMODESW SET,DAT=ON                                    @D52VDRP 03320027
+REALAD1  LA    R1,SVER00-SVEARA   INDICATE PARAMETER REG.      @D35CDEM 03330027
+         AMODESW BRANCH,AMODE=24,ADDRESS=RETCODE,REG=(RE)      @D52VDRP 03340027
+*                                 PASS REAL ADDR. TO CALLER    @D52VDRP 03350027
+         SPACE 2                                               @D35CDEM 03360027
+SVC70    TM    TCBEXFLG,TCBEXAM   CALLER IN 31 BIT MODE        @KY30328 03370027
+         BZ    SVC70L10           NO, --->                     @D52VDGN 03380027
+*        AMODESW SET,AMODE=31,WR=(RE)                          @D52VDGN 03390027
+         AMODESW SET,AMODE=31,WR=(RE)                          @D52VDGN 03400027
+SVC70L10 LA    R1,0(,R1)          CLEAR FIRST BYTE/BIT         @KY30328 03410027
+         LR    R9,R1              LOAD PAR.PASSED TO WORKREGIST@D35CDEM 03420027
+         LA    R6,VIRTAD          CALL ...                     @D52VDVB 03430027
+*        AMODESW CALL,REGS=(R6,R6)   ... VIRTAD VIA BALR/BSSM  @D52VDVB 03440027
+         AMODESW CALL,REGS=(R6,R6)                             @D52VDVB 03450027
+*SGLINK  VIRTAD,INPUT=(R6,R9),OUTPUT=RF,WORK=R9                @D369DFG 03460027
+         L     R6,DISPAD          RELOAD DISPATCHERS BASE REG. @D36IDFR 03470027
+.*       LTR   RF,RF              RETURN CODE ZERO?            @DELETE  03480027
+.*       BZR   R6                 YES,GOTO DISPATCHER          @DELETE  03490027
+         LA    R1,SVER00-SVEARA   INDICATE PARAMETER REG.      @D35CDEM 03500027
+         AMODESW BRANCH,AMODE=24,ADDRESS=RETCODE,REG=(RE)      @D52VDGN 03510027
+*                                 PASS REAL ADDR. TO CALLER    @D52VDGN 03520027
+         DROP  RA                 RELEASE TCB BASE             @D52VDGN 03530027
+************************************************************** @D149DJB 03540027
+*   SVC77  FOR TRANSCSW MACRO                                  @D149DJB 03550027
+************************************************************** @D149DJB 03560027
+         SPACE 1                                               @D149DJB 03570027
+SVC77    CLC   TID,ARTIDH         SYSTEM TASK REQUEST          @D66ODOW 03580030
+         BH    ERR21              IF NOT, CANCEL               @D36IDFG 03590027
+         LR    R2,R0              PREPARE PAR.FOR CSWTRSVC     @D36IDFG 03600027
+         L     R9,ACCWT           SET BASE FOR CCW-TRANSL.     @D35CDEM 03610027
+         USING CCWTADR,R9                                      @D35CDEM 03620027
+         BAS   R7,CSWTRSVC        GET ADDR.OF ORIGINAL USER CCW@D67..AV 03621031
+*        BAL   R7,CSWTRSVC        GET ADDR.OF ORIGINAL USER CCW@D35CDEM 03630031
+*SGLINK  CSWTRSVC,INPUT=(R1,R2,R7,R9),OUTPUT=RF,WORK=R2        @D369DFG 03640027
+         DROP  R9                                              @D35CDEM 03650027
+         LA    R1,SVER00-SVEARA   PASS RETURN PARAM.IN REG0    @D35CDEM 03660027
+         B     RETCODE            TO CALLER                    @D35CDEM 03670027
+*DEL.VM77    ANOP                                              @D52VDOW 03680027
+         AGO   .M370A  DELETE E-MODE CODE TIL M370A            @D52VDOW 03690027
+.EMD2    ANOP                     INCLUDE FOR E-MODE           @D35EDEM 03700027
+************************************************************** @D149DJB 03710027
+*   SVC69  FOR REALAD MACRO                                    @D149DJB 03720027
+************************************************************** @D149DJB 03730027
+         SPACE 1                                               @D149DJB 03740027
+SVC69    LA    R1,D0(R1)           ZERO HIGH ORDER BYTE        @D35EDJR 03750027
+         SR    RF,RF               CLEAR RETURNVALUE REGISTER  @D35EDJR 03760027
+         L     R8,APMGMDAT         ESTABLISH ADDRESSABILITY    @D35EDJR 03770027
+         USING PMGMDATA,R8         FOR PAGE MANAGER            @D35EDJR 03780027
+         LFI   RE,D0(R1)           IS PAGE ADDRESSABLE?        @D35EDJR 03790027
+         BNZ   VIRTAD1             NO                          @D35EDJR 03800027
+         SLL   RE,FISHIFT          GET OFFSET IN PFT           @D35EDJR 03810027
+         A     RE,APFT             POINT TO PFT-ENTRY          @D35EDJR 03820027
+         USING PFTE,RE             SET BASE FOR PFT ENTRY      @D35EDJR 03830027
+*     GENSERV  TEST,FIELD=PFIXC,REG=(R0),LAB=VIRTAD1,BC=BZ     @D52VDVB 03840027
+      GENSERV  TEST,FIELD=PFIXC,REG=(R0),LAB=VIRTAD1,BC=BZ     @D52VDVB 03850027
+**DEL    CLI   PFIXC,ZERO          IS PAGE PFIXED?             @D36ZDFG 03860027
+**DEL    BE    VIRTAD1             NO                          @D35EDJR 03870027
+         LR    RF,R1               RET.VAL.=INPUT ADDRESS      @D35EDJR 03880027
+VIRTAD1  LA    R1,SVER00-SVEARA    INDICATE PARM. REGISTER     @D35EDJR 03890027
+         B     RETCODE             PASS RET.VALUE TO CALLER    @D35EDJR 03900027
+         DROP  R8,RE               DROP BASES USED IN SVC69    @D36IDFG 03910027
+SVC70    EQU   SVC69               VIRTAD                      @D35EDJR 03920027
+.M370A   ANOP                                                  @D35EDEM 03930027
+         TITLE 'VSE SUPERVISOR    SGSVC      MSAT SERVICE ROUTINES    ' 03940027
+***************************************************************@D149DFG 03950027
+*  MSAT SERVICES, MAIN ENTRY POINT                             @D149DFG 03960027
+***************************************************************@D149DFG 03970027
+         SPACE 1                                               @D149DFG 03980027
+SVC112   DS    0H                  ASSIGNMENT SERVICES         @D14BDFG 03990027
+         L     R5,ASRQTAB          ADDR OF RESOURCE QUEUE TAB  @D61RDOW 04000027
+         LA    R5,SRQSAT-SRQTAB(,R5) SAT RESOURCE DESCRIPTOR   @D61RDOW 04010027
+         USING RQADR,R5            RESOURCE DESCRIPTOR BASE    @D61RDAP 04020027
+         TM    RSCDESC,FREEBIT     IS ROUTINE FREE             @D66ODOW 04030030
+         BNO   RESVCX              IF NOT, WAIT                @D66ODOW 04040030
+         MVI   RID+1,SATBND        SET PAGE FAULT GATE         @D14BDFG 04050027
+         LA    RA,SUPAVT           POINT TO SUP.ADDR.VECT.TAB. @D14BDFG 04060027
+         L     RD,ASVASVDL         POINT TO SVA SUPERV.DIR.    @D14BDFG 04070027
+         L     RD,ASATAPP-SVASVDL(,RD) POINT TO SVA APPENDAGE  @D14BDFG 04080028
+         BSM   0,RD                BRANCH TO SVA APPENDAGE     @D66ODOW 04090030
+         DROP  R5                  RELEASE RESOURCE DESCRIPTOR @D61RDAP 04100027
+         TITLE 'VSE SUPERVISOR    SGSVC      VIO  SERVICE ROUTINES    ' 04110027
+***************************************************************@D149DFG 04120027
+*  VIO SERVICES, MAIN ENTRY POINT                              @D149DFG 04130027
+***************************************************************@D149DFG 04140027
+         SPACE 1                                               @D149DFG 04150027
+SVC114   DS    0H                  VIO OPEN/CLOSE SUPPORT      @D14BDFG 04160027
+         L     R5,ASRQTAB          ADDR OF RESOURCE QUEUE TAB  @D61RDOW 04170027
+         LA    R5,SRQVIO-SRQTAB(,R5) VIO RESOURCE DESCRIPTOR   @D61RDOW 04180027
+         USING RQADR,R5            RESOURCE DESCRIPTOR BASE    @D61RDAP 04190027
+         TM    RSCDESC,FREEBIT     ROUTINES FREE               @D66ODOW 04200030
+         BNO   RESVCX              IF NOT, WAIT                @D66ODOW 04210030
+         MVI   RID+1,VIOBND        SET PAGE FAULT GATE         @D14BDFG 04220027
+         LA    RC,SUPAVT           POINT TO SUP.ADDR.VECT.TAB. @D14BDFG 04230027
+         L     RD,ASVASVDL         POINT TO SVA SUPERV.DIR.    @D14BDFG 04240027
+         L     RD,AVIOAPP-SVASVDL(RD)  POINT TO SVA APPENDAGE  @D14BDFG 04250027
+         BR    RD                  BRANCH TO SVA APPENDAGE     @D14BDFG 04260027
+         DROP  R5                  RELEASE RESOURCE DESCRIPTOR @D61RDAP 04270027
+         TITLE 'VSE SUPERVISOR    SGSVC      PWROFF SERVICE ROUTINE   ' 04280027
+***************************************************************@D149DJB 04290027
+*  SUPPORT FOR SOFTWARE INITIATED POWER OFF                    @D149DJB 04300027
+*  SUPPORTED CPU'S: 4361, 93XX, 9221                           @DXX9XGN 04310027
+***************************************************************@D149DJB 04320027
+         SPACE 1                                               @D14BDJB 04330027
+         DS    0H                                              @D52ODGN 04340027
+SVC115   L     R1,PCBPTR           GET PCB POINTER             @D14BDJB 04350027
+         USING PCBADR,R1                                       @D14BDJB 04360027
+         TM    PCBSSFLG,SSX        REQUESTOR SSX PARTITION ?   @D14BDJB 04370027
+         BO    SVC115OK            YES, POWER OFF IA O.K.      @D21LDAP 04380027
+         CLC   TID,ARTIDH          IS THIS PRIVILEGED TASK     @D66ODOW 04390030
+         BE    SVC115OK            YES, HANDLE THE REQUEST     @D21LDAP 04400027
+         B     ERR21                   ===> ILLEGAL SVC        @D14BDJB 04410027
+         DROP  R1                                              @D14BDJB 04420027
+         SPACE 1                                               @D14BDJB 04430027
+SVC115OK TM    SUPFLAG,BFYSYS+VMPMA RUNNING PR/SM OR PMA       @D52ODGN 04440027
+         BNZ   SVC115RC            YES, POWER OFF NOT ALLOWED  @D52ODGN 04450027
+         TM    SUPFLAG,VMSYS       RUNNING UNDER VM            @D52ODGN 04460027
+         BO    PWROFFVM            YES, DISCONNECT GUEST       @D52ODGN 04470027
+         SR    RF,RF               SET RETURN CODE             @D21LDAP 04480027
+         L     R1,RASLINKA         ADDR OF RAS-LINK AREA       @D61RDOW 04490027
+         MVC   CPUIDMOD,CPUID+4-RASLINK(R1) GET CPUID MODEL NUM@D61RDOW 04500027
+         LA    R1,PWOFFTAB         GET TABLE START ADDRESS     @D52ODGN 04510027
+SVC115CM CLC   CPUIDMOD,0(R1)      POWER OFF SUPPORTED         @D52ODGN 04520027
+         BE    SVC115PO            YES, DO POWER OFF           @D52ODGN 04530027
+SVC115NX LA    R1,LPWOFFTB(,R1)    GET NEXT TABLE ENTRY        @D52ODGN 04540027
+         CLI   0(R1),X'FF'         END OF TABLE                @D52ODGN 04550027
+         BNE   SVC115CM            NO, COMPARE NEXT ENTRY      @D52ODGN 04560027
+         SPACE 1                                               @D529DGN 04570027
+SVC115RC LA    RF,8                GET RETURN CODE             @D52ODGN 04580027
+         LA    R1,SVER0F-SVEARA    SAVE IN CALLER'S RF         @D14BDJB 04590027
+         B     RETCODE             ===> PASS RETURN CODE       @D14BDJB 04600027
+         SPACE 1                                               @D529DGN 04610027
+SVC115PO ICM   R1,15,2(R1)         GET POWER OFF ROUTINE ADD   @D52ODGN 04620027
+         BR    R1                  DO POWER OFF                @D52ODGN 04630027
+         SPACE 1                                               @D14NDFG 04640027
+PWROFFVM MVC   DUMMYPSW+D4(L4),PWOFFADR   INDICATE POWER OFF   @D52ODGN 04650027
+         LA    R0,PWOPARVM         LOAD ADDRESS OF DISC COMM   @D52ODGN 04660027
+         LA    R2,LPWOPRVM         GET LENGTH OF COMMAND       @D52ODGN 04670027
+         DC    X'83',X'02',X'0008' ISSUE VM CONSOLE DIAGNOSE   @D52ODGN 04680027
+         LTR   R15,R2              CHECK RETURN CODE OF VM     @D52ODGN 04690027
+         BNZ   SVC115RC            RETURN NONE CODE ZERO       @D52ODGN 04700027
+         LPSW  DUMMYPSW            WAIT UNTIL DISCONNECT       @D52ODGN 04710027
+         SPACE 1                                               @D52ODGN 04720027
+PWROFFRS TM    IJBFLG06,IJBXMODE   9221 RUNNING IN ESA MODE    @D52ODGN 04730027
+         BZ    PWROFFSI            NO, EXECUTE SI FORMAT       @D52ODGN 04740027
+         MVC   DUMMYPSW+D4(L4),PWOFFADR   INDICATE POWER OFF   @D52ODGN 04750027
+         ICM   R0,15,PWOPARM1      LOAD POWER OFF PARM 1       @D52ODGN 04760027
+         ICM   R2,15,PWOPARM2      LOAD POWER OFF PARM 2       @D52ODGN 04770027
+         DC    X'83',X'02',X'001F' ISSUE POWER OFF DIAGNOSE    @D52ODGN 04780027
+* THE 9221 PROCESSES THE THE PWROFF DIAGNOSE ASYNCHRONEOUSLY.  @DY42602 04790027
+* THEREFORE WHEN ENTERING DISABLED WAIT PER LPSW COMMAND THE   @DY42602 04800027
+* SERVICE PROCESSOR WOULD INDICATE THIS AS AN ERROR SITUATION  @DY42602 04810027
+* TIL THE MESSAGE IS CONFIRMED. THEREFORE WE "ACTIVLY" WAIT    @DY42602 04820027
+* FOR PWROFF COMPLETION.                                       @DY42602 04830027
+*        LPSW  DUMMYPSW            WAIT UNTIL POWER OFF        @D52ODGN 04840027
+         B     *                   WAIT UNTIL POWER OFF        @DY42602 04850027
+         SPACE 1                                               @D14NDFG 04860027
+PWROFFSI MVC   DUMMYPSW+D4(L4),PWOFFADR   INDICATE POWER OFF   @D52ODGN 04870027
+         DC    X'83',X'02',S(PWOFF)  ISSUE POWER OFF DIAGNOSE  @D14BDJB 04880027
+         LPSW  DUMMYPSW            WAIT UNTIL POWER OFF        @D14BDJB 04890027
+         SPACE 1                                               @D14NDFG 04900027
+CPUIDMOD DC    H'0'                CPUID MODEL NUMBER          @D52ODGN 04910027
+         SPACE 1                                               @D14NDFG 04920027
+PWOFFADR DC    X'0000F000'         POWER OFF INDICAT. FOR PSW  @D14BDJB 04930027
+PWOFF    DC    X'0000FFFF'         POWER OFF INDICATION        @D14BDJB 04940027
+PWOPARM1 DC    C'POWE'             POWER OFF PARAMETER 1       @D52ODGN 04950027
+PWOPARM2 DC    C'ROFF'             POWER OFF PARAMETER 2       @D52ODGN 04960027
+PWOPARVM DC    C'DISC'             VM DISCONNECT COMMAND       @D52ODGN 04970027
+LPWOPRVM EQU   *-PWOPARVM          VM DISCONNECT CMD LENGTH    @D52ODGN 04980027
+         SPACE 1                                               @D14NDFG 04990027
+         DS    0F                                              @D52ODGN 05000027
+PWOFFTAB DC    X'4361',AL4(PWROFFSI)                           @DY42602 05010027
+LPWOFFTB EQU   *-PWOFFTAB          TABLE ENTRY LENGTH          @D52ODGN 05020027
+         DC    X'9371',AL4(PWROFFSI)                           @DY42602 05030027
+         DC    X'9373',AL4(PWROFFSI)                           @DY42602 05040027
+         DC    X'9375',AL4(PWROFFSI)                           @DY42602 05050027
+         DC    X'9377',AL4(PWROFFSI)                           @DY42602 05060027
+         DC    X'9390',AL4(PWROFFSI)                           @DY42602 05070027
+         DC    X'9221',AL4(PWROFFRS)                           @DY42602 05080027
+         DC    X'FF'               END OF TABLE                @D52ODGN 05090027
+         SPACE 2                                               @D14BDFG 05100027
+***************************************************************@D14NDFG 05110027
+*  STORAGE MANAGEMENT SERVICES, SVC ENTRY POINTS               @D14NDFG 05120027
+***************************************************************@D14NDFG 05130027
+         SPACE 1                                               @D14NDFG 05140027
+ALLOCATE DS    0H                  SVC 83 ENTRY POINT          @D14NDFG 05150027
+         TM    SYSFLAG2,IPLBIT     IPL ACTIVE                  @D52VDMZ 05160027
+         BNZ   ALLOCIPL            YES, DO SPECIAL HANDLING    @D52VDMZ 05170027
+         L     RF,ASVASVDL         POINT TO STMGT ALLOCATE ... @D65HDMZ 05180027
+         L     RF,AIJBSSM-SVASVDL(RF)  SVA ENTRY POINT         @D65HDMZ 05190027
+         B     STMGTCOM            CONTINUE WITH COMMON PART   @D52VDMZ 05200027
+ALLOCIPL DS    0H                                              @D52VDMZ 05210027
+         USING SVEARA,RB           ADDRESS SAVE AREA           @D52VDMZ 05220027
+         L     RF,SVER0E           GET ENTRY POINT OF IJBSSM   @D65HDMZ 05230027
+*                                  WHEN CALLED DURING IPL      @D52VDMZ 05240027
+         DROP  RB                                              @D52VDMZ 05250027
+         B     STMGTCOM            CONTINUE WITH COMMON PART   @D52VDMZ 05260027
+SETLIMIT DS    0H                  SVC 84 ENTRY POINT          @D14NDFG 05270027
+         L     RF,ASVASVDL         POINT TO STMGT SIZE ...     @D65HDMZ 05280027
+         L     RF,AIJBSSM1-SVASVDL(RF) SVA ENTRY POINT         @D65HDMZ 05290027
+STMGTCOM DS    0H                  COMMON PART                 @D52VDMZ 05300027
+         L     R5,ASRQTAB          ADDR OF RESOURCE QUEUE TAB  @D61RDOW 05310027
+         LA    R5,SRQGSM-SRQTAB(,R5) ALLOCATE RESOURCE QUEUE   @D61RDOW 05320027
+         USING RQADR,R5            RESOURCE DESCRIPTOR BASE    @D61RDAP 05330027
+         TM    RSCDESC,FREEBIT     IS ROUTINE FREE             @D66ODOW 05331030
+         BNO   RESVCX              IF NOT, WAIT                @D66ODOW 05332030
+         MVI   RID+1,GSMBND        SET PAGE FAULT GATE         @D14NDFG 05360027
+         BR    RF                  GO TO SVA ROUTINE           @D65HDMZ 05370027
+         DROP  R5                  RELEASE RESOURCE DESCRIPTOR @D61RDAP 05380027
+         TITLE 'VSE SUPERVISOR    SGSVC      INVALIDATE PARTITION     ' 05390027
+***************************************************************@D51IDMZ 05400027
+*  SVC ROUTINE FOR INVPART MACRO                               @D51IDMZ 05410027
+*     INPUT: R2 = REQUEST (USED DURING IJBSINP PROCESSING)     @D51IDMZ 05420027
+*                                                              @D51IDMZ 05430027
+*  FOR DYNAMIC PARTITIONS THE JCL WORK AREA IS ALLOCATED IN    @D51IDMZ 05440027
+*  THE DYNAMIC SPACE GETVIS AREA. THIS IS DONE WHEN INVPART    @D51IDMZ 05450027
+*  IS CALLED THE FIRST TIME. INDICATION IS COMREG.IJBJCWA = 0. @D51IDMZ 05460027
+*  BEFORE SGETVIS IS DONE, THE PAGE MANAGER HAS TO BE CALLED   @D51IDMZ 05470027
+*  TO VALIDATE THE DYNAMIC SPACE GETVIS AREA.                  @D51IDMZ 05480027
+*  IN CASE SGETVIS FAILED, A SUPERVISOR ROUTINE IS CALLED TO   @D51IDMZ 05490027
+*  STOP ALLOCATION AND TO DO CLEANUP PROCESSING.               @D51IDMZ 05500027
+***************************************************************@D51IDMZ 05510027
+INVPART  DS    0H                                              @D14NDFG 05520027
+         L     R3,CRADDR           GET CURRENT COMREG ADDRESS  @D51IDMZ 05530027
+         USING COMREG,R3                                       @D51IDMZ 05540027
+         L     R1,IJBJCWA          GET PTR TO JCL WORK AREA    @D51IDMZ 05550027
+         LTR   R1,R1               JCL WORK AREA ALLOCATED     @D51IDMZ 05560027
+         BNZ   INVPART0            YES -> CALL IJBSINP         @D51IDMZ 05570027
+         L     RA,TCBPTR           GET CURRENT TCB POINTER     @D51IDMZ 05580027
+         STM   R9,R8,SVCSV3-TCBADR(RA) SAVE ALL REGISTERS      @D51IDMZ 05590027
+.* PREPARE INPUT FOR INVALIDATION ROUTINE                               05600027
+         L     R1,SCBPTR           GET CURRENT SCB POINTER     @D51IDMZ 05610027
+         USING SCBADR,R1           GET CURRENT SCB ADDRESS     @D51IDMZ 05620027
+         L     RD,SCBSPGVB         BEGIN OF DYN.SPACE GTVIS AR.@D51IDMZ 05630027
+         L     R1,SCBSPGVE         END OF DYN.SPACE GETVIS AR. @D51IDMZ 05640027
+         DROP  R1                  RELEASE SCB                 @D51IDMZ 05650027
+         SLR   R5,R5               SET KEY ZERO                @D51IDMZ 05660027
+         L     RF,AINVPSUB         ADDR OF INVALIDATION ROUTINE@D51IDMZ 05670027
+* AMODESW CALL,REGS=(RE,RF)                                    @D52VDMZ 05680027
+         AMODESW CALL,REGS=(RE,RF) CALL PAGE MANAGER ROUTINE   @D52VDMZ 05690027
+         L     RA,TCBPTR           RELOAD TCB POINTER          @D51IDMZ 05700027
+         LM    R9,R8,SVCSV3-TCBADR(RA) RESTORE ALL REGISTERS   @D51IDMZ 05710027
+         L     R1,IJBSMCOM         GET SMCOM POINTER           @D51IDMZ 05720027
+         USING SMCOM,R1                                        @D51IDMZ 05730027
+         LH    R0,SMJCWASZ         GET SIZE OF JCL WORK AREA   @D51IDMZ 05740027
+         DROP  R1                                              @D51IDMZ 05750027
+         SR    R1,R1                                           @D51IDMZ 05760027
+         STH   R1,IJBSPIND         CLEAR SUBPOOL INDEX         @D51IDMZ 05770027
+         LA    R1,INVSPNAM         GET ADDR OF SUBPOOL NAME    @D51IDMZ 05780027
+         L     RA,TCBPTR                                       @D51IDMZ 05790027
+         SGETVIS LENGTH=(0),SPID=(1),SPACE=PARTKEY             @D51IDMZ 05800027
+         LTR   RF,RF               GETVIS SUCCESSFUL           @D51IDMZ 05810027
+         BNZ   INVPART1            NO  -> DEACTIVATE PARTITION @D51IDMZ 05820027
+         ST    R1,IJBJCWA          PROVIDE PTR TO JCL WORK AREA@D51IDMZ 05830027
+         DROP  R3                  RELEASE COMREG BASE         @D51IDMZ 05840027
+INVPART0 L     RF,ASVASVDL         POINT TO SVA SUPERV.DIR.    @D65HDMZ 05850027
+         L     RF,AIJBSINP-SVASVDL(RF) INVPART ENTRY POINT     @D65HDMZ 05860027
+         BR    RF                  BRANCH TO SVA ROUTINE       @D65HDMZ 05870027
+INVPART1 DS    0H                                              @D51IDMZ 05880027
+         L     R8,ATSSERV          GET BASE FOR TSLICE SERVICE @D51IDMZ 05890027
+         USING TSSERV,R8                                       @D51IDMZ 05900027
+         B     TSRICNCL            REQ. DEACTIVATION OF PART.  @D51IDMZ 05910027
+*SGLINK  TSRICNCL,INPUT=(R8,RF)                                @D51IDMZ 05920027
+         DROP  R8                                              @D51IDMZ 05930027
+.* INPUT TO SGETVIS IS THE 8BYTE AREA STARTING WITH INVSPNAM   @D51IDMZ 05940027
+INVSPNAM DC    CL6'IJCLWA'         SUBPOOL NAME OF JCL WORKAREA@D51IDMZ 05950027
+INVSPIND DC    AL2(0)              SUBPOOL INDEX               @D51IDMZ 05960027
+         SPACE 2                                               @D14BDFG 05970027
+***************************************************************@D52VDMZ 05980027
+*  IJBSSM EXTENSION (CALLED BY IJBSSM)                         @D52VDMZ 05990027
+*  LINKAGE : AMODESW CALL - AMODESW RETURN                     @D52VDMZ 06000027
+*   INPUT:                                                     @D52VDMZ 06010027
+*     R0 : NO OF FRAMES TO BE CHECKED                          @D52VDMZ 06020027
+*     R1 : BEGIN ADDRESS FOR CHECK WITHIN PAGE FRAME TABLE     @D52VDMZ 06030027
+*     RD : ADDRESS OF SAVE AREA                                @D52VDMZ 06040027
+*     RE : RETURN ADDRESS                                      @D52VDMZ 06050027
+*     RF : ADDRESS OF BASE                                     @D52VDMZ 06060027
+*   OUTPUT                                                     @D52VDMZ 06070027
+*     R2 : NO OF FRAMES WITH DRAP BIT ON                       @D52VDMZ 06080027
+*          (R2 RETURNED IN SAVE AREA)                          @D52VDMZ 06090027
+*  ADDRESSING OF THE PAGE FRAME TABLE MUST BE DONE WITH DAT OFF@D52VDMZ 06100027
+*  IJBSSME CALLED IN AMODE 31 (PAGE FRAME TAB. MAY BE ABV 16MB)@D52VDMZ 06110027
+***************************************************************@D52VDMZ 06120027
+         DROP  RD                  RELEASE SGSVC BASE          @D52VDMZ 06130027
+         USING IJBSSME,RF                                      @D52VDMZ 06140027
+IJBSSME  DS    0H                  ENTRY POINT                 @D52VDMZ 06150027
+* AMODESW SET,DAT=OFF                                          @D52VDMZ 06160027
+         AMODESW SET,DAT=OFF                                   @D52VDMZ 06170027
+         USING PFTE,R1             ADDR PAGE FRAME TABLE ENTRY @D52VDMZ 06180027
+         SLR   R2,R2               CLEAR R2 (COUNT)            @D52VDMZ 06190027
+IJBSE00  DS    0H                                              @D52VDMZ 06200027
+         TM    S370FLG,DRAP        DRAP BIT SET FOR THE FRAME  @D52VDMZ 06210027
+         BZ    IJBSE50             NO, CHECK NEXT FRAME        @D52VDMZ 06220027
+         LA    R2,1(,R2)           INCREASE INVALID FRAME COUNT@D52VDMZ 06230027
+IJBSE50  DS    0H                                              @D52VDMZ 06240027
+         LA    R1,LPFTE(,R1)       ADDR NEXT ENTRY             @D52VDMZ 06250027
+         BCT   R0,IJBSE00                                      @D52VDMZ 06260027
+         DROP  R1                  RELEASE PFTE                @D52VDMZ 06270027
+* AMODESW SET,DAT=ON                                           @D52VDMZ 06280027
+         AMODESW SET,DAT=ON                                    @D52VDMZ 06290027
+         USING SVEARA,RD           ADDRESS SAVE AREA           @D52VDMZ 06300027
+         ST    R2,SVER02           SAVE OUTPUT                 @D52VDMZ 06310027
+         DROP  RD                  RELEASE SAVE AREA           @D52VDMZ 06320027
+         USING SGSVC,RD            REESTABLISH SGSVC BASE      @D52VDMZ 06330027
+         AMODESW RETURN,REG=(RE)  ===============> RETURN      @KX40075 06340027
+         DROP  RF                  RELEASE BASE                @D52VDMZ 06350027
+         SPACE 2                                               @D14BDFG 06360027
+         TITLE 'VSE SUPERVISOR    SGSVC      MODESET - SVC 12 / 13    ' 06370027
+*----- MOVED FROM SGCFCH -------------------------------------*@D61BDVB 06380027
+*-------------------------------------------------------------*@D369DVB 06390027
+*                                                                     * 06400027
+*SVC 12: RESET FLAGS TO 0 IN THE LINKAGE CONTROL BYTE OF THE          * 06410027
+*        COMMUNICATIONS REGION.                                       * 06420027
+*                                                                     * 06430027
+*   INPUT R1:                                                  @D149DVB 06440027
+*         NEW DEFINITION                                       @D149DVB 06450027
+*         BYTE 0 ---- X'FF' FLAG                               @D149DVB 06460027
+*         BYTE 1 ---- NOT CONSIDERED                           @D149DVB 06470027
+*         BYTE 2 ---- OFFSET IN COMREG OF BYTE TO BE ALTERED   @D149DVB 06480027
+*         BYTE 3 ---- 'AND MASK' BY WHICH TO ALTER COMREG_BYTE @D149DVB 06490027
+*           NOTE ---- BYTE 2   X'0'   TO GET...                @D149DVB 06500027
+*                     BYTE 3   X'FF'  ... USER KEY             @D149DVB 06510027
+*   OUTPUT R1:                                                 @D149DVB 06520027
+*         NEW DEFINITION ONLY:                                 @D149DVB 06530027
+*         BYTE 1 ---- ORIGINAL PSW KEY (BEFORE RESETTING TO    @D149DVB 06540027
+*                                       USER KEY )             @D149DVB 06550027
+*   EXECUTION MODE                                             @D52VDMZ 06560027
+*     NEW DEFINITON : AMODE = RMODE = ANY                      @D52VDMZ 06570027
+*     OLD DEFINITON : AMODE = RMODE = 24                       @D52VDMZ 06580027
+*-------------------------------------------------------------*@D149DVB 06590027
+         SPACE 1                                               @D35ZDVB 06600027
+         USING SGSVC,RD            REESTABLISH SGSVC BASE      @D52VDMZ 06610027
+         USING SVEARA,RB                                       @D36BDVB 06620027
+         USING COMREG,R2                                       @D36JDVB 06630027
+         USING TCBADR,RA                                       @D61BDVB 06640027
+         SPACE 1                                                        06650027
+SVC12    DS    0H                                              @D36JDVB 06660027
+         LTR   R1,R1              MUST BE UNEQUAL ZERO         @D36JDVB 06670027
+         BZ    ERR21              =====>   ILLEGAL SVC         @D14ZDVB 06680027
+         L     R2,CRADDR          GET COMREG ADDRESS           @D36JDVB 06690027
+         BAL   R5,SVC1213         TEST SVC_MODE                @D14ZDVB 06700027
+         CLR   R2,R3              PARTITION PROTECT KEY AS  RETURN...  *06710027
+                                  ... CODE REQUESTED           @D14CDVB 06720027
+         BNE   SVC12E             NO --->                      @D14CDVB 06730027
+         MVZ   SVER01+1(1),SVEPSW+1 PROVIDE ORGINAL KEY        @D14CDVB 06740027
+SVC12E   L     R5,PCBPTR          GET CURRENT PCB POINTER      @D51IDMZ 06750027
+         USING PCBADR,R5                                       @D51IDMZ 06760027
+         MVZ   SVEPSW+1(1),PCEKEY RESET PARTITION PROTECT KEY  @D51IDMZ 06770027
+         DROP  R5                                              @D51IDMZ 06780027
+         EX    R1,SVC12NI         TURN OFF REQUESTED BITS      @D14CDVB 06790027
+         SPACE 1                                               @D14CDVB 06800027
+         TM    SYSFLAG3,WAITRAS   IS RAS IN SPECIAL WAIT       @DM11717 06810027
+         BNOR  R6                 ===================>         @D14ZDVB 06820027
+         L     R8,ARASTIB    FOR RAS-POST, R6=DISPAD IS LOADED @D14BDBC 06830027
+         BAL   RF,POST-DISP(R6)                                @D14BDBC 06840027
+*SGLINK POST,INPUT=(R6,R8,RF),WORK=(RE)                        @D14BDBC 06850027
+         BR    R6                 ===================>         @D14ZDVB 06860027
+         SPACE 1                                               @D369DVB 06870027
+*-------------------------------------------------------------*@D369DVB 06880027
+SVC12NI  NI    D0(R3),0           EXECUTE 'AND' INSTRUCTION    @DA08164 06890027
+*-------------------------------------------------------------*@D369DVB 06900027
+         SPACE 2                                                        06910027
+*-------------------------------------------------------------*@D369DVB 06920027
+*                                                                     * 06930027
+*SVC 13: SET FLAGS TO 1 IN THE SPECIFIED BYTE OF THE           @D369DVB 06940027
+*        COMMUNICATIONS REGION.                                       * 06950027
+*                                                                     * 06960027
+*   INPUT R1:                                                  @D369DVB 06970027
+*         NEW DEFINITION                                       @D369DVB 06980027
+*         BYTE 0 ---- X'FF' FLAG                               @D369DVB 06990027
+*         BYTE 1 ---- NOT CONSIDERED                           @D369DVB 07000027
+*         BYTE 2 ---- OFFSET IN COMREG OF BYTE TO BE ALTERED   @D369DVB 07010027
+*         BYTE 3 ---- 'OR MASK' BY WHICH TO ALTER COMREG BYTE  @D369DVB 07020027
+*           NOTE ---- BYTE 2+3 X'0' GET PSW KEY ZERO           @D369DVB 07030027
+*   OUTPUT R1:                                                 @D369DVB 07040027
+*         NEW DEFINITION ONLY:                                 @D369DVB 07050027
+*         BYTE 1 ---- ORIGINAL PSW KEY (BEFORE SETTING TO 0)   @D369DVB 07060027
+*-------------------------------------------------------------*@D369DVB 07070027
+         SPACE 1                                               @D35ZDVB 07080027
+SVC13    DS    0H                                              @D36JDVB 07090027
+         LTR   R1,R1              MUST BE UNEQUAL ZERO         @D36JDVB 07100027
+         BZ    ERR21              ====================>        @D14ZDVB 07110027
+         L     R2,CRADDR          GET COMREG ADDRESS           @D36JDVB 07120027
+         BAL   R5,SVC1213         TEST SVC_MODE                @D14ZDVB 07130027
+         CLR   R3,R2              PSW KEY ZERO REQUESTED       @D35ZDVB 07140027
+         BNE   SVC13E             YES --->                     @D35ZDVB 07150027
+SVC13C   MVZ   SVER01+1(1),SVEPSW+1 PROVIDE ORGINAL KEY        @D36JDVB 07160027
+         NI    SVEPSW+1,X0F       SET KEY 0                    @D14BDVB 07170027
+SVC13E   EX    R1,SVC13OI         SET REQUESTED BITS           @D14BDVB 07180027
+         BR    R6                 =====================>       @D14ZDVB 07190027
+         SPACE 1                                               @D14ZDVB 07200027
+*-------------------------------------------------------------*@D369DVB 07210027
+SVC13OI  OI    D0(R3),0           EXECUTE 'OR' INSTRUCTION     @DA08164 07220027
+*-------------------------------------------------------------*@D369DVB 07230027
+         SPACE  1                                              @DA08164 07240027
+SVC1213  DS    0H                                              @D36JDVB 07250027
+         CLI   SVER01,XFF         IS IT OLD DEFINITION         @D36JDVB 07260027
+         BNE   SVC1213A           BRANCH IF OLD SVC12/13       @DA08164 07270027
+         LR    R3,R1              NEW DEFINITION, GET COMREG.. @DA08164 07280027
+         SLL   R3,L16             DISPLACEMENT INTO...         @DA08164 07290027
+         SRL   R3,L24             REGISTER R3                  @DA08164 07300027
+         AR    R3,R2              R3=ADDR BYTE TO BE ALTERED   @DA08164 07310027
+         BR    R5                 RETURN                       @DA08164 07320027
+         SPACE 1                                               @DA08164 07330027
+*-------------------------------------------------------------*@D369DVB 07340027
+*     OLD DEFINITION                                           @DA08164 07350027
+*          R1 POINTS TO BYTE BY WHICH TO ALTER JCSW2           @DA08164 07360027
+*-------------------------------------------------------------*@D369DVB 07370027
+SVC1213A DS    0H                                              @D52VDMZ 07380027
+         TM    TCBEXFLG,TCBEXAM   HAS CALLER AMODE 31          @D52VDMZ 07390027
+         BO    ERR45              YES, CANCEL WITH MODE VIOLAT.@D52VDMZ 07400027
+         IC    R1,D0(R1)          R1,BYTE R3=MASK TO ALTER BYTE@DA08164 07410027
+PCKSVC13 EQU   *                  PROGRAM CHECK IF R1 POINTS           *07420027
+                                  TO INVALID ADDRESS           @KQ20017 07430027
+         LA    R3,JCSW2           R3,ADDR BYTE TO ALTER        @DA08164 07440027
+         BR    R5                 RETURN                       @DA08164 07450027
+         SPACE 1                                               @D61BDVB 07460027
+         DROP  R2,RA,RB                                        @D61BDVB 07470027
+*----- MOVED FROM SGCFCH -------------------------------------*@D61BDVB 07480027
+         TITLE 'VSE SUPERVISOR    SGSVC      MODESET - SIMSVC 107     ' 07490027
+*---------------------------------------------------------------------* 07500027
+*  ROUTINE NAME: MODESET   VSE/ESA VERSION 2 RELEASE 1         @D61BDVB 07510027
+*  ROUTINE PROLOGUE                                            @D61BDVB 07520027
+*        'VSE/ESA SERVICE FOR MODESET SVC MACRO '              @D61BDVB 07530027
+*                                                              @D61BDVB 07540027
+*  FUNCTION                                                    @D61BDVB 07550027
+*     (1) CHANGE THE KEY IN THE SAVE AREA OLD PSW TO ZERO OR   @D61BDVB 07560027
+*         THE KEY VALUE IN THE CURRENT PCB.                    @D61BDVB 07570027
+*     (2) CHANGE THE STATE IN THE SAVE AREA OLD PSW TO PROBLEM @D61BDVB 07580027
+*         OR SUPERVISOR.                                       @D61BDVB 07590027
+*     (3) WHEN THE RESULTING STATE IS PROBLEM STATE,           @D61BDVB 07600027
+*         SET UP APKM VALUE THAT ONLY REFECTS THE CALLER'S PSW @D61BDVB 07610027
+*         KEY. USE THIS VALUE TO UPDATE THE PSW KEY MASK IN    @D61BDVB 07620027
+*         CR 3.                                                @D61BDVB 07630027
+*                                                              @D61BDVB 07640027
+*  CALLED VIA                                                  @D61BDVB 07650027
+*     - MODESET MACRO EXPANSION (MVS SVC CODE 107/X'6B')       @D61BDVB 07660027
+*                                                              @D61BDVB 07670027
+*  AMODE = ANY                                                 @D61BDVB 07680027
+*                                                              @D61BDVB 07690027
+*  MODE  = PRIMARY (SECONDARY-, HOME-, AND AR-MODE NOT ALLOWED)@D61BDVB 07700027
+*                                                              @D61BDVB 07710027
+*  ENTRY POINT:  MODESET                                       @D61BDVB 07720027
+*                                                              @D61BDVB 07730027
+*  LINKAGE:  VIA SVC INTERRUPT HANDLER                         @D61BDVB 07740027
+*                                                              @D61BDVB 07750027
+*                                                              @D61BDVB 07760027
+*  INPUT:    R0  =   -                                         @D61BDVB 07770027
+*            R1  =   ACTION CODES                              @D61BDVB 07780027
+*                     BITS  0-25 = RESERVED (MUST BE 0)        @D61BDVB 07790027
+*                     BITS 26-27 = 00 - NO ACTION              @D61BDVB 07800027
+*                                  01 - INVALID                @D61BDVB 07810027
+*                                  10 - PCB KEY IN SA.OLDPSW   @D61BDVB 07820027
+*                                  11 - ZERO KEY IN SA.OLDPSW  @D61BDVB 07830027
+*                     BITS 28-29 = 00 - NO ACTION              @D61BDVB 07840027
+*                                  01 - PROB STATE SA.OLDPSW   @D61BDVB 07850027
+*                                  10 - INVALID                @D61BDVB 07860027
+*                                  11 - SUPVR STATE SA.OLDPSW  @D61BDVB 07870027
+*                                  11 - SUPVR STATE SA.OLDPSW  @D61BDVB 07880027
+*                     BITS 30-31 = RESERVED (MUST BE 0)        @D61BDVB 07890027
+*            R6  =   ADDRESS OF DISPATCHER                     @D61BDVB 07900027
+*            R8  =   ADDRESS OF TIB                            @D61BDVB 07910027
+*            RA  =   ADDRESS OF TCB                            @D61BDVB 07920027
+*            RB  =   ADDRESS OF SAVE AREA (TCBSAVE)            @D61BDVB 07930027
+*            RF  =   -                                         @D61BDVB 07940027
+*                                                              @D61BDVB 07950027
+*  OUTPUT:   R15 =   RETURN CODE                               @D61BDVB 07960027
+*                     0 = SUCCESSFUL COMPLETION                @D61BDVB 07970027
+*                     4 = REQUEST NOT SATISFIED                @D61BDVB 07980027
+*                           (R0 CONTAINS REASON CODE)          @D61BDVB 07990027
+*                           TYPE OF REQUEST, R0 = 0            @D61BDVB 08000027
+*            R0  =   REASON CODE                               @D61BDVB 08010027
+*                     0 = SUCCESSFUL COMPLETION                @D61BDVB 08020027
+*                     4 = NOP REQUEST - NO ACTION DONE         @D61BDVB 08030027
+*                     8 = INVALID ACTION CODE - NO ACTION DONE @D61BDVB 08040027
+*                    12 = INVALID MODE - NO ACTION DONE        @D61BDVB 08050027
+*                    16 = INVALID KEY  - NO ACTION DONE        @D61BDVB 08060027
+*                    20 = INSUFFICIENT AUTHORITY - NO ACTION   @D61BDVB 08070027
+*                                                       DONE   @D61BDVB 08080027
+*            R2 - R14 UNCHANGED                                @D61BDVB 08090027
+*            R1       UNPREDICTABLE                            @D61BDVB 08100027
+*            TCBSAV -> OLDPSW  (KEY AND STATUS MODIFIED)       @D61BDVB 08110027
+*                                                              @D61BDVB 08120027
+*  EXIT: RETURN TO DISP                                        @D61BDVB 08130027
+*                                                              @D61BDVB 08140027
+*  ERROR EXIT:  NONE                                           @D61BDVB 08150027
+*                                                              @D61BDVB 08160027
+*  CHANGE ACTIVITIES:                                          @D61BDVB 08170027
+*     NEW MODULE FOR VSE/ESA 2.1.0                             @D61BDVB 08180027
+*                                                              @D61BDVB 08190027
+* A000000-999999                                               @D61BDVB 08200027
+*                                                              @D61BDVB 08210027
+*---------------------------------------------------------------------* 08220027
+*  REGISTER USAGE FOR MODESET                                  @D61BDVB 08230027
+*                                                              @D61BDVB 08240027
+*              INPUT               OUTPUT           USED AS    @D61BDVB 08250027
+*              -----               ------           -------    @D61BDVB 08260027
+*                                                              @D61BDVB 08270027
+*        R0  -                     REASON CODE                 @D61BDVB 08280027
+*        R1  - ACTION CODES        UNCHANGED                   @D61BDVB 08290027
+*        R2  -                     UNCHANGED        WORK       @D61BDVB 08300027
+*        R3  -                     UNCHANGED        WORK       @D61BDVB 08310027
+*        R4  -                     UNCHANGED        WORK       @D61BDVB 08320027
+*        R5  -                     UNCHANGED        WORK       @D61BDVB 08330027
+*        R6  - ADDRES OD DISP      UNCHANGED                   @D61BDVB 08340027
+*        R7  -                     UNCHANGED        WORK       @D61BDVB 08350027
+*        R8  - ADDRESS SA          UNCHANGED                   @D61BDVB 08360027
+*        R9  -                     UNCHANGED                   @D61BDVB 08370027
+*        R10 - ADDRESS TCB         UNCHANGED                   @D61BDVB 08380027
+*        R11 - ADDRESS OF SA       UNCHANGED                   @D61BDVB 08390027
+*        R12 -                     UNCHANGED                   @D61BDVB 08400027
+*        R13 - BASE REGISTER       UNCHANGED                   @D61BDVB 08410027
+*        R14 -                     UNCHANGED                   @D61BDVB 08420027
+*        R15 -                     RETURN CODE      WORK       @D61BDVB 08430027
+*                                                              @D61BDVB 08440027
+*                                                              @D61BDVB 08450027
+*  INTERNAL SUBROUTINES USED                                   @D61BDVB 08460027
+*        NONE                                                  @D61BDVB 08470027
+*                                                              @D61BDVB 08480027
+*---------------------------------------------------------------------* 08490027
+         SPACE 2                                               @D61BDVB 08500027
+         USING SGSVC,RD                 ESTABLISH SGSVC BASE   @D61BDMZ 08510027
+         USING SVEARA,RB                ADDRESSIBILITY OF SA   @D61BDVB 08520027
+         USING TCBADR,RA                ADDRESSIBILITY OF TCB  @D61BDVB 08530027
+         SPACE 1                                               @D61BDVB 08540027
+         DS    0D                       SERVICE ENTRE          @D61BDVB 08550027
+         DC    CL8'MODESET '            EYECATCHER             @D61BDVB 08560027
+         DC    CL8'07/24/97'                                   @D64ADMZ 08570027
+         SPACE 1                                               @D61BDVB 08580027
+MODESET  DS    0H                       SERVICE ENTRY POINT    @D61BDVB 08590027
+*        AMODESW  SET,AMODE=31,WR=(R4)  GET AMODE 31           @D61BDVB 08600027
+         AMODESW  SET,AMODE=31,WR=(R4)                         @D61BDVB 08610027
+         SPACE 1                                               @D61BDVB 08620027
+*   SET UP MODE AND KEY FIELDS                                 @D61BDVB 08630027
+         SPACE 1                                               @D61BDVB 08640027
+         SR    R3,R3                    NO PUBL. STOR. KEY     @D64ADMZ 08650027
+         L     R2,PCBPTR                CURRENT PCB ADDRESS    @D64ADMZ 08660027
+         TM    PCBFLAG-PCBADR(R2),PCBMVSEM  MVS EMULATION      @D64ADVB 08670027
+         BZ    MDS00020                 NO, -------->          @D64ADVB 08680027
+         L     R4,PSATOLD               ADDR OF CURRENT MVS TCB@D64ADVB 08690027
+         MVC   MDSPAKEY+3(1),TCBPKF-TCB(R4)     TASK KEY       @D64ADVB 08700027
+         L     R4,CVTPTR                                       @D64ADMZ 08710027
+         TM    CVTFLAG1-CVTMAP(R4),CVTOVER PUBSTOR KEY SUPP.   @D64ADMZ 08720027
+         BZ    MDS00050                 NO                     @D64ADMZ 08730027
+         L     R3,MDSPUBST              GET PUBL. STOR. KEY    @D64ADMZ 08740027
+         B     MDS00050                                        @D64ADVB 08750027
+MDS00020 DS    0H                                              @D64ADVB 08760027
+         MVC   MDSPAKEY+3(1),PCEKEY-PCBADR(R2)  PARTITION KEY  @D61BDVB 08770027
+MDS00050 DS    0H                                              @D61BDVB 08780027
+* PREPARE NEW PKM                                                       08790027
+         L     R5,MDSPAKEY              GET KEY                @D64ADMZ 08800027
+         SRL   R5,4                     MOVE KEY TO LAST HBYTE @D64ADMZ 08810027
+         L     R4,BIT0OMSK              R4 = X'80000000'       @D64ADMZ 08820027
+         SRL   R4,0(R5)                 GET CORR. PKM          @D64ADMZ 08830027
+         OR    R4,R3                    OR IT TO KEY           @D64ADMZ 08840027
+         STCM  R4,B'1100',MDSCHPKM      SAVE PKM               @D64ADMZ 08850027
+* SAVE CURRENT PKM                                                      08860027
+         L     R4,TCBATCBE              GET TCB EXTENSION      @D64ADMZ 08870027
+         USING TCBXADR,R4                                      @D64ADMZ 08880027
+         MVC   MDSCUPKM,TCBX1CR3        SAVE CURRENT PKM       @D64ADMZ 08890027
+         DROP  R4                       RELEASE TCB EXT.       @D64ADMZ 08900027
+         IC    R5,SVEPSWKY              KEY OF OLDPSW          @D61BDVB 08910027
+         N     R5,MDSSOKEY              SEPARATE KEY           @D61BDVB 08920027
+         ST    R5,MDSCUKEY              PROVIDE CURRENT KEY    @D61BDVB 08930027
+         IC    R5,SVEPSWKY              MODE OF OLDPSW         @D61BDVB 08940027
+         N     R5,MDSSOMOD              SEPARATE MODE          @D61BDVB 08950027
+         ST    R5,MDSCUMOD              PROVIDE CURRENT MODE   @D61BDVB 08960027
+         N     R5,MDSPSWKY              UNCHANGED PART         @D61BDVB 08970027
+*                                       R1 AS SPECIFIED BY SVC @D61BDVB 08980027
+         LR    R4,R1                    DO NOT DESTROY R1      @D64ADMZ 08990027
+         SRL   R1,2                     OFFSET IN TABLE        @D64ADMZ 09000027
+         N     R4,MDSMSK15              INVALID BITS SET       @D64ADMZ 09010027
+         BZ    MDS00100                 NO, ------>            @D64ADMZ 09020027
+         LA    R1,MDSCNINV-MDSCNTB      ENTRY FOR INVALID BITS @D64ADMZ 09030027
+         SPACE 1                                               @D61BDVB 09040027
+*   GET RELATED PROCESS ENTRY                                  @D61BDVB 09050027
+         SPACE 1                                               @D61BDVB 09060027
+MDS00100 DS    0H                                              @D61BDVB 09070027
+         SLR   R4,R4                                           @D61BDVB 09080027
+         IC    R4,MDSCNTB(R1)           ADDRESS ENTRY IN 1ST LEVEL     *09090027
+                                        ... CONTROL TABLE      @D61BDVB 09100027
+         LA    R4,MDSEXTB(R4)           ADDRESS ENTRY IN 2ND LV@D61BDVB 09110027
+         USING MDSEXTEN,R4              ADDRESSABILITY TO ENTRY@D61BDVB 09120027
+         L     R7,MDSEXCHK                                     @D61BDVB 09130027
+         BALR  R7,R7                    DO MORE CHECKING       @D61BDVB 09140027
+*                                  R5: RELEVANT PART OF OLDPSW @D61BDVB 09150027
+         L     R3,MDSEXKEY              ADDRESS OF KEY         @D61BDVB 09160027
+         O     R5,0(,R3)                REQUESTED KEY          @D61BDVB 09170027
+         L     R3,MDSEXMOD              ADDRESS OF MODE        @D61BDVB 09180027
+         O     R5,0(,R3)                REQUESTED MODE         @D61BDVB 09190027
+         SPACE 1                                               @D61BDVB 09200027
+*   PROVIDE OUTPUT: R0, RF AND OLDPSWKY AND PKM                @D64ADMZ 09210027
+         SPACE 1                                               @D61BDVB 09220027
+         L     R1,MDSEXPKM              GET ADDR OF PKM        @D64ADMZ 09230027
+         LH    R3,MDSEXRET              GET RETURN CODE        @D61BDVB 09240027
+         LH    R4,MDSEXRSN              GET REASON CODE        @D61BDVB 09250027
+         DROP  R4                                              @D61BDVB 09260027
+         STM   R3,R4,SVER0F             STORE IT IN SAVARAE    @D61BDVB 09270027
+         STC   R5,SVEPSWKY              PROVIDE KEY AND MODE   @D61BDVB 09280027
+         L     R4,TCBATCBE                                     @D64ADMZ 09290027
+         USING TCBXADR,R4                                      @D64ADMZ 09300027
+         MVC   TCBX1CR3(2),0(R1)        SET PKM IN CR 3        @D64ADMZ 09310027
+         DROP  R4                       RELEASE TCBX           @D64ADMZ 09320027
+         SPACE 1                                                        09330027
+*    RETURN TO DISPATCHER                                      @D61BDVB 09340027
+         SPACE 1                                               @D61BDVB 09350027
+         USING DISP,R6                                         @D61BDVB 09360027
+         LA    RF,DISPMVS                                      @D61BDVB 09370027
+*        AMODESW RETURN,REG=(RF)        =====================> @D61BDVB 09380027
+         AMODESW RETURN,REG=(RF)                               @D61BDVB 09390027
+*---------------------------------------------------------------------* 09400027
+         SPACE 2                                               @D61BDVB 09410027
+MDSCHCK  DS    0H                                              @D61BDVB 09420027
+         USING PCBADR,R2                                       @D61BDVB 09430027
+         TM    PCBSSFLG,PWR+VTAM+OCCF+CICS AUTHORIZED SUBSYSTEMAD62BDVB 09440027
+         BNZR  R7                       YES, ==========>       @D61BDVB 09450027
+         DROP  R2                                              @D61BDVB 09460027
+         TM    TCBFLAG3,TCBVEND         VENDOR PROGRAM ACTIVE  @D61BDVB 09470027
+         BOR   R7                       YES, ==========>       @D61BDVB 09480027
+         L     R2,CRADDR                ADDR (CURRENT COMREG)  @D61BDVB 09490027
+         USING COMREG,R2                                       @D61BDVB 09500027
+         TM    JCSW5,JCLACTIV           JCL ACTIVE             @D61BDVB 09510027
+         BOR   R7                       YES, ==========>       @D61BDVB 09520027
+         DROP  R2                       RELEASE PCB            @D61BDVB 09530027
+         ICM   R3,B'1111',MDSCUKEY      CALLER IN KEY 0        @D64ADMZ 09540027
+         BZR   R7                       YES                    @D64XDMZ 09550027
+         LA    R4,MDSAUTHY              MDSEXTB FOR INSUFF.    @D61BDVB 09560027
+*                                       ... AUTHORITY          @D61BDVB 09570027
+MDSCHEX  DS    0H                                              @D61BDVB 09580027
+         BR    R7                       ==========>            @D61BDVB 09590027
+*---------------------------------------------------------------------* 09600027
+         EJECT                                                 @D61BDVB 09610027
+*---------------------------------------------------------------------* 09620027
+*                                                              @D61BDVB 09630027
+*     DATA AREA                                                @D61BDVB 09640027
+*                                                              @D61BDVB 09650027
+*---------------------------------------------------------------------* 09660027
+         SPACE 1                                               @D61BDVB 09670027
+         DS    0F                                              @D61BDVB 09680027
+MDSPUBST DC    XL4'00400000'            PUBLIC STORAGE IN PKM  @D62ADMZ 09690027
+MDSMSK15 DC    XL4'FFFFFFC3'            RESERVED BITS IN R1    @D64ADMZ 09700027
+MDSSOKEY DC    XL4'000000F0'            SEPARATE KEY           @D61BDVB 09710027
+MDSSOMOD DC    XL4'0000000F'            SEPARATE MODE          @D61BDVB 09720027
+MDSPSWKY DC    XL4'0000000E'            UNCHANGED PART         @D61BDVB 09730027
+MDSCUKEY DC    A(0)                     SAVE CURRENT KEY       @D61BDVB 09740027
+MDSPAKEY DC    A(0)                     PCB KEY / TCB KEY      @D62ADVB 09750027
+MDS00KEY DC    A(0)                     ZERO KEY               @D61BDVB 09760027
+MDSCUMOD DC    A(0)                     CURRENT STATE          @D61BDVB 09770027
+MDSSUMOD DC    A(0)                     SUPERVISOR STATE       @D61BDVB 09780027
+MDSPRMOD DC    A(1)                     PROBLEM STATE          @D61BDVB 09790027
+MDSCUPKM DC    H'0'                     CURRENT PKM            @D64ADMZ 09800027
+MDSCHPKM DC    H'0'                     CHANGED PKM            @D64ADMZ 09810027
+         SPACE 1                                               @D61BDVB 09820027
+*---------------------------------------------------------------------* 09830027
+*                                                              @D61BDVB 09840027
+*     CONTROL TABLE                                            @D61BDVB 09850027
+*                                                              @D61BDVB 09860027
+*---------------------------------------------------------------------* 09870027
+         SPACE 1                                               @D61BDVB 09880027
+MDSCNTB  DS    0F                                              @D61BDVB 09890027
+         DC    AL1(MDSNOACT-MDSEXTB)    00000000  NO ACTION    @D61BDVB 09900027
+         DC    AL1(MDSPROBL-MDSEXTB)    00000100  PROBLEM STATE@D61BDVB 09910027
+         DC    AL1(MDSINVMO-MDSEXTB)    00001000  INVALID MODE @D61BDVB 09920027
+         DC    AL1(MDSSUPV-MDSEXTB)     00001100  SUPR STATE   @D61BDVB 09930027
+         DC    AL1(MDSINVKY-MDSEXTB)    00010000  INVALID KEY  @D61BDVB 09940027
+         DC    AL1(MDSINVKY-MDSEXTB)    00010100  INVALID KEY  @D61BDVB 09950027
+         DC    AL1(MDSINVMO-MDSEXTB)    00011000  INVALID MODE @D61BDVB 09960027
+         DC    AL1(MDSINVKY-MDSEXTB)    00011100  INVALID KEY  @D61BDVB 09970027
+         DC    AL1(MDSPCBKY-MDSEXTB)    00100000  PCBKEY       @D61BDVB 09980027
+         DC    AL1(MDSPROPA-MDSEXTB)    00100100  PROBL PCBKEY @D61BDVB 09990027
+         DC    AL1(MDSINVMO-MDSEXTB)    00101000  INVALID MODE @D61BDVB 10000027
+         DC    AL1(MDSSUPPA-MDSEXTB)    00101100  SUPR  PCBKEY @D61BDVB 10010027
+         DC    AL1(MDSKEY00-MDSEXTB)    00110000  ZERO KEY     @D61BDVB 10020027
+         DC    AL1(MDSPRO00-MDSEXTB)    00110100  PROBL ZEROKEY@D61BDVB 10030027
+         DC    AL1(MDSINVMO-MDSEXTB)    00111000  INVALID MODE @D61BDVB 10040027
+         DC    AL1(MDSSUP00-MDSEXTB)    00111100  SUPVR ZEROKEY@D61BDVB 10050027
+MDSCNINV DC    AL1(MDSINVBT-MDSEXTB)    11XXXX11  INVALID BITS @D64ADMZ 10060027
+*---------------------------------------------------------------------* 10070027
+*     TABLE ENTRY LAYOUT : MDSEXTEN                                   * 10080027
+*        0     REASON CODE                                            * 10090027
+*        2     RETURN CODE                                            * 10100027
+*        4     ADDRESS OF MODE FIELD                                  * 10110027
+*        8     ADDRESS OF KEY FIELD                                   * 10120027
+*---------------------------------------------------------------------* 10130027
+         SPACE 1                                               @D61BDVB 10140027
+MDSEXTB  DS    0F                                              @D61BDVB 10150027
+MDSNOACT DC    H'04',H'04',A(MDSCUMOD),A(MDSCUKEY),A(MDSCHEX)  @D61BDVB 10160027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10170027
+MDSINVBT DC    H'08',H'04',A(MDSCUMOD),A(MDSCUKEY),A(MDSCHEX)  @D61VDBD 10180027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10190027
+MDSPROBL DC    H'00',H'00',A(MDSPRMOD),A(MDSCUKEY),A(MDSCHEX)  @D61BDVB 10200027
+         DC    A(MDSCHPKM)                                     @D64ADMZ 10210027
+MDSINVMO DC    H'12',H'04',A(MDSCUMOD),A(MDSCUKEY),A(MDSCHEX)  @D61BDVB 10220027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10230027
+MDSSUPV  DC    H'00',H'00',A(MDSSUMOD),A(MDSCUKEY),A(MDSCHCK)  @D61BDVB 10240027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10250027
+MDSINVKY DC    H'16',H'04',A(MDSCUMOD),A(MDSCUKEY),A(MDSCHEX)  @D61BDVB 10260027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10270027
+MDSPCBKY DC    H'00',H'00',A(MDSCUMOD),A(MDSPAKEY),A(MDSCHEX)  @D61BDVB 10280027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10290027
+MDSPROPA DC    H'00',H'00',A(MDSPRMOD),A(MDSPAKEY),A(MDSCHEX)  @D61BDVB 10300027
+         DC    A(MDSCHPKM)                                     @D64ADMZ 10310027
+MDSSUPPA DC    H'00',H'00',A(MDSSUMOD),A(MDSPAKEY),A(MDSCHCK)  @D61BDVB 10320027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10330027
+MDSKEY00 DC    H'00',H'00',A(MDSCUMOD),A(MDS00KEY),A(MDSCHEX)  @D61BDVB 10340027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10350027
+MDSPRO00 DC    H'00',H'00',A(MDSPRMOD),A(MDS00KEY),A(MDSCHEX)  @D61BDVB 10360027
+         DC    A(MDSCHPKM)                                     @D64ADMZ 10370027
+MDSSUP00 DC    H'00',H'00',A(MDSSUMOD),A(MDS00KEY),A(MDSCHCK)  @D61BDVB 10380027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10390027
+MDSAUTHY DC    H'20',H'04',A(MDSCUMOD),A(MDSCUKEY),A(MDSCHEX)  @D61BDVB 10400027
+         DC    A(MDSCUPKM)                                     @D64ADMZ 10410027
+*---------------------------------------------------------------------* 10420027
+         SPACE 2                                               @D61BDVB 10430027
+         DROP  R6                   RESET ADDR. TO DISP        @D61BDVB 10440027
+         DROP  RB                   RESET ADDR. TO SAVEAREA    @D61BDVB 10450027
+         DROP  RA                   RESET ADDR. TO TCB         @D61BDVB 10460027
+         DROP  RD                   RESET ADDR. TO CODE        @D61BDVB 10470027
+         SPACE 1                                               @D61BDVB 10480027
+*---------------------------------------------------------------------* 10490027
+*                                                              @D61BDVB 10500027
+*     MAPPINGS, DSECTS AND EQUATES                             @D61BDVB 10510027
+*                                                              @D61BDVB 10520027
+*---------------------------------------------------------------------* 10530027
+         SPACE 2                                               @D61BDVB 10540027
+         DSECT                                                 @D61BDVB 10550027
+MDSEXTEN DS    0D                                              @D61BDVB 10560027
+MDSEXRSN DS    H                        REASON CODE            @D61BDVB 10570027
+MDSEXRET DS    H                        RETURN CODE            @D61BDVB 10580027
+MDSEXMOD DS    A                        ADDRESS OF MODE        @D61BDVB 10590027
+MDSEXKEY DS    A                        ADDRESS OF KEY         @D61BDVB 10600027
+MDSEXCHK DS    A                        ADDRESS OF CHECK ROUTIN@D61BDVB 10610027
+MDSEXPKM DS    A                        ADDRESS OF PKM         @D64ADMZ 10620027
+         SPACE 2                                               @D61BDVB 10630027
+&SYSECT  CSECT ,                                               @D61BDVB 10640027
+         AIF   (NOT &BGDEBUG OR NOT &SGSVC).PRINT                       10650027
+         PRINT NOGEN               RESET PRINT OPTION                   10660027
+.PRINT   ANOP                                                           10670027
+         MEND                                                           10680027

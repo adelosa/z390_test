@@ -1,0 +1,417 @@
+         MACRO                                                          00001000
+         IGZCDMOD &TYPE=ENTRY,                                         X00002000
+               &DEVICE=,                                               X00003000
+               &IOAREA2=,                                              X00004000
+               &RECFORM=,                                              X00005000
+               &TYPEFLE=,                                              X00006000
+               &CTLCHR=,                                               X00007000
+               &FUNC=                                                   00008000
+.********************************************************************** 00009000
+.*                                                                      00010000
+         GBLB  &STTFND,&ENTFND,&FINFND                                  00011000
+         LCLB  &ERROR,&NOMOD,&NOIOA2                                    00012000
+         LCLC  &DEVNUM,&RECFRM,&TYPFLE                                  00013000
+         LCLC  &MOD4,&MOD5,&MOD6,&MOD7,&MOD8                            00014000
+         LCLC  &WORK,&NAME                                              00015000
+.*                                                                      00016000
+.********************************************************************** 00017000
+         AGO   .CHKTYP                                                  00018000
+.********************************************************************** 00019000
+.*                                                                    * 00020000
+.*   5686-094  (C) COPYRIGHT IBM CORP. 1991, 1996.                    * 00021000
+.*   ALL RIGHTS RESERVED                                              * 00022000
+.*   US GOVERNMENT USERS RESTRICTED RIGHTS - USE,                     * 00023000
+.*   DUPLICATION OR DISCLOSURE RESTRICTED BY GSA                      * 00024000
+.*   ADP SCHEDULE CONTRACT WITH IBM CORP.                             * 00025000
+.*                                                                    * 00026000
+.* ******************************************************************** 00027000
+.*                                                                      00029000
+.*  MACRO NAME: IGZCDMOD                                                00030000
+.*                                                                      00031000
+.*  DESCRIPTIVE NAME: GENERATE VSE LIOCS CARD LOGIC MODULES             00032000
+.*                                                                      00033000
+.*  STATUS: RELEASE 2.1                                                 00034000
+.*                                                                      00035000
+.*                                                                      00036000
+.*  FUNCTION: THIS MACRO GENERATES VSE LIOCS LOGIC MODULES FOR          00037000
+.*            CARD READER/PUNCH DEVICES.  THE MACRO IS ASSEMBLED,       00038000
+.*            IN THE CUSTOMER'S INSTALLATION-TIME PROCEDURE, TO BUILD   00039000
+.*            HIS INSTALLATION REQUIRED RUN-TIME LIOCS LOGIC MODULES.   00040000
+.*            THE RESULTANT OBJECT DECK IS LINK EDITED AND GIVEN THE    00041000
+.*            PHASE NAME IGZEQC0.  THE PHASE CONTAINS, IN ADDITION TO   00042000
+.*            THE LOGIC MODULES:                                        00043000
+.*                                                                      00044000
+.*            -  A TABLE CONTAINING THE NAME AND ADDRESS OF EACH LOGIC  00045000
+.*               MODULE (CSECT) GENERATED, AND                          00046000
+.*            -  CODE TO SEARCH THE TABLE FOR A MATCH ON LOGIC MODULE   00047000
+.*               NAME AND RETURN THE ADDRESS OF THE LOGIC MODULE.       00048000
+.*                                                                      00049000
+.*            THE MACRO IS USED AS A 'FRONT-END' TO THE VSE LIOCS       00050000
+.*            MACRO, CDMOD.  NOT ALL PARAMETERS USED BY CDMOD ARE       00051000
+.*            USABLE BY IGZCDMOD.  THE PRMOD PROTOTYPE STATEMENT        00052000
+.*            INDICATES THE IBM-SUPPLIED DEFAULTS FOR THESE             00053000
+.*            PARAMETERS.  THEY MAY BE SELECTIVELY OVER-RIDDEN AT       00054000
+.*            INSTALLATION TIME.                                        00055000
+.*                                                                      00056000
+.*            THE FORMAT OF THE MACRO IS:                               00057000
+.*                                                                      00058000
+.*            IGZCDMOD    TYPE={START|ENTRY|FINAL}                      00059000
+.*                           <,CTLCHR={YES|ASA}>                        00060000
+.*                           <,DEVICE=XXXXX>                            00061000
+.*                           <,FUNC=XXX>                                00062000
+.*                           <,IOAREA2=YES>                             00063000
+.*                           <,RECFORM={FIXUNB|VARUNB|UNDEF}>           00064000
+.*                           <,TYPEFLE={INPUT|OUTPUT}>                  00065000
+.*                                                                      00066000
+.*            BEFORE THE VSE LIOCS MACRO, CDMOD, IS INVOKED             00067000
+.*            THE FOLLOWING MACRO PARAMETER VALIDATION TAKES PLACE.     00068000
+.*                                                                      00069000
+.*            1. THE TYPE PARAMETER IS VALIDATED.  IF INVALID, A        00070000
+.*               MESSAGE IS ISSUED AND MACRO GENERATION TERMINATED.     00071000
+.*            2. TYPE=START MUST BE SPECIFIED ON THE FIRST MACRO        00072000
+.*               AND MAY ONLY BE USED ONCE.  IF INVALID, A MESSAGE IS   00073000
+.*               ISSUED AND MACRO GENERATION TERMINATED.                00074000
+.*            2. TYPE=FINAL MUST BE SPECIFIED ON THE LAST MACRO         00075000
+.*               AND MAY ONLY BE USED ONCE.  IF INVALID, A MESSAGE IS   00076000
+.*               ISSUED AND MACRO GENERATION TERMINATED.                00077000
+.*            3. TYPE=ENTRY MUST BE PRECEDED BY TYPE=START.  IF         00078000
+.*               NO TYPE=START HAS BEEN SPECIFIED AN ERROR IS ISSUED    00079000
+.*               AND MACRO GENERATION TERMINATED.                       00080000
+.*            4. TYPE=FINAL MUST BE PRECEDED BY TYPE=START.  IF         00081000
+.*               NO TYPE=START HAS BEEN SPECIFIED AN ERROR IS ISSUED    00082000
+.*               AND MACRO GENERATION TERMINATED.                       00083000
+.*                                                                      00084000
+.*            HAVING VALIDATED THE TYPE PARAMETER, THE CDMOD            00085000
+.*            PARAMETERS ARE CHECKED AND A LOGIC MODULE NAME GENERATED  00086000
+.*            ACCORDINGLY.  AS CDMOD WILL VALIDATE THE PARAMETERS NO    00087000
+.*            NO ERROR MESSAGES ARE PRODUCED IF INVALID PARAMETERS ARE  00088000
+.*            ARE DETECTED, BUT A VALID LOGIC MODULE WILL NOT BE        00089000
+.*            BE GENERATED.                                             00090000
+.*                                                                      00091000
+.*            THE EXPANSION OF THE MACRO PROCEEDS IN THE FOLLOWING      00092000
+.*            MANNER.                                                   00093000
+.*                                                                      00094000
+.*            IF TYPE=START IS SPECIFIED, THE CSECT IGZEQC0 IS          00095000
+.*            GENERATED WITH CODE TO SEARCH THE TABLE OF LOGIC          00096000
+.*            MODULE NAMES FOR A MATCH ON THE PARAMETER POINTED         00097000
+.*            TO BY REGISTER 1.  IF FOUND, THE ADDRESS OF THE           00098000
+.*            LOGIC MODULE IS RETURNED IS REGISTER 1.  IF NOT           00099000
+.*            FOUND A NON-ZERO RETURN CODE IS RETURNED IN               00100000
+.*            REGISTER 15.                                              00101000
+.*                                                                      00102000
+.*            IF TYPE=ENTRY IS SPECIFIED A C TYPE CONSTANT              00103000
+.*            CONTAINING THE NAME OF THE LOGIC MODULE IS GENERATED.     00104000
+.*            THE NAME OF THE LOGIC MODULE IS DETERMINED FROM THE       00105000
+.*            VALUES AND COMBINATION OF THE PARAMETERS.  IF             00106000
+.*            A VALID LOGIC MODULE NAME IS GENERATED A V TYPE           00107000
+.*            CONSTANT IS GENERATED WHICH WILL CONTAIN THE ADDRESS      00108000
+.*            OF THE LOGIC MODULE AFTER LINKAGE EDITING.                00109000
+.*                                                                      00110000
+.*            IF TYPE=FINAL IS SPECIFIED AN X TYPE CONSTANT             00111000
+.*            CONTAINING HIGH VALUES IS GENERATED TO INDICATED THE      00112000
+.*            END OF THE LOGIC MODULE TABLE.                            00113000
+.*                                                                      00114000
+.*                                                                      00115000
+.*  NOTES:                                                              00116000
+.*            DEPENDENCIES: NONE                                        00117000
+.*                                                                      00118000
+.*            RESTRICTIONS: NONE                                        00119000
+.*                                                                      00120000
+.*            REGISTER CONVENTIONS:                                     00121000
+.*               THE CONVENTIONS OBSERVED BY THE CODE GENERATED         00122000
+.*               BY THE MACRO ARE:                                      00123000
+.*                                                                      00124000
+.*               R0 IS A SAVE REGISTER FOR R14                          00125000
+.*               R1 POINTS TO THE PARAMETER LIST ON ENTRY               00126000
+.*               R1 CONTAINS THE LOGIC MODULE ADDRESS ON EXIT           00127000
+.*               R14 IS THE LINK REGISTER ON ENTRY AND EXIT             00128000
+.*               R14 POINTS TO THE LOGIC MODULE TABLE                   00129000
+.*               R15 IS THE ADDRESS OF THIS MODULE ON ENTRY             00130000
+.*               R15 CONTAINS THE RETURN CODE ON EXIT                   00131000
+.*                                                                      00132000
+.*  MODULE TYPE:                                                        00133000
+.*            PROCESSOR: ASSEMBLER                                      00134000
+.*                                                                      00135000
+.*            MODULE SIZE: N/A                                          00136000
+.*                                                                      00137000
+.*                                                                      00138000
+.*  INPUT:                                                              00139000
+.*            SEE FUNCTION.                                             00140000
+.*                                                                      00141000
+.*  EXIT NORMAL:                                                        00142000
+.*            RETURN CODE = 0                                           00143000
+.*                                                                      00144000
+.*  EXIT ERROR:                                                         00145000
+.*            RETURN CODE = 8 (SEVERE PARAMETER ERROR)                  00146000
+.*                                                                      00147000
+.*  MACROS:                                                             00148000
+.*            INTERNAL:                                                 00149000
+.*               NONE                                                   00150000
+.*                                                                      00151000
+.*            EXTERNAL:                                                 00152000
+.*               CDMOD                                                  00153000
+.*                                                                      00154000
+.CHKTYP  ANOP                                                           00155000
+         AIF   ('&TYPE' EQ 'START').CHKSTT                              00156000
+         AIF   ('&TYPE' EQ 'ENTRY').CHKENT                              00157000
+         AIF   ('&TYPE' EQ 'FINAL').CHKFIN                              00158000
+         MNOTE 8,'IGZCDM01 TYPE MUST BE EITHER START, ENTRY OR FINAL'   00159000
+&ERROR   SETB  (1)                                                      00160000
+         AGO   .ENDGEN                                                  00161000
+.CHKSTT  ANOP                                                           00162000
+         AIF   (NOT &STTFND).CHKSTT1                                    00163000
+         MNOTE 8,'IGZCDM02 TYPE=START ALLOWED ONCE ONLY'                00164000
+&ERROR   SETB  (1)                                                      00165000
+         AGO   .ENDGEN                                                  00166000
+.CHKSTT1 ANOP                                                           00167000
+         AIF   (T'&DEVICE NE 'O').BADSTT                                00168000
+         AIF   (T'&IOAREA2 NE 'O').BADSTT                               00169000
+         AIF   (T'&RECFORM NE 'O').BADSTT                               00170000
+         AIF   (T'&TYPEFLE NE 'O').BADSTT                               00171000
+         AIF   (T'&CTLCHR NE 'O').BADSTT                                00172000
+         AIF   (T'&FUNC NE 'O').BADSTT                                  00173000
+         AGO   .GENSTT                                                  00174000
+.BADSTT  ANOP                                                           00175000
+         MNOTE 0,'IGZCDM03 CDMOD PARAMETERS IGNORED FOR TYPE=START DEFIX00176000
+               NITION'                                                  00177000
+         AGO   .GENSTT                                                  00178000
+.*                                                                      00179000
+.CHKENT  ANOP                                                           00180000
+         AIF   (NOT &FINFND).CHKENT1                                    00181000
+         MNOTE 8,'IGZCDM06 TYPE=ENTRY NOT ALLOWED AFTER TYPE=FINAL'     00182000
+&ERROR   SETB  (1)                                                      00183000
+         AGO   .ENDGEN                                                  00184000
+.CHKENT1 ANOP                                                           00185000
+         AIF   (&STTFND).GENENT                                         00186000
+         MNOTE 8,'IGZCDM04 TYPE=START REQUIRED BEFORE TYPE=ENTRY DEFINIX00187000
+               TION'                                                    00188000
+&ERROR   SETB  (1)                                                      00189000
+         AGO   .ENDGEN                                                  00190000
+.*                                                                      00191000
+.CHKFIN  ANOP                                                           00192000
+         AIF   (&STTFND).CHKFIN1                                        00193000
+         MNOTE 8,'IGZCDM04 TYPE=START REQUIRED BEFORE TYPE=FINAL DEFINIX00194000
+               TION'                                                    00195000
+&ERROR   SETB  (1)                                                      00196000
+         AGO   .ENDGEN                                                  00197000
+.CHKFIN1 ANOP                                                           00198000
+         AIF   (NOT &FINFND).CHKFIN2                                    00199000
+         MNOTE 8,'IGZCDM02 TYPE=FINAL ALLOWED ONCE ONLY'                00200000
+&ERROR   SETB  (1)                                                      00201000
+         AGO   .ENDGEN                                                  00202000
+.CHKFIN2 ANOP                                                           00203000
+         AIF   (&ENTFND).CHKFIN3                                        00204000
+         MNOTE 0,'IGZCDM05 NO TYPE=ENTRY DEFINITIONS FOUND'             00205000
+.CHKFIN3 ANOP                                                           00206000
+         AIF   (T'&DEVICE NE 'O').BADFIN                                00207000
+         AIF   (T'&IOAREA2 NE 'O').BADFIN                               00208000
+         AIF   (T'&RECFORM NE 'O').BADFIN                               00209000
+         AIF   (T'&TYPEFLE NE 'O').BADFIN                               00210000
+         AIF   (T'&CTLCHR NE 'O').BADFIN                                00211000
+         AIF   (T'&FUNC NE 'O').BADFIN                                  00212000
+         AGO   .GENFIN                                                  00213000
+.BADFIN  ANOP                                                           00214000
+         MNOTE 0,'IGZCDM03 CDMOD PARAMETERS IGNORED FOR TYPE=FINAL DEFIX00215000
+               NITION'                                                  00216000
+         AGO   .GENFIN                                                  00217000
+.*                                                                      00218000
+.GENSTT  ANOP                                                           00219000
+&STTFND  SETB  (1)                                                      00220000
+IGZEQC0  CSECT                                                          00221000
+         USING *,15                ESTABLISH ADDRESSABILITY             00222000
+         B     IGZEQC00            BYPASS SIGNATURE                     00223000
+         SPACE 1                                                        00224000
+         DC    AL1(39)             LENGTH FOR SA HDR IN DUMP            00225000
+         DC    CL1' '              ALIGN                                00226000
+         DC    CL8'IGZEQC0'        SIGNATURE - ROUTINE NAME             00227000
+         DC    B'01000010'                     MAJOR OPTIONS            00228000
+         DC    B'01000010'                     OTHER OPTIONS            00229000
+         DC    CL2'C2'                         COMPILER                 00230000
+         DC    CL3'4.0'                        RELEASE                  00231000
+         DC    CL8' '                          DATE (MVS ONLY)          00232000
+         DC    CL1' '                                                   00233000
+         DC    CL8' '                          TIME (MVS ONLY)          00234000
+         DC    CL1'O'                          O.S. ESM                 00235000
+         DC    XL5'00'             RESERVED                             00236000
+         DS    0F                                                       00237000
+         SPACE 1                                                        00238000
+IGZEQC00 LR    0,14                SAVE LINK REGISTER                   00239000
+         LTR   1,1                 PARAMETER PROVIDED ?                 00240000
+         BZ    IGZEQC03                                                 00241000
+         LA    14,IGZQC0MT         ADDRESS LOGIC MODULE TABLE           00242000
+IGZEQC01 DS    0H                                                       00243000
+         CLI   0(14),X'FF'         END OF TABLE ?                       00244000
+         BE    IGZEQC03            YES ...                              00245000
+         CLC   0(3,14),KIJC        VALID PHASE NAME IN TABLE ?          00246000
+         BNE   IGZEQC04            NO ...                               00247000
+         CLC   0(8,14),0(1)        LOGIC MODULE FOUND ?                 00248000
+         BE    IGZEQC02            YES ...                              00249000
+         LA    14,12(14)           NEXT TABLE ENTRY                     00250000
+         B     IGZEQC01            LOOP                                 00251000
+IGZEQC02 DS    0H                                                       00252000
+         L     1,8(14)             LOAD ADDRESS OF LOGIC MODULE         00253000
+         XR    14,14               RETURN CODE = OK                     00254000
+         B     IGZEQC05                                                 00255000
+IGZEQC03 DS    0H                                                       00256000
+         XR    1,1                 CLEAR LOGIC MODULE ADDRESS           00257000
+         LA    14,4                RC = LOGIC MODULE NOT FOUND          00258000
+         B     IGZEQC05                                                 00259000
+IGZEQC04 DS    0H                                                       00260000
+         XR    1,1                 CLEAR LOGIC MODULE ADDRESS           00261000
+         LA    14,8                RC = INVALID MODULE NAME IN TABLE    00262000
+IGZEQC05 DS    0H                                                       00263000
+         LR    15,14               SET RETURN CODE IN REGISTER 15       00264000
+         LR    14,0                RESTORE LINK REGISTER                00265000
+         BR    14                  RETURN TO CALLER                     00266000
+KIJC     DC    CL3'IJC'            LOGIC MODULE NAME PREFIX             00267000
+         EJECT                                                          00268000
+IGZQC0MT DS    0H                  START OF LOGIC MODULE TABLE          00269000
+         AGO   .ENDGEN                                                  00270000
+.*                                                                      00271000
+.GENENT  ANOP                                                           00272000
+&ENTFND  SETB  (1)                                                      00273000
+.*                                                                      00274000
+&DEVNUM  SETC  '&DEVICE'                                                00275000
+         AIF   (T'&DEVICE NE 'O').ENTDEV                                00276000
+&DEVNUM  SETC  '2540'                                                   00277000
+.*                                                                      00278000
+.ENTDEV  ANOP                                                           00279000
+&MOD8    SETC  '0'                                                      00280000
+         AIF   ('&DEVNUM' EQ '2540').ENTTYP                             00281000
+&MOD8    SETC  '1'                                                      00282000
+         AIF   ('&DEVNUM' EQ '1442' OR '&DEVNUM' EQ '2596' ).ENTTYP     00283000
+&MOD8    SETC  '2'                                                      00284000
+         AIF   ('&DEVNUM' EQ '2520').ENTTYP                             00285000
+&MOD8    SETC  '3'                                                      00286000
+         AIF   ('&DEVNUM' EQ '2501').ENTTYP                             00287000
+&MOD8    SETC  '6'                                                      00288000
+         AIF   ('&DEVNUM' EQ '3505').ENTTYP                             00289000
+&MOD8    SETC  '7'                                                      00290000
+         AIF   ('&DEVNUM' EQ '3525').ENTTYP                             00291000
+.*                                                                      00292000
+         MNOTE 8,'IGZCDM07 DEVICE &DEVNUM NOT A VS COBOL II SUPPORTED DX00293000
+               EVICE'                                                   00294000
+&ERROR   SETB  (1)                                                      00295000
+         AGO   .ENDGEN                                                  00296000
+.*                                                                      00297000
+.ENTTYP  ANOP                                                           00298000
+&TYPFLE  SETC  '&TYPEFLE'                                               00299000
+         AIF   (T'&TYPEFLE NE 'O').ENTTYP1                              00300000
+&TYPFLE  SETC  'INPUT'                                                  00301000
+         AGO   .ENTTYP2                                                 00302000
+.ENTTYP1 ANOP                                                           00303000
+         AIF   ('&TYPEFLE' NE 'CMBND').ENTTYP2                          00304000
+.*                                                                      00305000
+         MNOTE 8,'IGZCDM08 TYPEFLE &TYPEFLE NOT SUPPORTED BY VS COBOL IX00306000
+               I'                                                       00307000
+&ERROR   SETB  (1)                                                      00308000
+         AGO   .ENDGEN                                                  00309000
+.ENTTYP2 ANOP                                                           00310000
+&MOD6    SETC  'H'                                                      00311000
+         AIF   ('&TYPFLE' EQ 'INPUT').ENTREC                            00312000
+&MOD6    SETC  'N'                                                      00313000
+         AIF   ('&TYPFLE' EQ 'OUTPUT').ENTREC                           00314000
+&MOD6    SETC  '?'                                                      00315000
+&NOMOD   SETB  (1)                                                      00316000
+.*                                                                      00317000
+.ENTREC  ANOP                                                           00318000
+&RECFRM  SETC  '&RECFORM'                                               00319000
+         AIF   (T'&RECFORM NE 'O').ENTREC1                              00320000
+&RECFRM  SETC  'FIXUNB'                                                 00321000
+.ENTREC1 ANOP                                                           00322000
+         AIF   ('&TYPFLE' EQ 'INPUT').ENTREC2                           00323000
+&MOD4    SETC  'U'                                                      00324000
+         AIF   ('&RECFORM' EQ 'UNDEF').ENTCTL                           00325000
+&MOD4    SETC  'V'                                                      00326000
+         AIF   ('&RECFORM' EQ 'VARUNB').ENTCTL                          00327000
+.ENTREC2 ANOP                                                           00328000
+&MOD4    SETC  'F'                                                      00329000
+         AIF   ('&RECFORM' EQ 'FIXUNB').ENTCTL                          00330000
+.*                                                                      00331000
+.ENTCTL  ANOP                                                           00332000
+         AIF   ('&TYPFLE' EQ 'INPUT').ENTCTL1                           00333000
+&MOD5    SETC  'A'                                                      00334000
+         AIF   ('&CTLCHR' EQ 'ASA').ENTFUN                              00335000
+&MOD5    SETC  'Y'                                                      00336000
+         AIF   ('&CTLCHR' EQ 'YES').ENTFUN                              00337000
+         AIF   (T'&CTLCHR NE 'O').ENTFUN                                00338000
+.ENTCTL1 ANOP                                                           00339000
+&MOD5    SETC  'Z'                                                      00340000
+         AGO   .ENTFUN                                                  00341000
+.*                                                                      00342000
+.ENTFUN  ANOP                                                           00343000
+         AIF   ('&DEVNUM' NE '3525').ENTIOA                             00344000
+&WORK    SETC  'ABCDE'                                                  00345000
+         AIF   (T'&FUNC EQ 'O').ENTIOA                                  00346000
+         AIF   ('&FUNC' EQ 'R').ENTIOA                                  00347000
+         AIF   ('&FUNC' EQ 'P').ENTIOA                                  00348000
+&MOD8    SETC  '&WORK'(1,1)                                             00349000
+         AIF   ('&FUNC' EQ 'RP').ENTIOA                                 00350000
+&MOD8    SETC  '&WORK'(2,1)                                             00351000
+         AIF   ('&FUNC' EQ 'RW').ENTIOA                                 00352000
+&MOD8    SETC  '&WORK'(3,1)                                             00353000
+         AIF   ('&FUNC' EQ 'PW' AND '&TYPFLE' NE 'OUTPUT').ENTFUN1      00354000
+         AIF   ('&FUNC' EQ 'PW').ENTIOA                                 00355000
+&MOD8    SETC  '&WORK'(4,1)                                             00356000
+         AIF   ('&FUNC' EQ 'I' AND '&TYPFLE' NE 'OUTPUT').ENTFUN1       00357000
+         AIF   ('&FUNC' EQ 'I').ENTIOA                                  00358000
+&MOD8    SETC  '&WORK'(5,1)                                             00359000
+         AIF   ('&FUNC' EQ 'RPW').ENTIOA                                00360000
+.ENTFUN1 ANOP                                                           00361000
+&MOD8    SETC  '?'                                                      00362000
+&NOMOD   SETB  (1)                                                      00363000
+.*                                                                      00364000
+.ENTIOA  ANOP                                                           00365000
+         AIF   ('&IOAREA2' EQ '').ENTIOA2                               00366000
+         AIF   ('&DEVNUM' NE '3525').ENTIOA2                            00367000
+         AIF   ('&FUNC' NE 'RP' AND '&FUNC' NE 'RW' AND                X00368000
+               '&FUNC' NE 'PW' AND '&FUNC' NE 'RPW').ENTIOA2            00369000
+&NOIOA2  SETB  (1)                                                      00370000
+.ENTIOA2 ANOP                                                           00371000
+&MOD7    SETC  'Z'                                                      00372000
+         AIF   ('&IOAREA2' EQ '' OR &NOIOA2).ENTNAM                     00373000
+&MOD7    SETC  'I'                                                      00374000
+.*                                                                      00375000
+.ENTNAM  ANOP                                                           00376000
+&NAME    SETC  'IJC&MOD4&MOD5&MOD6&MOD7&MOD8'                           00377000
+.*                                                                      00378000
+.GENMOD  ANOP                                                           00379000
+         DC    CL8'&NAME'          NAME OF LOGIC MODULE (IF KNOWN)      00380000
+         AIF   (&NOMOD).GENMOD1                                         00381000
+         DC    V(&NAME)            ADDRESS OF LOGIC MODULE              00382000
+         AGO   .GENMOD2                                                 00383000
+.GENMOD1 ANOP                                                           00384000
+         DC    A(0)                LOGIC MODULE NOT GENERATED           00385000
+.*                                                                      00386000
+.********************************************************************** 00387000
+.*                                                                      00388000
+.GENMOD2 ANOP                                                           00389000
+         AIF   (&NOIOA2).GENMOD3                                        00390000
+         CDMOD DEVICE=&DEVNUM,                                         X00391000
+               IOAREA2=&IOAREA2,                                       X00392000
+               RECFORM=&RECFRM,                                        X00393000
+               TYPEFLE=&TYPFLE,                                        X00394000
+               CTLCHR=&CTLCHR,                                         X00395000
+               FUNC=&FUNC,                                             X00396000
+               RDONLY=YES                                               00397000
+.*                                                                      00398000
+         AGO   .ENDGEN                                                  00399000
+.GENMOD3 ANOP                                                           00400000
+         CDMOD DEVICE=&DEVNUM,                                         X00401000
+               RECFORM=&RECFRM,                                        X00402000
+               TYPEFLE=&TYPFLE,                                        X00403000
+               CTLCHR=&CTLCHR,                                         X00404000
+               FUNC=&FUNC,                                             X00405000
+               RDONLY=YES                                               00406000
+.*                                                                      00407000
+         AGO   .ENDGEN                                                  00408000
+.GENFIN  ANOP                                                           00409000
+&FINFND  SETB  (1)                                                      00410000
+         DC    X'FFFFFFFF'         END OF LOGIC MODULE TABLE            00411000
+.ENDGEN  ANOP                                                           00412000
+         AIF   (NOT &ERROR).ENDGEN1                                     00413000
+         MNOTE 8,'IGZCDM10 MACRO GENERATION TERMINATED BECAUSE OF PREVIX00414000
+               OUS ERRORS'                                              00415000
+.ENDGEN1 ANOP                                                           00416000
+         MEXIT                                                          00417000
+         MEND                                                           00418000

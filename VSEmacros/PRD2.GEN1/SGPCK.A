@@ -1,0 +1,1319 @@
+         MACRO                                                          00001000
+         SGPCK                                                          00002000
+*********************************************************************** 00003000
+*                                                                     * 00004000
+*        LICENSED MATERIALS - PROPERTY OF IBM                         * 00005000
+*        "RESTRICTED MATERIALS OF IBM"                                * 00006000
+*        5686-CF7                                                     * 00007000
+*        (C) COPYRIGHT IBM CORP. 1979, 2004                           * 00008000
+*                                                                     * 00009000
+*********************************************************************** 00010000
+         GBLA  &AGSGSIZ           SEGMENT SIZE                 @D52VDOW 00011000
+         GBLB  &BG16              TRKHLD=N                     @D35EDJO 00012000
+         GBLB  &BGTT              TASK TIMER SUPPORT           @D14BDFR 00013000
+         GBLB  &SGPCK             MACRO NAME FOR PRINT OPTION  @D37ZDOW 00014000
+.* /* START OF SPECIFICATIONS ***************************************** 00015000
+.*                                                                      00016000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00017000
+.*                                                                      00018000
+.*01* DESCRIPTIVE NAME = PROGRAM CHECK HANDLER                          00019000
+.*                                                                      00020000
+.*01* NOTES = CHANGE ACTIVITY                                           00021000
+.*    WRONG TASK CANCELED IF PROGR CHK IN EXIT ROUT FOR IUCV   @DA33879 00022000
+.*    PHO INTERFACE CHANGE                                     @DA35398 00023000
+.*    CANCEL USER ON SPECIAL OPERATION EXCEPTION IN USER TASK  @DA36151 00024000
+.*    CANCEL VTAM APPL, WHEN VTAM'S ISTAPCKU APPEN PROG CHECKS @DA36477 00025000
+.*    SPE DY37265  (AF2.1.8)                                   @D21ZDRP 00026000
+.*    RESTORE RID BEFORE RETURN TO INTERRUPTED SUPVR ROUTINE   @DA38196 00027000
+.*    SOFTWARE RE-IPL                                          @D31QDHB 00028000
+.*    5.1 EXTENSIONS FOR CICS                                  @D51HDOW 00029000
+.*    NEW SYSTEM LAYOUT                                        @D51GDRP 00030000
+.*    31 BIT REAL AND XA I/O SUPPORT                           @D51GDTP 00031000
+.*    TEST IF VTAM IS ACTIVE BEFORE SET READY TO RUN           @DA38628 00032000
+.*    NEW INTERFACE TO PERFORMANCE MONITOR                     @D51MDKH 00033000
+.*    NEW INTERRUPTION CODE CHECKING ADDED                     @DY40005 00034000
+.*    ADAPT TO 31 BIT ADDRESSING                               @D52VDOW 00035000
+.*    SIMULATE PC-INSTRUCTION FOR DATA SPACE SUPPORT           @D52GDOW 00036000
+.*    UNPRED. RESULTS, IF PARAMETERLIST DESTROYED DURING       @KX40685 00037000
+.*    PROCESSING                                  @D35EDRP     @KX40685 00038000
+.*    LABEL FOR END OF SGPCK CODE (USED BY MCRAS)              @DY41332 00039000
+.*    HW FFA IF USER PROGRAM BRANCHES INTO SGPCK               @DY43858 00040000
+.*    MSG0S23I NO VTAM DUMP, VTAM CANCELLED TWICE              @DY44311 00041000
+.*    PF CHANGED TO ADDR EXCEPTION BEFORE VENDOR EXIT GET CNTRL@DY44471 00042000
+.*    VTAM DUMP CANCELLED                                      @DY44505 00043000
+.*    ILC IS HANDLED INCORRECTLY WHEN CHANGING PF TO ADDRESSING@DY45502 00044000
+.*    MORE THAN 255 TASKS                                      @D66ODOW 00045000
+.*    HW FFB DUE TO EXIT-CB NOT INITIALIZED PROPERLY           @DY45712 00046000
+.*    SOLVE PROBLEM CORRUPTED MVS-SCB CHAIN                    @D66XXOW 00047000
+.*    HARDWAIT AFTER A PROGRAM CHECK IN IO APPENDAGE ROUTINE   @DY46221 00048000
+.*    HARDWAIT 1122 AFTER AN SVC 7, SAVE AREA 31-BIT TSCTSAVE  @DY46374 00048500
+.*    ADD PCKEXCP8 IN PCKATAB FOR GETPUB ROUTINE               @DY46548 00048700
+.**** END OF SPECIFICATIONS ******************************************  00049000
+         AIF   (NOT &SGPCK).NOPRINT                            @D61NDOW 00050000
+         PRINT GEN                                             @D37ZDOW 00051000
+.NOPRINT ANOP                                                           00052000
+*********************************************************************** 00053000
+*                                                                       00054000
+*  FUNCTION- PROCESS PROGRAM CHECK INTERRUPTIONS                        00055000
+*  ENTRY POINT- ENTPCK FROM PROGRAM CHECK NEW PSW                       00056000
+*  INPUT- PROGRAM INTERRUPTION CODE (PGMINTC)                           00057000
+*         TRANSLATION EXCEPTION ADDRESS (TRADDR)                        00058000
+*  SUBROUTINES-  GENENT- SAVE PSW AND REGS IN USER SAVE AREA            00059000
+*                RESPHO- RESET PAGE FAULT OVERLAP APPENDAGE             00060000
+*  EXITS NORMAL- ENQUI- ENQUEUE PAGE FAULT                              00061000
+*                DISP-  TASK DISPATCHER                                 00062000
+*                PFWAIT- REISSUE SVC                                    00063000
+*  ERROR EXITS-  HARDWAIT FFA - DISASTER ERR IN ADDR TRANS              00064000
+*                HARDWAIT FFB - PAGE FAULT IN SUPERVISOR                00065000
+*                HARDWAIT FFF - PROGRAM CHECK IN SUPERVISOR             00066000
+*                ERROR1- PROGRAM CHECK IN CCW TRANSLATION               00067000
+*                ERR0D - PAGE FAULT IN SUBSYSTEM OR PHO                 00068000
+*                ERR0E - PROGRAM CHECK IN SUBSYSTEM OR PHO              00069000
+*                ERR15 - PAGE FAULT IN DISABLED USER ROUTINE            00070000
+*                ERR20 - PROGRAM CHECK                                  00071000
+*                ERR25 - INVALID ADDRESS                                00072000
+*                ERR36 - PROGRAM CHECK OR PAGE FAULT IN I/O APPENDAGE   00073000
+*********************************************************************** 00074000
+         SPACE 2                                                        00075000
+**************************************************************          00076000
+*   PROGRAM CHECK ANALYSIS ROUTINE.                                     00077000
+*   THIS ROUTINE ANALYSES THE REASON FOR THE PROGRAM CHECK              00078000
+*   INTERRUPTION.                                                       00079000
+*   IF NORMAL PAGE FAULT, GO TO THE PAGE FAULT FIRST LEVEL              00080000
+*   INTERRUPT HANDLER (PFFLIH).                                         00081000
+*   IF THE PAGE FAULT OCCURED IN A REAL PARTITION, CHANGE IT            00082000
+*   TO ADDRESSING EXCEPTION .                                           00083000
+*   IF THE P.C IS IN PHO OR I/O APPENDAGE, CANCEL USER.                 00084000
+*   IF THE P.C. OCCURS IN PROBLEM STATE, CANCEL USER.                   00085000
+*   IF THE P.C. OCCURED WHILE THE SYSTEM WAS RUNNING, LOOK              00086000
+*   WHERE THE P.C. HAS HAPPENED. TABLE PCKATAB CONTAINS                 00087000
+*   ADDRESSES, WHERE THE SYSTEM MAY FAIL DUE TO                         00088000
+*   INCORRECT USER SUPPLIED DATA.                                       00089000
+*   IF THE P.C. OCCURED AT ONE OF THESE LOCATIONS,                      00090000
+*   THE USER IS CANCELLED.                                              00091000
+*   ELSE THE SYSTEM ENTERS HARD WAIT.                                   00092000
+*                                                                       00093000
+*   NOTE:THIS LAST ROUTINE HAS BEEN INSERTED HERE, BECAUSE ADDRESS      00094000
+*        VALIDATION IN THE APPROPRIATE ROUTINES WOULD HAVE              00095000
+*        A BAD PERFORMANCE IMPACT.                                      00096000
+**************************************************************          00097000
+         SPACE 3                                                        00098000
+         DS    0F                                                       00099000
+         DC    CL8'SGPCK   '    MODULE NAME                             00100000
+         DC    CL8'DY46548 '    LAST APAR/DEVELOPMENT CHANGE   @DY46548 00101680
+ENTPCK   DS    0H                                              @D36ZDFR 00102000
+****---> SDAID HOOK <---- ************************************ @D65EDJS 00103000
+         STM   R9,RA,SDREGSAV     SAVE REGISTER 9/10           @D65EDJS 00104000
+         BASR  R9,0               GET BASE .....               @D65EDJS 00105000
+         USING *,R9               ..... FOR SDAID HOOK         @D65EDJS 00106000
+         TM    IJBSDFL1,X'80'     SDAID IN PROGRESS ?          @D65EDJS 00107000
+         BZ    SDPGMCON           NO! CONTINUE NORMAL          @D65EDJS 00108000
+         TM    FSTFLAGS,X'F0'     CPU DISABLED FOR SDAID ?     @D65EDJS 00109000
+         BNZ   SDPGMCON           YES!! --> CONTINUE NORMAL    @D65EDJS 00110000
+         STM   RB,R8,SDREGSAV+8   SAVE REGS FOR SDAID          @D65EDJS 00111000
+         L     RA,IJBSAVSD        ADDR OF SDAGDT (SDAID COM-AR)@D65EDJS 00112000
+         USING GDTNAME,RA                                      @D65EDJS 00113000
+         ICM   RB,15,GDTINTEP     ADDR OF SDINT ENTRY OR ZERO  @D65EDJS 00114000
+         BZ    SDPGMCON           NO! CONTINUE NORMAL          @D65EDJS 00115000
+         MVI   FSTFUNCD,X'00'     CLEAR FUNCC BEFORE           @D65EDJS 00116000
+         OI    FSTFUNCD,FSTFCPGM  SVC EVENT ANNOUNCED          @D65EDJS 00117000
+         BASSM RE,RB              GO TO SDAID                  @D65EDJS 00118000
+SDPGMRET DS    0H                 RETURN FROM SDAID            @D65EDJS 00119000
+         STNSM PSWMASK,XFF-SMDAT  TURN DAT OF-WAS SET BY SDAID @D65EDJS 00120000
+         LM    RB,R8,SDREGSAV+8   RELOAD REGISTERS             @D65EDJS 00121000
+         DROP  R9,RA                                           @D65EDJS 00122000
+SDPGMCON DS    0H                 CONTINUE NORMAL              @D65EDJS 00123000
+         LM    R9,RA,SDREGSAV     RELOAD REGISTER 9/10         @D65EDJS 00124000
+****---> END OF SDAID HOOK <---- ***************************** @D65EDJS 00125000
+         OC    PCKICEPT,PCKICEPT  INTERCEPT RTN SPECIFIED      @D65CDOW 00126000
+         BNZ   PCKILPSW           YES, ENTER RTN IMMIDIATELY   @D65CDOW 00127000
+         STM   R9,R8,XXERA                                     @D65CDOW 00128000
+         L     RD,AFLIH           BASE OF PROG CHECK HANDLER   @D36ZDFR 00129000
+         BASR  R9,0               GET TEMPORARY BASE           @D61NDOW 00130000
+         USING *,R9                                            @D61NDOW 00131000
+         C     RD,ENTPCKFL        SGPCK BASE CORRECT?          @D61NDOW 00132000
+         BNE   ENTPCK01           NO, HARD WAIT                @D61NDOW 00133000
+         SPACE 1                                                        00134000
+         CLI   PCKFLAG1,X00       PROG CHECK IN SGPCK OR       @D64ADOW 00135000
+***                               SGPCK-APPENDAGE                       00136000
+         BNE   ENTPCK01           YES, ---> ENTER HW           @D61RDOW 00137000
+         TM    ENTPCKF1,HWINHWRT+PCINPCKH ...IN HW-RTN OR      @D64ADOW 00138000
+***                               'STOP ALL CPUS' REQUIRED              00139000
+         BZ    ENTPCK02           NO, CONTINUE                 @D61RDOW 00140000
+ENTPCK01 DS    0H                                              @D61NDOW 00141000
+         OI    ENTPCKF1,PCINPCKH  STOP OTHER CPU'S ALSO        @D64ADOW 00142000
+         LPSW  ENTPCKHW           ENTER HW IMMEDIATELY         @D61RDOW 00143000
+         DROP  R9                                              @D61NDOW 00144000
+         USING FLIH,RD            PROGRAM CHECK HANDLER BASE   @D36ZDFR 00145000
+ENTPCK02 DS    0H                                              @D61RDOW 00146000
+         LA    RD,ENTPCK          SETUP SGPCK BASE             @D64ADOW 00147000
+         USING ENTPCK,RD                                       @D64ADOW 00148000
+         MVI   PCKFLAG1,PCINDIC   INDICATE SGPCK ACTIVE        @D64ADOW 00149000
+         MVC   PCKSAVOP(8),PCOLDP SAVE FOR DEBUG PURPOSE       @D61RDOW 00150000
+         MVC   PCKSAVIC(8),PGMINF ...                          @D64ADOW 00151000
+         MVC   PCKSAVAR(1),ACCIDEXC ...                        @D61RDOW 00152000
+         MVC   PCKSAVRD,RID+1     .....                        @D64ADOW 00153000
+         MVC   PCKSAVTD,TID       .....                        @D66ODOW 00154000
+         CLI   PGMINTC+1,TRSPEC   TRANSLATION SPECIFICATION EXC@D61RDOW 00155000
+         BE    ENTPCK08           YES, SGPCK CANNOT ENABLE     @D61RDOW 00156000
+*                                 ...CONTROL-REG 0 PROBABLY INCORRECT   00157000
+         CLI   PGMINTC+1,TRSPEC+PEREXC ...                     @D61RDOW 00158000
+         BE    ENTPCK08           ...                          @D61RDOW 00159000
+         CLI   PGMINTC+1,STEXC    SEGMENT TRANSLATION EXCEPTION@D52VDOW 00160000
+         BE    ENTPCK06           YES, --->                    @D61RDOW 00161000
+         CLI   PGMINTC+1,STEXC+PEREXC ...                      @D61RDOW 00162000
+         BNE   ENABDAT            NO, THATS OK                 @D52VDOW 00163000
+ENTPCK06 DS    0H                                              @D61RDOW 00164000
+         CLI   ACCIDEXC,X'00'     DUE TO ACC REG USAGE         @D52VDOW 00165000
+         BNZ   ENABDAT            YES, THATS OK                @D52VDOW 00166000
+         CLC   TRADDR(3),ENTPCKAD EXCEPTION IN 1ST SEGMENT     @D52VDOW 00167000
+         BH    ENABDAT            NO, TRY TO CANCEL LATER      @D52VDOW 00168000
+ENTPCK08 DS    0H                                              @D61RDOW 00169000
+         MVC   ERA(64),XXERA                                   @D65CDOW 00170000
+         STCTL CR1,CR1,PCKSAVC1   SAVE CURRENT CONTROL REG 1   @D61RDOW 00171000
+         L     R5,ENTPCKSG        ADDR OF SEGMENT TABLE OF BG  @D64ADOW 00172000
+         LR    R9,RD              COPY BASE ADDR               @D64ADOW 00173000
+         OC    0(4,R5),0(R5)      SEGMENT TABLE AVAILABLE      @D64ADOW 00174000
+         BZ    ENTPCK01           NO ---> IMM HW               @D64ADOW 00175000
+         LCTL  CR1,CR1,0(R5)      LOAD CORRECT SEGMENT TABLE   @D61RDOW 00176000
+         EX    0,ENABDAT          SET DAT ON                   @D61RDOW 00177000
+         BAL   R5,GOHWFFA         GOTO HW FFA                  @D14CDOW 00178000
+*                                                                       00179000
+ENTPCKAD DC    A(&AGSGSIZ-1)      LAST ADDR IN FIRST SEGMENT   @D52VDOW 00180000
+ENTPCKSG DC    A(SCB0+(SCBXRSTO-SCBEYEC)) SEGMENT TABLE ORIGIN @D61RDOW 00181000
+***                               OF SPACE 0 (BG)                       00182000
+ENTPCKFL DC    A(FLIH+X'80000000')                             @D64ADOW 00183000
+ENTPCKF1 DC    X'00'              FLAG BYTE                    @D61NDOW 00184000
+HWINHWRT EQU   X'80'              PROG CHECK IN HW-ROUTINE     @D61NDOW 00185000
+PCINPCKH EQU   X'40'              PROG CHECK IN SGPCK          @D61NDOW 00186000
+         DS    0D                                              @D61RDOW 00187000
+ENTPCKHW DC    X'000A000000001122'                             @D61RDOW 00188000
+         SPACE                                                          00189000
+ENABDAT  STOSM PSWMASK,M0         ENABLE DAT IN CURRENT PSW    @D14CDAP 00190000
+*                                 INSTRUCTION IS MODIFIED      @D14CDAP 00191000
+*                                 BY INITDAT ROUTINE TO        @D14CDAP 00192000
+*        STOSM PSWMASK,SMDAT      ENABLE DAT IN CURRENT PSW    @D14CDAP 00193000
+*                                 WHEN SETTING CONTROL REGISTER@D14CDAP 00194000
+ENABDATE DS    0H                 EXPECTED PROG CHECK ADDR     @D61NDOW 00195000
+         MVI   PCKFLAG1,APINDIC   INDICATE SGPCK-HOOK ACTIVE   @D68CDOW 00196000
+*        TDLOCK FUNC=OBTAIN,TYPE=NP,WR1=R9,WR2=RA                       00197000
+         TDLOCK FUNC=OBTAIN,TYPE=NP,WR1=R9,WR2=RA              @D68CDOW 00198000
+*END OF TDLOCK MACRO EXPANSION                                          00199000
+         MVI   PCKFLAG1,PCINDIC   INDICATE SGPCK ACTIVE        @D68CDOW 00200000
+         L     R9,TIBPTR          ADDR USERS TIB               @D61HDOW 00201000
+         USING TIBADR,R9                                       @D61HDOW 00202000
+         TM    TIBTFLAG,TIBTTACT  PROBLEM DETERMINATION ACTIVE @D61HDOW 00203000
+         BNO   ENTPCK10           NO --->                      @D61HDOW 00204000
+         DROP  R9                                              @D61HDOW 00205000
+         CLI   PGMINTC+1,PEREXC   PURE PER INTERRUPT           @D61HDOW 00206000
+         BE    ENTPCK15           YES, --->                    @D61HDOW 00207000
+ENTPCK10 DS    0H                                              @D61HDOW 00208000
+         MVI   PCKFLAG1,APINDIC   INDICATE SGPCK-HOOK ACTIVE   @DY43858 00209000
+*        DEBUG PROGCHK,XXDBGMC    DEBUG ENTRY FOR PROG CHECKS           00210000
+         DEBUG PROGCHK,XXDBGMC                                 @D61NDOW 00211000
+*END OF DEBUG MACRO EXPANSION                                           00212000
+         MVI   PCKFLAG1,PCINDIC   INDICATE SGPCK ACTIVE        @DY43858 00213000
+ENTPCK15 DS    0H                                              @D61HDOW 00214000
+         MVC   ERA(64),XXERA                                   @D65CDOW 00215000
+         CLI   PGMINTC+1,PTEXC    PAGE TRANSLATION EXCEPTION   @DY44471 00216000
+         BE    ENTPCK20           YES,---> CHECK CORRECTNESS   @DY44471 00217000
+         CLI   PGMINTC+1,PTEXC+PEREXC                          @DY44471 00218000
+         BNE   ENTPCK50           NO, ---> SKIP PF CHECKING    @DY44471 00219000
+*** ------------------------->    CHECK FOR VALID PF ADDRESS            00220000
+ENTPCK20 DS    0H                                              @DY44471 00221000
+         L     RB,TRADDR          GET PAGE FAULT ADDR          @DA35398 00222000
+*        AMODESW SET,AMODE=31,WR=(RA)                                   00223000
+         AMODESW SET,AMODE=31,WR=(RA)                          @D51VDOW 00224000
+         TM    TRADDR+3,X'03'     PF DUE TO HOME SPACE MODE    @D61NDOW 00225000
+         BO    ENTPCK30           YES, --->                    @D61NDOW 00226000
+         BZ    ENTPCK31           PRIMARY MODE, --->           @D61NDOW 00227000
+         TM    TRADDR+3,X'02'     PF DUE TO 2NDARY SPACE MODE  @D61NDOW 00228000
+         BNO   ENTPCK22           NO, ITS AR MODE              @D61NDOW 00229000
+         SAC   256                ENTER 2NDARY SPACE MODE      @D61NDOW 00230000
+         B     ENTPCK31                                        @D61NDOW 00231000
+ENTPCK22 DS    0H                                                       00232000
+         CLI   ACCIDEXC,X'00'     WAS IT DUE TO INSTR FETCH    @D51KDTP 00233000
+         BE    ENTPCK31           YES, --->                    @D51KDTP 00234000
+         STAM  RB,RB,ENTPCKWK     SAVE ACCESS REGISTER         @D51KDTP 00235000
+         MVN   ENTPCK25+3(1),ACCIDEXC GET ACCESS REG USED      @D51KDTP 00236000
+ENTPCK25 CPYA  RB,*-*             GET ACCESS REG SET UP RIGHT  @D51KDTP 00237000
+         STAM  RB,RB,ENTPCKAL     SAVE ALET                    @D52VDOW 00238000
+         SAC   512                GET TO ACCESS CONTROL        @D51KDTP 00239000
+         LRA   R9,0(,RB)          GET PTE ADDRESS              @D51KDTP 00240000
+.*                                KEEP COND CODE TILL ENTPCK33          00241000
+         SAC   0                  BACK TO PRIMARY MODE         @D51KDTP 00242000
+         LAM   RB,RB,ENTPCKWK     GET ACCESS REG BACK          @D51KDTP 00243000
+         B     ENTPCK33           CONTINUE                     @D51KDTP 00244000
+ENTPCK30 SAC   768                ENTER HOME SPACE MODE        @D61NDOW 00245000
+ENTPCK31 LRA   R9,0(,RB)          GET PTE ADDR                 @D51KDOW 00246000
+ENTPCK32 SAC   0                  BACK TO PRIMARY MODE         @D61NDOW 00247000
+ENTPCK33 BC    2,ENTPCK38         OK --->                      @D61RDOW 00248000
+         BC    5,PCADDRS          HW ERROR --->                @D61RDOW 00249000
+         TM    SUPVFLAG,MPACT     MORE THAN ONE CPU ACTIV      @D61RDOW 00250000
+         BNO   PCADDRS            NO, GENERATE PROGRAM CHECK   @D61RDOW 00251000
+         CLI   RID+1,DISPID       WAS DISPATCHER INTERRUPTED   @D61RDOW 00252000
+         BNE   ENTPCK35           NO, RETURN TO INTER'D INSTRUC@D61RDOW 00253000
+         L     R6,DISPAD          YES, RETURN TO DISP ENTRY    @D61RDOW 00254000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00255000
+         BR    R6                                              @D61RDOW 00256000
+ENTPCK35 DS    0H                                              @D61RDOW 00257000
+         LA    RC,PCOLDP          ADDR OF PC-OLD-PSW           @D61RDOW 00258000
+         MVI   PCKFLAG1,APINDIC   SGPCK-APPENDAGE ACTIVE       @DY43858 00259000
+*        TDLOCK FUNC=RELCOND,TYPE=NP,WR1=R9,INP=(RC)                    00260000
+         TDLOCK FUNC=RELCOND,TYPE=NP,WR1=R9,INP=(RC)           @D61RDOW 00261000
+         LM    R9,RD,ERA          RELOAD REGISTER              @D61RDOW 00262000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00263000
+         LPSW  PCOLDP             REPEAT FAILING INSTRUCTION   @D61RDOW 00264000
+ENTPCK38 DS    0H                                              @D61RDOW 00265000
+         USING PTE,R9                                          @D14ADVB 00266000
+         AMODESW SET,DAT=OFF                                   @D52VDRP 00267000
+         TM    PTESTAT,PTEINVAD   INVALID PAGE                 @D14NDOW 00268000
+         AMODESW SET,DAT=ON                                    @D52VDRP 00269000
+         BO    PCADDRS            YES --->   (INVALID ADDRESS) @D14ADVB 00270000
+         DROP  R9                                              @D14ADVB 00271000
+         L     R9,TRADDR          GET PAGE FAULT ADDRESS       @D51GDRP 00272000
+         N     R9,PADDRMSK        SET IT ON PAGE BOUNDARY      @D51GDRP 00273000
+         S     R9,AVPBEG          ADDR LOWER BEGIN OF VPOOL    @D51GDRP 00274000
+         BM    ENTPCK50           NO, BRANCH                   @D51GDRP 00275000
+         L     RC,APMGMDAT        BASE REGISTER OF PAGE MGR    @D21ZDRP 00276000
+         USING PMGMDATA,RC                                     @D21ZDRP 00277000
+         C     R9,VIOVPSZE        ADDR HIGHER END ADDR OF VPOOL@D51GDRP 00278000
+         BNL   ENTPCK50           YES, --->                    @D51GDRP 00279000
+         TM    TRADDR+3,X'03'     IS IT ACCESS REG MODE        @D61NDOW 00280000
+         BNM   ENTPCK45           NO , --->                    @D61NDOW 00281000
+         TM    TRADDR+3,X'01'     PF IN ACCESS REGISTER MODE   @D61NDOW 00282000
+         BNO   ENTPCK45           NO, CHECK FOR VPOOL          @D61NDOW 00283000
+         CLI   ACCIDEXC,X'00'     WAS IT DUE TO INSTR FETCH    @D52VDOW 00284000
+         BE    ENTPCK45           YES, CHECK FOR VPOOL         @D52VDOW 00285000
+***      CHECK IF DATA SPACE OR ADDRESS SPACE CAUSING PF                00286000
+         LA    RB,ENTPCKAL        ADDRESS ALET                 @D52VDOW 00287000
+         USING ALETADR,RB                                      @D52VDOW 00288000
+         SLR   RA,RA                                           @D52VDOW 00289000
+         ICM   RA,3,ALETALEN      GET ALET NUMBER              @D52VDOW 00290000
+         C     RA,F1              HW SPECIFIED ALETS USED      @D52VDOW 00291000
+         BNH   ENTPCK45           YES, CHECK FOR VPOOL         @D52VDOW 00292000
+         TM    ALETB1,ALETPAL     PASN-AL OR DUAL USED         @D52VDOW 00293000
+         BO    ENTPCK40           PASN-AL --->                 @D52VDOW 00294000
+         STCTL R2,R2,PFLICREG     DUAL: GET CONTROL REG 2      @D52VDOW 00295000
+         B     ENTPCK41                                        @D52VDOW 00296000
+ENTPCK40 STCTL R5,R5,PFLICREG     PASN-AL: GET CONTROL REG 5   @D52VDOW 00297000
+ENTPCK41 L     RB,PFLICREG        GET REAL DUCT/PASTE ADDR     @D52VDOW 00298000
+         AMODESW SET,DAT=OFF      USE REAL ADDRESSES FROM NOW  @D52VDOW 00299000
+         USING DUCT,RB                                         @D52VDOW 00300000
+         L     RB,DUCTALD         ACCESS LIST ORIGIN           @D52VDOW 00301000
+         N     RB,MASK128         MASK OUT LENGTH OF ACC LIST  @D52VDOW 00302000
+         SLL   RA,ALESH           DISPLACEMENT INTO ACC LIST   @D52VDOW 00303000
+         AR    RB,RA              ADDR ACCESS LIST ENTRY       @D52VDOW 00304000
+         USING ALE,RB                                          @D52VDOW 00305000
+         L     RB,ALEASTE         GET ASTE ORIGIN              @D52VDOW 00306000
+         N     RB,PMASTMSK        GET REAL ASTE ADDR           @D52VDOW 00307000
+         USING ASTE,RB                                         @D52VDOW 00308000
+         L     RB,ASTESCB         GET SCB ADDR FOR SPACE       @D52VDOW 00309000
+         AMODESW SET,DAT=ON       BACK TO VIRTUAL ADDRESSING   @D52VDOW 00310000
+         USING SCBADR,RB                                       @D52VDOW 00311000
+         TM    SCBFLG,SCBDSP      IS THIS A DATA SPACE         @D52VDOW 00312000
+         BO    ENTPCK50           YES, CAN'T BE IN VPOOL       @D52VDOW 00313000
+         DROP  RB                                              @D52VDOW 00314000
+ENTPCK45 DS    0H                                              @D52VDOW 00315000
+         SRL   R9,VTOFSHFT        GET ADDR OF                  @D51GDRP 00316000
+         A     R9,VIOAVTAB        *  VTAB ENTRY                @D21ZDRP 00317000
+         USING VTABE,R9                                        @D21ZDRP 00318000
+         TM    VTUSCNT,XFF        PAGE VALID                   @D21ZDRP 00319000
+         BNM   PCADDRS            NO,  CHANGE TO ADDRESSING    @D21ZDRP 00320000
+         CLC   VTOWNER,PIK        REQUESTED BY OWNING PARTITION@D21ZDRP 00321000
+         BNE   PCADDRS            NO,  CHANGE TO ADDRESSING    @D21ZDRP 00322000
+         DROP  RC,R9              DROP BASE FOR SGPDATA, VTABE @D21ZDRP 00323000
+ENTPCK50 DS    0H                                              @DY44471 00324000
+*        AMODESW SET,AMODE=24,WR=(RA)                                   00325000
+         AMODESW SET,AMODE=24,WR=(RA)                          @D52VDRP 00326000
+         LM    R9,RC,ERA          RELOAD REGISTER              @DY44471 00327000
+         MVI   PCKFLAG1,APINDIC   INDICATE SGPCK-HOOK ACTIVE   @DY44471 00328000
+*        PRODEXIT ACTIVATE,ID=PCKEX ACTIVATE VENDOR-PCK-HOOKS           00329000
+         PRODEXIT ACTIVATE,ID=PCKEX                            @D61NDOW 00330000
+*END OF PRODEXIT MACRO EXPANSION                                        00331000
+         MVI   PCKFLAG1,PCINDIC   INDICATE SGPCK ACTIVE        @DY43858 00332000
+         LTR   R9,R9              NORMAL PROGRAM CHECK HANDLING@D64ADOW 00333000
+         BZ    ENTPCK55           YES, --->                    @D64ADOW 00334000
+         LM    R9,R8,ERA          RELOAD REGISTERS             @D64ADOW 00335000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00336000
+         LPSW  PCOLDP             RETURN TO INTERRUPTED PROGRAM@D64ADOW 00337000
+ENTPCK55 DS    0H                                              @D64ADOW 00338000
+         L     RD,ERA+16          RESTORE RD AND R9 FOR PT     @D61NDOW 00339000
+         L     R9,ERA             ...                          @D61NDOW 00340000
+         MVI   PCKFLAG1,APINDIC   INDICATE SGPCK-HOOK ACTIVE   @DY43858 00341000
+*        SGVSEPT PROBE=10,SAVE=NO I/F TO PERFORM.TOOL                   00342000
+         SGVSEPT PROBE=10,SAVE=NO                              @D63NDOW 00343000
+         MVI   PCKFLAG1,PCINDIC   INDICATE SGPCK ACTIVE        @DY43858 00344000
+         L     RD,AFLIH           RELOAD                       @D51MDOW 00345000
+         USING FLIH,RD            ...                          @D64ADOW 00346000
+         LA    RD,ENTPCK          ...   SGPCK BASE             @D64ADOW 00347000
+         USING ENTPCK,RD          ...                          @D64ADOW 00348000
+         LTR   RF,RF              NORMAL PROGRAM CHECK HANDLING@D63NDOW 00349000
+         BNZ   ENTPCK60           YES, --->                    @D63NDOW 00350000
+         LM    R9,R8,ERA          RELOAD REGISTERS             @D63NDOW 00351000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @D63NDOW 00352000
+         LPSW  PCOLDP             RETURN TO INTERRUPTED PROGRAM@D63NDOW 00353000
+ENTPCK60 DS    0H                                              @D63NDOW 00354000
+         LM    RE,RF,ERARE        RELOAD USER REGISTER         @D64ADOW 00355000
+         CLI   PGMINTC+1,STCKFEX  STACK-FULL CONDITION         @D61RDOW 00356000
+         BE    ENTPCK75           YES, --->                    @D61RDOW 00357000
+         CLI   PGMINTC+1,STCKFEX+PEREXC ...                    @D61RDOW 00358000
+         BE    ENTPCK75           YES --->                     @D64ADOW 00359000
+         CLI   RID+1,USERTID      PROG CHK IN USER CODE        @D64ADOW 00360000
+         BNE   ENTPCK95           NO --->                      @D64ADOW 00361000
+         CLI   PGMINTC+1,ALENTREX ALEN TRANSLATION EXCEPTION   @D64ADOW 00362000
+         BE    ENTPCK65           YES --->                     @D64ADOW 00363000
+         CLI   PGMINTC+1,ALENTREX+PEREXC                       @D64ADOW 00364000
+         BNE   ENTPCK95           NO --->                      @D64ADOW 00365000
+ENTPCK65 DS    0H                                              @D63NDOW 00366000
+         STAM  RA,RA,ENTPCKWK     SAVE ACCESS REGISTER CONTENT @D64ADOW 00367000
+         MVN   ENTPCK70+3(1),ACCIDEXC GET ACCESS REG USED      @D64ADOW 00368000
+ENTPCK70 CPYA  RA,*-*                                          @D64ADOW 00369000
+         STAM  RA,RA,ENTPCKAL     GET ALET OF PROG CHK         @D64ADOW 00370000
+         LAM   RA,RA,ENTPCKWK     GET ACCESS REG BACK          @D64ADOW 00371000
+         L     RA,ENTPCKAL        IS ALET                      @D64ADOW 00372000
+         C     RA,F2              ... X'00000002' (HOMESPACE)  @D64ADOW 00373000
+         BNE   ENTPCK95                                        @D64ADOW 00374000
+ENTPCK75 DS    0H                                              @D61HDOW 00375000
+         LH    RA,RID                                          @D61PDOW 00376000
+         LA    R9,GATENR          GET HIGHEST RID              @D61PDOW 00377000
+         CR    RA,R9              RID POINTS TO RESOURCE TABLE @D61PDOW 00378000
+         BL    ENTPCKTB(RA)       NO, USE BRANCH TABLE         @D61PDOW 00379000
+         B     ENTPCK80           CREATE/EXTEND LINKAGE STACK  @D67CDOW 00380000
+ENTPCKTB DS    0H                                              @D61PDOW 00381000
+         B     ENTPCK95        0  CONT WITH PROG CHECK HANDLING@D61PDOW 00382000
+         B     ENTPCK80        4  CREATE/EXTEND LINK STACK     @D61PDOW 00383000
+         B     ENTPCK80        8  CREATE/EXTEND LINK STACK     @D61PDOW 00384000
+***                               ACTIVATE HOMESPACE SUPPORT            00385000
+         B     ENTPCK95        C  CONT WITH PROG CHECK HANDLING@D61PDOW 00386000
+         B     ENTPCK80       10  CREATE/EXTEND LINK STACK     @D61PDOW 00387000
+         B     ENTPCK95       14  CONT WITH PROG CHECK HANDLING@D61PDOW 00388000
+         B     ENTPCK95       18  CONT WITH PROG CHECK HANDLING@D61PDOW 00389000
+         B     ENTPCK95       1C  CONT WITH PROG CHECK HANDLING@D61PDOW 00390000
+         B     ENTPCK95       20  CONT WITH PROG CHECK HANDLING@D61PDOW 00391000
+*** END OF BRANCH TABLE                                                 00392000
+ENTPCK80 DS    0H                                              @D61PDOW 00393000
+         L     RC,ASVASVDL        PTR TO SVA ROUT.ADDR.TABLE   @D61PDOW 00394000
+         ICM   RC,15,AIJBLSTK-SVASVDL(RC) ADDR OF L-STACK RTN  @D61PDOW 00395000
+         BZ    ENTPCK95           NO , ---> NORMAL PROG CHECK  @D61PDOW 00396000
+         LA    RC,PCOLDPS         ADDR OF PC OLD PSW           @D61PDOW 00397000
+         L     RB,PGMINF          GET PC INTERRUPTION CODE     @D61PDOW 00398000
+         L     RD,AFLIH                                        @D64ADOW 00399000
+         USING FLIH,RD                                         @D64ADOW 00400000
+         BAL   R9,GENENT          GENERAL ENTRY                @D61PDOW 00401000
+*SGLINK GENENT,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                    00402000
+         LA    RD,ENTPCK                                       @D64ADOW 00403000
+         USING ENTPCK,RD                                       @D64ADOW 00404000
+         L     RC,ASVASVDL        PTR TO SVA ROUT.ADDR.TABLE   @D61PDOW 00405000
+         ICM   RC,15,AIJBLSTK-SVASVDL(RC) ADDR OF L-STACK RTN  @D61PDOW 00406000
+         MVI   RID+1,REENTRID     INDICATE 2ND SAVE AREA FREE  @D61PDOW 00407000
+         USING TCBADR,RA          ADDRESSABILITY TO TCB        @D61PDOW 00408000
+         CLI   TCBRID,USERTID     WAS USER INTERRUPTED         @D61PDOW 00409000
+         BE    ENTPCK85           YES,  -->                    @D61PDOW 00410000
+         CLI   TCBRID,RESVCID     WAS VTAM APP INTERRUPTED     @D61PDOW 00411000
+         BE    ENTPCK85           YES,  -->                    @D61PDOW 00412000
+         DROP  RA                                              @D61PDOW 00413000
+         MVI   RID+1,SYSTEMID     IND 2ND SAVE AREA OCCUPIED   @D61PDOW 00414000
+ENTPCK85 DS    0H                                              @D61PDOW 00415000
+         SLR   RF,RF              SETUP FCT CODE CREATE/EXTEND @D61PDOW 00416000
+         TM    PGMINTC+1,X01      WAS IT STACK FULL            @D61RDOW 00417000
+         BNO   ENTPCK90           NO, --->                     @D64ADOW 00418000
+         LA    RF,24              INDICATE ALEN TRANSLATION EX @D64ADOW 00419000
+ENTPCK90 DS    0H                                              @D64ADOW 00420000
+         MVI   PCKFLAG1,X00       LEAVING SGPCK NOW            @DY43858 00421000
+*        AMODESW CALL,REGS=(RE,RC) GO TO IJBLSTK ROUTINE                00422000
+         BASSM RE,RC                                           @D64ADOW 00423000
+*** IF IJBLSTK NOT AVAILABLE CONTINUE HERE BY MEANS OF RTN LSTKRET      00424000
+*                                                                       00425000
+         LA    R5,HWORG264                                     @D64ADOW 00426000
+         STH   R5,IJBHWORI                                     @D64ADOW 00427000
+         BAL   R5,SYSERROR        IJBLST IS VITAL              @D64ADOW 00428000
+ENTPCK95 DS    0H                                              @D36FDOW 00429000
+         AIF   (NOT &BGTT).XPCK040                             @D14BDFR 00430000
+         TM    ASSFLAG,TTIMESET+TTIMEACT                       @D14BDFR 00431000
+         BZ    NOTTPCK                                         @D14BDFR 00432000
+         BAL   R9,GENENTTT        UPDATE TTIME                 @D14BDFR 00433000
+*SGLINK  GENENTTT,INPUT=(R9,RD),WORK=(RA,RB,RC)                @D36ZDOW 00434000
+.XPCK040 ANOP                                                  @D14BDFR 00435000
+NOTTPCK  SGSETUP UPDTIME,NEXTPCB=ASYSPCB,OPTION=OWNER,WR1=RA,          X00436000
+               WR2=RB,WR3=RC                                   @D51IDOW 00437000
+         CLI   PGMINTC+1,PSPF     PSEUDO PAGE FAULT            @D35NDJO 00438000
+         BE    ENTPCKPS           YES, --->                    @D61RDOW 00439000
+         CLI   PGMINTC+1,PSPF+PEREXC PSEUDO PAGE FAULT         @D61RDOW 00440000
+         BNE   ENTPCKNP           NO                           @D61RDOW 00441000
+ENTPCKPS DS    0H                 HANDLE PSEUDO PF             @D61RDOW 00442000
+         L     RC,APMGMDAT        BASE OF PAGE MANAGER         @D36ZDFR 00443000
+         USING PMGMDATA,RC                                     @D36ZDFR 00444000
+         L     R9,AVMPF           PSEUDO PAGE FAULT ROUT.      @D36ZDFR 00445000
+         DROP  RC                                              @D36ZDFR 00446000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00447000
+*        AMODESW RETURN,REG=(R9)  BRANCH TO PSEUDO P.F.ROUT.            00448000
+         AMODESW RETURN,REG=(R9)  BRANCH TO PSEUDO P.F.ROUT.   @D52VDOW 00449000
+*SGLINK VMPF,INPUT=(R9,RC)                                              00450000
+ENTPCKNP DS    0H                 PF OR NORMAL PROG CHK        @D35NDJO 00451000
+         CLI   PGMINTC+1,PTEXC    PAGE TRANSLATION EXCEPTION   @D14CDOW 00452000
+         BE    PFFLIH             YES,GOTO HANDLE PAGE FAULT            00453000
+         CLI   PGMINTC+1,PTEXC+PEREXC                          @D61RDOW 00454000
+         BE    PFFLIH             YES,GOTO HANDLE PAGE FAULT   @D61RDOW 00455000
+         CLI   PGMINTC+1,MCALL    MONITOR CALL INTERRUPTION    @D52VDOW 00456000
+         BE    PCKCICCF           YES, CALL ICCF               @D61RDOW 00457000
+         CLI   PGMINTC+1,MCALL+PEREXC ...                      @D61RDOW 00458000
+         BNE   PCKNODTS           NO, SKIP ICCF HOOK           @D52VDOW 00459000
+PCKCICCF DS    0H                                              @D61RDOW 00460000
+         L     RD,DTSMCBAS        GET BASE FOR ICCF HOOK       @D61RDOW 00461000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00462000
+         BR    RD                 CALL ICCF HOOK               @D61RDOW 00463000
+PCKDTSRT DS    0H                 RETURN FROM ICCF             @D61RDOW 00464000
+         MVI   PCKFLAG1,PCINDIC   INDICATE SGPCK ACTIVE        @D64ADOW 00465000
+         LA    RD,ENTPCK-FLIH(,RD) RELOAD BASE                 @D64ADOW 00466000
+PCKNODTS DS    0H                                              @D61RDOW 00467000
+         CLI   RID+1,USERTID      PCK.IN USER TASK             @D36ZDFR 00468000
+         BE    PCUSER             YES,GOTO USER PCK.HANDLER    @D36ZDFR 00469000
+         L     RD,AFLIH                                        @D64ADOW 00470000
+         USING FLIH,RD                                         @D64ADOW 00471000
+         BAL   R9,PCGENENT        SPECIAL GENENT FOR PROG.CHKS.@D36ZDOW 00472000
+*SGLINK PCGENENT,INPUT=(R9,RD),WORK=(RC,RB),OUTPUT=(R6,RA)     @D36ZDOW 00473000
+         USING DISP,R6                                         @D36ZDFR 00474000
+         LA    RD,ENTPCK                                       @D64ADOW 00475000
+         USING ENTPCK,RD                                       @D64ADOW 00476000
+         LA    R9,GATENR          GET HIGHEST RID, RA CONT RID @D36ZDOW 00477000
+         CR    RA,R9              RID POINTS TO RESOURCE TABLE @D36ZDOW 00478000
+         BL    PCBRTAB(RA)        NO BRANCH VIA BRANCHTABLE    @D36ZDOW 00479000
+         SPACE 2                                               @D36ZDFR 00480000
+*        PROGRAM CHECK TABLE TO INITIATE ACTIONS DEPENDING     @D36ZDFR 00481000
+*        ON RID                                                @D36ZDFR 00482000
+PCBRTAB  DS    0H                                              @D36ZDFR 00483000
+         B     PCSUPVR            PC IN CRITICAL SV ROUT.      @D36ZDFR 00484000
+         B     PCRESUP            PC.IN REENTRANT SUPVR.ROUT.  @D52GDOW 00485000
+         B     PCUSER             USER ERROR CONDITION: CANCEL @D36ZDFR 00486000
+         B     PCAPPCK            PC IN I/O APPENDAGE          @D36ZDOW 00487000
+         B     PCSUPVR            PC.IN RE-SVC TYPE ROUT.      @D36ZDFR 00488000
+         B     PCSUPVR            PROGR.CHECK IN DISPATCHER    @D36ZDFR 00489000
+         B     PCPFA              PC IN PHO APPENDAGE          @D61NDOW 00490000
+         B     PCETSS             PCK.IN ETSS                  @D36GDOW 00491000
+         B     PCIUCV             PC IN IUCV APPENDAGE         @D61NDOW 00492000
+*** END OF BRANCH TABLE                                                 00493000
+         SPACE 1                                               @D36ZDFR 00494000
+*   IF THE PROGRAM CHECK OCCURED IN A IUCV APPENDAGE CANCEL    @D379DJB 00495000
+*   USER WITH ERR0D                                            @D379DJB 00496000
+PCIUCV   DS    0H                                              @D37CDJB 00497000
+         LA    R1,ERR0DE          GET CANCEL CODE              @D61BDOW 00498000
+PCIUCV1  DS    0H                                              @D61BDOW 00499000
+         L     RF,AVSASVC         GET PTR TO IUCV ROUTINE      @D37CDJB 00500000
+         USING VSASVC,RF          MODULE ADDRESSABILITY        @D37CDJB 00501000
+         L     R8,ERTIBADR        GET TIB ADDR. OF EXIT OWNER  @D37CDJB 00502000
+         DROP  RF                                              @D37CDJB 00503000
+         USING TIBADR,R8                                       @DA33879 00504000
+         L     R9,TIBPCB          PCB OF PARTITION TO BE CANC'D@D61BDOW 00505000
+         CLC   TID,ARTIDH         SYSTEM TASK TO BE CANCELED   @D66ODOW 00506000
+         BNL   PCIUCV5            NO, --->                     @D61BDOW 00507000
+         OI    TIBFLAG4,TIBSYSDT  FORCE DELAYED SYSTEM-TASK    @D61BDOW 00508000
+***                               ... TERMINATION                       00509000
+PCIUCV5  DS    0H                                              @D61BDOW 00510000
+         DROP  R8                                              @DA33879 00511000
+         SLR   R5,R5              INPUT FOR RDYCNCL            @D61BDOW 00512000
+         BCTR  R5,0               ...                          @D61BDOW 00513000
+         L     R6,DISPAD          ...                          @D61BDOW 00514000
+         LR    R7,R6              EXIT TO DISPATCHER           @D61BDOW 00515000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00516000
+         B     RDYCNCLY           PREPARE CANCEL               @D61BDOW 00517000
+*SGLINK RDYCNCLY,INPUT=(R1,R5,R6,R7,R8,R9),WORK=(R5,R8,RE,RF)           00518000
+         SPACE 2                                                        00519000
+*   IF THE PROGRAM CHECK OCCURED IN A I/O APPENDAGE, RELOAD             00520000
+*   PUB POINTER AND CANCEL USER                                         00521000
+PCAPPCK  SLR   R3,R3              CLEAR R3                     @DY46221 00522000
+         ICM   R3,7,IOOPSW+5      RELOAD PUB POINTER           @DY46221 00523000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00524000
+         B     ERR36              REMOVE CHANNEL QUEUE ENTRY   @D36ZDOW 00525000
+*                                 AND CANCEL                   @D36ZDOW 00526000
+         SPACE                                                          00527000
+*   IF THE PROGRAM CHECK OCCURED IN A PHO APPENDAGE, RESET              00528000
+*   PHO INTERFACE AND GO TO ERR0D (PC IN SUBSYSTEM)                     00529000
+PCPFA    L     R8,APMGMDAT        BASE OF PAGE MANAGER         @D36ZDFR 00530000
+         USING PMGMDATA,R8        ADDRESS PAGE MANAGER         @D35EDJO 00531000
+         L     R7,ARESPHO         RESET PHO INTERFACE          @D35EDJO 00532000
+         L     RD,PCKADR          GET ADDR OF FAILING INSTRUCT.@D52GDOW 00533000
+         N     RD,BIT0OFF         RESET HIGH ORDER BIT         @D52GDOW 00534000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00535000
+*        AMODESW CALL,REGS=(R7,R7) GO TO PAGE MANAGER                   00536000
+         AMODESW CALL,REGS=(R7,R7) GO TO PAGE MANAGER          @D52VDOW 00537000
+*SGLINK RESPHO,INPUT=(R7,R8,RD)                                @D36ZDOW 00538000
+         DROP  R8                                              @D35EDJO 00539000
+         B     ERR0D              PCK.IN USER APPENDAGE        @D36ZDFR 00540000
+         B     ERR2C              PCK DUE TO INVALID RETURN    @D52VDOW 00541000
+*                                 .. INFO FROM PHO APPENDAGE            00542000
+         SPACE 2                                               @DA06796 00543000
+*        IF A PROGRAM CHECK OCCURS IN THE ETSS SECOND LEVEL    @D35ZDUL 00544000
+*        SVC OR MC INTERRUPT HANDLERS, OR IN THE SECOND LEVEL  @D35ZDUL 00545000
+*        SVC INTERRUPT HANDLER, THE INTERCEPT HAS TO BE ENDED  @D35ZDUL 00546000
+*        IMMEDIATELY, AND THE ETSS PARTITION  HAS TO BE TERMI- @D35ZDUL 00547000
+*        NATED. IF WE DON'T FORCE ETSS DOWN, THE SYSTEM WOULD  @D35ZDUL 00548000
+*        GO INTO A CANCEL LOOP.                                @D35ZDUL 00549000
+         SPACE 1                                               @D35ZDUL 00550000
+PCETSS   LA    R9,ERR0D           LOAD ERR CONTINUATION ADDR   @D36GDOW 00551000
+PCETSS1  DS    0H                 ENTRY POINT FROM PF HANDLER  @D36GDOW 00552000
+         L     RC,IJBETSS         GET ETSS VECTOR TABLE        @D36GDOW 00553000
+         USING DTSVECDS,RC                                     @D36GDOW 00554000
+         OI    DTSFLG2,DTSCANCL   NEUTRALIZE ETSS INTERCEPTS   @D36GDOW 00555000
+         DROP  RC                                              @D36GDOW 00556000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00557000
+         BR    R9                 CONTINUE CANCELLING          @D36GDOW 00558000
+         SPACE 2                                               @D36ZDOW 00559000
+PCRESUP  DS    0H                 PC IN REENTRENT SUPVR.ROUT.  @D52GDOW 00560000
+         L     R9,ADISPEXR        CHECK IF PROG CHECK EXIT     @D52GDOW 00561000
+         USING DISPEXRT,R9        ...                          @D52GDOW 00562000
+         BAS   R7,DISPEXPC        ... SET UP FOR CURRENT RTN   @D64ADOW 00563000
+*SGLINK DISPEXPC,S,INPUT=(R6,R7,R9),OUTPUT=(R9),WORK=(R8,RA)            00564000
+         DROP  R9                                              @D52GDOW 00565000
+         LA    RA,REENTRID        RESTORE RA                   @D52GDOW 00566000
+         LTR   R9,R9              EXIT RTN AVAILABLE           @D52GDOW 00567000
+         BZ    PCSUPVR            NO, CONTINUE PC HANDLING     @D52GDOW 00568000
+         MVI   RID+1,REENTRID     SET REENTRANT ID             @D52GDOW 00569000
+         L     RF,ASVPCSAV        PASS SAVE AREA ADDR          @D52GDOW 00570000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00571000
+*        AMODESW RETURN,REG=(R9)  BRANCH TO USER EXIT RTN               00572000
+         AMODESW RETURN,REG=(R9)  BRANCH TO USER EXIT RTN      @D52GDOW 00573000
+         SPACE 2                                                        00574000
+PCSUPVR  DS    0H                 PC IN SUPVR RTN              @D36ZDOW 00575000
+         L     RC,PCKADR          ADDRESS PART OF PC OLD PSW   @D14CDOW 00576000
+         N     RC,BIT0OFF         RESET FIRST BIT              @D52VDOW 00577000
+         C     RC,F4096           PCK.ADDRESS IN PAGE ZERO     @D64ADOW 00578000
+         BNH   TSTSVPCK           YES, ADDR NOT IN TABLE       @D64ADOW 00579000
+         IC    R9,PGMINTC+1       GET PROG CHECK INT CODE      @D64ADOW 00580000
+         N     R9,PERBITOF        RESET PER BIT                @D64ADOW 00581000
+         LA    R9,PCKLNBIT-1(R9)  RELATED BYTE PROG-CHK TABLE  @D64ADOW 00582000
+         CLI   0(R9),X'01'        INSTR EXECUTION SUPPRESSED   @D64ADOW 00583000
+         BNE   PCKNSUPP           NO --->                      @D64ADOW 00584000
+         AH    RC,PGMINF          ADJUST PCOLDPSW ADDR         @D64ADOW 00585000
+PCKNSUPP DS    0H                                              @D64ADOW 00586000
+         L     R9,APCKATAB        ADDRESS OF PCK.ADR.TABLE     @D36ZDFR 00587000
+PCKCOMP  LA    R9,4(,R9)          NEXT ENTRY IN TABLE          @D36ZDFR 00588000
+         CLI   0(R9),XFF          END OF TABLE REACHED         @D36ZDFR 00589000
+         BE    TSTSVPCK           YES, DO FURTHER CHECKING     @D61PDOW 00590000
+         TM    0(R9),X'80'        IS IT AN ADDRESS             @D52GDOW 00591000
+         BZ    PCKCOMP2           YES, TEST ADDRESS --->       @D14CDOW 00592000
+         LR    RB,R9              REMEMBER ROUTINE ADDR        @DY45037 00593000
+         B     PCKCOMP            GOTO TEST ENTRIES            @D14CDOW 00594000
+PCKCOMP2 C     RC,0(,R9)          EXPECTED PROGRAM CHECK       @D36ZDFR 00595000
+         BNE   PCKCOMP            NO, TEST NEXT ENTRY --->              00596000
+         STH   RA,RID             RESTORE RID                  @DA38196 00597000
+         TM    0(RB),X40          RESET OF SPECIAL SAVEAREA IN-@DY45037 00598000
+***                               USE BIT REQUIRED (I.E. PROGRAM CHECK  00599000
+***                               ENDS UP IN CANCEL)                    00600000
+         BNO   PCKCOMP4           NO. --->                     @DY45037 00601000
+         L     R9,TIBPTR                                       @DY45037 00602000
+         USING TIBADR,R9                                       @DY45037 00603000
+         NI    TIBFLAG2,XFF-SVPCCNCL RESET IN-USE BIT          @DY45037 00604000
+         DROP  R9                                              @DY45037 00605000
+PCKCOMP4 DS    0H                                              @DY45037 00606000
+         L     RB,0(,RB)          GET ROUTINE ADDR             @DY45037 00607000
+         LA    RB,0(,RB)          ... CLEAR FIRST BYTE         @DY45037 00608000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00609000
+         BR    RB                                              @D36ZDFR 00610000
+         DS    0F                                              @D64ADOW 00611000
+PERBITOF DC    X'0000007F'                                     @D64ADOW 00612000
+**             00 MEANS PCOLDPS POINTS AFTER FAILING INSTRUCTION        00613000
+**             01 MEANS PCOLDPS POINTS ON FAILING INSTRUCTION           00614000
+**             02 NOT A VALID PROG CHECK INTERRUPTION CODE              00615000
+PCKLNBIT DC    X'00000000000000000000000000000001'  1-10       @D64ADOW 00616000
+         DC    X'01000001000100020102020000010001' 11-20       @D64ADOW 00617000
+         DC    X'01010101010202000101010101020201' 21-30       @D64ADOW 00618000
+         DC    X'01010101020202020202020202020200' 31-40       @D64ADOW 00619000
+         SPACE 3                                               @D36ZDOW 00620000
+TSTSVPCK DS    0H                 HW/SUB-SYSTEM TEST           @D36ZDOW 00621000
+*        IF A PROGRAM CHECK OCCURS IN VTAM OR IN A VTAM        @D36ZDOW 00622000
+*        CONTROLLED TASK EXECUTING VTAM CODE VTAM AND ALL      @D36ZDOW 00623000
+*        RELATED TASKS ARE CANCELLED                           @D36ZDOW 00624000
+         CLC   TID(2),ARTIDH      PROGR.CHECK IN SYSTEM TASK   @D51IDOW 00625000
+         BNH   GOHWFFF            YES, HARDWAIT                @D64NDOW 00626000
+         L     R8,TIBPTR                                       @DA36477 00627000
+         USING TIBADR,R8                                       @DA36477 00628000
+         TM    TIBFLAG3,CKUACTIV  ISTAPCKU APPENDAGE CANCELLED @DA36477 00629000
+         BO    VTCKUCNL           YES, JUST CANCEL             @DA36477 00630000
+         L     RA,TCBPTR                                       @D36ZDOW 00631000
+         USING TCBADR,RA                                       @D36ZDOW 00632000
+         TM    VTAMFLG,VTABEND    RECURSIVE ABEND              @DA30518 00633000
+         BO    VTAMCNCL           YES, JUST CANCEL             @DA30518 00634000
+         TM    VTAMFLG,VTSVC      VTAM IN CONTROL              @DA30518 00635000
+         BZ    GOHWFFF            NO, GO TO HARDWAIT           @D64NDOW 00636000
+         L     RB,ASVPCSAV        ADDR OF SPEC SUPVR SAVE AREA @DA30518 00637000
+         USING SVPCSAVE,RB                                     @DA30518 00638000
+         CLI   SVPCRID+1,REENTRID REENTRANT SVC                @DA30518 00639000
+         BE    VTSPSAVE                                        @DA30518 00640000
+         CLI   SVPCRID+1,RESVCID  RESVC RID SET                @DA30518 00641000
+         BNE   GOHWFFF            NO, HARDWAIT                 @D64NDOW 00642000
+         DROP  RB                                              @DA30518 00643000
+VTSPSAVE DS    0H                                              @DA30518 00644000
+         OI    VTAMFLG,VTSPSAV VTAM USES SPECIAL SAVE AREA     @DA30518 00645000
+         B     PCUSR042                                        @DA30518 00646000
+         SPACE                                                          00647000
+VTCKUCNL DS    0H                                              @DA36477 00648000
+         NI    TIBFLAG3,XFF-CKUACTIV RESET ACTIVE INDICATOR    @DA36477 00649000
+         MVI   VTAMFLG,0          CLEAN UP VTAM FLAGS          @DA36477 00650000
+         LA    RB,VTCCODE2        CANCEL CODE IS INPUT TO ERRGO@DA36477 00651000
+         LR    RF,R6              DISPATCHER IS EXIT FROM ERRGO@DA36477 00652000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00653000
+         B     ERRGO              ENTER CANCEL ROUTINE         @DA36477 00654000
+         DROP  R8                                              @DA36477 00655000
+         SPACE                                                          00656000
+VTAMCNCL DS    0H                                              @DA30518 00657000
+         MVI   VTAMFLG,0          CLEAN VTAM FLAGS OF CURR TASK@DA30518 00658000
+         DROP  RA                                              @DA30518 00659000
+         TM    IJBTCAVT,IJBTCACT  VTAM ACTIVE                  @D61NDOW 00660000
+         BZ    GOERR20            NO                           @D61NDOW 00661000
+         L     R8,IJBTCAVT        VTAM ADDRESS VECTOR          @D61NDOW 00662000
+         USING ISTAVT,R8                                       @D61NDOW 00663000
+         LH    R8,ISTTSKID        GET TID OF VTAM MAINTASK     @D61NDOW 00664000
+         DROP  R8                                              @D61NDOW 00665000
+         CH    R8,TID             VTAM MAIN TASK               @DA30518 00666000
+         BE    GOERR20            YES, ---> CANCEL CURRENT TASK@DA30518 00667000
+         SLL   R8,2               GET TIB                      @D66ODOW 00668000
+         AL    R8,ATIBATAB        ....... OF VTAM MAIN TASK    @D66ODOW 00669000
+         L     R8,0(,R8)          ............... MAINTASK     @D66ODOW 00670000
+         USING TIBADR,R8                                       @D36ZDOW 00671000
+         TM    TIBFLAG1,TERMACT   TERMINATOR ACTIVE            @DY44311 00672000
+         BZ    VTAMCNC5           NO, --->                     @DY44311 00673000
+***                               CANCEL DUMPING VTAM MAINTASK          00674000
+***                               IF DUMP WAS REQUESTED DURING          00675000
+***                               NORMAL PROCESSING, CONTINUE           00676000
+***                               DUMP IF REQUESTED BY AB-EXIT          00677000
+         TM    TIBCNCL,XFF        VTAM MT ALREADY IN CANCEL    @DY44311 00678000
+         BNZ   GOERR20            YES, CANCEL ONLY CURRENT TASK@DY44505 00679000
+VTAMCNC5 DS    0H                                              @DY44311 00680000
+         SLR   R5,R5              INPUT FOR RDYCNCLY           @D64ADOW 00681000
+         BCTR  R5,0               ...                          @D64ADOW 00682000
+         L     R6,DISPAD          ... DISP BASE ADDR           @D64ADOW 00683000
+         LA    R1,VTCCODE2        ... CANCEL CODE              @D64ADOW 00684000
+         L     R9,TIBPCB          ... PCB ADDR                 @D64ADOW 00685000
+         BAS   R7,RDYCNCLY        CANCEL VTAM MAINTASK         @D64ADOW 00686000
+*SGLINK RDYCNCLY,INPUT=(R1,R5,R6,R7,R8,R9),WORK=(R5,R8,RE,RF)           00687000
+         DROP  R8                                              @D36ZDOW 00688000
+         B     GOERR20            CANCEL CURRENT TASK          @D36ZDOW 00689000
+         SPACE 3                                                        00690000
+*   USER WRITTEN PROGRAM CHECK EXIT ROUTINE.                            00691000
+*   IF A PROGRAM CHECK EXIT ROUTINE IS AVAILABLE, BRANCH TO             00692000
+*   PCROUT TO ACTIVATE THE EXIT ROUTINE.                                00693000
+*   IF A P.C. EXIT ROUTINE IS NOT AVAILABLE, BRANCH TO                  00694000
+*   ERR20 TO TERMINATE THE TASK ABNORMALLY.                             00695000
+*                                                                       00696000
+PCUSER   DS    0H                                              @D36ZDFR 00697000
+         L     R9,TIBPTR          ADDR USERS TIB               @D52VDOW 00698000
+         USING TIBADR,R9                                       @D52VDOW 00699000
+         NI    TIBFLAG2,XFF-SVPCCNCL RESET SPECIAL SAVE AREA   @D52VDOW 00700000
+         TM    TIBFLAG5,TIBXMEMC  X-MEM CANCEL ONGOING         @D64ADOW 00701000
+         BNO   PCUSR010           NO --->                      @D64ADOW 00702000
+         TM    TIBFLAG,FETCHEOJ   CANCEL ONLY SCHEDULED        @D64ADOW 00703000
+         BO    PCUSRXIT           YES, IGNORE PROG CHECK --->  @D64ADOW 00704000
+PCUSR010 DS    0H                                              @D64ADOW 00705000
+         DROP  R9                 ... USED INDICATOR           @D52VDOW 00706000
+         LA    RC,PCOLDPS         ADDR.OF PC.OLD PSW           @D14CDOW 00707000
+         L     RB,PGMINF          GET PC INTERRUPTION CODE     @D36ZDFR 00708000
+         L     RD,AFLIH                                        @D64ADOW 00709000
+         USING FLIH,RD                                         @D64ADOW 00710000
+         BAL   R9,GENENT          GENERAL ENTRY                @D36ZDFR 00711000
+*SGLINK GENENT,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                    00712000
+         USING TCBADR,RA          SET UP TCB BASE              @D51IDOW 00713000
+         USING SVEARA,RB                                       @D64ADOW 00714000
+         LA    RD,ENTPCK                                       @D64ADOW 00715000
+         USING ENTPCK,RD                                       @D64ADOW 00716000
+         SPACE                                                          00717000
+         L     RC,PCBPTR                                       @D36GDOW 00718000
+         USING PCBADR,RC                                       @D36GDOW 00719000
+         TM    PGMINTC+1,PEREXC   WAS IT A PER INTERRUPT       @D61HDOW 00720000
+         BZ    PCUSR020           NO --->                      @D61HDOW 00721000
+         CLI   PGMINTC+1,MCALL+PEREXC WAS IT A MC INSTRUCTION  @D61HDOW 00722000
+         BE    PCUSR020           YES, --->                    @D61HDOW 00723000
+         L     R9,TIBPTR          ADDR USERS TIB               @D61HDOW 00724000
+         USING TIBADR,R9                                       @D61HDOW 00725000
+         TM    TIBTFLAG,TIBTTACT  PROBLEM DETERMINATION ACTIVE @D61HDOW 00726000
+         DROP  R9                                              @D61HDOW 00727000
+         BNO   PCUSR020           NO --->                      @D61HDOW 00728000
+         DROP  RD                                              @D61HDOW 00729000
+         L     RD,APBASE          GET BASE OF SGAP             @D61HDOW 00730000
+         USING SGAP,RD                                         @D61HDOW 00731000
+         L     R9,ATERMBAS        GET TERMINATOR BASE          @D61HDOW 00732000
+         DROP  RD                                              @D61HDOW 00733000
+         USING TERMBASE,R9                                     @D61HDOW 00734000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00735000
+         B     TERMTRAC                                        @D61HDOW 00736000
+***      INPUT  R6  DISPATCHER ADDR                                     00737000
+***             R9  ROUTINE BASE                                        00738000
+***             RA  CURRENT TCB PTR                                     00739000
+***             RD  SGAP BASE                                           00740000
+         DROP  R9                                              @D61HDOW 00741000
+         USING ENTPCK,RD                                       @D61HDOW 00742000
+         SPACE                                                          00743000
+PCUSR020 DS    0H                                              @D64ADOW 00744000
+         SPACE                                                          00745000
+*        HANDLE PRIVELEDGED OPERATION EXCEPTION AND PROTECTION          00746000
+*        EXCEPTION IN AUTHORIZED SUPERVISOR ROUTINES CALLED BY          00747000
+*        BAL INTERFACE                                                  00748000
+         SPACE                                                          00749000
+         OC    PSATOLD,PSATOLD    PARTITION IN EMULATION MODE  @D64ADOW 00750000
+         BZ    PCUSR040           NO, --->                     @D64ADOW 00751000
+         L     R3,PCKADR          GET PROGRAM CHECK ADDR       @D64ADOW 00752000
+         N     R3,BIT0OFF         CLEAR FIRST BIT              @D64ADOW 00753000
+         LA    R1,D2C5R4FE        DEFINE ABEND/REASON CODE     @D64ADOW 00754000
+         L     R2,APCKBTAB        GET LIST OF EXPECTED ADDR'S  @D64ADOW 00755000
+         CLI   PGMINTC+1,PROTEX   PROTECTION CHECK             @D64ADOW 00756000
+         BE    PCUSR030           YES,                         @D64ADOW 00757000
+         CLI   PGMINTC+1,PROTEX+PEREXC                         @D64ADOW 00758000
+         BE    PCUSR030                                        @D64ADOW 00759000
+         LA    R1,D2C5R4FF        DEFINE ABEND/REASON CODE     @D64ADOW 00760000
+         L     R2,APCKCTAB        GET LIST OF EXPECTED ADDR'S  @D64ADOW 00761000
+         CLI   PGMINTC+1,PRIVEX   PRIV OP EXCEPTION            @D64ADOW 00762000
+         BE    PCUSR030           YES,                         @D64ADOW 00763000
+         CLI   PGMINTC+1,PRIVEX+PEREXC                         @D64ADOW 00764000
+         BNE   PCUSR040           NO ---> CONT PROG CHK HANDLER@D64ADOW 00765000
+PCUSR030 DS    0H                                              @D36GDOW 00766000
+         MVI   RID+1,REENTRID                                  @D64ADOW 00767000
+         LA    R2,8(,R2)          GOTO FIRST/NEXT ENTRY        @D64ADOW 00768000
+         TM    0(R2),X80          END OF TABLE                 @D64ADOW 00769000
+         BO    PCUSR040           YES ---> CONT PROG CHECK HAND@D64ADOW 00770000
+         C     R3,0(,R2)          OUR ADDRESS                  @D64ADOW 00771000
+         BNE   PCUSR030           NO, STEP TO NEXT ENTRY       @D64ADOW 00772000
+         L     R3,SVER0E          GET REG 14                   @D64ADOW 00773000
+         O     R3,BIT0OMSK        SET BIT 0 ON                 @D64ADOW 00774000
+         TM    SVEPSW2,X80        CALLER IN 31 BIT MODE        @D64ADOW 00775000
+         BO    PCUSR035           YES, --->                    @D64ADOW 00776000
+         N     R3,BIT0OFF         CLEAR FIRST BIT              @D64ADOW 00777000
+PCUSR035 DS    0H                                              @D36GDOW 00778000
+         ST    R3,SVEPSW2         UPDATE PSW WITH CORRECT ADDR @D64ADOW 00779000
+         ICM   R2,B'1111',4(R2)   GET                          @D64ADOW 00780000
+         BZ    PCUSR120           ... MACRO                    @D64ADOW 00781000
+         LM    R2,R3,0(R2)        ... NAME                     @D64ADOW 00782000
+         B     PCUSR120                                        @D64ADOW 00783000
+PCUSR040 DS    0H                                              @D36GDOW 00784000
+         SPACE                                                          00785000
+*        IF A PROGRAM CHECK OCCURS IN THE ICCF SECOND LEVEL    @D35ZDUL 00786000
+*        SVC OR MC INTERRUPT HANDLERS, OR IN THE SECOND LEVEL  @D35ZDUL 00787000
+*        SVC INTERRUPT HANDLER, THE INTERCEPT HAS TO BE ENDED  @D35ZDUL 00788000
+*        IMMEDIATELY, AND THE ICCF PARTITION  HAS TO BE TERMI- @D35ZDUL 00789000
+*        NATED. IF WE DON'T FORCE ICCF DOWN, THE SYSTEM WOULD  @D35ZDUL 00790000
+*        GO INTO A CANCEL LOOP.                                @D35ZDUL 00791000
+         SPACE                                                          00792000
+         TM    PCBSSFLG,ICCF      IS ICCF INITIALIZED          @D36GDOW 00793000
+         DROP  RC                                              @D36GDOW 00794000
+         BNO   PCUSR041           NO, CONTINUE NORMAL PROCESSN @D36GDOW 00795000
+         USING DTSVECDS,RC                                     @D35ZDUL 00796000
+         L     RC,IJBETSS         GET ICCF VECTOR TABLE        @D35ZDUL 00797000
+         L     R9,PCKADR          ADR WHERE PGM CHECK OCCURRED @D14CDOW 00798000
+.* ICCF OPERATES ALWAYS IN 24 BIT MODE                                  00799000
+         C     R9,DTSSVCPB        PGM CHCK IN 2ND LEVEL INTCP  @D35ZDUL 00800000
+         BL    PCUSR041           NO                           @D35ZDUL 00801000
+         C     R9,DTSSVCPE        PGM CHCK IN 2ND LEVEL INTCP  @D35ZDUL 00802000
+         BNH   PCETSS             YES, LET PARTITION TERMINATE @D36GDOW 00803000
+         DROP  RC                                              @D35ZDUL 00804000
+PCUSR041 DS    0H                                              @D35ZDUL 00805000
+         TM    VTAMFLG,VTURX+VTAPP ERROR IN VTAM               @DA30518 00806000
+         BZ    PCUSR043           NO HANDLE NORMALLY           @DA30518 00807000
+PCUSR042 DS    0H                                              @DA30518 00808000
+         MVC   VTPCINF,PGMINF     SAVE PC INTERRUPT INFO       @DA30518 00809000
+         B     GOERR20            TERMINATE TASK               @DA30518 00810000
+PCUSR043 DS    0H                                              @D36ZDOW 00811000
+         L     R3,APCUSR044       GOTO 31 BIT MODE             @D64ADOW 00812000
+         BSM   0,R3               ...                          @D64ADOW 00813000
+PCUSR044 DS    0H                                              @D36ZDOW 00814000
+         CLI   PGMINTC+1,STACKOP  PROG CHECK DUE TO UNSTACK    @D61NDOW 00815000
+***                               ... SUPPRESSION BIT SET IN LINK STACK 00816000
+         BE    PCUSR080           YES,                         @D61NDOW 00817000
+         CLI   PGMINTC+1,STACKOP+PEREXC                        @D61NDOW 00818000
+         BE    PCUSR080           YES, HANDLE USP-BIT          @D64ADOW 00819000
+PCUSR060 DS    0H                                              @D61NDOW 00820000
+         TM    TCBFLAG6,TCBPSTAC  PROG CHECK IN VENDOR EXIT    @D61EDOW 00821000
+         BO    GOERR20            YES, DON'T ENTER PC-EXIT     @D64ADOW 00822000
+         ICM   R3,15,TCBPCEX      LOAD PC EXIT POINTER         @D64ADMK 00823000
+         BZ    GOERR20            N0T AVAILABLE, ---> ERR20    @D64ADOW 00824000
+         USING EXITBLK,R3         MAPPING                      @D64ADMK 00825000
+         ICM   R3,15,EXITADR      LOAD PC EXIT POINTER         @D62IDOW 00826000
+         BNP   GOERR20            ALREADY ACTIVE --->          @D64ADOW 00827000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00828000
+         L     RD,ASGEXIT         BASE OF PC EXIT ROUTINE      @D51HDOW 00829000
+         USING SGEXIT,RD                                       @D51HDOW 00830000
+         B     PCROUT             SET UP FOR USER EXIT         @D64ADOW 00831000
+*SGLINK PCROUT,INPUT=(R3,R6,RA,RB,RD)                                   00832000
+         DROP  R3                 MAPPING                      @D64ADMK 00833000
+         DROP  RB                                              @D64ADOW 00834000
+         USING ENTPCK,RD                                       @D36ZDFR 00835000
+PCUSR080 DS    0H                                              @D61NDOW 00836000
+         L     RC,ASGEXIT         GET RTN BASE ADDR            @D64ADOW 00837000
+         L     RC,APROGUSP-SGEXIT(,RC) ...                     @D64ADOW 00838000
+         MVI   PCKFLAG1,APINDIC   INDICATE SGPCK-HOOK ACTIVE   @D64ADOW 00839000
+         BASSM R9,RC              CALL SUBROUTINE              @D64ADOW 00840000
+         MVI   PCKFLAG1,PCINDIC   INDICATE IN SGPCK            @D64ADOW 00841000
+         B     PCUSRTAB           BRANCH BY MEANS OF RET CODE  @D64ADOW 00842000
+PCUSRTAB B     PCUSR100           CANCEL WITH ERR48            @D64ADOW 00843000
+         B     PCUSR060           CANCEL WITH ERR20            @D64ADOW 00844000
+         B     PCUSR140           CANCEL WITH ERR47            @D64ADOW 00845000
+*        B     PCUSRXIT           REPEAT PR INSTRUCTION        @D64ADOW 00846000
+***END OF BRANCH TABLE                                                  00847000
+PCUSRXIT DS    0H                                              @D64ADOW 00848000
+         MVI   PCKFLAG1,X00       LEAVING SGPCK NOW            @D64ADOW 00849000
+         B     EXIT               EXIT TO DISP                 @D64ADOW 00850000
+         SPACE                                                          00851000
+PCUSR100 DS    0H                                              @D64ADOW 00852000
+         LA    R1,D2C5R400        DEFINE ABEND/REASON CODE     @D64ADOW 00853000
+         SLR   R2,R2              INDICATE NO MACRO NAME       @D64ADOW 00854000
+PCUSR120 DS    0H                                              @D64ADOW 00855000
+         SLR   R6,R6              NO SUBREASON CODE            @D64ADOW 00856000
+         L     RC,ASGEXIT         GET RTN BASE ADDR            @D64ADOW 00857000
+         L     RC,ACOMER48-SGEXIT(,RC) ...                     @D64ADOW 00858000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK                @D64ADOW 00859000
+         BSM   0,RC               CANCEL WITH ERR48            @D64ADOW 00860000
+         SPACE                                                          00861000
+PCUSR140 DS    0H                                              @D64ADOW 00862000
+         L     R1,PCUSERR1        GET REASON CODE              @D64ADOW 00863000
+         L     RC,ASGEXIT         GET RTN BASE ADDR            @D64ADOW 00864000
+         L     RC,ACOMEREX-SGEXIT(,RC) ...                     @D64ADOW 00865000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK                @D64ADOW 00866000
+         BSM   0,RC               CANCEL WITH ERR47            @D64ADOW 00867000
+         SPACE                                                          00868000
+APCUSR044 DC   A(PCUSR044+X'80000000')                         @D64ADOW 00869000
+PCUSERR1 DC    A(NUCRSN02)                                     @D64ADOW 00870000
+         DROP  RA                                              @D36IDFR 00871000
+         SPACE 3                                                        00872000
+PCADDRS  DS    0H                                              @D52VDRP 00873000
+         NI    PGMINTC+1,PEREXC   LET PER BIT AS IT WAS        @D66ODOW 00874000
+         OI    PGMINTC+1,STEXC    GENERATE SEGMT TRANSL EXCEPT @D66ODOW 00875000
+         OI    PGMINTC,X80        ... AND INDICATE GENERATION  @D64ADOW 00876000
+         B     ENTPCK50           HANDLE AS NORMAL P.C.        @DA25335 00877000
+         EJECT                                                          00878000
+*********************************************************************** 00879000
+*                                                                     * 00880000
+*              PAGE FAULT FIRST LEVEL INTERRUPT HANDLER               * 00881000
+*                                                                     * 00882000
+*********************************************************************** 00883000
+         SPACE                                                          00884000
+PFFLIH   DS    0H                                                       00885000
+         LH    R9,RID             LOAD ROUTINE IDENTIFIER      @D36ZDFR 00886000
+         CLI   RID+1,GATENR       RID POINTS TO RESOURCE TABLE          00887000
+         BL    BRTAB(R9)          NO,BRANCH VIA BRANCH TABLE   @D36ZDFR 00888000
+         LA    R9,PFGOENQI        SETUP EXIT TO ENQ ROUT.      @D36ZDFR 00889000
+         LA    RC,PCOLDPS         GET ADDR OF PC OLD PSW       @D14CDOW 00890000
+         L     RD,AFLIH                                        @D64ADOW 00891000
+         USING FLIH,RD                                         @D64ADOW 00892000
+         B     SAVERID                                         @D36ZDFR 00893000
+         USING ENTPCK,RD                                       @D64ADOW 00894000
+BRTAB    DS    0H                                                       00895000
+         B     PFINSYS            SYSTEM ERROR COND:HARD WAIT  @D52VDOW 00896000
+         B     PFRERTN            GOTO HANDLE REENTRANT ROUTINE         00897000
+         B     PFUSER             PF IN USER PROG                       00898000
+         B     PFAPPEND           PF IN TP I/O APPENDAGE:CANCEL !       00899000
+         B     PFRESVC            PF.REQUIRES RE-SVC           @D35EDJO 00900000
+         B     PFGOENQI           PAGE FAULT IN DISPATCHER     @D64ADOW 00901000
+         B     PFPFA              PF IN PHO APPENDAGE          @D35EDJO 00902000
+         B     PFETSS             PF IN SUBSYSTEMS SUPVR HOOK  @D36ZDFR 00903000
+         B     PFIUCV             PF IN IUCV APPENDAGE         @D61BDOW 00904000
+*** END OF BRANCH TABLE                                                 00905000
+         SPACE 2                                                        00906000
+PFINSYS  STCM  R5,15,*+8          SAVE REG 5                   @D52VDOW 00907000
+         BAL   R5,GOHWFFB         SYSTEM ERROR COND:HARD WAIT  @D35ZDOW 00908000
+         DC    X'00000000'                                     @D52VDOW 00909000
+         SPACE 2                                                        00910000
+PFETSS   DS    0H                                              @D36GDOW 00911000
+         L     RD,AFLIH                                        @D64ADOW 00912000
+         USING FLIH,RD                                         @D64ADOW 00913000
+         BAL   R9,PCGENENT        SAVE PSW AND REGS            @D36GDOW 00914000
+*SGLINK PCGENENT,INPUT=(R9,RD),WORK=(RB,RC),OUTPUT=(R6,RA)     @D36ZDOW 00915000
+         LA    RD,ENTPCK                                       @D64ADOW 00916000
+         USING ENTPCK,RD                                       @D64ADOW 00917000
+         LA    R9,ERR0E           LOAD CONTINUATION ADDR       @D36GDOW 00918000
+         B     PCETSS1                                         @D36GDOW 00919000
+         SPACE 2                                                        00920000
+*   IF THE PAGE FAULT OCCURED IN A IUCV APPENDAGE CANCEL                00921000
+*   USER WITH ERR0E                                                     00922000
+PFIUCV   DS    0H                                              @D61BDOW 00923000
+         L     RD,AFLIH                                        @D64ADOW 00924000
+         USING FLIH,RD                                         @D64ADOW 00925000
+         BAL   R9,PCGENENT        SAVE STATUS                  @D61BDOW 00926000
+*SGLINK PCGENENT,INPUT=(R9,RD),WORK=(RB,RC),OUTPUT=(R6,RA)              00927000
+         LA    RD,ENTPCK                                       @D64ADOW 00928000
+         USING ENTPCK,RD                                       @D64ADOW 00929000
+         LA    R1,ERR0EE          GET CORRECT CANCEL CODE      @D61BDOW 00930000
+         B     PCIUCV1                                         @D61BDOW 00931000
+         SPACE 2                                                        00932000
+PFPFA    DS    0H                                              @D36ZDFG 00933000
+         L     RD,AFLIH                                        @D64ADOW 00934000
+         USING FLIH,RD                                         @D64ADOW 00935000
+         BAL   R9,PCGENENT        SAVE PSW AND REGS            @D36ZDFG 00936000
+*SGLINK PCGENENT,INPUT=(R9,RD),WORK=(RB,RC),OUTPUT=(R6,RA)     @D36ZDOW 00937000
+         LA    RD,ENTPCK                                       @D64ADOW 00938000
+         USING ENTPCK,RD                                       @D64ADOW 00939000
+         L     R8,APMGMDAT        PF IN PHO APPENDAGE: CANCEL  @D35EDJO 00940000
+         USING PMGMDATA,R8        PAGE MGR ADDRESS             @D35EDJO 00941000
+         L     R7,ARESPHO         RESET PAGE HANDLING OVERLAP  @D35EDJO 00942000
+         L     RD,PCKADR          GET ADDR OF FAILING INSTRUCT.@D52GDOW 00943000
+         DROP  RD                                              @D61NDOW 00944000
+         N     RD,BIT0OFF         RESET HIGH ORDER BIT         @D52GDOW 00945000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00946000
+*        AMODESW CALL,REGS=(R7,R7) GO TO PAGE MANAGER                   00947000
+         AMODESW CALL,REGS=(R7,R7) GO TO PAGE MANAGER          @D52VDOW 00948000
+*SGLINK RESPHO,INPUT=(R7,R8,RD)                                @D36ZDOW 00949000
+         DROP  R8                                              @D35EDJO 00950000
+         B     ERR0E                                           @D36ZDFR 00951000
+         B     ERR2C              PCK DUE TO INVALID RETURN    @D52VDOW 00952000
+         SPACE 3                                               @D36ZDOW 00953000
+PFUSER   DS    0H                                                       00954000
+         USING ENTPCK,RD                                       @D61NDOW 00955000
+         CLC   TID(2),ARTIDH      SYSTEM TASK INTERRUPTED      @D51IDOW 00956000
+         BH    PFUSER1            BR IF NO SYSTEM TASK         @D36IDOW 00957000
+         L     R9,TCBPTR          PAGE FAULT IN SYSTEM TASK    @D36IDOW 00958000
+         USING TCBADR,R9          WHEN NOT ALLOWED             @D36IDOW 00959000
+         TM    TCBFLAG2,NOPAGING                               @D36IDOW 00960000
+         DROP  R9                                              @D36IDOW 00961000
+         BNO   PFRERTN            NO GO TO PERFORM GENENT      @D36ZDOW 00962000
+         STCM  R5,15,*+8          SAVE REG 5                   @D52VDOW 00963000
+         BAL   R5,GOHWFFB         PAGE FAULT IN SUPVR          @D36ZDOW 00964000
+         DC    X'00000000'                                     @D52VDOW 00965000
+PFUSER1  DS    0H                                              @D14CDOW 00966000
+.*  KEEP NEXT TWO INSTRUCTIONS                                          00967000
+.****         TILL NEXT RELEASE (AFTER 2.5)                             00968000
+.****               TO ALLOW ZAPPING THE NOP INSTRUCTION                00969000
+         TM    PCOLDPS,ENABLE     ENABLED USER TASK INTERRUPTED@D65CDOW 00970000
+         BZ    PFERROR            NO,CANCEL USER TASK          @D66ODOW 00971000
+         OI    TRADDR,USERPF      INDICATE USER PAGE-FAULT     @D36ZDRP 00972000
+PFRERTN  LA    RC,PCOLDPS         ADDR.OF PC.OLD PSW           @D14CDOW 00973000
+         L     RB,PGMINF          INTERUPT INFORMATION         @D36ZDOW 00974000
+         L     RD,AFLIH                                        @D64ADOW 00975000
+         USING FLIH,RD                                         @D64ADOW 00976000
+         BAL   R9,GENENT          SAVE PSW AND REGISTERS       @D36ZDOW 00977000
+*SGLINK GENENT,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                    00978000
+         DROP  RD                                              @D64ADOW 00979000
+PFGOENQI DS    0H                                              @D36ZDFR 00980000
+         L     R8,APMGMDAT        BASE REGISTER OF PAGE MGR    @D36ZDFR 00981000
+         USING PMGMDATA,R8                                     @D36ZDFR 00982000
+         L     R9,AENQUI          ENQUEUE PAGE FAULT REQUEST   @D36ZDFR 00983000
+         DROP  R8                                              @D36ZDFR 00984000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00985000
+*        AMODESW RETURN,REG=(R9)                                        00986000
+         AMODESW RETURN,REG=(R9)                               @D52VDOW 00987000
+*SGLINK ENQUI,INPUT=(R8)                                                00988000
+         SPACE 3                                                        00989000
+PFERROR  LA    RC,PCOLDPS         ADDR.OF PC.OLD PSW           @D14CDOW 00990000
+         L     RB,PGMINF          INTERUPT INFORMATION         @D36ZDOW 00991000
+         L     RD,AFLIH                                        @D64ADOW 00992000
+         USING FLIH,RD                                         @D64ADOW 00993000
+         BAL   R9,GENENT          SAVE PSW AND REGISTERS       @D36ZDOW 00994000
+*SGLINK GENENT,INPUT=(R9,RB,RC,RD),OUTPUT=(R6,RA,RB)                    00995000
+         DROP  RD                                              @D64ADOW 00996000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 00997000
+         B     ERR15              GOTO CANCEL USER             @D36ZDFR 00998000
+         SPACE 3                                                        00999000
+PFAPPEND DS    0H                                              @D36ZDFR 01000000
+         L     RD,AFLIH                                        @D64ADOW 01001000
+         USING FLIH,RD                                         @D64ADOW 01002000
+         BAL   R9,PCGENENT        SAVE PSW AND REGISTERS       @D36ZDFR 01003000
+*SGLINK PCGENENT,INPUT=(R9,RD),WORK=(RB,RC),OUTPUT=(R6,RA)     @D36ZDOW 01004000
+         DROP  RD                                              @D64ADOW 01005000
+         L     R3,IOOPSW+4        RELOAD PUB POINTER           @D36ZDOW 01006000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 01007000
+         B     ERR36              REMOVE CHANNEL QUEUE ENTRY   @D36ZDOW 01008000
+*                                 AND CANCEL                   @D36ZDOW 01009000
+         SPACE 1                                               @D36ZDOW 01010000
+         USING ENTPCK,RD                                       @D64ADOW 01011000
+PFRESVC  L     RA,TCBPTR          TCB POINTER                  @D36IDFG 01012000
+         USING TCBADR,RA                                       @D36ZDOW 01013000
+         CLI   SVCIC,SVC7CODE     WAS THAT A SVC 7             @D36ZDOW 01014000
+SVC7CODE EQU   7                                               @D36ZDOW 01015000
+         BE    PFRESVC1           GO TO UPDATE PSW FOR SVC 7   @D36ZDOW 01016000
+         L     RB,TIBPTR                                       @D36ZDOW 01017000
+         USING TIBADR,RB                                       @D36ZDOW 01018000
+         OI    TIBFLAG,RETRYSVC   INDICATE RETRY THAT SVC      @D36ZDOW 01019000
+         DROP  RB                                              @D36ZDOW 01020000
+         B     PFRESVC2                                        @D36ZDOW 01021000
+PFRESVC1 DS    0H                                              @DY46374 01022190
+*        AMODESW SET,AMODE=31,WR=(R8)                          @DY46374 01022380
+         AMODESW SET,AMODE=31,WR=(R8)                          @DY46374 01022570
+         L     RB,TCBSAVE         SAVEAREA ADDR                @D36ZDOW 01022760
+         USING SVEARA,RB                                       @D36ZDOW 01023000
+         L     R8,SVEPSW2         GET INTERUPT ADDR            @D36ZDOW 01024000
+         SH    R8,INTINFO         SUBTRACT LAST INSTR LENGTH   @D36ZDOW 01025000
+         S     R8,F8              GO BACK BEFORE WAIT MACRO    @D36ZDOW 01026000
+         ST    R8,SVEPSW2         UPDATE OLD PSW IN SAVE AREA  @D36ZDOW 01027000
+*        AMODESW SET,AMODE=24,WR=(R8)                          @DY46374 01027300
+         AMODESW SET,AMODE=24,WR=(R8)                          @DY46374 01027600
+         DROP  RA                                              @D36ZDOW 01028000
+         DROP  RB                                              @D36ZDOW 01029000
+PFRESVC2 OI    TRADDR,USERPF      INDICATE USER PAGE-FAULT     @D36ZDRP 01030000
+         MVI   RID+1,SYSTEMID     SET RID FOR ENQ              @D64ADOW 01031000
+         B     PFGOENQI           PROCEED WITH PF PROCESSING   @D36ZDFG 01032000
+         SPACE 3                                                        01033000
+*                                                                       01034000
+*   WORK AREAS, ADDRESSES AND CONSTANTS                                 01035000
+*                                                                       01036000
+ENTPCKWK DC    A(0)               SAVE AREA FOR ACCESS REG     @D51KDTP 01037000
+ENTPCKAL DC    A(0)               SAVE ALET CAUSING PF         @D52VDOW 01038000
+PFLICREG DC    A(0)               SAVE CONTROL REG 2 OR 5      @D52VDOW 01039000
+DTSMCBAS DC    A(DTSMCENT)        BASE & ENTRY OF ICCF HOOK    @D61RDOW 01040000
+APCKATAB DC    A(PCKATAB-4)       PROGRAM                      @D64ADOW 01041000
+APCKBTAB DC    A(PCKBTAB-8)       ....... CHECK                @D64ADOW 01042000
+APCKCTAB DC    A(PCKCTAB-8)       ............. TABLES         @D64ADOW 01043000
+         SPACE 3                                                        01044000
+*                                                                       01045000
+*   ERROR EXITS                                                         01046000
+*                                                                       01047000
+GOERR20  DS    0H                                              @DY43858 01048000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK NOW            @DY43858 01049000
+         B     ERR20                                           @DY43858 01050000
+         SPACE 1                                                        01051000
+GOHWFFA  MVI   HWIDBYTE,HWTRSPEC  TRANS EXCEPTION(HW-CODE FFA) @D36ZDOW 01052000
+         LA    R0,HWORG044        UNIQUE HARD WAIT ORIGINATOR  @D31QDHB 01053000
+         B     GOHWAIT                                         @D61NDOW 01054000
+GOHWFFF  MVI   HWIDBYTE,HWSUPPCK  PC IN SUPVR (HW-CODE FFF)    @D36ZDOW 01055000
+         LA    R0,HWORG036        UNIQUE HARD WAIT ORIGINATOR  @D31QDHB 01056000
+         B     GOHWAIT                                         @D37ZDOW 01057000
+GOHWFFB  MVI   HWIDBYTE,HWSUPPF   PF IN SUPVR (HW-CODE FFB)    @D36ZDOW 01058000
+         LA    R0,HWORG040        UNIQUE HARD WAIT ORIGINATOR  @D31QDHB 01059000
+GOHWAIT  DS    0H                                              @D61NDOW 01060000
+         STH   R0,IJBHWORI        SETUP HW ORIGINATOR CODE     @D64ADOW 01061000
+         LM    R9,R8,ERA                                       @D61NDOW 01062000
+         B     HARDWAIT                                        @D36ZDOW 01063000
+PCKEND   DS    0H                END SGPCK EXECUTABLE CODE     @DY41332 01064000
+         DROP  R6                                              @D52VDOW 01065000
+         DROP  RD                                              @D37ZDOW 01066000
+*                                                                       01067000
+*                                                                       01068000
+         EJECT                                                          01069000
+***      SUBROUTINES CALLED WHEN SUPERVISOR SERVICE DEFINED             01070000
+***      A PROGRAM CHECK ADDRESS AND ITS RELATED ACTIONS                01071000
+         SPACE 3                                                        01072000
+CCWTPCK  LM    R9,R8,ERA          RESTORE CCWTRAN REGS         @D61NDOW 01073000
+         USING CCWTADR,R9         CCWTRAN BASE ADR             @D35EDJO 01074000
+         B     ERROR1             GO TO CCWTRAN ROUT.          @D35EDJO 01075000
+         DROP  R9                                              @D35EDJO 01076000
+         SPACE 3                                                        01077000
+CDLDPCK  L     R9,PCBPTR          LOAD PCB POINTER             @D36ZDFR 01078000
+         USING DISP,R6                                         @DY45037 01079000
+         USING PCBADR,R9                                       @D36ZDFR 01080000
+         CLC   CDLDTID,TID        TASK OWNING CDLOAD           @D66ODOW 01081000
+         BNE   ERR25              SKIP IF NOT                  @D36IDFR 01082000
+         MVC   CDLDTID,H0         RESET CDLOAD-OWNERSHIP       @D66ODOW 01083000
+         MVC   PCBRQCDL,FREEVAL   RESET CD LOAD RESOURCE GATE  @D66ODOW 01084000
+         DROP  R9                                              @D36IDFR 01085000
+*SGLINK RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                    @D36ZDOW 01086000
+         B     ERR25                                           @D36IDFR 01087000
+         DROP  R6                                              @DY45037 01088000
+         SPACE 3                                                        01089000
+DIRCPCK  DS    0H                                              @D61NDOW 01090000
+         LM    R9,R8,ERA          RESTORE REGS                 @D61NDOW 01091000
+         B     10(R4)             RETURN                       @DA25680 01092000
+         SPACE 3                                                        01093000
+FAPIPCK  DS    0H                                              @D64ADOW 01094000
+         LM    R9,R8,ERA          RESTORE REGS                 @D64ADOW 01095000
+         O     RE,BIT0OMSK        FORCE 31BIT MODE             @DY45037 01096000
+         BSM   0,RE               GOTO ERROR RTN               @DY45037 01097000
+         SPACE 3                                                        01098000
+INVSCBC  DS    0H                 INVALID MVS-SCB CHAIN        @D66XXOW 01099000
+         LM    R9,R8,ERA          RESTORE REGS                 @D66XXOW 01100000
+         LA    R1,D2C5R440        GET REASON CODE              @D66XXOW 01101000
+         SLR   R2,R2                                           @D66XXOW 01102000
+         SLR   R6,R6                                           @D66XXOW 01103000
+         L     RC,ASGEXIT         GET RTN BASE ADDR            @D66XXOW 01104000
+         L     RC,ACOMER48-SGEXIT(,RC) ...                     @D66XXOW 01105000
+         MVI   PCKFLAG1,X'00'     LEAVING SGPCK                @D66XXOW 01106000
+         BSM   0,RC               CANCEL WITH ERR47            @D66XXOW 01107000
+         EJECT                                                          01108000
+*                                                                       01109000
+*   PCKATAB IS A TABLE OF ADDRESSES, WHERE PROGRAM CHECKS               01110000
+*   MAY OCCUR DUE TO INCORRECT USER SUPPLIED DATA DURING                01111000
+*   PROCESSING OF SVC ROUTINES                                          01112000
+*                                                                       01113000
+PCKATAB  DS    0F                 TABLE OF PCK.ADDRESSES                01114000
+***                               IF FINAL ACTION IS NOT CANCEL --->    01115000
+***                                        RESET TIBFLAG2.SVPCCNCL      01116000
+***                                                                     01117000
+         DC    X'80',AL3(CCWTPCK) FINAL ACTION IS CANCEL       @D36ZDFR 01118000
+         DC    A(PCKADR4)         P.C. IN CCWTRAN              @D35EDJO 01119000
+         DC    A(PCKADR5)         P.C. IN CCWTRAN              @D35EDJO 01120000
+         DC    A(PCKADR8)         P.C. IN CCWTRAN              @DA28515 01121000
+*                                                                       01122000
+         DC    X'80',AL3(CDLDPCK) FINAL ACTION IS CANCEL       @D36ZDFR 01123000
+***                                 ***** USER HAS OVERLAYED            01124000
+***                                 ***** HIS ANCHOR TABLE              01125000
+         DC    A(PCKCDL1)       CDLOAD                         @DA11894 01126000
+         DC    A(PCKCDL2)       CDLOAD                         @DA11894 01127000
+         DC    A(PCKCDL3)       CDLOAD                         @D52VDMZ 01128000
+         DC    A(PCKGVIS1)      GETVIS                         @DA11894 01129000
+         DC    A(PCKGVIS2)      GETVIS                         @DA11894 01130000
+         DC    A(PCKGVIS3)      GETVIS                         @DA11894 01131000
+         DC    A(PCKGVIS4)      GETVIS                         @DA11894 01132000
+*                                                                       01133000
+         DC    X'80',AL3(ERR25)   CANCEL DUE TO ADDR.EXCEPT.   @D36ZDFR 01134000
+         DC    A(PCKADR1)         PHASE NAME IN FETCH                   01135000
+         DC    A(PCKADR1A)        PHASE NAME IN FETCH          @DL29ZCJ 01136000
+         DC    A(PCKADR1B)        PHASE NAME IN FETCH          @DL29ZCJ 01137000
+         DC    A(PCKADR1D)        PHASE NAME IN FETCH          @DL29ZCF 01138000
+         DC    A(PCKADR1E)        LIST ADDRESS IN FETCH        @DA04237 01139000
+         DC    A(PCKADR1F)        ADCON ADDR IN FETCH          @DA07588 01140000
+         DC    A(PCKADR1G)        FETCH                        @D35EDJO 01141000
+         DC    A(PCKADR1H)        FETCH                        @D35EDJO 01142000
+         DC    A(PCKADR1J)        FETCH                        @D365DOW 01143000
+         DC    A(PCKADR1K)        FETCH                        @D365DOW 01144000
+         DC    A(PCKLBF20)        FETCH                        @D14CDOW 01145000
+         DC    A(PCKLBF30)        FETCH                        @D14CDOW 01146000
+         DC    A(PCKLBF40)        FETCH                        @D14CDOW 01147000
+         DC    A(PCKLBF50)        FETCH                        @D14CDOW 01148000
+         DC    A(PCKLBF20)        FETCH                        @D14CDOW 01149000
+         DC    A(PCKSVC02)        PCK IN SVC 02                @D35NDJO 01150000
+         DC    A(PCKSVC04)        PCK IN SVC 04                @D365DOW 01151000
+         DC    A(PCKSVC07)        PCK IN SVC 07                         01152000
+         DC    A(PCKSVC13)        PCK IN SVC 13                @D14CDOW 01153000
+         DC    A(PCKSV16A)        PCK IN SVC 16                @DY45712 01154000
+         DC    A(PCKSV16B)        PCK IN SVC 16                @DY45712 01155000
+         DC    A(PCKSVC18)        PCK IN SVC 18                @DY45712 01156000
+         DC    A(PCKSV20A)        PCK IN SVC 20                @DY45712 01157000
+         DC    A(PCKSV20B)        PCK IN SVC 20                @DY45712 01158000
+         DC    A(PCKSV20C)        PCK IN SVC 20                @DY45712 01159000
+         DC    A(PCKSV29A)        PCK IN SVC 29                         01160000
+         DC    A(PCKSV29B)        PCK IN SVC 29                         01161000
+         DC    A(PCKSV29C)        PCK IN SVC 29                @D52VDOW 01162000
+         DC    A(PCKSV29D)        PCK IN SVC 29                @D52VDOW 01163000
+         DC    A(PCKSV29E)        PCK IN SVC 29                @D52VDOW 01164000
+         DC    A(PCKSVC39)        PCK IN SVC 39                @D14CDOW 01165000
+         DC    A(PCKSVC40)        PCK IN SVC 40                @DA28515 01166000
+         DC    A(PCKSVC42)        PCK IN SVC 42                @D35NDJO 01167000
+         AIF   (NOT &BG16).XPCK700                                      01168000
+         DC    A(PCKADTH1)                                     @D35DDJO 01169000
+         DC    A(PCKADTH2)        SEEK ADDR.FLD.IN TRACK HOLD  @D35DDJO 01170000
+.XPCK700 ANOP                                                  @D35DDJO 01171000
+         DC    A(PCKEXCP0)        PCK ADDRESS IN SVC0 ROUT.    @D35EDJO 01172000
+         DC    A(PCKEXCP1)        PCK ADDRESS IN SVC0 ROUT.    @D35EDJO 01173000
+         DC    A(PCKEXCP2)        PCK ADDRESS IN SVC0 ROUT.    @D35EDJO 01174000
+         DC    A(PCKEXCP3)        PCK ADDRESS IN SVC0 ROUT.    @D35EDJO 01175000
+         DC    A(PCKEXCP4)        PCK ADDRESS IN SVC0 ROUT.    @D35EDJO 01176000
+         DC    A(PCKEXCP5)        PCK IN SVC 32 (WTO/WTOR)     @D51IDOW 01177000
+         DC    A(PCKEXCP8)        PCK IN GETPUB ROUTINE        @DY46548 01177500
+         DC    A(PCKCBF1)         USER DATA AREA IN CONS.BUF.ROUT.      01178000
+         DC    A(PCKCBF2)         USER DATA AREA IN CONS.BUF.ROUT.      01179000
+         DC    A(PCKSVC65)        ILLEGAL ADDR.IN SVC65                 01180000
+         DC    A(PCKSVC67)        ILLEGAL ADDR IN SVC 67/68    @DA28061 01181000
+         DC    A(PCKOPT1)         ILLEGAL ADDR IN SGPOPT       @KX40685 01182000
+         DC    A(PCKOPT2)         ILLEGAL ADDR IN SGPOPT/SGPMR @KX40685 01183000
+         DC    A(PCKSVC38)        ILLEGAL ADDR FOR SVC 38      @D36ZDOW 01184000
+         DC    A(PC2SVC38)        ILLEGAL ADDR FOR SVC 38      @D52VDOW 01185000
+         DC    A(PCKSVC44)        ILLEGAL ADDR.OF SD-RECORD    @DF00991 01186000
+         DC    A(PCKSVC53)        ILLEGAL ADDR FOR SVC 53      @DL29H00 01187000
+         DC    A(PCKEXT11)        ILLEGAL ADDR FOR SVC 98      @D14CDOW 01188000
+         DC    A(PCKEXT21)        ILLEGAL ADDR FOR SVC 98      @D51IDOW 01189000
+         DC    A(PCKEXT31)        ILLEGAL ADDR FOR SVC 98      @D14CDOW 01190000
+         DC    A(PCKEXT41)        ILLEGAL ADDR FOR SVC 98      @D14CDOW 01191000
+         DC    A(PCKEXT51)        ILLEGAL ADDR FOR SVC 98      @D14CDOW 01192000
+         DC    A(PCKEXT61)        ILLEGAL ADDR FOR SVC 98      @D51IDOW 01193000
+         DC    A(PCKEXT71)        ILLEGAL ADDR FOR SVC 98      @D51IDOW 01194000
+         DC    A(PCKS117X)        ILLEGAL ADDR FOR SVC 117     @D61RDOW 01195000
+*                                                                       01196000
+         DC    X'C0',AL3(DIRCPCK) PROG CHECK IS IGNORED        @DY45037 01197000
+         DC    A(PCKDIRC)         INVALID SVA DE COPY ADDR     @D14CDOW 01198000
+*                                                                       01199000
+         DC    X'C0',AL3(S117PCK) RETURN CODE IS SUPPLIED      @DY45037 01200000
+         DC    A(PCKS117A)        INVALID PARAMETER LIST ADDR  @D61RDOW 01201000
+*                                                                       01202000
+         DC    X'C0',AL3(S120PCK) RETURN CODE IS SUPPLIED      @DY45037 01203000
+         DC    A(PCKS120A)        INVALID PARAMETER LIST ADDR  @D64ADOW 01204000
+*                                                                       01205000
+         DC    X'80',AL3(STIXER13) FINAL ACTION IS CANCEL      @D64ADOW 01206000
+         DC    A(PCKTIM00)        INV PARAMETER IN STIMER/M    @D64ADOW 01207000
+*                                                                       01208000
+         DC    X'80',AL3(S52ERRTN) FINAL ACTION IS CANCEL      @DY45190 01209000
+         DC    A(S52PCK00)        DIVIDE EXCEPTION IN SVC52    @DY45190 01210000
+*                                                                       01211000
+         DC    X'C0',AL3(FRRPCKAB) ALTHOUGH FINAL ACTION IS    @DY45037 01212000
+***                               CANCEL THE PROGRAM CHECK MUST BE      01213000
+***                               IGNORED                               01214000
+         DC    A(FRRPCKAB)        FORCE ABEND OF SETFRR ISSUER @D64ADOW 01215000
+*                                                                       01216000
+PCKISCB  DC    X'80',AL3(INVSCBC) FINAL ACTION IS CANCEL       @D66XXOW 01217000
+         DC    A(PCKFAPI1)                                     @D66XXOW 01218000
+         DC    A(PCKFAPI2)                                     @D66XXOW 01219000
+         DC    A(PCKFAPI3)                                     @D66XXOW 01220000
+         DC    A(PCKFAPI4)                                     @D66XXOW 01221000
+         DC    A(PCKFAPI5)                                     @D66XXOW 01222000
+         DC    A(PCKFAPI6)                                     @D66XXOW 01223000
+         DC    A(PCKFAPI7)                                     @D66XXOW 01224000
+         DC    A(PCKFAPI8)                                     @D66XXOW 01225000
+         DC    A(PCKFAPI9)                                     @D66XXOW 01226000
+         DC    A(PCKFAPIA)                                     @D66XXOW 01227000
+*                                                                       01228000
+PCKXPCC  DC    X'C0',AL3(S113PCK) RETURN CODE IS SUPPLIED      @DY45037 01229000
+         DC    A(0)               INVALID                      @D31BDOW 01230000
+         DC    A(0)               ... ADDRESSES                @D31BDOW 01231000
+         DC    A(0)               ... IN                       @D31BDOW 01232000
+         DC    A(0)               ... IJBSXPC                  @D31BDOW 01233000
+*                                                                       01234000
+PCKVEND  DC    X'80',AL3(S124PCK) FINAL ACTION IS CANCEL       @D61EDOW 01235000
+         DC    A(0)               INVALID                      @D61EDOW 01236000
+         DC    A(0)               ... ADDRESSES                @D61EDOW 01237000
+         DC    A(0)               ... IN                       @D61EDOW 01238000
+         DC    A(0)               ... IJBVEND                  @D61EDOW 01239000
+         DC    A(0)               ...                          @D61EDOW 01240000
+*                                                                       01241000
+         DC    X'80',AL3(FAPIPCK) FINAL ACTION IS CANCEL       @DY45037 01242000
+PCKFMBD  DS    0H                 INVALID ADDRESSES IN IJBFMBD @D64ADOW 01243000
+         DC    A(0)                                            @D64ADOW 01244000
+         DC    A(0)                                            @D64ADOW 01245000
+PCKFMTN  DS    0H                 INVALID ADDRESSES IN IJBFMTN @D64ADOW 01246000
+         DC    A(0)                                            @D64ADOW 01247000
+         DC    A(0)                                            @D64ADOW 01248000
+         DC    A(0)                                            @D64ADOW 01249000
+         DC    A(0)                                            @D64ADOW 01250000
+         DC    A(0)                                            @D64ADOW 01251000
+         DC    A(0)                                            @D64ADOW 01252000
+         DC    A(0)                                            @D64ADOW 01253000
+         DC    A(0)                                            @D64ADOW 01254000
+         DC    A(0)                                            @D64ADOW 01255000
+         DC    A(0)                                            @D64ADOW 01256000
+         DC    A(0)                                            @D64ADOW 01257000
+         DC    A(0)                                            @D64ADOW 01258000
+         DC    A(0)                                            @D64ADOW 01259000
+         DC    A(0)                                            @D64ADOW 01260000
+         DC    A(0)                                            @D64ADOW 01261000
+         DC    A(0)                                            @D64ADOW 01262000
+         DC    A(0)                                            @D64ADOW 01263000
+         DC    A(0)                                            @D64ADOW 01264000
+         DC    A(0)                                            @D64ADOW 01265000
+         DC    A(0)                                            @D64ADOW 01266000
+         DC    A(PCKMVSW0)        INVALID ADDR IN MVS WAIT     @DY45037 01267000
+         DC    A(PCKMVSW1)        INVALID ADDR IN MVS WAIT     @DY45037 01268000
+         DC    A(PCKMVSW2)        INVALID ADDR IN MVS WAIT     @DY45037 01269000
+         DC    A(PCKMVSW3)        INVALID ADDR IN MVS WAIT     @D67ODOW 01270000
+         DC    A(PCKMVSW4)        INVALID ADDR IN MVS WAIT     @D67ODOW 01271000
+*                                                                       01272000
+         DC    X'FFFFFFF0'        END OF TABLE                 @D36ZDFR 01273000
+*                                                                       01274000
+*   PCKBTAB IS A TABLE OF ADDRESSES, WHERE PROTECTION EXCEPTIONS        01275000
+*   MAY OCCUR IN A SUPERVISOR PROVIDED ROUTINE CALLED WITH              01276000
+*   BAL-INTERFACE. THE CALLER IS CANCELLED WITH ERR47                   01277000
+*                                                                       01278000
+PCKBTAB  DS    0F                 PROTECTION EXCEPTION         @D64ADOW 01279000
+******                            ... BECAUSE PSW KEY OF CALLER NOT 0   01280000
+         DC    A(FRRPCKA1),A(PCKSETFR) FRR ADD (SGEXIT)        @D64ADOW 01281000
+         DC    A(FRRPCKA2),A(PCKSETFR) FRR ADD (SGEXIT)        @D64ADOW 01282000
+         DC    A(FRRPCKA3),A(PCKSETFR) FRR ADD (SGEXIT)        @D64ADOW 01283000
+         DC    A(FRRPCKA4),A(PCKSETFR) FRR ADD, AR-MODE        @D64ADOW 01284000
+         DC    A(FRRPCKD1),A(PCKSETFR) FRR DELETE (SGEXIT)     @D64ADOW 01285000
+         DC    A(FRRPCKD2),A(PCKSETFR) FRR DELETE, AR MODE     @D64ADOW 01286000
+         DC    A(FRRPCKER),A(PCKSETFR) FRR DELETE, AR MODE     @D64ADOW 01287000
+         DC    A(IEA0PCK1),A(0)        POST EXIT (SGMVSAPI)    @D64ADOW 01288000
+         DC    A(-1)              END OF TABLE                 @D64ADOW 01289000
+*                                                                       01290000
+*   PCKCTAB IS A TABLE OF ADDRESSES, WHERE PRIV OPERATION EXCEPTION     01291000
+*   MAY OCCUR IN A SUPERVISOR PROVIDED ROUTINE CALLED WITH              01292000
+*   BAL-INTERFACE. THE CALLER IS CANCELLED WITH ERR47                   01293000
+*                                                                       01294000
+PCKCTAB  DS    0F                 PRIVELEDGED OPERATION EXCEPT.@D64ADOW 01295000
+******                            ... BECAUSE CALLER NOT IN SUPVR STATE 01296000
+         DC    A(FRRPCKA1),A(PCKSETFR) FRR ADD (SGEXIT)        @D64ADOW 01297000
+         DC    A(FRRPCKA2),A(PCKSETFR) FRR ADD (SGEXIT)        @D64ADOW 01298000
+         DC    A(FRRPCKA3),A(PCKSETFR) FRR ADD (SGEXIT)        @D64ADOW 01299000
+         DC    A(FRRPCKA4),A(PCKSETFR) FRR ADD, AR-MODE        @D64ADOW 01300000
+         DC    A(FRRPCKD1),A(PCKSETFR) FRR DELETE (SGEXIT)     @D64ADOW 01301000
+         DC    A(FRRPCKER),A(PCKSETFR) FRR DELETE, AR-MODE     @D64ADOW 01302000
+         DC    A(IEA0PCK1),A(0)        POST EXIT (SGMVSAPI)    @D64ADOW 01303000
+         DC    A(-1)              END OF TABLE                 @D64ADOW 01304000
+.*****   ICCF HOOK                                                      01305000
+         DTSMCIC                                               @D61RDOW 01306000
+         AIF   (NOT &SGPCK).PRINT                              @D61NDOW 01307000
+         PRINT NOGEN                                           @D37ZDOW 01308000
+.PRINT   ANOP                                                  @D37ZDOW 01309000
+         SGDEBUG                                               @D52VDOW 01310000
+         MEND                                                           01311000

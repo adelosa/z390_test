@@ -1,0 +1,330 @@
+.********************************************************************** 00001000
+.*                                                                    * 00002000
+.*  CEEFETCH - BAL macro to dynamically fetch an LE/VSE routine       * 00003000
+.*                                                                    * 00004000
+.*  PROPRIETARY STATEMENT:                                            * 00005000
+.*                                                                    * 00006000
+.*   LICENSED MATERIALS - PROPERTY OF IBM                             * 00007000
+.*                                                                    * 00008000
+.*   5686-066-32-75K                                                  * 00009000
+.*                                                                    * 00010000
+.*   (C) COPYRIGHT IBM CORP. 1997, 2002                               * 00011000
+.*                                                                    * 00012000
+.*   ALL RIGHTS RESERVED                                              * 00013000
+.*                                                                    * 00014000
+.*   US GOVERNMENT USERS RESTRICTED RIGHTS - USE,                     * 00015000
+.*   DUPLICATION OR DISCLOSURE RESTRICTED BY GSA ADP                  * 00016000
+.*   SCHEDULE CONTRACT WITH IBM CORP.                                 * 00017000
+.*                                                                    * 00018000
+.*        Language Environment for                                    * 00019000
+.*        VSE Version 1 Release 4 Modification 3                      * 00020000
+.*                                                                    * 00021000
+.*  FUNCTION:                                                         * 00022000
+.*       This macro is used to dynamically fetch an LE/370-conforming * 00023000
+.*       routine.                                                     * 00024000
+.*                                                                    * 00025000
+.*  DEPENDENCIES - When the macro is expanded and executed, the       * 00026000
+.*                 following assumptions are made:                    * 00027000
+.*                 - R12 must point to the CAA                        * 00028000
+.*                 - R13 has a standard LE/370 DSA available          * 00029000
+.*                                                                    * 00030000
+.*  RESTRICTIONS - The following registers are destroyed by the       * 00031000
+.*                 macro invocation:                                  * 00032000
+.*                 - R0                                               * 00033000
+.*                 - R1                                               * 00034000
+.*                 - R14                                              * 00035000
+.*                 - R15 - upon return, this contains the target      * 00036000
+.*                         address                                    * 00037000
+.*                                                                    * 00038000
+.*    REGISTER CONVENTIONS:                                           * 00039000
+.*                                                                    * 00040000
+.*       R0     - Used as parameter to LOAD service, not restored     * 00041000
+.*       R1     - Used as parameter to LOAD service, not restored     * 00042000
+.*       R2-R11 - unused                                              * 00043000
+.*       R12    - Addr of CAA                                         * 00044000
+.*       R13    - Addr of DSA                                         * 00045000
+.*       R14    - Standard call register                              * 00046000
+.*       R15    - Contains target address upon return                 * 00047000
+.*                                                                    * 00048000
+.*    LINKAGE: CEEFETCH <&NAME=name |        Name of routine          * 00049000
+.*                       &NAMEADDR=nameaddr> Addr of the name         * 00050000
+.*                      <&SCOPE=ENCLAVE |    Enclave level (default)  * 00051000
+.*                              THREAD>      Thread level             * 00052000
+.*                      <&SEARCH=VSE |       VSE libdef search        * 00053000
+.*                               MVS |       MVS file system search   * 00054000
+.*                               HFS |       HFS file system search   * 00055000
+.*                               MVSHFS |    MVS then HFS             * 00056000
+.*                               HFSMVS>     HFS then MVS             * 00057000
+.*                      <&TOKEN=token>       token returned from fetch* 00058000
+.*                      <&FEEDBACK=fbcode>   Feedback token           * 00059000
+.*                      <MF=I |              Inline form              * 00060000
+.*                       MF=L |              List form                * 00061000
+.*                       MF=(E,ctrl addr)>   Execute form             * 00062000
+.*                                                                    * 00063000
+.*    MESSAGES:                                                       * 00064000
+.*       CEE3DC Not enough storage available to load <module-name>.   * 00065000
+.*       CEE3DD The module <module-name> was not found.               * 00066000
+.*       CEE3DE The module name <module-name> was too long.           * 00067000
+.*       CEE3DF The load request for module <module-name> was         * 00068000
+.*              unsuccessful.                                         * 00069000
+.*       CEE39K The target load module was not recognized by LE/370.  * 00070000
+.*       CEE38M CEE5ADM or CEE5MBR could not find the event handler   * 00071000
+.*       CEE38N CEE5ADM or CEE5MBR could not properly initialize the  * 00072000
+.*              event handler.                                        * 00073000
+.*       CEE3N9 The member event handler did not return a usable      * 00074000
+.*              function pointer.                                     * 00075000
+.*                                                                    * 00076000
+.* History of changes:                                                * 00077000
+.*       03/15/96 (LHQ) Created  (DCRL501)                            * 00078000
+.*       09/12/96 (RAA) Copyright (KCG0084)                       @P1A* 00079000
+.*       11/19/96 (abw) KCH0034 - HFSMVS parm had 'HFS' instead of    * 00080000
+.*                                'HFSMVS'                            * 00081000
+.* $P2=CM2337   HLE6608  19980804 NGB:APAR PQ17606 Rollup             * 00082000
+.*                                    Clear R1 before BAL to prevent  * 00083000
+.*                                    abend 0C4 when in AMODE 24 and  * 00084000
+.*                                    condition code is non-zero.     * 00085000
+.* $P3=MD09012  HLE7706  20010119 DEM:FIN APAR PQ39723                * 00086000
+.*                                    Clear top bit after BAL to      * 00087000
+.*                                    prevent abend 0C4 when in AMODE * 00088000
+.*                                    24 and condition code is        * 00089000
+.*                                    non-zero.                       * 00090000
+.* ****************************************************************** * 00091000
+.*     LE/VSE Version 1 Release 4 Modification Level 3 Changes        * 00092000
+.*                                                                    * 00093000
+.* $01  GWH  26/04/2002   Port to LE/VSE                          @01A* 00094000
+.*                        Note : SEARCH option is ignored for VSE     * 00095000
+.*                                                                    * 00096000
+.********************************************************************** 00097000
+         MACRO                                                          00098000
+&LABEL   CEEFETCH &NAME=,                                              X00099000
+               &NAMEADDR=,                                             X00100000
+               &SCOPE=ENCLAVE,                                         X00101000
+               &SEARCH=,                                               X00102000
+               &TOKEN=,                                                X00103000
+               &FEEDBACK=,                                             X00104000
+               &MF=I                                                    00105000
+.*                                                                      00106000
+.* @P3D *                                                               00107000
+         LCLC  &SCP                        Hold scope bit               00108000
+         LCLC  &SRC                        Hold search order bit        00109000
+         LCLC  &SRCREG                     Hold source reg              00110000
+         LCLC  &WKCHR                      Work char field              00111000
+         LCLA  &NLEN                       Hold name length             00112000
+&IDX     SETC  '&SYSNDX'                                                00113000
+&WKCHR   SETC   '&MF(1)'                   Set wkchar to first value    00114000
+.*                                                                      00115000
+         AIF    (T'&NAME NE 'O').CHKBOTH                                00116000
+         AIF    (T'&NAMEADDR NE 'O').GOTPARM                            00117000
+         AIF    ('&WKCHR' NE 'I').GOTPARM                               00118000
+         MNOTE  12,'No NAME or NAMEADDR parameter passed to CEEFETCH'   00119000
+         MEXIT                                                          00120000
+.CHKBOTH ANOP                                                           00121000
+         AIF    (T'&NAMEADDR EQ 'O').GOTPARM                            00122000
+         MNOTE  12,'Both NAME and NAMEADDR parameter passed to CEEFETCHx00123000
+               '                                                        00124000
+         MEXIT                                                          00125000
+.GOTPARM ANOP                                                           00126000
+         AIF    ('&WKCHR' EQ 'L').LSTFORM  List form                    00127000
+         AIF    ('&WKCHR' EQ 'E').EXCFORM  Execute form                 00128000
+         AIF    ('&WKCHR' EQ 'I').INLFORM  Inline form                  00129000
+         MNOTE 4,'CEEFETCH, error in MF operand... default to I form'   00130000
+         MEXIT                                                          00131000
+         AGO    .INLFORM                                                00132000
+.*                                                                      00133000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00134000
+.*                                                                   *  00135000
+.* List form of the MACRO                                            *  00136000
+.*                                                                   *  00137000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00138000
+.LSTFORM ANOP                                                           00139000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00140000
+.*       First check that a label has been specified. No default     *  00141000
+.*       is provided. Fatal error if label left off.                 *  00142000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00143000
+         AIF    (N'&LABEL NE 0).GOTLABL                                 00144000
+         MNOTE  8,'CEEFETCH Label is required for MF=L'                 00145000
+         MEXIT                                                          00146000
+.GOTLABL ANOP                                                           00147000
+         CNOP   0,4                                              @P1A   00148000
+&LABEL   DS     0F                                                      00149000
+         AGO    .PRMGEN                                                 00150000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00151000
+.*                                                                   *  00152000
+.*   INLINE version of the MACRO. Parameter list generation used for *  00153000
+.*   LIST form.                                                      *  00154000
+.*                                                                   *  00155000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00156000
+.INLFORM ANOP                                                           00157000
+         CNOP   0,4                                                     00158000
+         AIF    (N'&LABEL EQ 0).NOLABL                                  00159000
+&LABEL   DS     0F                                                      00160000
+         AGO    .GOTLBL                                                 00161000
+.NOLABL  ANOP                                                           00162000
+.GOTLBL  ANOP                                                           00163000
+         AIF    (T'&TOKEN NE 'O').GOTTK                                 00164000
+         MNOTE  12,'CEEFETCH TOKEN is required for MF=I'                00165000
+         MEXIT                                                          00166000
+.GOTTK   ANOP                             Generate label                00167000
+         BAL    1,CEE3&IDX                Put Addr(parmlist) into R1    00168000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00169000
+.*                                                                   *  00170000
+.*   LIST version of the MACRO. Parameter list generation used for   *  00171000
+.*   LIST form.                                                      *  00172000
+.*                                                                   *  00173000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00174000
+.PRMGEN  ANOP                              Generate parm list for call  00175000
+         AIF    (T'&NAME EQ 'O').PRMADDR                                00176000
+         DC     A(CEE0&IDX)               Address of Name               00177000
+         AGO    .PRMCONT                                                00178000
+.PRMADDR ANOP                                                           00179000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00180000
+.*                                                                   *  00181000
+.*   Generated executable code will fill in this adcon at            *  00182000
+.*   execution time, from address field or register.                 *  00183000
+.*                                                                   *  00184000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00185000
+         DC     A(0)                      Address of Name               00186000
+.PRMCONT ANOP                                                           00187000
+         AIF    ('&SCOPE' EQ 'ENCLAVE').SCPE                            00188000
+         AIF    ('&SCOPE' EQ 'THREAD').SCPT                             00189000
+    MNOTE 4,'CEEFETCH error in SCOPE operand ... default to ENCLAVE.'   00190000
+         MEXIT                                                          00191000
+.SCPE    ANOP                                                           00192000
+&SCP     SETC   '1'                       Enclave scope                 00193000
+         AGO    .GOTSCP                                                 00194000
+.SCPT    ANOP                                                           00195000
+&SCP     SETC   '0'                       Thread scope                  00196000
+.GOTSCP  ANOP                                                           00197000
+&SRC     SETC   '0'                                                     00198000
+         AIF    (T'&SEARCH EQ 'O').GOTSRC         Search omitted  @01A  00199000
+         AIF    ('&SEARCH' EQ 'VSE').GOTSRC                       @01A  00200000
+         AIF    ('&SEARCH' EQ 'MVS').SRC0                         @01C  00201000
+         AIF    ('&SEARCH' EQ 'HFS').SRC0                         @01C  00202000
+         AIF    ('&SEARCH' EQ 'MVSHFS').SRC0                      @01C  00203000
+         AIF    ('&SEARCH' EQ 'HFSMVS').SRC0                      @01C  00204000
+.SRC0    ANOP                                                           00205000
+    MNOTE *,'CEEFETCH SEARCH operand is ignored for VSE.'         @01C  00206000
+.GOTSRC  ANOP                                                           00207000
+         DC     A(CEE2&IDX)               Address of mod_sz             00208000
+         AIF    (T'&TOKEN NE 'O').GOTTOK                                00209000
+         DC     A(0)                      Address of Token              00210000
+         AGO    .NEXTF                                                  00211000
+.GOTTOK  ANOP                                                           00212000
+         DC     A(&TOKEN)                 Address of Token              00213000
+.NEXTF   ANOP                                                           00214000
+         AIF    (T'&FEEDBACK EQ 'O').OMITFB1                            00215000
+         DC     A(&FEEDBACK)              Address of FBcode             00216000
+         AGO    .SCPBIT                                                 00217000
+.OMITFB1 ANOP                                                           00218000
+         DC     A(0)                      Address of FBcode             00219000
+.SCPBIT  ANOP                                                           00220000
+CEE2&IDX DC     XL2'0'                                                  00221000
+         DC     XL1'&SRC'                                               00222000
+         DC     XL1'&SCP'                 Scope                         00223000
+         AIF    (T'&NAME EQ 'O').NONAME                                 00224000
+&NLEN    SETA   K'&NAME                                                 00225000
+CEE0&IDX DC     AL2(&NLEN)                Name length                   00226000
+         DC     CL8'&NAME'                Module name                   00227000
+         AGO    .PARMDONE                                               00228000
+.NONAME  ANOP                                                           00229000
+CEE0&IDX DC     AL2(0)                    Name length                   00230000
+         DC     CL8' '                    Module name                   00231000
+.PARMDONE ANOP                                                          00232000
+         AIF    ('&WKCHR' EQ 'L').DONE                                  00233000
+CEE3&IDX DS     0H                        Start of code after parmlist  00234000
+         LA     1,0(,1)                    Clear the high bit     @P3A  00235000
+.*                                                                      00236000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00237000
+.*                                                                   *  00238000
+.*   Execute form of macro. Will fill in the parm operands.          *  00239000
+.*                                                                   *  00240000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00241000
+.EXCFORM ANOP                                                           00242000
+         AIF    ('&WKCHR' NE 'E').NOLABL2                               00243000
+         AIF    (N'&LABEL EQ 0).NOLABL1                                 00244000
+&LABEL   DS     0H                                                      00245000
+         AGO    .NOLABL2                                                00246000
+.NOLABL1 ANOP                                                           00247000
+         DS     0H                                                      00248000
+.NOLABL2 ANOP                                                           00249000
+         AIF    (N'&MF(2) EQ 0).EXCF1                                   00250000
+         AIF    ('&MF(2)'(1,1) EQ '(').EXCF2                            00251000
+         AIF    ('&MF(2)' EQ '1').EXCF1                                 00252000
+         LA     1,&MF(2)                  Addr of parm list             00253000
+         AGO    .EXCF1                                                  00254000
+.EXCF2   ANOP                                                           00255000
+&SRCREG  SETC   '&MF(2)'(2,K'&MF(2)-2)                                  00256000
+         LR     1,&SRCREG                 Addr of parm list             00257000
+.EXCF1   ANOP                                                           00258000
+         AIF    (T'&NAMEADDR EQ 'O').CHECKN                             00259000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00260000
+.*       Set up the NAMEADDR.                                        *  00261000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00262000
+.BUILDA  ANOP                                                           00263000
+         AIF    ('&NAMEADDR'(1,1) EQ '(').GOTNAM3                       00264000
+&SRCREG  SETC   '15'                                                    00265000
+         L      &SRCREG.,&NAMEADDR(1)                                   00266000
+         AGO    .GOTNAM4                                                00267000
+.GOTNAM3 ANOP                                                           00268000
+&SRCREG  SETC   '&NAMEADDR'(2,K'&NAMEADDR-2)                            00269000
+.GOTNAM4 ANOP                                                           00270000
+         ST     &SRCREG.,0(,1)            Addr of name parm             00271000
+         AIF    ('&WKCHR' EQ 'I').GENCALL                               00272000
+         AGO    .CHKSCP                                                 00273000
+.CHECKN  ANOP                                                           00274000
+         AIF    ('&WKCHR' EQ 'I').GENCALL                               00275000
+         AIF    (T'&NAME NE 'O').MOVEN                                  00276000
+         AGO    .CHKSCP                                                 00277000
+.MOVEN   ANOP                                                           00278000
+&NLEN    SETA   K'&NAME                                                 00279000
+         LA     15,&NLEN                                                00280000
+         STH    15,20(,1)                 Store name length             00281000
+         MVC    22(8,1),=CL8'&NAME'       Store name                    00282000
+         LA     15,20(,1)                 Get address of name           00283000
+         ST     15,0(,1)                  Build name parm               00284000
+.CHKSCP  ANOP                                                           00285000
+         AIF    ('&SCOPE' EQ 'ENCLAVE').SCPE2                           00286000
+         AIF    ('&SCOPE' EQ 'THREAD').SCPT2                            00287000
+    MNOTE 4,'CEEFETCH error in SCOPE operand ... default to ENCLAVE.'   00288000
+         MEXIT                                                          00289000
+.SCPE2   ANOP                                                           00290000
+&SCP     SETC   '1'                       Enclave scope                 00291000
+         AGO    .GOTSCP2                                                00292000
+.SCPT2   ANOP                                                           00293000
+&SCP     SETC   '0'                       Thread scope                  00294000
+.GOTSCP2 ANOP                                                           00295000
+&SRC     SETC   '0'                                                     00296000
+         AIF    (T'&SEARCH EQ 'O').MOVEFLG         search omitted  @01A 00297000
+         AIF    ('&SEARCH' EQ 'VSE').SRC00                         @01C 00298000
+         AIF    ('&SEARCH' EQ 'MVS').SRC00                         @01C 00299000
+         AIF    ('&SEARCH' EQ 'HFS').SRC00                         @01C 00300000
+         AIF    ('&SEARCH' EQ 'MVSHFS').SRC00                      @01C 00301000
+         AIF    ('&SEARCH' EQ 'HFSMVS').SRC00                      @01C 00302000
+.SRC00   ANOP                                                           00303000
+    MNOTE *,'CEEFETCH SEARCH operand ignored for VSE.'             @01C 00304000
+.MOVEFLG ANOP                                                           00305000
+         XC     16(4,1),16(1)             Clear flags word              00306000
+         LA     15,&SRC                   Get search bit                00307000
+         STC    15,18(,1)                 Store search bit              00308000
+         LA     15,&SCP                   Get scope bit                 00309000
+         STC    15,19(,1)                 Store scope bit               00310000
+         LA     15,16(,1)                 Get address of flags          00311000
+         ST     15,4(,1)                  Build flags parm              00312000
+.MOVET   ANOP                                                           00313000
+         AIF    (T'&TOKEN EQ 'O').MOVEFB                                00314000
+         LA     15,&TOKEN                 Get address of token          00315000
+         ST     15,8(,1)                  Build token parm              00316000
+.MOVEFB  ANOP                                                           00317000
+         AIF    (T'&FEEDBACK EQ 'O').GENCALL                            00318000
+         LA     15,&FEEDBACK              Get address of feedback       00319000
+         ST     15,12(,1)                 Build fc parm                 00320000
+.GENCALL ANOP                                                           00321000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00322000
+.*       Call the CEL Routine to load the routine                    *  00323000
+.* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  00324000
+         L      15,CEECAACELV-CEECAA(,12)          Get libvec addr      00325000
+         L      15,X'DC0'(,15)                     get 'any' libvec     00326000
+         L      15,X'CC'(,15)                      get function addr    00327000
+         BALR   14,15                              call function        00328000
+.DONE    ANOP                                                           00329000
+         MEND                                                           00330000

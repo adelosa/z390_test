@@ -1,0 +1,628 @@
+SSLCLINT CSECT                                                                  
+SSLCLINT RMODE 24                                                               
+SSLCLINT AMODE 31                                                               
+         USING SSLCLINT,R15        Establish temporary addressability           
+         B     MAIN1000            Lets get to work                             
+*                                                                               
+* * This is a sample client application that uses the BSD-C and SSL             
+* * api's. It will:                                                             
+* * * Open a connection to the sample SSLSERVR                                  
+* * * Read commands from the card input file                                    
+* * * Display the command onto syslog and syslst                                
+* * * Send the command to the SSLSERVR application                              
+* * * Wait for a reply from SSLSERVR                                            
+* * * Display the reply on syslog and syslst                                    
+* * * Close the connection and terminate                                        
+*                                                                               
+MAINNAME DC    CL8'SSLCLINT'                                                    
+COMVERS  DC    CL8'01.00.00'       Version                                      
+COMADATE DC    CL8'&SYSDATC'       Assembled date                               
+COMATIME DC    CL8'&SYSTIME'       Assembled time                               
+         ENTRY IPERRNO                                                          
+IPERRNO  DS    F                                                                
+         ENTRY IPRETCD                                                          
+IPRETCD  DS    F                                                                
+*                                                                               
+PARMS    DS    0D                                                               
+PARM1    DS    F                                                                
+PARM2    DS    F                                                                
+PARM3    DS    F                                                                
+PARM4    DS    F                                                                
+PARM5    DS    F                                                                
+*                                                                               
+* * BSD-C passed parameter values                                               
+BASESOCK DS    F                   Socket number                                
+DOMAIN   DC    F'2'                SOCKET.H AF_INET                             
+TYPE     DC    F'1'                SOCKET.H SOCK_STREAM                         
+PROTOCOL DC    F'2'                SOCKET.H IPPROTO_TCP                         
+*                                                                               
+SOCKADDR DS    0F                  socket.h struct sockaddr_in                  
+         DC    H'2'                socket.h af_inet                             
+SOCKPORT DC    H'6046'             port address of sslservr                     
+SOCKIPAD DC    AL1(192),AL1(168),AL1(3),AL1(1) ip address of sslservr           
+SOCKADRL DC    F'8'                                                             
+*                                                                               
+SSLHANDL DS    F                   ssl session handle                           
+*                                                                               
+         DROP     ,                                                             
+*                                                                               
+MAIN1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R12,R15             set 1st base register                        
+         LA    R9,2048(,R12)       set 2nd base reg                             
+         LA    R9,2048(,R9)        "                                            
+         USING SSLCLINT,R12,R9     establish addressability                     
+         ST    R13,MAINSAVE+4      store callers r13                            
+         LA    R13,MAINSAVE        provide a savearea                           
+         AMODESW SET,AMODE=24      switch to 24 bit mode for opens              
+         OPEN  CONSOLE,LISTING,CARDin                                           
+         AMODESW SET,AMODE=31      switch back to 31-bit mode                   
+*                                                                               
+* * BSD-C SOCKET() call invokes IPNRSOCK...                                     
+         LA    R1,DOMAIN           @ of domain                                  
+         ST    R1,PARM1            store it                                     
+         LA    R1,TYPE             @ of type                                    
+         ST    R1,PARM2            store it                                     
+         LA    R1,PROTOCOL         @ of protocol                                
+         ST    R1,PARM3            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRSOCK)    @ socket function routine                    
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we get a socket number ?                 
+         BNM   MAIN1200            bif yes                                      
+         BAL   R1,MAIN7000         bsdc function failed                         
+         DC    C'IPNRSOCK'                                                      
+MAIN1200 DS    0H                                                               
+         ST    R15,BASESOCK        store the socket number                      
+*                                                                               
+* * BSD-C CONNECT() call invokes IPNRCONN for a active open request             
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,PARM1            store it                                     
+         LA    R1,SOCKADDR         @ maximum connections                        
+         ST    R1,PARM2            store it                                     
+         LA    R1,SOCKADRL         @ maximum connections                        
+         ST    R1,PARM3            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRCONN)    @ connect function routine                   
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we get connected ?                       
+         BNM   MAIN1400            bif yes                                      
+         BAL   R1,MAIN7000         bsdc function failed                         
+         DC    C'IPNRCONN'                                                      
+MAIN1400 DS    0H                                                               
+*                                                                               
+* * SSL-C gsk_initialize()...                                                   
+         LA    R0,=C'SSL30'        ssl protocol version                         
+         ST    R0,INI@PROT                                                      
+         LA    R0,INITDATA                                                      
+         ST    R0,PARM1            store it                                     
+         OI    PARM1,X'80'         flag as last parameter                       
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRINIT)    @ ssl-c routine                              
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did it work ?                                
+         BZ    MAIN1420            bif yes                                      
+         BAL   R1,MAIN7000         force exit now                               
+         DC    C'IPCRINIF'                                                      
+MAIN1420 DS    0H                                                               
+*                                                                               
+* * SSL-C gsk_secure_soc_init()...                                              
+* * This actually does the TLS/SSL handshake...                                 
+* * After control is returned here all data is encrypted...                     
+         L     R0,BASESOCK         get socket number                            
+         ST    R0,SINISOCK         store it                                     
+*                                                                               
+         LA    R0,SINCLTNA         gsk_as_client_noauth                         
+         ST    R0,SINITYPE         set the application type                     
+*                                                                               
+         LA    R0,=C'SSL30'        ssl protocol version                         
+         ST    R0,SIN@PROT                                                      
+*                                                                               
+         LA    R1,CIPHERXX         use rsa_des_sha ciper list                   
+         ST    R1,SIN@V3CS         @ list of preferred cipher specs             
+*                                                                               
+         L     R1,=A(SOCR1000)     @ of read routine                            
+         ST    R1,SIN@READ         store it                                     
+         L     R1,=A(SOCW1000)     @ of write routine                           
+         ST    R1,SIN@WRIT         store it                                     
+*                                                                               
+         LA    R1,INITDATA         @ of work area                               
+         ST    R1,SIN@INIT         store it                                     
+*                                                                               
+         LA    R1,SINIDATA         @ of work area                               
+         ST    R1,PARM1            store it                                     
+         OI    PARM1,X'80'         flag as last parameter                       
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRSINI)    @ ssl-c routine                              
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did it work ?                                
+         BP    MAIN1500            bif yes                                      
+         DC    H'0'                debug                                        
+CIPHERXX DC    X'F0F8F0F9F0C10000'                                              
+MAIN1500 DS    0H                                                               
+         ST    R15,SSLHANDL        store the returned handle                    
+*                                                                               
+MAIN1600 DS    0H                                                               
+         AMODESW SET,AMODE=24                                                   
+         GET   CARDIN              get a command from sysipt                    
+         AMODESW SET,AMODE=31                                                   
+         LA    R0,L'CARDAREA                                                    
+         LA    R1,CARDAREA                                                      
+         L     R15,@CONORTN        echo the card onto syslog + syslst           
+         BASSM R14,R15                                                          
+         MVC   SNDBUFF,CARDAREA    move command into the send buffer            
+         MVI   SNDBUFF+72,X'15'    end of command                               
+*                                                                               
+* * gsk_secure_soc_write()...                                                   
+         L     R1,SSLHANDL         secure socket handle                         
+         ST    R1,PARM1            store it                                     
+         LA    R1,SNDBUFF          @ of data to send                            
+         ST    R1,PARM2            store it                                     
+         LA    R1,SNDBUFFL         @ of send length                             
+         ST    R1,PARM3            store it                                     
+         OI    PARM3,X'80'         indicate last in list                        
+         LA    R1,PARMS            @ of parameters                              
+         L     R15,=V(IPCRSWRT)    @ secure write function                      
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the data get sent ?                      
+         BP    MAIN2000            bif yes                                      
+         DC    H'0'                never should occurr...                       
+MAIN2000 DS    0H                                                               
+*                                                                               
+         LA    R0,L'REPLY          maximum reply area                           
+         LA    R1,REPLY            build the reply here                         
+         L     R15,@RSTREAM        @ of the stream read routine                 
+         BASSM R14,R15                                                          
+         LTR   R15,R15             did we get a reply ?                         
+         BZ    MAIN2200            bif yes                                      
+         BAL   R1,MAIN7000         error exit                                   
+         DC    C'BADREPLY'                                                      
+MAIN2200 DS    0H                                                               
+         L     R15,@CONORTN        echo the reply onto syslog + syslst          
+         BASSM R14,R15                                                          
+         B     MAIN1600            get and process the next card                
+*                                                                               
+* * All out of cards...                                                         
+MAIN3000 DS    0H                                                               
+         AMODESW SET,AMODE=31                                                   
+*                                                                               
+* * gsk_secure_soc_close()...                                                   
+         L     R1,SSLHANDL         secure socket handle                         
+         ST    R1,PARM1            store it                                     
+         OI    PARM1,X'80'         indicate end of list                         
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRSCLS)    @ secure socket close function               
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did it get freed ?                           
+         BZ    MAIN3300            bif yes                                      
+         DC    H'0'                debug                                        
+MAIN3300 DS    0H                                                               
+*                                                                               
+* * BSD-C CLOSE function call...                                                
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,PARM1            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRCLOS)    @ close function routine                     
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the socket get closed ?                  
+         BNM   MAIN3400            bif yes                                      
+         DC    H'0'                debug                                        
+MAIN3400 DS    0H                                                               
+*                                                                               
+* * BSD-C SOCKET() call invokes IPNRSOCK...                                     
+         LA    R1,DOMAIN           @ of domain                                  
+         ST    R1,PARM1            store it                                     
+         LA    R1,TYPE             @ of type                                    
+         ST    R1,PARM2            store it                                     
+         LA    R1,PROTOCOL         @ of protocol                                
+         ST    R1,PARM3            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRSOCK)    @ socket function routine                    
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we get a socket number ?                 
+         BNM   MAIN3500            bif yes                                      
+         DC    H'0'                debug                                        
+MAIN3500 DS    0H                                                               
+         ST    R15,BASESOCK        store the socket number                      
+*                                                                               
+* * BSD-C CONNECT() call invokes IPNRCONN...                                    
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,PARM1            store it                                     
+         LA    R1,SOCKADDR         @ maximum connections                        
+         ST    R1,PARM2            store it                                     
+         LA    R1,SOCKADRL         @ maximum connections                        
+         ST    R1,PARM3            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRCONN)    @ connect function routine                   
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we get connected ?                       
+         BNM   MAIN3600            bif yes                                      
+         DC    H'0'                debug                                        
+MAIN3600 DS    0H                                                               
+*                                                                               
+*                                                                               
+* * Lets resume the session to test out fast reconnect...                       
+*                                                                               
+* * gsk_secure_soc_reset()...                                                   
+         L     R1,SSLHANDL         secure socket handle                         
+         ST    R1,PARM1            store it                                     
+         OI    PARM1,X'80'         indicate end of list                         
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRSRST)    @ secure socket reset function               
+         BALR  R14,R15             call it                                      
+         LTR   R15,R15             did it work ?                                
+         BZ    MAIN4000            bif yes                                      
+         DC    H'0'                debug                                        
+MAIN4000 DS    0H                                                               
+         MVC   CARDAREA(40),=CL40'CDLOAD BR14 '                                 
+         LA    R0,L'CARDAREA                                                    
+         LA    R1,CARDAREA                                                      
+         L     R15,@CONORTN        echo the card onto syslog + syslst           
+         BASSM R14,R15                                                          
+         MVC   SNDBUFF,CARDAREA    move command into the send buffer            
+         MVI   SNDBUFF+72,X'15'    end of command                               
+*                                                                               
+* * gsk_secure_soc_write()...                                                   
+         L     R1,SSLHANDL         secure socket handle                         
+         ST    R1,PARM1            store it                                     
+         LA    R1,SNDBUFF          @ of data to send                            
+         ST    R1,PARM2            store it                                     
+         LA    R1,SNDBUFFL         @ of send length                             
+         ST    R1,PARM3            store it                                     
+         OI    PARM3,X'80'         indicate last in list                        
+         LA    R1,PARMS            @ of parameters                              
+         L     R15,=V(IPCRSWRT)    @ secure write function                      
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the data get sent ?                      
+         BP    MAIN4200            bif yes                                      
+         DC    H'0'                never should occurr...                       
+MAIN4200 DS    0H                                                               
+*                                                                               
+         LA    R0,L'REPLY          maximum reply area                           
+         LA    R1,REPLY            build the reply here                         
+         L     R15,@RSTREAM        @ of the stream read routine                 
+         BASSM R14,R15                                                          
+         LTR   R15,R15             did we get a reply ?                         
+         BZ    MAIN4300            bif yes                                      
+         BAL   R1,MAIN7000         error exit                                   
+         DC    C'BADREPLX'                                                      
+MAIN4300 DS    0H                                                               
+         L     R15,@CONORTN        echo the reply onto syslog + syslst          
+         BASSM R14,R15                                                          
+*                                                                               
+* * BSD-C CLOSE function call...                                                
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,PARM1            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRCLOS)    @ close function routine                     
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the socket get closed ?                  
+         BNM   MAIN5000            bif yes                                      
+         BAL   R1,MAIN7000         bsdc function failed                         
+         DC    C'IPNRCLOS'                                                      
+MAIN5000 DS    0H                                                               
+*                                                                               
+         LA    R15,0               return code is zero                          
+         ST    R15,RETCODE         store the return code                        
+         B     MAIN9000            all done                                     
+*                                                                               
+MAIN7000 DS    0H                                                               
+         LTR   R15,R15             was a return code passed                     
+         BNZ   MAIN7200            bif yes                                      
+         LA    R15,8               set bad return code                          
+MAIN7200 DS    0H                                                               
+         ST    R15,RETCODE         store it                                     
+         MVC   IERRRESN,0(R1)      error message reason                         
+         LA    R0,IERRMSGL         error message length                         
+         LA    R1,IERRMSG          error message text                           
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15             write error reason                           
+         B     MAIN9000            exit                                         
+*                                                                               
+MAIN9000 DS    0H                                                               
+*                                                                               
+* * THE FOLLOWING IS THE SAME AS DOing an eoj macro...                          
+         L     R15,RETCODE         return code                                  
+         L     R13,MAINSAVE+4      restore job controls r13                     
+         LM    R0,R12,20(R13)      restore r0-r12                               
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+*                                                                               
+* *                                                                             
+TRACEIT  DS    0H                                                               
+         LA    R0,8                                                             
+         LTR   R1,R2               @ of trace info                              
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     8(R2)               return                                       
+*                                                                               
+MAINSAVE DS    9D                                                               
+DWORK    DS    D                                                                
+FWORK    DS    F                                                                
+@CONORTN DC    A(CONO1000)         console output routine                       
+@PUTLRTN DC    A(PUTL1000)                                                      
+@RSTREAM DC    A(RSTR1000)         tcp stream processor                         
+RECBUFFL DC    F'80'                                                            
+@RECBUFF DC    A(RECBUFF)                                                       
+SNDBUFFL DC    F'80'                                                            
+@SNDBUFF DC    A(SNDBUFF)                                                       
+RETCODE  DC    F'99'                                                            
+SNDBUFF  DS    CL80                                                             
+RECBUFF  DS    CL80                                                             
+REPLY    DS    CL80                                                             
+HEXWORK  DS    XL9                 hex work area                                
+*                                                                               
+         SSLVSE   INLINE                                                        
+*                                                                               
+IERRMSG  DS    0H                                                               
+         DC    C'Critical Error Occurred reason='                               
+IERRRESN DC    CL8'XXXXXXXX'                                                    
+IERRMSGL EQU   *-IERRMSG                                                        
+*                                                                               
+LISTING  DTFDI DEVADDR=SYSLST,             define a printer            *        
+               IOAREA1=LINEOUT,            output line                 *        
+               RECSIZE=121                 length of record                     
+LINEOUT  DS    CL121                                                            
+*                                                                               
+CARDIN   DTFDI IOAREA1=CARDAREA,                                       *        
+               DEVADDR=SYSRDR,                                         *        
+               RECSIZE=80,                                             *        
+               EOFADDR=MAIN3000                                                 
+CARDAREA DS    CL80                                                             
+*                                                                               
+CONSOLE  DTFCN DEVADDR=SYSLOG,             console device address      *        
+               IOAREA1=CONOUT,             i/o area buffers out+in     *        
+               RECFORM=FIXUNB,             fixed unblocked             *        
+               BLKSIZE=64,                 output area size            *        
+               INPSIZE=64,                 input area size             *        
+               TYPEFLE=CMBND               combined input/output                
+CONOUT   DS    CL64                        output buffer area                   
+*                                                                               
+         LTORG ,                                                                
+*                                                                               
+* * THE FOLLOWING ROUNDS OFF TO 8K                                              
+BIGWORK  DS    XL((8192)-(*-SSLCLINt))                                          
+BIGWORKL EQU   *-BIGWORK                                                        
+         DROP  ,                                                                
+*                                                                               
+* * skread routine called by                                                    
+* * gsk_secure_soc_init and gsk_secure_soc_read...                              
+         DC    CL8'SOCR1000'                                                    
+SOCR1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R12,R15                                                          
+         USING SOCR1000,R12                                                     
+         ST    R13,SOCRSAVE+4                                                   
+         LA    R13,SOCRSAVE                                                     
+         L     R2,0(,R1)           address of socket descriptor                 
+         L     R3,4(,R1)           address of buffer                            
+         L     R4,8(,R1)           address of buffer length                     
+         LTR   R1,R1               @ of parameters                              
+         L     R15,=V(IPNRRECV)    @ receive function                           
+         BALR  R14,R15             go for it                                    
+         L     R13,SOCRSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BR    R14                 return to caller                             
+SOCRSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * skwrite routine called by                                                   
+* * gsk_secure_soc_init and gsk_secure_soc_write                                
+         DC    CL8'SOCW1000'                                                    
+SOCW1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R12,R15                                                          
+         USING SOCW1000,R12                                                     
+         ST    R13,SOCWSAVE+4                                                   
+         LA    R13,SOCWSAVE                                                     
+         L     R2,0(,R1)           address of socket descriptor                 
+         L     R3,4(,R1)           address of data to send                      
+         L     R4,8(,R1)           address of length of data                    
+         LTR   R1,R1               @ of parameters                              
+         L     R15,=V(IPNRSEND)    @ send function                              
+         BALR  R14,R15             go for it                                    
+         L     R13,SOCWSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BR    R14                 return to caller                             
+SOCWSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+*                                                                               
+* * GET A REPLY BY READING TCP STREam...                                        
+* * R0 = REPLY LENGTH                                                           
+* * R1 = REPLY TEXT                                                             
+         USING SSLCLINT,R12,R9     establish sslclint addressability            
+         DC    CL8'RSTR1000'                                                    
+RSTR1000 DS    0H                                                               
+*                                                                               
+* It is fundamentally important to understand the concept of streams            
+* when programming with TCP.                                                    
+* TCP may choose to break a block of data into pieces and transmit              
+* each piece in a separate segement or it may choose to accumulate              
+* data in its buffer before sending a segment(fully fill a datagram)            
+* As a result the receiving application may receive data in small               
+* chunks, even if the sending application passed it to tcp in a                 
+* single send.                                                                  
+* Or, the receiving application may receive a large chunk                       
+* even if the sending application passes it to tcp in multiple send             
+* requests.                                                                     
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING RSTR1000,R11                                                     
+         ST    R13,RSTRSAVE+4                                                   
+         LA    R13,RSTRSAVE                                                     
+         LTR   R5,R1               build reply from stream here                 
+         LTR   R6,R0               max that can fit in a command                
+         ST    R5,RSTRCADR         store passed address of area to fill         
+         ST    R6,RSTRCLNG         store passed length                          
+*                                                                               
+* * GET A TELNET RECORD FOR THE CALler                                          
+* * RECORD MEANS GET A STREAM AND Scan until we get a end of line...            
+         ICM   R3,15,RSTRWADR      do we have a stream pointer?                 
+         BZ    RSTR1800            bif no get some data                         
+         L     R1,@RECBUFF         start of stream                              
+         L     R2,RSTRWLNG         length of stream                             
+         LA    R4,0(R2,R1)         end of stream                                
+         SLR   R4,R3               calculate length left                        
+         B     RSTR3400            pick up here...                              
+RSTR1800 DS    0H                                                               
+*                                                                               
+* * gsk_secure_soc_read()                                                       
+         L     R1,SSLHANDL         @ of secure socket handle                    
+         ST    R1,PARM1            store it                                     
+         L     R1,@RECBUFF         @ of area to receive the data                
+         ST    R1,PARM2            store it                                     
+         LA    R1,RECBUFFL         @ of receive area length                     
+         ST    R1,PARM3            store it                                     
+         OI    PARM3,X'80'         indicate end of list                         
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRSRED)    @ secure socket read routine                 
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the receive work ?                       
+         BM    RSTR9000            bif no                                       
+         LTR   R4,R15              did we get any?                              
+         BP    RSTR3000            bif yes                                      
+         DC    H'0'                never should occurr...                       
+RSTR3000 DS    0H                                                               
+         ST    R4,RSTRWLNG         store the length received                    
+         L     R3,@RECBUFF         start address of data received               
+         ST    R3,RSTRWADR         store the new pointer                        
+RSTR3400 DS    0H                                                               
+         CLI   0(R3),X'15'         is this a ebcidic new line ?                 
+         BE    RSTR7000            bif yes                                      
+         MVC   0(1,R5),0(R3)       move a byte into buffer                      
+         LA    R3,1(,R3)           bump to next in stream                       
+         LA    R5,1(,R5)           bump to next in command                      
+         BCT   R4,RSTR4000         if not zero goto rstr4000                    
+         B     RSTR1800            do a receive for more of stream              
+*                                                                               
+* *                                                                             
+RSTR4000 DS    0H                                                               
+         BCT   R6,RSTR3400         do it again                                  
+*                                                                               
+* * If we fall thru the above BCT than we have scanned for 80                   
+* * bytes and have not hit a end of line character...                           
+         BAL   R1,RSTR9000                                                      
+         DC    CL8'REPNOEOL'                                                    
+RSTR7000 DS    0H                                                               
+         LA    R3,1(,R3)           bump past end of line                        
+         BCT   R4,RSTR8000                                                      
+         SLR   R3,R3               no more data in stream                       
+RSTR8000 DS    0H                                                               
+         ST    R3,RSTRWADR         store updated pointer into stream            
+         L     R1,RSTRCADR         r1 = address of the command                  
+         LR    R0,R5               r0 = record length                           
+         SR    R0,R1               calculate the record length                  
+         LA    R15,0               rc = good                                    
+RSTR9000 DS    0H                                                               
+         L     R13,RSTRSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BR    R14                 return to caller                             
+         LTORG ,                                                                
+RSTRSAVE DS    9D                                                               
+RSTRCLNG DS    F                                                                
+RSTRCADR DS    F                                                                
+RSTRWLNG DS    F                                                                
+RSTRWADR DS    F                                                                
+         DROP  ,                                                                
+*                                                                               
+* * R0 = MESSAGE LENGTH                                                         
+* * R1 = MESSAGE TEXT                                                           
+         USING SSLCLINT,R12,R9     establish sslclint addressability            
+         DC    CL8'PUTL1000'                                                    
+PUTL1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15             get a base register                          
+         USING PUTL1000,R11                                                     
+         ST    R13,PUTLSAVE+4      store callers r13                            
+         LA    R13,PUTLSAVE        provide savearea                             
+         LR    R4,R0               message length                               
+         LR    R5,R1               message text                                 
+         MVI   LINEOUT,X'40'       clear i/o area                               
+         MVC   LINEOUT+1(L'LINEOUT-1),lineout propogate the blank               
+         LR    R2,R4               message length                               
+         BCTR  R2,0                minus 1 for the execute                      
+         EX    R2,PUTLMVC                                                       
+         AMODESW SET,AMODE=24                                                   
+         PUT   LISTING                                                          
+         AMODESW SET,AMODE=31                                                   
+PUTL9000 DS    0H                                                               
+         LA    R15,0               return code                                  
+         L     R13,PUTLSAVE+4      restore callers r13                          
+         LM    R0,R12,20(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+PUTLMVC  MVC   LINEOUT+1(0),0(R5)  executed instruction                         
+PUTLSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * R0 = MESSAGE LENGTH                                                         
+* * R1 = MESSAGE TEXT                                                           
+         USING SSLCLINT,R12,R9     establish sslclint addressability            
+         DC    CL8'CONO1000'                                                    
+CONO1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15             get a base register                          
+         USING CONO1000,R11                                                     
+         LR    R4,R0               message length                               
+         LR    R5,R1               message text                                 
+         ST    R13,CONOSAVE+4      store callers r13                            
+         LA    R13,CONOSAVE        provide savearea                             
+         MVI   CONOUT,X'40'        clear i/o area                               
+         MVC   CONOUT+1(L'CONOUT-1),conout propogate the blank                  
+         LTR   R2,R4               is the message length zero                   
+         BNZ   CONO2000            put out invalid message message              
+         LA    R0,L'CONOBAD1                                                    
+         LA    R1,CONOBAD1         put out this message                         
+CONO2000 DS    0H                                                               
+         LA    R0,L'CONOUT                                                      
+         CLR   R2,R0               is it too big                                
+         BL    CONO3000            bif no                                       
+         LR    R2,R0               use the max                                  
+CONO3000 DS    0H                                                               
+         BCTR  R2,0                minus 1 for the execute                      
+         EX    R2,CONOMVC                                                       
+         AMODESW SET,AMODE=24                                                   
+         PUT   CONSOLE                                                          
+         WAIT  CONSOLE                                                          
+         AMODESW SET,AMODE=31                                                   
+         LA    R0,L'CONOUT                                                      
+         LA    R1,CONOUT                                                        
+         L     R15,@PUTLRTN        display onto syslst too                      
+         BASSM R14,R15                                                          
+CONO9000 DS    0H                                                               
+         LA    R15,0               return code                                  
+         L     R13,CONOSAVE+4      restore callers r13                          
+         LM    R0,R12,20(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CONOMVC  MVC   CONOUT(0),0(R5)     executed instruction                         
+CONOBAD1 DC    C'CONOBAD1'                                                      
+CONOSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * EQUATES...                                                                  
+R0       EQU      0                                                             
+R1       EQU      1                                                             
+R2       EQU      2                                                             
+R3       EQU      3                                                             
+R4       EQU      4                                                             
+R5       EQU      5                                                             
+R6       EQU      6                                                             
+R7       EQU      7                                                             
+R8       EQU      8                                                             
+R9       EQU      9                                                             
+R10      EQU      10                                                            
+R11      EQU      11                                                            
+R12      EQU      12                                                            
+R13      EQU      13                                                            
+R14      EQU      14                                                            
+R15      EQU      15                                                            
+         END   SSLCLINT                                                         

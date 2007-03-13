@@ -1,0 +1,307 @@
+         MACRO                                                          00050000
+&NAME  SECTVAL &DDKR=,&DVCTYP=,&RECFORM=,&LOGUNIT=,&PU=,&BUFFER=        00100053
+.*                                                                      00150000
+.*  VARIABLES USED IN THE MACRO                                         00200000
+.*                                                                      00250000
+         LCLA  &MDDKR   MASK FOR INSERTION OF DDKR INTO R0              00300000
+         LCLA  &MUNIT   MASK FOR LOGICAL UNIT OR PUBINDEX INSERTION     00350000
+         LCLA  &MDVCNEW MASK FOR INSERTION OF DTF DEVICE TYPE           00400000
+         LCLA  &MDVCOLD SAME, JUST FOR OLD INTERFACE                    00450000
+         LCLA  &MDVCIND MASK FOR DEVICE INDICATION                      00500000
+         LCLA  &KDVCIND LENGTH OF STRING INDICATING DEVICE              00550000
+         LCLC  &DVCIND  EITHER LOGUNIT OR DVCTYP (DEVICE INDICATION)    00600000
+         LCLA  &VARIREC FLAG VALUE FOR VARIABLE LENGTH RECORDS          00650000
+         LCLA  &UNISDTF FLAG VALUE FOR DTF DEVICE TYPE CODE             00700000
+         LCLA  &UNISLOG FLAG VALUE FOR LOGICAL UNIT PROVIDED            00750000
+         LCLA  &UNISPUI FLAG VALUE FOR PUB INDEX PROVIDED               00800000
+         LCLA  &BUFREQ  FLAG VALUE FOR BUFFER WAS PROVIDED              00816653
+         LCLA  &BUFLNG  LENGTH OF BUFFER REQUIRED FOR SECTVAL BUFFERS   00833253
+         LCLA  &PRCFLG  PROCESSING FLAGS                                00850000
+         LCLA  &SECTCAL VALUE FOR SERVICE BYTE IN R1                    00900000
+         LCLC  &TEMP0   TEMPORARY STRING FOR DDKR REGISTER              00950000
+         LCLC  &TEMP1   TEMPORARY STRING FOR LOGUNIT REGISTER           01000000
+         LCLC  &BUFREG  REGISTER USED IN BUFFER ADDRESSING              01010053
+         LCLC  &BUFLOC  STRING USED TO ADDR. BUFFER IN INSTRUCTIONS     01020053
+         LCLC  &BUFLOCM SAME AS BUFLOC, BUT FOR XC OR MVC 1ST OPERAND   01030053
+         LCLC  &BUFLOCI SAME AS BUFLOC, BUT FOR IC INSTRUCTION          01040053
+         LCLA  &ERROR   BOOLEAN FLAG FOR DETECTION OF ERRORS            01050000
+***************************************************************@DL30SCD 01100000
+*                                                             *@DL30SCD 01150000
+.*       IBM VSE / ADVANCED FUNCTIONS                         *@DL30SCD 01200000
+*        SUPERVISOR - SECTVAL - 5686-032-07-C55               *@D51MDGL 01250000
+.*                                                             @D51MDGL 01300000
+         AGO   .CPRIGHT                                        @D51MDGL 01350000
+.*                                                             @D51MDGL 01400000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *@D51MDGL 01450000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *@D51MDGL 01500000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1977, 1990          *@D51MDGL 01550000
+*        SEE COPYRIGHT INSTRUCTIONS                           *@D51MDGL 01600000
+.*                                                             @D51IDGL 01650000
+.CPRIGHT ANOP                                                           01700000
+*                                                             *@DL30SCD 01750000
+***************************************************************@DL30SCD 01800000
+.*                                                                      01850000
+&MDDKR   SETA  15     IS FULLWORD                                       01900000
+&MUNIT   SETA  3      RIGHTMOST TWO BYTES                               01950000
+&MDVCNEW SETA  1      RIGHTMOST BYTE                                    02000000
+&MDVCOLD SETA  8      LEFTMOST  BYTE                                    02050000
+&PRCFLG  SETA  0      FLAG BYTE FIX LENGTH RECORDS                      02100000
+&VARIREC SETA  128    FLAG BYTE VARIABLE LENGTH RECORDS                 02150000
+&UNISDTF SETA  0        DEVICE IDENTIF. BY DTF DEVICE TYPE CODE         02200000
+&UNISLOG SETA  1        DEVICE IDENTIF. BY LOGICAL UNIT                 02250000
+&UNISPUI SETA  2        DEVICE IDENTIF. BY PUB INDEX                    02300000
+&BUFREQ  SETA  4        REQUESTOR COMES WITH BUFFER            @DEV14GL 02316653
+&BUFLNG  SETA  8*4      LENGTH OF BUFFER USED FOR SECTVAL      @DEV14GL 02333253
+&SECTCAL SETA  0      SERVICE NUMBER FOR SECTORCALCULATION              02350000
+.*                    ALSO USED AS INDICATOR 'NEW INTERFACE USED'       02400000
+&ERROR   SETA  0      NO ERRORS DETECTED AS YET.                        02450000
+.*                                                                      02500000
+.*  SELECT NEW OR OLD INTERFACE                                         02550000
+.*                                                                      02600000
+         AIF   (T'&RECFORM  EQ 'O').OLDSECT                             02650000
+.*                                                                      02700000
+.*  TEST ERROR CONDITIONS IN NEW INTERFACE                              02750000
+.*                                                                      02800000
+.NEWTEST ANOP                                                           02850000
+         AIF   ('&DVCTYP'  NE '').NEWST01                               02900000
+         AIF   ('&LOGUNIT' NE '').NEWST02                               02950000
+         AIF   ('&PU'      NE '').NEWST03                               03000000
+         MNOTE 8,'SOME DEVICE SPECIFICATION MUST BE GIVEN'              03050000
+&ERROR   SETA  &ERROR+1                                                 03100000
+         AGO   .NEWST10                                                 03150000
+.NEWST01 AIF   ('&LOGUNIT' NE '').NEWST04                               03200000
+.NEWST02 AIF   ('&PU'      NE '').NEWST04                               03250000
+.NEWST03 AGO   .NEWST10                                                 03300000
+.NEWST04 MNOTE 8,'ONLY ONE DEVICE SPECIFICATION PERMITTED'              03350000
+&ERROR   SETA  &ERROR+1                                                 03400000
+.NEWST10 ANOP                                                           03450000
+         AIF   ('&DDKR' NE '').NEWST20                                  03500000
+         MNOTE 8,'DEFINITION OF DDKR IS MANDATORY IN NEW INTERFACE'     03550000
+&ERROR   SETA  &ERROR+1                                                 03600000
+         AGO   .NEWST30                                                 03650000
+.NEWST20 ANOP                                                           03700000
+         AIF   ('&DDKR'(1,1) NE '(').NEWST30                            03750000
+         AIF   ('&DDKR'(K'&DDKR,1) EQ ')').NEWST30                      03800000
+         MNOTE 8,'CLOSING BRACKET MISSING BEHIND DDKR'                  03850000
+&ERROR   SETA  &ERROR+1                                                 03900000
+.NEWST30 ANOP                                                           03950000
+.*----------------------------------------------------                  04000000
+.*  PREPARE TEST OF DEVICEINDICATION SUPPLIED BY USER                   04050000
+.*----------------------------------------------------                  04100000
+         AIF   (T'&LOGUNIT  EQ 'O').NEWSI01                             04150000
+&DVCIND  SETC  '&LOGUNIT'                                               04200000
+&MDVCIND SETA  &MUNIT                                                   04250000
+&KDVCIND SETA  K'&LOGUNIT                                               04300000
+         AGO   .NEWSI99                                                 04350000
+.NEWSI01 AIF   (T'&DVCTYP   EQ 'O').NEWSI02                             04400000
+&DVCIND  SETC  '&DVCTYP'                                                04450000
+&MDVCIND SETA  &MDVCNEW                                                 04500000
+&KDVCIND SETA  K'&DVCTYP                                                04550000
+         AGO   .NEWSI99                                                 04600000
+.NEWSI02 ANOP                                                           04650000
+&DVCIND  SETC  '&PU'                                                    04700000
+&MDVCIND SETA  &MUNIT                                                   04750000
+&KDVCIND SETA  K'&PU                                                    04800000
+.NEWSI99 ANOP                                                           04850000
+.*----------------------------------------------------                  04900000
+.*  AND CHECK CORRECTNESS OF DEVICE INDICATION                          04950000
+.*----------------------------------------------------                  05000000
+         AIF   ('&DVCIND'(1,1) NE '(').NEWST50                          05050000
+         AIF   ('&DVCIND'(&KDVCIND,1) EQ ')').NEWST50                   05100000
+         MNOTE 8,'CLOSING BRACKET MISSING BEHIND LOGUNIT'               05150000
+&ERROR   SETA  &ERROR+1                                                 05200000
+.NEWST50 ANOP                                                           05250000
+         AIF   ('&RECFORM' EQ 'FIX').NEWST70                            05300000
+         AIF   ('&RECFORM' EQ 'VAR').NEWST70                            05350000
+         MNOTE 8,'SPECIFY VAR OR FIX FOR RECFORM'                       05400000
+&ERROR   SETA  &ERROR+1                                                 05450000
+.NEWST70 ANOP                                                           05500000
+         AIF   ('&DVCIND' NE '&DDKR').NEWST80                           05550000
+         MNOTE 8,'UNIT IDENTIFICATION AND DDKR IN SAME POSITION?'       05600000
+&ERROR   SETA  &ERROR+1                                                 05650000
+.NEWST80 ANOP                                                           05700000
+         AIF   (&ERROR EQ 0).NEWSECT                                    05750000
+         MNOTE 8,'ERRORS OCCURED IN PROCESSING SECTVAL MACRO'           05800000
+         MEXIT                                                          05850000
+.*                                                                      05900000
+.* NO ERRORS FOUND IN CALL OF MACRO, GENERATE TEXT:                     05950000
+.*                                                                      06000000
+.*-------------------------------------------------------               06050000
+.* EXPLANATION OF FOLLOWING DIFFERENTIATIONS:                           06100000
+.* DDKR AND THE IDENTIFICATION OF THE DEVICE BEING ASKED FOR CAN        06150000
+.* BE GIVEN IN A                                                        06200000
+.*  - LABELPOSITION                                                     06250000
+.*  - GOAL REGISTER OF THE OTHER ONE (DDKR IN R1 AND IDENT. IN R0)      06300000
+.*  - IN ANY OTHER REGISTER                                             06350000
+.*  THE FOLLOWING CASES ARE POSSIBLE:<DDKR> <DVCIND>                    06400000
+.* CASE1: <LABEL>         <LABEL>                                       06450000
+.* CASE2: <LABEL>         <REGISTER ¬= 0>                               06500000
+.* CASE3: <LABEL>         <REGISTER  = 0>                               06550000
+.* CASE4: <REGISTER ¬= 1> <LABEL>                                       06600000
+.* CASE5: <REGISTER ¬= 1> <REGISTER ¬= 0>                               06650000
+.* CASE6: <REGISTER ¬= 1> <REGISTER  = 0>                               06700000
+.* CASE7: <REGISTER  = 1> <LABEL>                                       06750000
+.* CASE8: <REGISTER  = 1> <REGISTER ¬= 0>                               06800000
+.* CASE9: <REGISTER  = 1> <REGISTER  = 0>                               06850000
+.* THE FOLLOWING SOLUTION ASSUMES, THAT A LABEL POSITION                06900000
+.* IS NOT ADDRESSED VIA REGISTER R1, NOR CAN THE CODE USE               06950000
+.* R1 AS A BASE REGISTER.                                               07000000
+.*-------------------------------------------------------               07050000
+.* SET TEMP0 AND TEMP1 TO REGISTER NUMBERS, IF ANY ARE PROVIDED         07100000
+.*                                                                      07150000
+.NEWSECT AIF   ('&DDKR'(1,1) NE '(').NEWS001                            07200000
+&TEMP0   SETC  '&DDKR'(2,K'&DDKR-2)                                     07250000
+.*                                                                      07300000
+.NEWS001 AIF   ('&DVCIND'(1,1) NE '(').NEWS002                          07350000
+&TEMP1   SETC  '&DVCIND'(2,&KDVCIND-2)                                  07400000
+.NEWS002 ANOP                                                           07450000
+.*-------------------------------------------------------               07500000
+.* START TESTING FOR THE NINE DIFFERENT CASES POSSIBLE                  07550000
+.*                                                                      07600000
+         AIF   ('&DDKR'(1,1) EQ '(').NEWS020                            07650000
+         AIF   ('&DVCIND'(1,1) EQ '(').NEWS011                          07700000
+.* CASE1:                                                               07750000
+         ICM   1,&MDVCIND,&DVCIND                                       07800000
+         AGO   .NEWS012                                                 07850000
+.NEWS011 ANOP                                                           07900000
+.* CASE2 OR 3:                                                          07950000
+         AIF   ('&TEMP1' EQ '1').NEWS012                                08000000
+         LR    1,&TEMP1                                                 08050000
+.NEWS012 ANOP                                                           08100000
+         ICM   0,&MDDKR,&DDKR                                           08150000
+         AGO   .NEWS100                                                 08200000
+.*                                                                      08250000
+.*                                                                      08300000
+.NEWS020 AIF   ('&TEMP0' EQ '1').NEWS030                                08350000
+         AIF   ('&DVCIND'(1,1) EQ '(').NEWS021                          08400000
+.* CASE4:                                                               08450000
+         ICM   1,&MDVCIND,&DVCIND                                       08500000
+         AGO   .NEWS022                                                 08550000
+.NEWS021 ANOP                                                           08600000
+.* CASE5 OR 6:                                                          08650000
+         AIF   ('&TEMP1' EQ '1').NEWS022                                08700000
+         LR    1,&TEMP1                                                 08750000
+.* AND FOR CASE 4,5,6:                                                  08800000
+.NEWS022 AIF   ('&TEMP0' EQ '0').NEWS023                                08850000
+         LR    0,&TEMP0                                                 08900000
+.NEWS023 AGO   .NEWS100                                                 08950000
+.NEWS024 ANOP                                                           09000000
+.*                                                                      09050000
+.*                                                                      09100000
+.NEWS030 ANOP                                                           09150000
+         AIF   ('&DVCIND'(1,1) EQ '(').NEWS031                          09200000
+.* CASE7:                                                               09250000
+         LR    0,&TEMP0                                                 09300000
+         ICM   1,&MDVCIND,&DVCIND                                       09350000
+         AGO   .NEWS100                                                 09400000
+.NEWS031 ANOP                                                           09450000
+         AIF   ('&TEMP1' EQ '0').NEWS032                                09500000
+.* CASE8:                                                               09550000
+         LR    0,1                                                      09600000
+         LR    1,&TEMP1                                                 09650000
+         AGO   .NEWS100                                                 09700000
+.NEWS032 ANOP                                                           09750000
+         XR    1,0                                                      09800000
+         XR    0,1                                                      09850000
+         XR    1,0                                                      09900000
+         AGO   .NEWS100                                                 09950000
+.*-------------------------------------------------------               10000000
+.* SET PROCESSING FLAGS ACCORDING TO RECFORM                            10050000
+.*                                                                      10100000
+.NEWS100 AIF   ('&RECFORM' EQ 'FIX').NEWS101                            10150000
+&PRCFLG  SETA  &VARIREC                                                 10200000
+.*-------------------------------------------------------               10250000
+.* SET PROCESSING FLAGS ACCORDING TO DEVICE IDENTIFICATION              10300000
+.*                                                                      10350000
+.NEWS101 AIF   (T'&LOGUNIT  EQ 'O').NEWS102                             10400000
+&PRCFLG  SETA  &PRCFLG+&UNISLOG                                         10450000
+         AGO   .NEWS103                                        @.....GL 10500000
+.NEWS102 AIF   (T'&PU       EQ 'O').NEWS103                             10550000
+&PRCFLG  SETA  &PRCFLG+&UNISPUI                                         10600000
+.NEWS103 ANOP                                                           10650000
+.*                                                                      10700000
+         ICM   1,12,IJB1&SYSNDX+4                                       10702953
+         AIF   (T'&BUFFER EQ 'O').NEWSB00                      @DEV14GL 10705853
+&PRCFLG  SETA  &PRCFLG+&BUFREQ                                          10708753
+         AIF   ('&BUFFER'(1,1) NE '(').NEWSB10                          10711653
+&BUFREG  SETC  '&BUFFER'(2,K'&BUFFER-2)                                 10714553
+&BUFLOC  SETC  '0(&BUFREG)'                                    @DEV14GL 10717453
+&BUFLOCM SETC  '0(&BUFLNG,&BUFREG)'                            @DEV14GL 10720353
+&BUFLOCI SETC  '12(1,&BUFREG)'                                 @DEV14GL 10723253
+         AGO   .NEWSB20                                        @DEV14GL 10726153
+.NEWSB10 ANOP                                                  @DEV14GL 10729053
+&BUFLOC  SETC  '&BUFFER'                                       @DEV14GL 10731953
+&BUFLOCM SETC  '&BUFFER.(&BUFLNG)'                             @DEV14GL 10734853
+&BUFLOCI SETC  '12+&BUFFER.(1)'                                @DEV14GL 10737753
+.NEWSB20 ANOP                                                  @DEV14GL 10740653
+         CLI   0+&BUFLOC,1        TEST FOR KNOWN FORMULA       @DEV14GL 10743553
+         BNE   IJB0&SYSNDX        BRANCH IF NOT KNOWN          @DEV14GL 10746453
+         CLM   0,14,4+&BUFLOC     ARE DDK OF DDKR CORRECT      @DEV14GL 10749353
+         BNE   IJB0&SYSNDX        BRANCH IF NOT                @DEV14GL 10752253
+         CLM   1,15,8+&BUFLOC     ARE UNIT ID AND PROC.FLG OK? @DEV14GL 10755153
+         BNE   IJB0&SYSNDX        BRANCH IF NOT                @DEV14GL 10758053
+         LA    1,X'FF'            TAKE RECORD NUMBER           @DEV14GL 10760953
+         NR    1,0                OUT OF REGISTER R0           @DEV14GL 10763853
+         IC    1,&BUFLOCI         CALCULATE                    @DEV14GL 10766753
+         LR    0,1                TAKE INTO CORRECT REGISTER   @DEV14GL 10769653
+         B     IJB2&SYSNDX        BRANCH IF NOT                @DEV14GL 10772553
+IJB0&SYSNDX DS 0H                                              @DEV14GL 10775453
+         XC    &BUFLOCM,&BUFLOC   PURGE BUFFER                 @DEV14GL 10778353
+         STCM  0,15,4+&BUFLOC     FILL IN DDKR VALUE           @DEV14GL 10781253
+         STCM  1,15,8+&BUFLOC     INSERT DEVICE IDENTIFICATION @DEV14GL 10784153
+         MVI   2+&BUFLOC,X'01'    INSERT LENGTH IN LENGTH FLD  @DEV14GL 10787053
+         MVI   3+&BUFLOC,X'0C'    WHICH IS 256+12 BYTES        @DEV14GL 10789953
+         LA    0,&BUFLOC          TAKE ADDRESS OF BUFFER       @DEV14GL 10792853
+.NEWSB00 ANOP                                                  @DEV14GL 10795753
+         CNOP  0,4                                             @.....GL 10800000
+IJB1&SYSNDX SVC 75                                                      10850053
+         DC    X'0001'                                         @.....GL 10900000
+         DC    AL1(&SECTCAL)                                            10950000
+         DC    AL1(&PRCFLG)                                             11000000
+IJB2&SYSNDX DS 0H                                              @DEV14GL 11025053
+         MEXIT                                                          11050000
+.*=======================================================               11100000
+.*                                                                      11150000
+.*   TEST FOR ERRORS IN OLD INTERFACE                                   11200000
+.*                                                                      11250000
+.OLDSECT MNOTE *,'PLEASE USE NEW INTERFACE FOR SECTVAL MACRO'           11300000
+.*                                                                      11350000
+.OLDST00 ANOP                                                           11400000
+         AIF   ('&DVCTYP' NE '').OLDST02                                11450000
+         MNOTE *,'MISSING DVCTYP IN OLD INTERFACE'                      11500000
+         MNOTE *,'DVCTYP ASSUMED TO BE IN REGISTER 1'                   11550000
+&ERROR   SETA  &ERROR+1                                                 11600000
+.OLDST02 ANOP                                                           11650000
+         AIF   ('&DDKR' NE '').OLDST03                                  11700000
+         MNOTE *,'MISSING DDKR IN OLD INTERFACE'                        11750000
+         MNOTE *,'DDKR ASSUMED TO BE IN REGISTER 0'                     11800000
+&ERROR   SETA  &ERROR+1                                                 11850000
+         AGO   .OLDST05                                                 11900000
+.OLDST03 ANOP                                                           11950000
+         AIF   ('&DDKR'(1,1) NE '(').OLDST05                            12000000
+         AIF   ('&DDKR'(K'&DDKR,1) EQ ')').OLDST05                      12050000
+         MNOTE *,'CLOSING BRACKET MISSING BEHIND DDKR'                  12100000
+&ERROR   SETA  &ERROR+1                                                 12150000
+.OLDST05 ANOP                                                           12200000
+         AIF   (&ERROR EQ 0).OLDS000                                    12250000
+         MNOTE 4,'WARNING ISSUED IN PROCESSING SECTVAL MACRO'           12300000
+.*                                                                      12350000
+.*  NO ERRORS DETECTED FOR OLD INTERFACE, GENERATE TEXT:                12400000
+.*                                                                      12450000
+.OLDS000 ANOP                                                           12500000
+         AIF   ('&NAME' EQ '').OLDS001                                  12550000
+&NAME    DS    0H                                                       12600000
+.*                                                                      12650000
+.OLDS001 AIF   ('&DDKR' EQ '').OLDS002                                  12700000
+         AIF   ('&DDKR'(1,1) EQ '(').OLDS003                            12750000
+         L     0,&DDKR                                                  12800000
+         AGO   .OLDS002                                                 12850000
+.OLDS003 ANOP                                                           12900000
+&TEMP0   SETC  '&DDKR'(2,K'&DDKR-2)                                     12950000
+         LR    0,&TEMP0                                                 13000000
+.OLDS002 ANOP                                                           13050000
+         AIF   ('&DVCTYP' EQ '').OLDS004                                13100000
+         ICM   1,&MDVCOLD,&DVCTYP                                       13150000
+.OLDS004 ANOP                                                           13200000
+         SVC   75                                                       13250000
+         MEND                                                           13300000

@@ -1,0 +1,264 @@
+         MACRO                                                          00050000
+&LABEL   QSETPRT &LUNIT,&EP=,&MF=,&WORKA=                               00100000
+.*                                                                      00150000
+.*/**********************************************************           00200000
+.*                                                          *  @D31TDRH 00250000
+.*      IBM VIRTUAL STORAGE EXTENDED  (VSE)                 *  @D31TDRH 00300000
+.*      COMPONENT: 5686-032-05-C55                          *  @D51MDBK 00350000
+.* @@CPY                                                    *  @D31TDRH 00400000
+.*      THIS MACRO IS "RESTRICTED MATERIALS OF IBM"         *  @D31TDRH 00450000
+.*      5686-032 (C) COPYRIGHT IBM CORP. 1984, 1992         *  @D52VDAK 00500052
+.*      ALL RIGHTS RESERVED                                 *  @D31TDRH 00550000
+.*      LICENSED MATERIALS-PROPERTY OF IBM                  *  @D31TDRH 00600000
+.*      SEE COPYRIGHT INSTRUCTIONS, G120-2083               *  @D31TDRH 00650000
+.*                                                          *  @D31TDRH 00700000
+.************************************************************/          00750000
+.*                                                                      00800000
+.* PURPOSE - BUILD A SETPRT PARAMETER LIST THAT DESCRIBES THE CURRENT   00850000
+.*      DEVICE SETUP.                                                   00900000
+.*  CHANGE ACTIVITY                                            @D31TDRH 00950000
+.*    CREATED FOR DOS/VS REL 34.0.                             @D34YSWR 01000000
+.*                LEVEL 2.1.0                                  @D148LFP 01050000
+.*    06/01/89    RELEASE 4.1.0                                @D31TDRH 01100000
+.*    12/15/90    RELEASE 5.1.0                                @D51MDBK 01150000
+.*                                                                      01200000
+.***********************************************************            01250000
+         LCLA  &A        SCRATCH ARITHMETIC VARIABLE                    01300000
+         LCLB  &BNAME    GENERATE LABEL FOR LIST WHEN NO MF OR EP       01350000
+         LCLC  &C        SCRATCH CHARACTER VARIABLE                     01400000
+         LCLB  &EFORM    THIS MACRO WILL EXECUTE A SEPARATE PARM LIST   01450000
+         LCLB  &LFORM    CREATE PARAMETER LIST ONLY, NO INSTRUCTIONS    01500000
+         LCLC  &PREF     SHORT NAME CONTAINING UNIQUE LABEL             01550000
+         LCLB  &SWERR    ERROR SWITCH. IF ON, MACRO DOES NOT EXPAND     01600000
+         LCLB  &LUNITON  HAVE ADDRESS OF A LOGICAL UNIT BLOCK           01650000
+.*                                                                      01700000
+*        PRINTER SUPPORT - QSETPRT - 5686-032 - VSE/AF 5.1     @D51MDBK 01750000
+.*                                                                      01800000
+&PREF    SETC  'IJV&SYSNDX'             CREATE UNIQUE LABEL             01850000
+         AIF   (N'&SYSLIST LE 1).MFTEST                                 01900000
+         MNOTE 12,'MORE THAN ONE POSITIONAL PARAMETER'                  01950000
+&SWERR   SETB  1                                                        02000000
+.********************************************************************** 02050000
+.* ANALYZE THE MF PARAMETER.                                            02100000
+.********************************************************************** 02150000
+.MFTEST  AIF   ('&MF' EQ '').LUNTEST                                    02200000
+&LFORM   SETB  (N'&MF EQ 1 AND '&MF(1)' EQ 'L')                         02250000
+         AIF   (&LFORM).PLTEST                                          02300000
+         AIF   (N'&MF NE 2 OR '&MF(1)' NE 'E').MFERR                    02350000
+         AIF   ('&MF(2)' EQ '').MFERR                                   02400000
+&EFORM   SETB  1                                                        02450000
+         AIF   ('&MF(2)'(1,1) NE '(').LUNTEST  GO IF NOT IN A REG       02500000
+         AIF   ('&MF(2)' NE '(0)').MFNOT0      GO IF NOT IN REGISTER 0  02550000
+         MNOTE 12,'MF SPECIFIES REGISTER 0'                             02600000
+&SWERR   SETB  1                        SUPPRESS MACRO EXPANSION        02650000
+         AGO   .LUNTEST                                                 02700000
+.MFNOT0  AIF   ('&EP' NE '').LUNTEST    GO IF EP IS CODED               02750000
+         AIF   ('&MF(2)' NE '(1)').LUNTEST     GO IF MF NOT REG 1       02800000
+         MNOTE 12,'MF SPECIFIES REGISTER 1 BUT EP IS NOT ALSO SPECIFIED*02850000
+               '                                                        02900000
+&SWERR   SETB  1                        SUPPRESS MACRO EXPANSION        02950000
+         AGO   .LUNTEST                                                 03000000
+.MFERR   MNOTE 12,'MF IS CODED BUT NOT L OR OF FORM (E,XXX)'            03050000
+&SWERR   SETB  1                                                        03100000
+         AGO   .LUNTEST                                                 03150000
+.* CHECK FOR ANY REGISTER VALUES IN COMBINATION WITH MF=L.              03200000
+.PLTEST  AIF   ('&LUNIT' EQ '').PL2                                     03250000
+         AIF   ('&LUNIT'(1,1) EQ '(').PLERR                             03300000
+.PL2     AIF   ('&EP' NE '').PLERR                                      03350000
+         AIF   ('&WORKA' EQ '').LUNTEST                                 03400000
+.PLERR   MNOTE 12,'MF=L SPECIFIED BUT LOGICAL UNIT IS IN A REGISTER OR *03450000
+               EP OR WORKA IS CODED'                                    03500000
+&SWERR   SETB  1                            SET ERROR SWITCH            03550000
+.********************************************************************** 03600000
+.* ANALYZE THE LOGICAL UNIT PARAMETER.                                  03650000
+.********************************************************************** 03700000
+.LUNTEST AIF   ('&LUNIT' EQ '' AND NOT &EFORM AND NOT &LFORM).SYSERR    03750000
+         AIF   ('&LUNIT' EQ '').EPTEST      GO IF LOGICAL UNIT OMITTED  03800000
+         AIF   (N'&LUNIT GT 1).SYSERR       GO IF MULTIPLE VALUES       03850000
+         AIF   ('&LUNIT'(1,1) NE '(').LUNSYS                            03900000
+&LUNITON SETB  1                            REMEMBER LUB ADDRESS GIVEN  03950000
+         AIF   (T'&LUNIT(1) NE 'N').EPTEST  GO IF SELF-DEFINING REG     04000000
+         AIF   (&LUNIT(1) GE 2 AND &LUNIT(1) LE 13).EPTEST              04050000
+         MNOTE 12,'REGISTER CONTAINING LUB ADDR IS NOT IN RANGE 2-13'   04100000
+&SWERR   SETB  1                            SUPPRESS MACRO EXPANSION    04150000
+         AGO   .EPTEST                                                  04200000
+.LUNSYS  AIF   (K'&LUNIT NE 6).SYSERR                                   04250000
+         AIF   ('&LUNIT'(1,3) NE 'SYS').SYSERR                          04300000
+&C       SETC  '&LUNIT'(4,3)                                            04350000
+         AIF   ('&C' EQ 'LST' OR '&C' EQ 'LOG').EPTEST                  04400000
+         AIF   ('&C'(1,1) LT '0' OR '&C'(1,1) GT '2').SYSERR            04450000
+         AIF   ('&C'(2,1) LT '0' OR '&C'(2,1) GT '9').SYSERR            04500000
+         AIF   ('&C'(3,1) LT '0' OR '&C'(3,1) GT '9').SYSERR            04550000
+&A       SETA  &C                       CONVERT NNN TO ARITHMETIC       04600000
+         AIF   (&A LE 241).EPTEST                                       04650000
+.SYSERR  MNOTE 12,'THE LOGICAL UNIT PARAMETER IS MISSING OR NOT SYSLST *04700000
+               OR SYSLOG OR OF FORM SYSNNN'                             04750000
+&SWERR   SETB  1                        KILL THE EXPANSION              04800000
+.********************************************************************** 04850000
+.* ANALYZE THE EP PARAMETER.                                            04900000
+.********************************************************************** 04950000
+.EPTEST  AIF   ('&EP' EQ '').EPNONE     GO IF EP OMITTED                05000000
+         AIF   (N'&EP NE 1).EPERR       GO IF MULTIPLE VALUES           05050000
+         AIF   ('&EP'(1,1) NE '(').WRKTEST   GO IF NOT IN REGISTER      05100000
+         AIF   (T'&EP(1) NE 'N').WRKTEST     GO IF NOT SELF-DEFINING    05150000
+         AIF   (&EP(1) EQ 15).WRKTEST        GO IF REGISTER NOT 15      05200000
+         AIF   (&EP(1) GE 2 AND &EP(1) LE 13).WRKTEST   GO IF IN RANGE  05250000
+.EPERR   MNOTE 12,'EP HAS MULTIPLE VALUES OR SPECIFIES A REGISTER NOT 1*05300000
+               5 OR IN RANGE 2-13'                                      05350000
+&SWERR   SETB  1                                                        05400000
+         AGO   .WRKTEST                                                 05450000
+.EPNONE  AIF   ('&MF' NE '').WRKTEST    GO IF MF SPECIFIED              05500000
+&BNAME   SETB  1                        REMEMBER LABEL WILL BE NEEDED   05550000
+.********************************************************************** 05600000
+.* ANALYZE THE WORKA PARAMETER.                                         05650000
+.********************************************************************** 05700000
+.WRKTEST AIF   ('&WORKA' EQ '').ERRTEST                                 05750000
+         AIF   (N'&WORKA NE 1).WRKERR                                   05800000
+         AIF   ('&WORKA'(1,1) NE '(').ERRTEST                           05850000
+         AIF   (T'&WORKA(1) NE 'N').ERRTEST     GO IF NOT SELF-DEFINING 05900000
+         AIF   (&WORKA(1) GE 2 AND &WORKA(1) LE 13).ERRTEST             05950000
+         AIF   (&WORKA(1) NE 0 OR '&EP' NE '').WRKTST1                  06000000
+         MNOTE 12,'WORKA SPECIFIES REGISTER 0 BUT EP IS NOT CODED'      06050000
+&SWERR   SETB  1                       SUPPRESS MACRO EXPANSION         06100000
+         AGO   .ERRTEST                                                 06150000
+.WRKTST1 AIF   (&WORKA(1) EQ 0).ERRTEST                                 06200000
+         MNOTE 12,'WORKA SPECIFIES A REGISTER OTHER THAN 0 OR 2-13'     06250000
+&SWERR   SETB  1                                                        06300000
+         AGO   .ERRTEST                                                 06350000
+.WRKERR  MNOTE 12,'MULTIPLE VALUES FOR WORKA'                           06400000
+&SWERR   SETB  1                       SUPPRESS MACRO EXPANSION         06450000
+.********************************************************************** 06500000
+.* SUPPRESS MACRO EXPANSION IF ANY ERROR HAS BEEN DETECTED.  ALL        06550000
+.* DETECTABLE ERRORS HAVE BEEN DETECTED.                                06600000
+.********************************************************************** 06650000
+.ERRTEST AIF   (&SWERR).EXIT                                            06700000
+.* EXPAND ACCORDING TO THE VALUE OF MF.                                 06750000
+         AIF   (&LFORM).GENLIST            GO TO GENERATE PARM LIST     06800000
+         AIF   (NOT &EFORM).GENSTND        GO TO GENERATE STANDARD FORM 06850000
+.********************************************************************** 06900000
+.* MF=(E,XXX) WAS CODED.  BEGIN GENERATION OF CODE TO USE A REMOTE      06950000
+.* PARAMETER LIST THAT WAS CREATED WITH MF=L.                           07000000
+.********************************************************************** 07050000
+         AIF   ('&MF(2)' NE '(1)').GENRB GO IF NOT 1 NOT ALREADY LOADED 07100000
+         AIF   ('&LABEL' EQ '').GENRE   GO IF LABEL NOT NEEDED          07150000
+&LABEL   DC    0H'0'                                                    07200000
+         AGO   .GENRE                                                   07250000
+.GENRB   AIF   ('&MF(2)'(1,1) NE '(').GENRC  GO IF NOT IN A REGISTER    07300000
+&C       SETC  '&MF(2)'(2,K'&MF(2)-2)   REMOVE PARENTHESES              07350000
+&LABEL   LR    1,&C                     GET PARAMETER LIST ADDRESS      07400000
+         AGO   .GENRE                                                   07450000
+.GENRC   ANOP                                                           07500000
+&LABEL   LA    1,&MF(2)                 GET PARAMETER LIST ADDRESS      07550000
+.GENRE   AIF   ('&LUNIT' EQ '').GENRH                                   07600000
+         AIF   ('&LUNIT'(1,1) EQ '(').GENRG                             07650000
+         NI    1(1),B'01111111'         INDICATE SYMBOLIC LOGICAL UNIT  07700000
+         OI    2(1),B'01000000'         INDICATE QSETPRT                07750000
+         AIF   ('&LUNIT' NE 'SYSLST' AND '&LUNIT' NE 'SYSLOG').GENRL    07800000
+         MVI   54(1),0                  INDICATE SYSTEM LOGICAL UNIT    07850000
+         AIF   ('&LUNIT' EQ 'SYSLOG').GENRJ                             07900000
+         MVI   55(1),3                  INDICATE SYSLST                 07950000
+         AGO   .GETEP                                                   08000000
+.GENRJ   MVI   55(1),4                  INDICATE SYSLOG                 08050000
+         AGO   .GETEP                                                   08100000
+.GENRL   MVI   54(1),X'01'              INDICATE PROGRMR LOGICAL UNIT   08150000
+&C       SETC  '&LUNIT'(4,3)                                            08200000
+         MVI   55(1),&C                 INDICATE WHICH SYSNNN           08250000
+         AGO   .GETEP                                                   08300000
+.GENRG   OI    1(1),B'10000000'         INDICATE ADDR OF LUB            08350000
+.GENRH   OI    2(1),B'01000000'         INDICATE QSETPRT                08400000
+         AGO   .DOREG                                                   08450000
+.********************************************************************** 08500000
+.* BEGIN EXPANDING THE PARAMETER LIST.  WE HAVE MF=L.                   08550000
+.********************************************************************** 08600000
+.GENLIST ANOP                                                           08650000
+&LABEL   DC    0F'0'                    WORD ALIGNMENT                  08700000
+         AGO   .COMMON                                                  08750000
+.********************************************************************** 08800000
+.* BEGIN EXPANDING THE STANDARD FORM OF THE MACRO.  MF WAS OMITTED.     08850000
+.********************************************************************** 08900000
+.GENSTND CNOP  0,4                                                      08950000
+&LABEL   BAL   1,*+72                   BRANCH AROUND PARAMETER LIST    09000000
+.********************************************************************** 09050000
+.COMMON  ANOP                                                           09100000
+&C       SETC  ''                       ASSUME NO LABEL WILL BE NEEDED  09150000
+         AIF   (NOT &BNAME).COMMON2     SKIP IF LABEL WILL BE NEEDED    09200000
+&C       SETC  '&PREF'                  MAKE A LABEL                    09250000
+.COMMON2 ANOP                                                           09300000
+&C       DC    AL1(68)                  LENGTH OF PARAMETER LIST        09350000
+         DC    B'&LUNITON.0000000'      LOGICAL UNIT INDICATOR          09400000
+         DC    B'01000000'              IDENTIFY AS QSETPRT             09450000
+         AIF   ('&LUNIT' EQ '').DOREST                                  09500000
+         AIF   ('&LUNIT'(1,1) EQ '(').DOREST                            09550000
+         DC    XL51'0'                  AREA TO BE FILLED IN            09600000
+&A       SETA  0                        ASSUME SYSTEM LOGICAL UNIT      09650000
+&C       SETC  '3'                      ASSUME SYSLST                   09700000
+         AIF   ('&LUNIT' EQ 'SYSLST').LUNDCLU  GO IF ASSUMPTION CORRECT 09750000
+&C       SETC  '4'                      ASSUME SYSLOG                   09800000
+         AIF   ('&LUNIT' EQ 'SYSLOG').LUNDCLU  GO IF ASSUMPTION CORRECT 09850000
+&C       SETC  '&LUNIT'(4,3)            GET THE THREE NUMERIC DIGITS    09900000
+&A       SETA  1                        SHOW PROGRAMMER LOGICAL UNIT    09950000
+.LUNDCLU DC    AL1(&A,&C)               LOGICAL UNIT                    10000000
+         DC    3A(0)                    REGISTER SAVE AREA FOR QSETPRT  10050000
+         AGO   .SETQBIT                                                 10100000
+.DOREST  DC    XL65'0'                  REMAINDER OF PARAMETER LIST     10150000
+.********************************************************************** 10200000
+.* GENERATE AN STCM INSTRUCTION IF THE LUB ADDRESS IS IN A REGISTER.    10250000
+.********************************************************************** 10300000
+.DOREG   AIF   ('&LUNIT' EQ '').SETQBIT                                 10350000
+         AIF   ('&LUNIT'(1,1) NE '(').SETQBIT                           10400000
+         STCM  &LUNIT(1),7,53(1)        STORE LOG. UNIT BLOCK ADDRESS   10450000
+.********************************************************************** 10500000
+.* GENERATE AN OI INSTRUCTION TO TURN ON THE QSETPRT BIT IN THE         10550000
+.* PARAMETER LIST IF MF WAS NOT CODED.  THIS IS BECAUSE THE             10600000
+.* QSETPRT ROUTINE TURNS THE BIT OFF SO THAT THE LIST CAN BE USED       10650000
+.* BY A SUBSEQUENT SETPRT.                                              10700000
+.********************************************************************** 10750000
+.SETQBIT AIF   (&LFORM).EXIT            GET OUT IF ONLY WANT LIST       10800000
+         AIF   (&EFORM).GETEP           GO IF E-FORM                    10850000
+         OI    2(1),B'01000000'         FORCE QSETPRT INDICATOR ON      10900000
+.********************************************************************** 10950000
+.* GENERATE CODE TO GET THE ENTRY POINT ADDRESS OF THE QSETPRT          11000000
+.* ROUTINE.  IF EP WAS NOT CODED, A CDLOAD MACRO IS ISSUED TO GET       11050000
+.* THE ADDRESS IN SVA.                                                  11100000
+.********************************************************************** 11150000
+.GETEP   AIF   ('&EP' EQ '').DOLOAD                                     11200000
+         AIF   ('&EP'(1,1) EQ '(').GETEREG                              11250000
+         L     15,&EP                   GET QSETPRT ROUTINE ADDRESS     11300000
+         AGO   .GETWORK                                                 11350000
+.GETEREG AIF   ('&EP' EQ '(15)').GETWORK                                11400000
+         LR    15,&EP(1)                GET QSETPRT ROUTINE ADDRESS     11450000
+         AGO   .GETWORK                                                 11500000
+.DOLOAD  CDLOAD IJVSPRDV                GET ADDRESS OF QSETPRT ROUTINE  11550000
+         SLA   15,8                     CLEAR BYTE AND TEST FOR 0       11600000
+         LA    15,X'30'(,15)            INSERT QSETPRT FAILURE CODE     11650000
+         BNZ   &PREF.E                  BRANCH IF CDLOAD FAILED         11700000
+         LR    15,1                     LOAD QSETPRT ROUTINE ADDRESS    11750000
+         AIF   (&EFORM).GETLIST         GO IF E-FORM                    11800000
+         LA    1,&PREF                  GET ADDR OF QSETPRT PARM LIST   11850000
+         AGO   .GETWORK                                                 11900000
+.GETLIST AIF   ('&MF(2)'(1,1) EQ '(').GETREG  GO IF IN REGISTER         11950000
+         LA    1,&MF(2)                 GET ADDR OF QSETPRT PARM LIST   12000000
+         AGO   .GETWORK                                                 12050000
+.GETREG  ANOP                                                           12100000
+&C       SETC  '&MF(2)'(2,K'&MF(2)-2)   REMOVE PARENTHESES              12150000
+         LR    1,&C                     GET ADDR OF QSETPRT PARM LIST   12200000
+.GETWORK AIF   ('&WORKA' EQ '').WORKCLR GO IF WORKA IS OMITTED          12250000
+         AIF   ('&WORKA' EQ '(0)').CALL        (MUST BE WITH EP)        12300000
+         AIF   ('&WORKA'(1,1) EQ '(').WORKREG  GO IF IN REGISTER        12350000
+         LA    0,&WORKA                 SUPPLY QSETPRT WORK AREA        12400000
+         AGO   .CALL                                                    12450000
+.WORKREG LR    0,&WORKA(1)              SUPPLY QSETPRT WORK AREA        12500000
+         AGO   .CALL                                                    12550000
+.WORKCLR SR    0,0                      INDICATE TO USE GETVIS AREA     12600000
+.CALL    XR    14,14               SET LENGTH CODE TO 1        @D52VDAK 12612552
+         BALR  14,0           GET NEXT INSTRUCTION ADDRESS AND @D52VDAK 12625052
+*                             SET HIGH ORDER BIT IF AMODE 31   @D52VDAK 12637552
+         LTR   14,14          RUNNING IN 24 BIT MODE ?         @D52VDAK 12650052
+         BP    8(,14)         YES,OK                           @D52VDAK 12662552
+         SVC   130            EXECUTION MODE VIOLATION         @D52VDAK 12675052
+         BALR  14,15                    CALL QSETPRT ROUTINE            12687552
+         AIF   ('&EP' NE '').EXIT       GO IF CDLOAD NOT ISSUED         12700000
+&PREF.E  EQU   *                        END OF MACRO                    12750000
+.EXIT    ANOP                                                           12800000
+*                                                                       12850000
+         MEND                                                           12900000

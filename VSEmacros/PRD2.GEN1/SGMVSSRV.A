@@ -1,0 +1,951 @@
+         MACRO                                                          00001027
+         SGMVSSRV                                                       00002027
+******************************************************                  00003027
+*                                                    *                  00004027
+*   LICENSED MATERIALS - PROPERTY OF IBM             *                  00005027
+*   "RESTRICTED MATERIALS OF IBM"                    *                  00006027
+*   5686-CF7                                         *                  00007030
+*   (C) COPYRIGHT IBM CORP. 1996, 2004               *                  00008030
+*                                                    *                  00009027
+******************************************************                  00010027
+.*                                                                      00011027
+.*                                                                      00012027
+.* /* START OF SPECIFICATIONS **********************************        00013027
+.*                                                             *        00014027
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                *        00015027
+.*                                                             *        00016027
+.*01* DESCRIPTIVE NAME = MVS EXIT PROCESSING                   *        00017027
+.*                                                             *        00018027
+.*01* CHANGE ACTIVITY  = AS FOLLOWS                            *        00019027
+.*     MORE THAN 255 TASKS                                     @D66ODOW 00020027
+.*     MAINTAIN JOB CONTROL RETURN CODE WITH ABEND MACRO       @DY45845 00020127
+.*     MAINTAIN CC AND PROGRAM MASK WITH ATTACHX LIKE MVS      @DY46069 00020229
+.*                                                             *        00020329
+.**** END OF SPECIFICATIIONS ***********************************        00020429
+         DS    0F                                                       00020530
+         DC    CL8'SGMVSSRV'                                            00020630
+         DC    CL10'10/21/2000'  LAST APAR FIXED / DEV CHANGE           00020729
+         SPACE 1                                               @D64ADMK 00020829
+         USING DISP,R6                                         @D64ADMK 00020929
+         USING TCBADR,RA                                       @D64ADMK 00021029
+         USING SGMVSAPI,R9                                     @D64ADMK 00021129
+***************************************************************@D64ADMK 00021229
+* CHAP FUNCTION                                                @D64ADMK 00022027
+* PRIORITY VALUE (-255 TIL 255) IN REG 0                       @D64ADMK 00023027
+* TCB ADDR IN REG 1                                            @D64ADMK 00024027
+***************************************************************@D64ADMK 00025027
+CHAPMVS  DS    0H                                              @D64ADMK 00026027
+         LTR   R1,R1              TCB ADDR SET?                @D64ADMK 00027027
+         BNZ   CHAPMVS1           NO                           @D64ADMK 00028027
+         L     R1,TIBPTR          GET CURRENT TIB              @D64ADMK 00029027
+         B     CHAPMVS2           DISPMAC FUNCTION             @D64ADMK 00030027
+CHAPMVS1 DS    0H                                              @D64ADMK 00031027
+         L     R1,0(,R1)          GET TCB ADDR                 @D64ADMK 00032027
+         L     R1,TCBVSETC-TCBRBP(,R1) VSE TCB                 @D64ADMK 00033027
+         L     R1,TCBTIB-TCBADR(,R1)  TASK'S TIB               @D64ADMK 00034027
+CHAPMVS2 DS    0H                                              @D64ADMK 00035027
+         L     R3,TIBTCB-TIBADR(,R1) TASK'S TCB                @D64ADMK 00036027
+         L     R3,TCBATCBE-TCBADR(,R3) TASK'S TCB EXTENSION    @D64ADMK 00037027
+         L     R3,TCBXMVST-TCBXADR(,R3) TASK'S MVSTCB          @D64ADMK 00038027
+         SLR   R4,R4              CLEAR                        @D64ADMK 00039027
+         ICM   R4,1,TCBDSP-TCBRBP(R3) GET CUR. DISPATCHING PR. @D64ADMK 00040027
+         LTR   R0,R0              POSITIVE NUMBER?             @D64ADMK 00041027
+         BL    CHAPMVS6           NO, NEGATIVE                 @D64ADMK 00042027
+         AR    R4,R0              ADD DPMOD                    @D64ADMK 00043027
+         CLM   R4,2,ZERO          OVERFLOW?                    @D64ADMK 00044027
+         BNZ   CHAPMVS3           YES                          @D64ADMK 00045027
+         CLM   R4,1,TCBLMP-TCBRBP(R3) HIGHER THAN LIMIT?       @D64ADMK 00046027
+         BH    CHAPMVS4           YES                          @D64ADMK 00047027
+         STCM  R4,1,TCBDSP-TCBRBP(R3) NEW DISPATCHING PIORITY  @D64ADMK 00048027
+         B     CHAPMVS8           CONTINUE                     @D64ADMK 00049027
+CHAPMVS3 DS    0H                                              @D64ADMK 00050027
+         LA    R4,XFF             SET MAX VALUE                @D64ADMK 00051027
+CHAPMVS4 DS    0H                                              @D64ADMK 00052027
+         CL    R1,TIBPTR          CHAP FOR CURRENT TASK?       @D64ADMK 00053027
+         BNE   CHAPMVS5           NO                           @D64ADMK 00054027
+         MVC   TCBDSP-TCBRBP(,R3),TCBLMP-TCBRBP(R3) MAXIMUM    @D64ADMK 00055027
+         B     CHAPMVS8           CONTINUE                     @D64ADMK 00056027
+CHAPMVS5 DS    0H                                              @D64ADMK 00057027
+         STCM  R4,1,TCBDSP-TCBRBP(R3) NEW DISPATCHING PIORITY  @D64ADMK 00058027
+         STCM  R4,1,TCBLMP-TCBRBP(R3) NEW DISPATCHING LIMIT    @D64ADMK 00059027
+         B     CHAPMVS8           CONTINUE                     @D64ADMK 00060027
+CHAPMVS6 DS    0H                                              @D64ADMK 00061027
+         LPR   R0,R0              VALUE                        @D64ADMK 00062027
+         CR    R4,R0              WOULD RESULT BE NEGATIVE?    @D64ADMK 00063027
+         BL    CHAPMVS7           YES                          @D64ADMK 00064027
+         SR    R4,R0              SUBTRACT DPMOD               @D64ADMK 00065027
+         STCM  R4,1,TCBDSP-TCBRBP(R3) NEW DISPATCHING PIORITY  @D64ADMK 00066027
+         B     CHAPMVS8           YES                          @D64ADMK 00067027
+CHAPMVS7 DS    0H                                              @D64ADMK 00068027
+         XC    TCBDSP-TCBRBP(R3),TCBDSP-TCBRBP(R3)   SET TO 0  @D64ADMK 00069027
+CHAPMVS8 DS    0H                                              @D64ADMK 00070027
+         DISPMAC FUNC=CHAPMVS,INP2=(R1),INP1=(R0)              @D64ADMK 00071027
+         SLR   R15,R15            SET RC                       @D64ADMK 00072027
+         B     SGMAPIEX           GOTO EXIT                    @D64ADMK 00073027
+         DROP  RA                                              @D67FDOW 00074027
+****************************************************************        00075027
+* ATTACHX PROCESSING                                           *        00076027
+* INPUT:  R5    SUBTASK'S TCB PTR                              *        00077027
+*         R7    SUBTASK'S SAVE AREA PTR                        *        00078027
+*         R9    ROUTINE BASE                                   *        00079027
+*         R10   CURRENT TASK'S TCB PTR                         *        00080027
+*         R11   CURRENT TASK'S SAVE AREA PTR                   *        00081027
+* RETURN: R4    RETURN ADDRESS                                 *        00082027
+* WORK :  R2 R3 R15                                            *        00083027
+****************************************************************        00084027
+         USING SVEARA,RB                                       @D64ADMK 00085027
+         USING TCBADR,RA                                       @D67FDOW 00086027
+SVC38S00 DS    0H                                              @D64ADMK 00087027
+         XC    SVER0F,SVER0F      SET RETURN CODE              @D64ADMK 00088027
+         L     R2,SVER01          ATTACHX INPUT PARMLIST       @D64ADMK 00089027
+         USING FMPL_ATTACH,R2     GET ADDRESSABILITY FOR PARMS @D64ADMK 00090027
+         MVC   SVER01-SVEARA(,R7),FMATT_PLIST_ADDR    PREP R1  @D64ADMK 00091027
+         L     R15,TCBATCBE-TCBADR(,R5) TCB EXTENSION ATT TASK @D64ADMK 00092027
+         OI    TCBXFLG2-TCBXADR(R15),TCBXATTX  INDICATE ATTACHX@D64ADMK 00093027
+         L     R3,TCBXFMBD-TCBXADR(R15)  GET ATTACHED TASK FMBD@D64ADMK 00094027
+         LA    R3,FM_SUB-FM_FMCA(,R3) USER SAVE AREA           @D64ADMK 00095027
+         ST    R3,SVER0D-SVEARA(R7) PREP R13                   @D64ADMK 00096027
+         L     R15,TCBXMVST-TCBXADR(,R15) ATTACHED TASKS MVSTCB@D64ADMK 00097027
+         TM    FMATT_FLAGS2,FMATT_KEY KEY 0 REQUIRED?          @D64ADMK 00098027
+         BZ    SVC38S10           YES                          @D64ADMK 00099027
+         NI    TCBPKF-TCBRBP(R15),X0F SET KEY 0                @D64ADMK 00100027
+SVC38S10 MVC   SVEPSWKY-SVEARA(,R7),TCBPKF-TCBRBP(R15) PART KEY@D64ADMK 00101027
+         OI    SVEPSWKY-SVEARA(R7),1   SWITCH ON PROBLEM STATE @D64ADMK 00102027
+         TM    FMATT_FLAGS2,FMATT_SM SM=SUPV?                  @D64ADMK 00103027
+         BZ    SVC38S11           NO                           @D64ADMK 00104027
+         NI    SVEPSWKY-SVEARA(R7),XFE SWITCH ON SUPVR STATE   @D64ADMK 00105027
+SVC38S11 DS    0H                                              @D64ADMK 00106028
+         NI    SVEPSWMK-SVEARA(R7),X'C0' ZERO CC AND PGM MASK  @DY46069 00106129
+         ST    R15,SVER01         ATTACHED TASKS TCB           @D64ADMK 00106228
+         L     R3,TCBATCBE        ATTACHING TASK'S TCB EXT.    @D64ADMK 00107027
+         L     R3,TCBXMVST-TCBXADR(,R3) ATTACHING TASK'S MVSTCB@D64ADMK 00108027
+         MVC   TCBLMP-TCBRBP(2,R15),TCBLMP-TCBRBP(R3) TCBLMP/TCBDSP DMK 00109027
+         LH    R3,FMATT_DPMOD     GET DPMOD INPUT PARM         @D64ADMK 00110027
+         LTR   R3,R3              SPECIFIED?                   @D64ADMK 00111027
+         BZ    ATETXR00           NO                           @D64ADMK 00112027
+         SLR   R0,R0              CLEAR                        @D64ADMK 00113027
+         ICM   R0,1,TCBDSP-TCBRBP(R15) GET DEF. DISPATCHING PR.@D64ADMK 00114027
+         CLI   FMATT_DPMOD,0      POSITIVE NUMBER?             @D64ADMK 00115027
+         BNE   SVC38S15           NO, NEGATIVE                 @D64ADMK 00116027
+         AR    R0,R3              ADD DPMOD                    @D64ADMK 00117027
+         CLM   R0,2,ZERO          OVERFLOW?                    @D64ADMK 00118027
+         BNZ   SVC38S12           YES                          @D64ADMK 00119027
+         CLM   R0,1,TCBLMP-TCBRBP(R15) HIGHER THAN LIMIT?      @D64ADMK 00120027
+         BH    SVC38S12           YES                          @D64ADMK 00121027
+         STCM  R0,1,TCBDSP-TCBRBP(R15) NEW DISPATCHING PIORITY @D64ADMK 00122027
+         B     ATETXR00           CONTINUE                     @D64ADMK 00123027
+SVC38S12 DS    0H                                              @D64ADMK 00124027
+         MVC   TCBDSP-TCBRBP(,R15),TCBLMP-TCBRBP(R15) MAXIMUM  @D64ADMK 00125027
+         B     ATETXR00           CONTINUE                     @D64ADMK 00126027
+SVC38S15 DS    0H                                              @D64ADMK 00127027
+         LPR   R3,R3              CLEAR                        @D64ADMK 00128027
+         CR    R0,R3              WOULD RESULT BE NEGATIVE?    @D64ADMK 00129027
+         BL    SVC38S16           YES                          @D64ADMK 00130027
+         SR    R0,R3              SUBTRACT DPMOD               @D64ADMK 00131027
+         STCM  R0,1,TCBDSP-TCBRBP(R15) NEW DISPATCHING PIORITY @D64ADMK 00132027
+         B     ATETXR00           YES                          @D64ADMK 00133027
+SVC38S16 DS    0H                                              @D64ADMK 00134027
+         XC    TCBDSP-TCBRBP(R15),TCBDSP-TCBRBP(R15) SET TO 0  @D64ADMK 00135027
+ATETXR00 DS    0H                 ATTACHX EXTR PROCESSING      @D64ADMK 00136027
+         L     R3,FMATT_ETXR_ADDR ETXR ADDRESS                 @D64ADMK 00137027
+         DROP  R2                                              @D64ADMK 00138027
+         LTR   R3,R3              NEED TO DRIVE ETXR?          @D64ADMK 00139027
+         BZ    SVC38S19           NO                           @D64ADMK 00140027
+***************************************************************         00141027
+* GET 2 EXIT SAVE AREA BUFFERS FOR SWITCHING ENVIRONMENT                00142027
+***************************************************************         00143027
+         LA    R0,ATETXRLN        LENGHT OF BUFFER             @D64ADMK 00144027
+         SGETVIS LENGTH=(R0)      GET BUFFER                   @D64ADMK 00145027
+         LTR   R15,R15            STORAGE AVAILABLE            @D64ADMK 00146027
+         BNZ   ATETXR04           SPACE EXHAUSTED              @D64ADMS 00147027
+         L     R15,TCBATCBE-TCBADR(,R5)  GET EXTENSION         @D64ADMK 00148027
+         ST    R1,TCBXEXTR-TCBXADR(,R15) SAVE PTR IN SUBT. TCB @D64ADMK 00149027
+***************************************************************         00150027
+* PREPARE FIRST AREA FOR EXIT CALL OF ATTACHING TASK                    00151027
+* PSW = EXTR ADDRESS + CURRENT PSW CONTROL + CURRENT AMODE              00152027
+* R1  = SUBTASKS MVS TCB ADDRESS                                        00153027
+* R13 = PART GETVIS 72 BYTE SAVE AREA                                   00154027
+* R14 = RETURN ADDRESS                                                  00155027
+* R15 = EXTR ADDRESS                                                    00156027
+* AREGS = CURRENT AREGS                                                 00157027
+***************************************************************         00158027
+         MVC   SVUPSW-SVUARA(,R1),SVEPSW MOVE CURRENT PSW PART1@D64ADMK 00159027
+         ST    R3,SVUR0F-SVUARA(,R1) EXTR ADDRESS              @D64ADMK 00160027
+         TM    SVEPSW2,SVEPAM31   WAS USER IN AMODE 31?        @D64ADMK 00161027
+         BNO   ATETXR01           NO                           @D64ADMK 00162027
+         OI    SVUR0F-SVUARA(R1),SVEPAM31 SET AMODE 31         @D64ADMK 00163027
+ATETXR01 MVC   SVUPSW2-SVUARA(,R1),SVUR0F-SVUARA(R1)           @D64ADMK 00164027
+         L     R15,TCBATCBE-TCBADR(,R5) TCB EXTENSION ATT. TASK@D64ADMK 00165027
+         MVC   SVUR01-SVUARA(,R1),TCBXMVST-TCBXADR(R15) MVSTCB @D64ADMK 00166027
+         LA    R15,ATETXR40       GET RETURN ADDRESS AFTER EXIT@D64ADMK 00167027
+         ST    R15,SVUR0E-SVUARA(,R1) RETURN ADDRESS           @D64ADMK 00168027
+         L     R3,TCBARSAV                                     @D64ADMK 00169027
+         MVC   SVUAREG-SVUARA(,R1),0(R3) SAVE AREGS            @D64ADMK 00170027
+ATETXR04 DS    0H                                              @D64ADMS 00180027
+         LA    R0,ATETXRSV       LENGTH OF USER SAVE AREA      @D64ADOW 00181027
+         SLR   RF,RF             PREPARE FOR GETVIS OPTIONS    @D64ADMK 00182027
+         OI    TCBIEXFL,TCBIEXRM+TCBIEXAM INDICATE .....       @D67FDOW 00183027
+***........................ AMODE=31/RMODE=ANY (FLAG RESET BY GETVIS)   00184027
+         MVC   SVCSV3(64),SVER09 ... CURRENT TASK              @D67FDOW 00185027
+         STM   R9,R8,SVER09      SAVE REGISTERS                @D67FDOW 00186027
+         OI    SVER0F+2,GVLOCANY GETVIS LOC=ANY IN RF          @D67FDOW 00187027
+         L     R3,AMBASE         GET ROUTINE ADDRESS           @D64ADMK 00188027
+         O     R3,BIT0OMSK       GET ROUTINE ADDRESS           @D64ADMK 00189027
+         BASSM R6,R3             CALL GETVIS MAIN ROUTINE      @D64ADMK 00190027
+*SGLINK GETVIS,                                                         00200027
+         LR    R8,RD             COPY SAVE AREA ADDR           @D67FDOW 00201027
+         LM    R9,R8,SVER09-SVEARA(R8) RESTORE REGISTERS       @D67FDOW 00202027
+         MVC   SVER09(64),SVCSV3 RESTORE 1ST SAVE AREA         @D67FDOW 00203027
+         L     R15,TCBATCBE-TCBADR(,R5)  GET EXTENSION         @D64ADMK 00204027
+         L     R15,TCBXEXTR-TCBXADR(,R15) GET BUFFER ADDR      @D64ADMK 00205027
+         ST    R1,SVUR0D-SVUARA(,R15) EXIT'S SAVE AREA         @D64ADMK 00206027
+SVC38S19 DS    0H                                              @D64ADMK 00207027
+         L     R0,SVEPSW2-SVEARA(,R7) GET R0 FOR MAIN LINE     @D64ADMK 00208027
+         BR    R4                 CONTINUE THERE               @D64ADMK 00209027
+         DROP  R9                                              @D64ADMK 00210027
+************************************************************** @D64ADMK 00211027
+* SAVE CURRENT STATUS OF ATTACHING TASK                        @D64ADMK 00212027
+* SAVE AREA + AREGS INTO 2ND BUFFER                            @D64ADMK 00213027
+* SETUP PREPARED STATUS FOR EXIT CALL IN ATTACHING TASK        @D64ADMK 00214027
+* SAVE AREA + AREGS FROM 1ST BUFFER                            @D64ADMK 00215027
+************************************************************** @D64ADMK 00216027
+ATETXR20 DS    0H                 START EXIT HERE              @D64ADMK 00217027
+         LR    R9,R14             NEW INTERFACE                @D64ADMK 00218027
+         USING ATETXR20,R9                                     @D64ADMK 00219027
+         L     R2,TCBPTR          CURRENT TCB                  @D64ADMK 00220027
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00221027
+         LR    R3,R1              SUBTASK'S TIB                @D64ADMK 00222027
+         L     R8,TIBTCB-TIBADR(,R1) SUBTASK'S TCB             @D64ADMK 00223027
+         L     R8,TCBATCBE-TCBADR(,R8)  GET EXTENSION          @D64ADMK 00224027
+         L     R15,TCBXEXTR-TCBXADR(,R8) DOUBLE SAVE AREA      @D64ADMK 00225027
+         L     R8,TCBATCBE-TCBADR(,R2)  GET EXT. OF CURRENT TCB@D64ADMK 00226027
+         ST    R15,TCBXEXTX-TCBXADR(,R8) FOR LATER CLEANUP     @D64ADMK 00227027
+         LA    R14,SVULNGTH(,R15) 2ND SAVE AREA                @D64ADMK 00228027
+         L     R8,TCBARSAV-TCBADR(,R2)                         @D64ADMK 00229027
+         CLC   0(1,R15),SVULNGTH(R14) FORCE PROG CHECK         @D64ADMK 00230027
+         L     R7,CRADDR          GET COMMUNICATION REGION ADDR@D64ADMK 00231027
+         TM    JCSW8-COMREG(R7),IJBSKPAB IS SKIPAB ON          @D64ADMS 00232027
+         BO    ATETXR29           YES DO NOT DRIVE ETXR        @D64ADMK 00233027
+         MVC   SVUAREG-SVUARA(,R14),0(R8) SAVE AREGS           @D64ADMK 00234027
+         MVC   0(64,R8),SVUAREG-SVUARA(R15) NEW AREGS          @D64ADMK 00235027
+         LAM   R0,R15,0(R8)       SETUP AREGS                  @D64ADMK 00236027
+         L     R8,TCBSAVE-TCBADR(,R2) ATTACHING TASKS SAVEAREA @D64ADMK 00237027
+************************************************************** @D64ADMK 00238027
+* SAVE CURRENT STATUS OF ATTACHING TASK                        @D64ADMK 00239027
+************************************************************** @D64ADMK 00240027
+         MVC   SVUPSW-SVUARA(8,R14),SVEPSW-SVEARA(R8)  PSW     @D64ADMK 00241027
+         MVC   SVUR00-SVUARA(36,R14),SVER00-SVEARA(R8) REG PART@D64ADMK 00242027
+         MVC   SVUR09-SVUARA(28,R14),SVER09-SVEARA(R8) REG PART@D64ADMK 00243027
+************************************************************** @D64ADMK 00244027
+* SETUP ETXR ENVIRONMENT                                       @D64ADMK 00245027
+************************************************************** @D64ADMK 00246027
+         MVC   SVEPSW-SVEARA(8,R8),SVUPSW-SVUARA(R15) NEW PSW  @D64ADMK 00247027
+         OI    SVEPSWST-SVEARA(R8),ENABLE             NEW PSW  @D64ADMK 00248027
+         TM    SVUPSW-SVUARA(R14),PERMASK      WAS PERBIT SET  @D64ADMK 00249027
+         BZ    ATETXR28                               NO       @D64ADMK 00250027
+         OI    SVEPSWST-SVEARA(R8),PERMASK            NEW PSW  @D64ADMK 00251027
+ATETXR28 DS    0H                                     NEW PSW  @D64ADMK 00252027
+         NI    SVEPSWKY-SVEARA(R8),XFF-KEY0           NEW PSW  @D64ADMK 00253027
+         MVC   SVER00-SVEARA(36,R8),SVUR00-SVUARA(R15) NEW REGS@D64ADMK 00254027
+         MVC   SVER09-SVEARA(28,R8),SVUR09-SVUARA(R15) NEW REGS@D64ADMK 00255027
+         L     R6,DISPAD                                       @D64ADMK 00256027
+         STM   R0,R15,SVUR00-SVUARA(R15) SAVE FOR LATER USE    @D64ADMK 00257027
+************************************************************** @D64ADMK 00258027
+* WRITE DEBUG ENTRY BEFORE ENTERING ETXR                       @D64ADMK 00259027
+************************************************************** @D64ADMK 00260027
+         MVC   EXTNAME,ETXRINFS                                @D64ADMK 00261027
+         MVC   EXTPTASK,TIBRTID-TIBADR(R3)                     @D66ODOW 00262027
+         MVC   EXTPSTAT,TIBRQID-TIBADR(R3)                     @D64ADMK 00263027
+         MVC   EXTPFLAG,TIBFLAG-TIBADR(R3)                     @D64ADMK 00264027
+         MVC   EXTPCNCL,TIBCNCL-TIBADR(R3)                     @D64ADMK 00265027
+         ST    R15,EXTDSAVE                                    @D64ADMK 00266027
+         ST    R8,EXTUSAVE                                     @D64ADMK 00267027
+         MVC   EXTPSW,SVEPSW-SVEARA(R8)                        @D64ADMK 00268027
+         MVC   EXTREG1,SVER01-SVEARA(R8)                       @D64ADMK 00269027
+         MVC   EXTREGD0,SVER0D-SVEARA(R8)                      @D64ADMK 00270027
+         MVC   EXTREG14,SVER0E-SVEARA(R8)                      @D64ADMK 00271027
+         MVC   EXTREG15,SVER0F-SVEARA(R8)                      @D64ADMK 00272027
+         XC    EXTCOMPL,EXTCOMPL                               @D64ADMK 00273027
+         DEBUG USERDATA,XXDBGMC,EXTINFO,EXTINF1,EXTINF2        @D64ADMK 00274027
+ATETXR29 DS    0H                                              @D64ADMK 00275027
+         L     R6,DISPAD          ENSURE R6 IF CANCEL FORCE    @D64ADMK 00276027
+         B     DISP                                            @D64ADMK 00277027
+************************************************************** @D64ADMK 00278027
+* RETURN HERE FROM EXIT                                        @D64ADMK 00279027
+* AND SWITCH TO OLD ENVIRONMENT                                @D64ADMK 00280027
+************************************************************** @D64ADMK 00281027
+ATETXR40 DS    0H                 RETURN FROM EXIT HERE        @D64ADMK 00282027
+         LA    RF,1               SUPPLY CORRECT FCT CODE      @D64ADMK 00283027
+         SVC   79                 RETURN FROM ESTAEX TYPE EXIT @D64ADMK 00284027
+ATETXR41 DS    0H                 MUST STAY HERE               @D64ADMK 00285027
+         USING ATETXR41,R9        FOR THIS PART                @D64ADMK 00286027
+         L     RA,TCBPTR                                       @D64ADMK 00287027
+*        STNSM SVCWORKA,DISABLE   SAVE SYSTEM MASK AND DISABLE @D64ADMK 00288027
+         L     R15,TCBATCBE       GET EXTENSION                @D64ADMK 00289027
+         L     R15,TCBXEXTX-TCBXADR(,R15) PTR FOR CLEANUP      @D64ADMK 00290027
+         LM    R0,R15,SVUR00-SVUARA(R15) GET LAST REGS BACK    @D64ADMK 00291027
+         DROP  R9                                              @D64ADMK 00292027
+         USING ATETXR20,R9                                     @D64ADMK 00293027
+         LA    R14,SVULNGTH(,R15) 2ND SAVE AREA                @D64ADMK 00294027
+         L     R8,TIBPTR                                       @D64ADMK 00295027
+         L     R2,TCBSAVE        USER'S SAVE AREA              @D64ADMK 00296027
+************************************************************** @D64ADMK 00297027
+* WRITE DEBUG ENTRY AFTER LEAVING ETXR                         @D64ADMK 00298027
+************************************************************** @D64ADMK 00299027
+         MVC   EXTNAME,ETXRINFE                                @D64ADMK 00300027
+         MVC   EXTPTASK,TIBRTID-TIBADR(R3)                     @D66ODOW 00301027
+         MVC   EXTPSTAT,TIBRQID-TIBADR(R3)                     @D64ADMK 00302027
+         MVC   EXTPFLAG,TIBFLAG-TIBADR(R3)                     @D64ADMK 00303027
+         MVC   EXTPCNCL,TIBCNCL-TIBADR(R3)                     @D64ADMK 00304027
+         ST    R15,EXTDSAVE                                    @D64ADMK 00305027
+         ST    R2,EXTUSAVE                                     @D64ADMK 00306027
+         DEBUG USERDATA,XXDBGMC,EXTINFO                        @D64ADMK 00307027
+************************************************************** @D64ADMK 00308027
+* RELOAD ORIGINAL STATUS FROM 2ND BUFFER                       @D64ADMK 00309027
+************************************************************** @D64ADMK 00310027
+         MVC   SVEPSW-SVEARA(8,R2),SVUPSW-SVUARA(R14) OLD PSW  @D64ADMK 00311027
+         MVC   SVER00-SVEARA(36,R2),SVUR00-SVUARA(R14) OLD REGS@D64ADMK 00312027
+         MVC   SVER09-SVEARA(28,R2),SVUR09-SVUARA(R14) OLD REGS@D64ADMK 00313027
+         L     R2,TCBARSAV                                     @D64ADMK 00314027
+         MVC   0(64,R2),SVUAREG-SVUARA(R14) ORIGINAL AREGS     @D64ADMK 00315027
+         LR    R7,R15            PTR FOR CLEANUP               @D64ADMK 00316027
+         NI    TCBEXITF,XFF-TCBEXACT ETXR INACTIVE             @D64ADMK 00317027
+         LR    R1,R8              CURRENT TIB                  @D64ADMK 00318027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00319027
+         LA    R5,SRQMEXI-SRQTAB(,R5) ETXR/POSTEXIT DELAY QUEUE@D64ADMK 00320027
+         BAL   RF,RPOST           WAKEUP WAITING TASKS         @D64ADMK 00321027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00322027
+         LA    R15,1             FUNCTION CODE                 @D64ADMK 00323027
+         L     R12,ASGEXIT       BASE                          @D64ADMK 00324027
+         L     R12,ACHKDLAY-SGEXIT(,R12) DELINT                @D64ADMK 00325027
+         BASSM R14,R12           EXECUTE                       @D64ADMK 00326027
+*SGLINK  CHKDLAY INPUT=(R8,RC,RE,RF) WORK=(R4)                 @D64ADMK 00327027
+         LA    R0,ATETXRSV       LENGTH OF USER SAVE AREA      @D64ADOW 00328027
+*        AMODESW SET,AMODE=31    SET AMODE=31                           00329027
+         AMODESW SET,AMODE=31                                  @D64ADMK 00330027
+         SLR   RF,RF             PREPARE OPTION BYTES          @D64ADMK 00340027
+         OI    TCBIEXFL,TCBIEXRM+TCBIEXAM INDICATE ....        @D67FDOW 00341027
+***.......................AMODE=31/RMODE=ANY (FLAG CLEARED BY FREEVIS)  00342027
+         L     R4,TCBSAVE        FREEUP 1ST...                 @D67FDOW 00343027
+         MVC   SVCSV3(64),16(R4) ...SAVE AREA                  @D67FDOW 00344027
+         STM   R9,R8,16(R4)      SAVE REGISTER                 @D67FDOW 00345027
+         SLR   RC,RC             INTERFACE RC=0                @D64ADMK 00346027
+         L     R3,AMBASE         GET ROUTINE ADDRESS           @D64ADMK 00347027
+         USING GETVIS,R3         ADDRESSABILITY                @D64ADMK 00348027
+         LA    R3,FREEVIS        GET ROUTINE ADDRESS           @D67FDOW 00349027
+         DROP  R3                ADDRESSABILITY                @D64ADMK 00350027
+         O     R3,BIT0OMSK       GET ROUTINE ADDRESS           @D64ADMK 00360027
+         BASSM R6,R3             CALL GETVIS MAIN ROUTINE      @D64ADMK 00361027
+         LR    R8,RD             COPY SAVE AREA ADDR           @D67FDOW 00362027
+         LM    R9,R8,16(R8)      RESTORE ALL REGISTERS         @D67FDOW 00363027
+         L     R4,TCBSAVE        RESTORE 1ST ...               @D67FDOW 00364027
+         MVC   16(64,R4),SVCSV3  ...SAVE AREA                  @D67FDOW 00365027
+         SPACE 2                                                        00365127
+         LR    R1,R7             PTR FOR CLEANUP               @D64ADMK 00365227
+         LA    R0,ATETXRLN        LENGHT OF BUFFER             @D64ADMK 00365327
+         SFREEVIS LENGTH=(R0)     GET BUFFER                   @D64ADMK 00365427
+         LR    R1,R3              SUBTASK'S TIB                @D64ADMK 00365527
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00365627
+         LA    R5,SRQMDET-SRQTAB(,R5) DETACH DELAY QUEUE       @D64ADMK 00365727
+         BAL   RF,RPOST           WAKEUP DELAYED DETACH        @D64ADMK 00365827
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00365927
+         B     DISP               RETURN                       @D64ADMK 00366027
+ATETXRLN EQU   2*SVULNGTH         2 SAVE AREAS                 @D64ADMK 00367027
+ATETXRSV EQU   72                 1 USER SAVE AREA             @D64ADMK 00368027
+         DROP  RB                                              @D64ADMK 00369027
+         DROP  R9                                              @D64ADMK 00370027
+         DROP  RA                                              @D67FDOW 00371027
+****************************************************************        00372027
+* DETACH PROCESSING                                            *        00373027
+* INPUT:  R1    CANCEL CODE                                    *        00374027
+*         R6    DISP                                           *        00375027
+*         R8    SUBTASK'S TIB PTR                              *        00376027
+*         R10   SUBTASK'S TCB PTR                              *        00377027
+* WORK :  R2    MVS TCB PTRS (WORK)                            *        00378027
+*         R3    CURRENT MVS TCB PTR                            *        00379027
+*         R4    ATTACHED,PREVIOUS,ATTACHING TCB (WORK)         *        00380027
+*         R8    ALL TIB PTRS                                   *        00381027
+*         R15   LINK                                           *        00382027
+* RETURN: CONTTERM                                             *        00383027
+****************************************************************        00384027
+         USING SGMVSAPI,R9                                     @D64ADMK 00385027
+         USING TCBADR,RA                                       @D67FDOW 00386027
+DETMVS   DS    0H                                              @D64ADMK 00387027
+         USING SGAP,R13                                        @D64ADMK 00388027
+         L     R2,PCBPTR                                       @D64ADMK 00389027
+         USING PCBADR,R2                                       @D64ADMK 00390027
+         TM    PCBFLAG,PCBMVSEM      EXEC ...,MVS ?            @D64ADMK 00391027
+         DROP  R2                                              @D64ADMK 00392027
+         BZ    CONTTERM              CONTINUE WITH VSE CANCEL  @D64ADMK 00393027
+         DS    0H                                              @D64ADMK 00394027
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00395027
+         MVI   RID+D1,REENTRID    SET RID TO ENABLE RWAIT      @D64ADMK 00396027
+****************************************************************        00397027
+* IN CASE WE ABNORMALLY ENDED IN ETXR OR POSTEXIT                       00398027
+* WE HAVE TO CLEAR THE INDICATORS AND POST WAITING TASKS                00399027
+****************************************************************        00400027
+         NI    TCBEXITF,XFF-TCBEXACT-TCBPOACT DEL POSTEX/ETXR  @D64ADMK 00401027
+         L     R1,TIBPTR          CURRENT TASK'S TIB           @D64ADMK 00402027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00403027
+         LA    R5,SRQMEXI-SRQTAB(,R5) ETXR/POSTEXIT DELAY QUEUE@D64ADMK 00404027
+         BAL   RF,RPOST           WAKEUP WAITING TASKS         @D64ADMK 00405027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00406027
+         L     R1,TCBATCBE           TCB EXTENSION CURR. TASK  @D64ADMK 00407027
+         L     R3,TCBATCBE           TCB EXTENSION CURR. TASK  @D64ADMK 00408027
+         L     R3,TCBXMVST-TCBXADR(,R3) TASK'S MVS TCB         @D64ADMK 00409027
+         L     R2,TCBLTC-TCBRBP(,R3) GET LAST ATTACHED TASK    @D64ADMK 00410027
+         LTR   R2,R2                 NO MORE SUBTASKS?         @D64ADMK 00411027
+         BZ    DETMVSEX              EVERYTHING DETACHED       @D64ADMK 00412027
+DETMVS03 LR    R4,R2                 SAVE PTR                  @D64ADMK 00413027
+DETMVS04 L     R8,TCBVSETC-TCBRBP(,R4) TASK'S VSE TCB          @D64ADMK 00414027
+         L     R8,TCBTIB-TCBADR(,R8) TASK'S VSE TIB            @D64ADMK 00415027
+         USING TIBADR,R8                                       @D64ADMK 00416027
+         CLI   TIBCNCL,XFF        EXIT ACTIVE?                 @D64ADMK 00417027
+         BNE   DETMVS05           NO                           @D64ADMK 00418027
+         MVI   TIBCNCL,0          RESET EXIT ACTIVE INDICATOR  @D64ADMK 00419027
+DETMVS05 DS    0H                                              @D64ADMK 00420027
+         CLI   TIBRQID,MDETBND    POST NEEDED                  @D64ADMK 00421027
+         BNE   DETMVS06           NO                           @D64ADMK 00422027
+         LR    R1,R8              SUBTASK'S TIB                @D64ADMK 00423027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00424027
+         LA    R5,SRQMDET-SRQTAB(,R5) DETACH DELAY QUEUE       @D64ADMK 00425027
+         BAL   RF,RPOST           WAKEUP DELAYED DETACH        @D64ADMK 00426027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00427027
+         B     DETMVS09           WAKEUP DELAYED DETACH        @D64ADMK 00428027
+DETMVS06 DS    0H                                              @D64ADMK 00429027
+         LA    R1,CANCX1D         CODE FOR MAINTASK TERMINATION D64ADMK 00430027
+*        OI    TIBFLAG,FETCHEOJ      SCHEDULE FETCHEOJ         @D64ADMK 00431027
+DETMVS08 LR    R11,R9                                          @D64ADMK 00432027
+         SLR   R5,R5                                           @D64ADMK 00433027
+         BCTR  R5,0                                            @D64ADMK 00434027
+         L     R9,PCBPTR                                       @D64ADMK 00435027
+         BAL   R7,RDYCNCLY                                     @D64ADMK 00436027
+         LR    R9,R11                                          @D64ADMK 00437027
+DETMVS09 DS    0H                                              @D64ADMK 00438027
+         OI    TCBFLAG2,TCBWSTT      THIS TASK MUST WAIT       @D64ADMK 00439027
+         L     R2,TCBNTC-TCBRBP(,R4) GET PREVIOUS ATT. TASK    @D64ADMK 00440027
+         LTR   R2,R2                 MORE PREVIOUS TASKS?      @D64ADMK 00441027
+         BNZ   DETMVS03              YES                       @D64ADMK 00442027
+DETMVSEX DS    0H                                              @D64ADMK 00443027
+         L     R8,TIBPTR                                       @D64ADMK 00444027
+         CLC   TID(2),IJBHMTID    IS IT MAINTASK               @D64ADMK 00445027
+         BH    DETMVSEY           NO                           @D64ADMK 00446027
+         LA    R1,CANCX1D         CODE FOR MAINTASK TERMINATION D64ADMK 00447027
+         LR    R11,R9             SAVE BASE                    @D64ADMK 00448027
+         L     R9,PCBPTR          INPUT FOR VSECNCL            @D64ADMK 00449027
+         BAL   R7,VSECNCL         CANCEL ALL VSE SUBTASKS      @D64ADMK 00450027
+         LR    R9,R11             RESTORE BASE                 @D64ADMK 00451027
+         L     R8,TIBPTR          RELOAD TIB POINTER           @D64ADMS 00452027
+DETMVSEY DS    0H                                              @D64ADMK 00453027
+         AMODESW SET,AMODE=24,WR=(R14) AMODE 24                @D64ADMK 00454027
+         B     CONTTERM              DONE                      @D64ADMK 00455027
+***************************************************************         00456027
+* LAST SUBTASK MUST POST ATTACHING TASK OUT OF CNCLBOUND                00457027
+***************************************************************         00458027
+DETMVSXX DS    0H                                              @D64ADMK 00459027
+         L     R2,PCBPTR                                       @D64ADMK 00460027
+         USING PCBADR,R2                                       @D64ADMK 00461027
+         TM    PCBFLAG,PCBMVSEM      EXEC ...,MVS ?            @D64ADMK 00462027
+         DROP  R2                                              @D64ADMK 00463027
+         BZR   R4                    CONTINUE WITH VSE CANCEL  @D64ADMK 00464027
+***************************************************************         00465027
+* MVS ECB AND ETXR POSTING                                              00466027
+***************************************************************         00467027
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00468027
+         TM    TCBEXITG,TCBDTACH  IS MVS DETACH ALREADY ISSUED @D64ADMK 00469027
+         BO    DETMVS02           YES, DO NOT POST ATTACHING TSKD64ADMK 00470027
+         L     R1,TCBECB          ECB POINTER IN R1            @D64ADMK 00471027
+         LTR   R1,R1              IS THERE AN ECB?             @D64ADMK 00472027
+         BP    DETMVSX3           IF YES, THEN IT'S A VSE ECB  @D64ADMK 00473027
+         L     R3,TCBATCBE                                     @D64ADMK 00474027
+DETACHX  DS    0H                                              @D64ADMK 00475027
+         L     R1,TCBXEXTR-TCBXADR(,R3) ETXR PARM THERE?       @D64ADMK 00476027
+         LTR   R1,R1                                           @D64ADMK 00477027
+         BZ    DETACHX4           CHECK FOR ECB                @D64ADMK 00478027
+****************************************************************        00479027
+* ETXR SETUP                                                            00480027
+****************************************************************        00481027
+         L     R3,TCBATCBE           TCB EXTENSION CURR. TASK  @D64ADMK 00482027
+         L     R3,TCBXMVST-TCBXADR(,R3) TASK'S MVS TCB         @D64ADMK 00483027
+         L     R3,TCBOTC-TCBRBP(,R3) GET ATTACHING TASK'S TCB  @D64ADMK 00484027
+         L     RE,TCBVSETC-TCBRBP(,R3) TASK'S VSE TCB          @D64ADMK 00485027
+         L     R3,TCBTIB-TCBADR(,RE) TASK'S VSE TIB            @D64ADMK 00486027
+DETACHX1 DS    0H                                              @D64ADMK 00487027
+         CLI   TIBRQID-TIBADR(R3),CNCLBND    WAITING FOR SUBS  @D64ADMK 00488027
+         BE    DETMVS02           YES, DO NOT WAIT FOR DETACH  @D64ADMK 00489027
+         TM    TCBEXITF-TCBADR(RE),TCBEXACT+TCBPOACT  ACTIVE   @D64ADMK 00490027
+         BZ    DETACHX2                                        @D64ADMK 00491027
+         LR    R1,R3              TASK'S VSE TIB               @D64ADMK 00492027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00493027
+         LA    R5,SRQMEXI-SRQTAB(,R5) ETXR/POSTEXIT QUEUE      @D64ADMK 00494027
+         BAL   R12,RWAIT          DELAY NOW                    @D64ADMK 00495027
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D64ADMK 00496027
+         B     DETACHX1           GO AND CHECK AGAIN           @D64ADMK 00497027
+DETACHX2 DS    0H                                              @D64ADMK 00498027
+         OI    TCBEXITF-TCBADR(RE),TCBEXACT MARK EXTR ACTIVE   @D64ADMK 00499027
+         SLR   R0,R0              REQUEST TYPE = 0             @D64ADMK 00500027
+         LA    R1,ATETXR20        DISP EXIT ADDRESS            @D64ADMK 00501027
+         L     R2,TIBPTR          USER PARM FOR EXIT           @D64ADMK 00502027
+         LR    R8,R3              TASK'S VSE TIB               @D64ADMK 00503027
+         DISPMAC FUNC=SCHEDULE,INP1=R0,INP2=R1,INP3=R8,INP4=R2 @D64ADMK 00504027
+         L     R8,TIBPTR          GET CURRENT TIB BACK         @D64ADMK 00505027
+         B     DETMVS00           WAIT FOR ETXR COMPLETION     @D64ADMK 00506027
+DETACHX4 DS    0H                                              @D64ADMK 00507027
+         L     R1,TCBECB          ECB POINTER IN R1            @D64ADMK 00508027
+         LTR   R1,R1              IS THERE A MVS ECB?          @D64ADMK 00509027
+         BZ    DETMVSX3           NO, NOTHING TO BE POSTED     @D64ADMK 00510027
+DETACHX6 DS    0H                                              @D64ADIS 00511027
+         L     RE,0(,R1)          GET MVS ECB CONTENTS         @D64ADIS 00512027
+         LR    R2,RE              SAVE IT                      @D64ADIS 00513027
+         N     RE,BIT0OFF         POST MVS ...                 @D64ADIS 00514027
+         O     RE,BIT1ON                   ...                 @D64ADIS 00515027
+         CS    R2,RE,0(R1)                 ... ECB             @D64ADIS 00516027
+         BNE   DETACHX6           ECB NOT POSTED ->> TRY AGAIN @D64ADMK 00517027
+         L     R5,ASRQTAB         GET ADDRESS OF SRQTAB        @D64ADMK 00518027
+         LA    R5,SRQWAIT-SRQTAB(,R5)  POINT TO I/O BOUND QUEUE@D64ADMK 00519027
+         BAL   RF,RPOST           POST TASKS WAITING FOR ECB   @D64ADMK 00520027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00521027
+DETMVS00 DS    0H                                              @D64ADMK 00522027
+         L     R3,TCBATCBE           TCB EXTENSION CURR. TASK  @D64ADMK 00523027
+         L     R3,TCBXMVST-TCBXADR(,R3) TASK'S MVS TCB         @D64ADMK 00524027
+         L     R3,TCBOTC-TCBRBP(,R3) GET ATTACHING TASK'S TCB  @D64ADMK 00525027
+         L     R3,TCBVSETC-TCBRBP(,R3) TASK'S VSE TCB          @D64ADMK 00526027
+         L     R3,TCBTIB-TCBADR(,R3) TASK'S VSE TIB            @D64ADMK 00527027
+         CLI   TIBRQID-TIBADR(R3),CNCLBND    WAITING FOR SUBS  @D64ADMK 00528027
+         BE    DETMVS02           YES, DO NOT WAIT FOR DETACH  @D64ADMK 00529027
+         CLI   TIBRQID-TIBADR(R3),WAITBND    NOT WAITING       @D64ADMK 00530027
+         BNE   DETMVS01           YES, DO NOT POST             @D64ADMK 00531027
+         LR    R8,R3              ATTACHING TASK'S TIB         @D64ADMK 00532027
+         BAL   RF,POST            MAKE TASK READY              @D64ADMK 00533027
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=(RE)                                00534027
+         L     R8,TIBPTR          RESTORE CURRENT TIB          @D64ADMK 00535027
+****************************************************************        00536027
+* EARSE ECB AND ETXR                                                    00537027
+****************************************************************        00538027
+DETMVS01 DS    0H                                              @D64ADMK 00539027
+*        L     R1,TCBATCBE        EXTENSION                    @D64ADMK 00540027
+*        XC    TCBECB,TCBECB      CLEAR ECB                    @D64ADMK 00541027
+         LR    R1,R8              SUBTASK'S TIB                @D64ADMK 00542027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00543027
+         LA    R5,SRQMDET-SRQTAB(,R5) DETACH DELAY QUEUE       @D64ADMK 00544027
+         BAL   R12,RWAIT          DELAY NOW                    @D64ADMK 00545027
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D64ADMK 00546027
+DETMVS02 DS    0H                                              @D64ADMK 00547027
+         L     R1,TCBATCBE        EXTENSION                    @D64ADMK 00548027
+         XC    TCBECB,TCBECB      CLEAR ECB                    @D64ADMK 00549027
+         XC    TCBXEXTR-TCBXADR(,R1),TCBXEXTR-TCBXADR(R1) CLEAR@D64ADMK 00550027
+         XC    TCBXEXTX-TCBXADR(,R1),TCBXEXTX-TCBXADR(R1) CLEAR@D64ADMK 00551027
+DETMVSX3 DS    0H                                              @D64ADMK 00552027
+         L     R3,TCBATCBE           TCB EXTENSION CURR. TASK  @D64ADMK 00553027
+         L     R3,TCBXMVST-TCBXADR(,R3) TASK'S MVS TCB         @D64ADMK 00554027
+         L     R2,TCBNTC-TCBRBP(,R3) GET PREVIOUS PTR          @D64ADMK 00555027
+         LTR   R2,R2                 NO MORE SUBTASKS?         @D64ADMK 00556027
+         BNZ   DETMVSX4              NO                        @D64ADMK 00557027
+         L     R2,TCBOTC-TCBRBP(,R3) GET ATTACHING PTR         @D64ADMK 00558027
+         LTR   R2,R2                 NO ATTACHING TASK?        @D64ADMK 00559027
+         BZ    DETMVSX4              NO                        @D64ADMK 00560027
+         L     R2,TCBLTC-TCBRBP(,R2) GET LAST ATTACHED OF ATTCH@D64ADMK 00561027
+         CR    R3,R2                 ONLY ONE ATTACHED TASK?   @D64ADMK 00562027
+         BNE   DETMVSX4              NO                        @D64ADMK 00563027
+         L     R2,TCBOTC-TCBRBP(,R3) GET ATTACHING PTR         @D64ADMK 00564027
+         L     R8,TCBVSETC-TCBRBP(,R2) TASK'S VSE TCB          @D64ADMK 00565027
+         L     R8,TCBTIB-TCBADR(,R8) TASK'S VSE TIB            @D64ADMK 00566027
+         CLI   TIBRQID,CNCLBND    WAITING FOR SUBS             @D64ADMK 00567027
+         BNE   DETMVSX4           NO,DO NOT POST ATTACHING TASK@D64ADMK 00568027
+         BAL   RF,POST            MAKE TASK READY              @D64ADMK 00569027
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=(RE)                                00570027
+DETMVSX4 DS    0H                                              @D64ADMK 00571027
+         L     R8,TIBPTR                                       @D64ADMK 00572027
+         AMODESW SET,AMODE=24,WR=(R14) AMODE 31                @D64ADMK 00573027
+         BR    R4                 END                          @D64ADMK 00574027
+         DROP  R8                                              @D64ADMK 00575027
+         DROP  R13                                             @D64ADMK 00576027
+****************************************************************        00577027
+* WAIT FOR SUBTASK COMPLETION                                           00578027
+****************************************************************        00579027
+CONTTMVS DS    0H                                              @D64ADMK 00580027
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00581027
+CONTMVS0 L     R5,ASRQTAB         GET ADDRESS OF SRQTAB        @D64ADMK 00582027
+         LA    R5,SRQCNCL-SRQTAB(,R5) INDICATE TASK CANCEL BND @D64ADMK 00583027
+         MVI   RID+D1,REENTRID    SET RID TO ENABLE RWAIT      @D64ADMK 00584027
+         BAL   RC,RWAIT           MAKE TASK UNDISPATCHABLE     @D64ADMK 00585027
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D64ADMK 00586027
+         L     R3,TCBATCBE           TCB EXTENSION CURR. TASK  @D64ADMK 00587027
+         L     R3,TCBXMVST-TCBXADR(,R3) TASK'S MVS TCB         @D64ADMK 00588027
+         L     R2,TCBLTC-TCBRBP(,R3) GET LAST ATTACHED TASK    @D64ADMK 00589027
+         LTR   R2,R2                 NO MORE SUBTASKS?         @D64ADMK 00590027
+         BZ    CONTMVSX              EVERYTHING DETACHED       @D64ADMK 00591027
+CONTMVS3 DS    0H                                              @D64ADMK 00592027
+         LR    R4,R2                 SAVE PTR                  @D64ADMK 00593027
+CONTMVS4 DS    0H                                              @D64ADMK 00594027
+         L     R8,TCBVSETC-TCBRBP(,R4) TASK'S VSE TCB          @D64ADMK 00595027
+         L     R8,TCBTIB-TCBADR(,R8) TASK'S VSE TIB            @D64ADMK 00596027
+         USING TIBADR,R8                                       @D64ADMK 00597027
+         CLI   TIBRQID,MDETBND    POST NEEDED                  @D64ADMK 00598027
+         BNE   CONTMVS5           NO                           @D64ADMK 00599027
+         LR    R1,R8              SUBTASK'S TIB                @D64ADMK 00600027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00601027
+         LA    R5,SRQMDET-SRQTAB(,R5) DETACH DELAY QUEUE       @D64ADMK 00602027
+         BAL   RF,RPOST           WAKEUP DELAYED DETACH        @D64ADMK 00603027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00604027
+CONTMVS5 DS    0H                                              @D64ADMK 00605027
+         OI    TCBFLAG2,TCBWSTT      THIS TASK MUST WAIT       @D64ADMK 00606027
+         L     R2,TCBNTC-TCBRBP(,R4) GET PREVIOUS ATT. TASK    @D64ADMK 00607027
+         LTR   R2,R2                 MORE PREVIOUS TASKS?      @D64ADMK 00608027
+         BNZ   CONTMVS3              YES                       @D64ADMK 00609027
+         B     CONTMVS0              STILL SUBTASKS THERE      @D64ADMK 00610027
+CONTMVSX DS    0H                                              @D64ADMK 00611027
+         AMODESW SET,AMODE=24,WR=(R14) AMODE 24                @D64ADMK 00612027
+         L     R8,TIBPTR                                       @D64ADMK 00613027
+         NI    TCBFLAG2,XFF-TCBWSTT RESET FLAG BYTE            @D64ADMK 00614027
+         B     DISP                 EXIT                       @D64ADMK 00615027
+****************************************************************        00616027
+* DETACH BY ATTACHING TASK:                                             00617027
+* - DELETE ECB AND ETXR INFO IN SUBTASK'S TCB(EXTENSION)                00618027
+* - HANDLE STAE PARAMETER                                               00619027
+* - IF SUBTASK WAS MDET BOUND THEN POST IT HERE                         00620027
+****************************************************************        00621027
+SVC39MVS DS    0H                                              @D64ADMK 00622027
+         L     R5,PCBPTR                                       @D64ADMK 00623027
+         TM    PCBFLAG-PCBADR(R5),PCBMVSEM   EXEC ...,MVS ?    @D64ADMK 00624027
+         BZ    SVC39MV0              NO, CONTINUE WITH VSE DET @D64ADMK 00625027
+         L     R5,TCBPTR                                       @D64ADMK 00626027
+         TM    TCBMVSIS-TCBADR(R5),TCBMVSSA    MVS DETACH ?    @D64ADMK 00627027
+         BZ    SVC39MV0           NO, CONTINUE WITH VSE DETACH @D64ADMK 00628027
+         OI    TCBEXITG,TCBDTACH  INDICATE MVS DETACH ISSUED   @D64ADMK 00629027
+         LTR   R0,R0              WAS STAE=YES SPECIFIED?      @D64ADMK 00630027
+         BZ    SVC39MV0           NO                           @D64ADMK 00631027
+         OI    TCBEXITG,TCBDSTAE  INDICATE STAE=YES            @D64ADMK 00632027
+SVC39MV0 DS    0H                                              @D64ADMK 00633027
+         CLI   TIBRQID,MDETBND    POST NEEDED                  @D64ADMK 00634027
+         DROP  R8                                              @D64ADMK 00635027
+         BNE   SVC39MV1           NO                           @D64ADMK 00636027
+         LR    R2,R1              USER PARM                    @D64ADMK 00637027
+         LR    R1,R8              SUBTASK'S TIB                @D64ADMK 00638027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00639027
+         LA    R5,SRQMDET-SRQTAB(,R5) DETACH DELAY QUEUE       @D64ADMK 00640027
+         BAL   RF,RPOST           WAKEUP DELAYED DETACH        @D64ADMK 00641027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00642027
+         LR    R1,R2              USER PARM                    @D64ADMK 00643027
+SVC39MV1 BR    R7                 RETURN                       @D64ADMK 00644027
+         DROP  RA                                              @D67FDOW 00645027
+****************************************************************        00646027
+* ABEND PROCESSING                                             *        00647027
+****************************************************************        00648027
+         USING SVC06MVS,R12                                    @D64ADMK 00649027
+         USING TCBADR,RA                                       @D67FDOW 00650027
+         USING SVEARA,RB                                       @D64ADMK 00651027
+SVC06MVS DS    0H                                              @D64ADMK 00652027
+         ICM   RE,15,AVC06M31     GOTO                         @DY45845 00653027
+         BSM   0,RE               ... AMODE 31                 @DY45845 00654027
+AVC06M31 DC    AL4(SVC06M31+X'80000000')                       @DY45845 00655027
+SVC06M31 DS    0H                                              @DY45845 00656027
+         L     R5,PCBPTR          GET PCB ADDRESS              @DY45845 00657027
+         USING PCBADR,R5                                       @DY45845 00657127
+         L     R5,PCBAPCBX        GET ADDRESS OF PCB EXTENSION @DY45845 00657227
+         USING PCBXADR,R5                                      @DY45845 00657327
+         ST    R1,PCBXJCLR        PASS JCL RETURN CODE         @DY45845 00657427
+         MVI   PCBXJCLR,PCBXJCLI  INDICATE RET CODE VALID      @DY45845 00657527
+         DROP  R5                                              @DY45845 00657627
+         L     R11,TCBSAVE        GET USER PARMS               @D64ADMK 00657727
+         L     R1,TCBATCBE        TCB EXTENSION                @D64ADMK 00657827
+         TM    SVER01,TCBCREQ     IS DUMP REQUIRED?            @D64ADMK 00657927
+         BZ    SVC06MV2           NO                           @D64ADMK 00658027
+         OI    TCBEXITG,TCBABDMP  INDICATE ABEND WITH DUMP     @D64ADMK 00659027
+SVC06MV2 DS    0H                                              @D64ADMK 00660027
+         USING TCBXADR,R1                                      @D64ADMK 00661027
+         TM    TCBXSAUS,TCBXXSAU  IS AREA IN USE               @D67ODOW 00662027
+         BO    SVC06MHW           YES, GOTO HW                 @D67ODOW 00663027
+         OI    TCBXSAUS,TCBXXSAU  SAVE AREA IS USED            @D64ADMK 00664027
+         XC    TCBXXSA(16),TCBXXSA CLEAR WORK AREA             @D64ADMK 00665027
+         LA    R7,TCBXXSA         POINT TO ERROR MSG TEXT      @D64ADMK 00666027
+         DROP  R1                                              @D64ADMK 00667027
+         O     R7,BIT0OMSK        ... INDICATE AREA IN TCBX    @D64ADMK 00668027
+         USING MAPDMPIF,R7                                     @D64ADMK 00669027
+         LA    R5,L'CANC49FX      LENGTH OF INFO               @D64ADMK 00670027
+         O     R5,BIT0OMSK        ... INDICATE AREA IN TCBX    @D64ADMK 00671027
+         ST    R5,CANC49LN        ... TO MSG AREA              @D64ADMK 00672027
+         SLR   R5,R5              CLEAR                        @D64ADMK 00673027
+         ICM   R5,7,SVER01+1      GET COMPLETION CODE          @D64ADMK 00674027
+SVC06MVA ST    R5,CANC49AB        COMPLETION CODE TO AREA      @D64ADMK 00675027
+         TM    SVER01,TCBRV316    IS REASON CODE SET?          @D64ADMK 00676027
+         BZ    SVC06MVB           NO                           @D64ADMK 00677027
+         MVC   CANC49RS,SVER0F    STORE REASON CODE            @D64ADMK 00678027
+         OI    CANC49FL,C49VALRS  INDICATE REASON GIVEN        @D64ADMK 00679027
+         DROP  RB                                              @D64ADMK 00680027
+         DROP  R7                                              @D64ADMK 00681027
+SVC06MVB LR    R1,R7              COPY MSG AREA                @D64ADMK 00682027
+         L     R6,ADISPSER        ADDR OF DISPATCHER SERVICES  @D62NDMK 00683027
+         LA    R0,4               REQ CANCEL SERVICE           @D62NDMK 00684027
+         LA    RB,ERR49E          CANCEL CODE 49               @D64ADMK 00685027
+         BASSM R7,R6              EXIT TO CANCEL USER, NO RETUR@D64ADMK 00686027
+         SPACE 2                                                        00687027
+SVC06MHW DS    0H                                              @D67ODOW 00688027
+         BAS   R5,SYSERROR        NO, HARDWAIT                 @D67ODOW 00688127
+****************************************************************        00688227
+         DROP  R6                                              @D64ADMK 00688327
+         DROP  R9                                              @D64ADMK 00688427
+         DROP  RA                                              @D64ADMK 00688527
+         DROP  RC                                              @D64ADMK 00688627
+************************************************************** @D64ADMK 00688727
+* SETUP SAVE AREA FOR EXIT                                     @D64ADMK 00688827
+* REG 0 = PTR TO CURRENTLY POSTED ECB                          @D64ADMK 00688927
+* REG 1 = PTR TO RELATED ECB EXTENSION                         @D64ADMK 00689027
+* REG 14= RETURN ADDRESS                                       @D64ADMK 00690027
+* REG 15= EXIT ROUTINE ENTRY POINT ADDRESS                     @D64ADMK 00691027
+************************************************************** @D64ADMK 00692027
+         USING SGMVSAPI,R9                                     @D64ADMK 00693027
+         USING DISP,R6                                         @D64ADMK 00694027
+POSTEX   DS    0H                                              @D64ADMK 00695027
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00696027
+         USING FMXIT_PARMS,R1     SERVICE PARAMATERS           @D64ADMK 00697027
+         L     R2,FMXIT_TCB       GET TCB OF TASK TO BE POSTED @D64ADMK 00698027
+         L     R8,TCBTIB-TCBADR(,R2) TIB OF THIS TASK          @D64ADMK 00699027
+         LR    R3,R1              SAVE                         @D64ADMK 00700027
+PSTEX03  DS    0H                                              @D64ADMK 00701027
+         TM    TCBEXITF-TCBADR(R2),TCBEXACT+TCBPOACT  ACTIVE   @D64ADMK 00702027
+         BZ    PSTEX04                                         @D64ADMK 00703027
+         LR    R1,R8              TASK'S VSE TIB               @D64ADMK 00704027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00705027
+         LA    R5,SRQMEXI-SRQTAB(,R5) DETACH DELAY QUEUE       @D64ADMK 00706027
+         BAL   R12,RWAIT          DELAY NOW                    @D64ADMK 00707027
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D64ADMK 00708027
+         B     PSTEX03            GO AND CHECK AGAIN           @D64ADMK 00709027
+PSTEX04  DS    0H                                              @D64ADMK 00710027
+         OI    TCBEXITF-TCBADR(R2),TCBPOACT  MARK POSTEXIT ACT @D64ADMK 00711027
+         LR    R1,R3              RESTORE                      @D64ADMK 00712027
+         L     R3,TCBARSAV-TCBADR(,R2) CURRENT AREG SAVE       @D64ADMK 00713027
+         L     R4,TCBSAVE-TCBADR(,R2) CURRENT SAVE AREA        @D64ADMK 00714027
+         L     R2,TCBATCBE-TCBADR(,R2) EXTENSION               @D64ADMK 00715027
+         L     R2,TCBXFMBD-TCBXADR(,R2) MAPFMBD                @D64ADMK 00716027
+         LA    R14,FM_PSTEX-FM_FMCA(,R2) POST EXIT EXIT AREA   @D64ADMK 00717027
+         XC    SVUPSW-SVUARA(SVULNGTH,R14),SVUPSW-SVUARA(R14)  @D64ADMK 00718027
+         MVC   SVUPSW-SVUARA(,R14),SVEPSW-SVEARA(R4) CUR.PSW P1@D64ADMK 00719027
+         MVC   SVUR0F-SVUARA(,R14),FMXIT_EXITADDR POST EXIT ADR@D64ADMK 00720027
+         TM    SVEPSW2-SVEARA(R4),SVEPAM31 WAS USER IN AMODE 31@D64ADMK 00721027
+         BNO   PSTEX05            NO                           @D64ADMK 00722027
+         OI    SVUR0F-SVUARA(R14),SVEPAM31 SET AMODE 31        @D64ADMK 00723027
+PSTEX05  MVC   SVUPSW2-SVUARA(,R14),SVUR0F-SVUARA(R14)         @D64ADMK 00724027
+         LA    R15,PSTEX40        GET RETURN ADDRESS AFTER EXIT@D64ADMK 00725027
+         ST    R15,SVUR0E-SVUARA(,R14) RETURN ADDRESS          @D64ADMK 00726027
+         MVC   SVUR08-SVUARA(,R14),TIBPTR CURRENT TIB (INTERNL)@D64ADMK 00727027
+         MVC   SVUR00-SVUARA(,R14),FMXIT_ECBADDR ECB ADDRESS   @D64ADMK 00728027
+         MVC   SVUR01-SVUARA(,R14),FMXIT_EXTADDR EXTENSION ADR @D64ADMK 00729027
+         MVC   SVUAREG-SVUARA(,R14),0(R3) SAVE AREGS           @D64ADMK 00730027
+         L     R2,FMXIT_TCB       GET TCB OF TASK TO BE POSTED @D64ADMK 00731027
+         DROP  R1                                              @D64ADMK 00732027
+         SLR   R0,R0              REQUEST TYPE = 0             @D64ADMK 00733027
+         LA    R1,PSTEX20         EXIT ADDRESS                 @D64ADMK 00734027
+* KEEP R2 TO MARK EXIT, THIS PARM IS NOT USED FOR EXIT SETUP   @D64ADMK 00735027
+* R8 ALREADY SET                                               @D64ADMK 00736027
+         DISPMAC FUNC=SCHEDULE,INP1=R0,INP2=R1,INP3=R8,INP4=R2 @D64ADMK 00737027
+         CLI   TIBRQID-TIBADR(R8),WAITBND    NOT WAITING       @D64ADMK 00738027
+         BNE   PSTEX10            YES, DO NOT POST             @D64ADMK 00739027
+         BAL   RF,POST            MAKE TASK READY              @D64ADMK 00740027
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=(RE)                                00741027
+PSTEX10  SLR   R15,R15            RETURN CODE                  @D64ADMK 00742027
+         B     SGMAPIEX           EXIT                         @D64ADMK 00743027
+************************************************************** @D64ADMK 00744027
+* SAVE CURRENT STATUS OF POSTED TASK                           @D64ADMK 00745027
+* SAVE AREA INTO BUFFER                                        @D64ADMK 00746027
+* SETUP SAVE AREA FOR EXIT                                     @D64ADMK 00747027
+************************************************************** @D64ADMK 00748027
+PSTEX20  DS    0H                 START EXIT HERE              @D64ADMK 00749027
+         LR    R9,R14             ESTABLISH ADDRESSABILITY     @D64ADMK 00750027
+         USING PSTEX20,R9                                      @D64ADMK 00751027
+         L     RA,TCBPTR          CURRENT TCB                  @D64ADMK 00752027
+         USING TCBADR,RA                                       @D64ADMK 00753027
+         AMODESW SET,AMODE=31,WR=(R14) AMODE 31                @D64ADMK 00754027
+         L     R15,TCBATCBE                                    @D64ADMK 00755027
+         L     R15,TCBXFMBD-TCBXADR(,R15) MAPFMBD              @D64ADMK 00756027
+         LA    R14,FM_PSTSV-FM_FMCA(,R15) POST EXIT CURRENT AREA 64ADMK 00757027
+         LA    R15,FM_PSTEX-FM_FMCA(,R15) POST EXIT EXIT AREA  @D64ADMK 00758027
+         L     R8,TCBARSAV                                     @D64ADMK 00759027
+         MVC   SVUAREG-SVUARA(,R14),0(R8) SAVE AREGS           @D64ADMK 00760027
+         MVC   0(64,R8),SVUAREG-SVUARA(R15) NEW AREGS          @D64ADMK 00761027
+         L     R8,TCBSAVE         POSTED TASKS SAVEAREA        @D64ADMK 00762027
+************************************************************** @D64ADMK 00763027
+* SAVE CURRENT STATUS OF POSTED TASK                           @D64ADMK 00764027
+************************************************************** @D64ADMK 00765027
+         MVC   SVUPSW-SVUARA(8,R14),SVEPSW-SVEARA(R8)  PSW     @D64ADMK 00766027
+         MVC   SVUR00-SVUARA(36,R14),SVER00-SVEARA(R8) REG PART@D64ADMK 00767027
+         MVC   SVUR09-SVUARA(28,R14),SVER09-SVEARA(R8) REG PART@D64ADMK 00768027
+************************************************************** @D64ADMK 00769027
+* SETUP POST EXIT ENVIRONMENT                                  @D64ADMK 00770027
+************************************************************** @D64ADMK 00771027
+         MVC   SVEPSW-SVEARA(8,R8),SVUPSW-SVUARA(R15) NEW PSW  @D64ADMK 00772027
+         OI    SVEPSWST-SVEARA(R8),ENABLE             NEW PSW  @D64ADMK 00773027
+         TM    SVUPSW-SVUARA(R14),PERMASK      WAS PERBIT SET  @D64ADMK 00774027
+         BZ    PSTEX22                                NO       @D64ADMK 00775027
+         OI    SVEPSWST-SVEARA(R8),PERMASK            NEW PSW  @D64ADMK 00776027
+PSTEX22  DS    0H                                     NEW PSW  @D64ADMK 00777027
+         MVI   SVEPSWKY-SVEARA(R8),X0C      KEY 0 + SUP STATE  @D64ADMK 00778027
+         MVC   SVER00-SVEARA(36,R8),SVUR00-SVUARA(R15) NEW REGS@D64ADMK 00779027
+         MVC   SVER09-SVEARA(28,R8),SVUR09-SVUARA(R15) NEW REGS@D64ADMK 00780027
+         L     R3,SVUR08-SVUARA(R15)    GET POSTING TASK'S TIB @D64ADMK 00781027
+         XC    SVER08-SVEARA(,R8),SVUR08-SVUARA(R15)  CLEAR REG@D64ADMK 00782027
+         L     R6,DISPAD                                       @D64ADMK 00783027
+         STM   R0,R15,SVUR00-SVUARA(R15) SAVE FOR LATER USE    @D64ADMK 00784027
+************************************************************** @D64ADMK 00785027
+* WRITE DEBUG ENTRY BEFORE ENTERING POST EXIT                  @D64ADMK 00786027
+************************************************************** @D64ADMK 00787027
+         MVC   EXTNAME,PSTXINFS                                @D64ADMK 00788027
+         MVC   EXTPTASK,TIBRTID-TIBADR(R3)                     @D66ODOW 00789027
+         MVC   EXTPSTAT,TIBRQID-TIBADR(R3)                     @D64ADMK 00790027
+         MVC   EXTPFLAG,TIBFLAG-TIBADR(R3)                     @D64ADMK 00791027
+         MVC   EXTPCNCL,TIBCNCL-TIBADR(R3)                     @D64ADMK 00792027
+         ST    R15,EXTDSAVE                                    @D64ADMK 00793027
+         ST    R8,EXTUSAVE                                     @D64ADMK 00794027
+         MVC   EXTPSW,SVEPSW-SVEARA(R8)                        @D64ADMK 00795027
+         MVC   EXTREG1,SVER01-SVEARA(R8)                       @D64ADMK 00796027
+         MVC   EXTREGD0,SVER00-SVEARA(R8)                      @D64ADMK 00797027
+         MVC   EXTREG14,SVER0E-SVEARA(R8)                      @D64ADMK 00798027
+         MVC   EXTREG15,SVER0F-SVEARA(R8)                      @D64ADMK 00799027
+         L     R1,EXTREGD0                                     @D64ADMK 00800027
+         MVC   EXTCOMPL,0(R1)                                  @D64ADMK 00801027
+         DEBUG USERDATA,XXDBGMC,EXTINFO,EXTINF1,EXTINF2        @D64ADMK 00802027
+         DROP  RA                                              @D64ADMK 00803027
+         BR    R6                                              @D64ADMK 00804027
+************************************************************** @D64ADMK 00805027
+* RETURN HERE FROM EXIT                                        @D64ADMK 00806027
+* AND SWITCH TO OLD ENVIRONMENT                                @D64ADMK 00807027
+************************************************************** @D64ADMK 00808027
+PSTEX40  DS    0H                 RETURN FROM EXIT HERE        @D64ADMK 00809027
+         LA    RF,2               SUPPLY CORRECT FCT CODE      @D64ADMK 00810027
+         SVC   79                 RETURN FROM ESTAEX TYPE EXIT @D64ADMK 00811027
+PSTEX41  DS    0H                 MUST STAY HERE               @D64ADMK 00812027
+         USING PSTEX41,R9         FOR THIS PART                @D64ADMK 00813027
+*        MVI   RID+1,REENTRID     SETUP CORRECT RID            @D64ADMK 00814027
+*        L     RA,TCBPTR                                       @D64ADMK 00815027
+         USING TCBADR,RA                                       @D64ADMK 00816027
+*        STNSM SVCWORKA,DISABLE   SAVE SYSTEM MASK AND DISABLE @D64ADMK 00817027
+         L     R15,TCBATCBE       GET EXTENSION                @D64ADMK 00818027
+         L     R15,TCBXFMBD-TCBXADR(,R15) MAPFMBD              @D64ADMK 00819027
+         LA    R15,FM_PSTEX-FM_FMCA(,R15) PTR TO TEMP AREA     @D64ADMK 00820027
+         LM    R0,R15,SVUR00-SVUARA(R15) GET LAST REGS BACK    @D64ADMK 00821027
+         DROP  R9                                              @D64ADMK 00822027
+         USING PSTEX20,R9                                      @D64ADMK 00823027
+         L     R8,TIBPTR                                       @D64ADMK 00824027
+         L     R2,TCBSAVE        USER'S SAVE AREA              @D64ADMK 00825027
+************************************************************** @D64ADMK 00826027
+* WRITE DEBUG ENTRY AFTER LEAVING POST EXIT                    @D64ADMK 00827027
+************************************************************** @D64ADMK 00828027
+         MVC   EXTNAME,PSTXINFE                                @D64ADMK 00829027
+         MVC   EXTPTASK,TIBRTID-TIBADR(R3)                     @D66ODOW 00830027
+         MVC   EXTPSTAT,TIBRQID-TIBADR(R3)                     @D64ADMK 00831027
+         MVC   EXTPFLAG,TIBFLAG-TIBADR(R3)                     @D64ADMK 00832027
+         MVC   EXTPCNCL,TIBCNCL-TIBADR(R3)                     @D64ADMK 00833027
+         ST    R15,EXTDSAVE                                    @D64ADMK 00834027
+         ST    R2,EXTUSAVE                                     @D64ADMK 00835027
+         DEBUG USERDATA,XXDBGMC,EXTINFO                        @D64ADMK 00836027
+************************************************************** @D64ADMK 00837027
+* RELOAD ORIGINAL STATUS FROM 2ND BUFFER                       @D64ADMK 00838027
+************************************************************** @D64ADMK 00839027
+         MVC   SVEPSW-SVEARA(8,R2),SVUPSW-SVUARA(R14) OLD PSW  @D64ADMK 00840027
+         MVC   SVER00-SVEARA(36,R2),SVUR00-SVUARA(R14) OLD REGS@D64ADMK 00841027
+         MVC   SVER09-SVEARA(28,R2),SVUR09-SVUARA(R14) OLD REGS@D64ADMK 00842027
+         L     R2,TCBARSAV                                     @D64ADMK 00843027
+         MVC   0(64,R2),SVUAREG-SVUARA(R14) ORIGINAL AREGS     @D64ADMK 00844027
+         NI    TCBEXITF,XFF-TCBPOACT POST EXIT INACTIVE        @D64ADMK 00845027
+         LR    R1,R8              CURRENT TASK'S TIB           @D64ADMK 00846027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00847027
+         LA    R5,SRQMEXI-SRQTAB(,R5) ETXR/POSTEXIT DELAY QUEUE@D64ADMK 00848027
+         BAL   RF,RPOST           WAKEUP DELAYED DETACH        @D64ADMK 00849027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00850027
+         LA    R15,1             FUNCTION CODE                 @D64ADMK 00851027
+         L     R12,ASGEXIT       BASE                          @D64ADMK 00852027
+         L     R12,ACHKDLAY-SGEXIT(,R12) DELINT                @D64ADMK 00853027
+         BASSM R14,R12           EXECUTE                       @D64ADMK 00854027
+*SGLINK  CHKDLAY INPUT=(R8,RC,RE,RF) WORK=(R4)                 @D64ADMK 00855027
+         BR    R6                                              @D64ADMK 00856027
+         DROP  R9                                              @D64ADMK 00857027
+***************************************************************@D64ADMK 00858027
+* COMMON CLEANUP ROUTINE IF A SERVICE IS ABENDED               @D64ADMK 00859027
+*        CALLED IN AMODE 31                                    @D64ADMK 00860027
+* INPUT:  R7  = RETURN ADDRESS                                 @D64ADMK 00861027
+*         R9  = SGMVSAPI BASE                                  @D64ADMK 00862027
+*         R10 = CURRENT TCB                                    @D64ADMK 00863027
+* WORK:   R1,R2,R5,R6,R8,R14,R15                               @D64ADMK 00864027
+***************************************************************@D64ADMK 00865027
+         USING SGMVSAPI,R9                                     @D64ADMK 00866027
+         USING TCBADR,RA                                       @D64ADMK 00867027
+CLEANEX  DS    0H                 MUST STAY HERE               @D64ADMK 00868027
+*SGLINK SGMAPICL,S,INPUT=(R7,R9,RA),WORK=(R1,R2,R5,R6,R8,RE,RF) D64ADMK 00869027
+         TM    TCBEXITF,TCBEXACT+TCBPOACT  ACTIVE              @D64ADMK 00870027
+         BZ    CLEANE9                                         @D64ADMK 00871027
+         L     R15,TCBATCBE       GET EXTENSION                @D64ADMK 00872027
+         TM    TCBEXITF,TCBPOACT  POST EXIT ACTIVE             @D64ADMK 00873027
+         BZ    CLEANE1                                         @D64ADMK 00874027
+         L     R15,TCBXFMBD-TCBXADR(,R15) MAPFMBD              @D64ADMK 00875027
+         LA    R15,FM_PSTEX-FM_FMCA(,R15) PTR TO TEMP AREA     @D64ADMK 00876027
+         B     CLEANE2                                         @D64ADMK 00877027
+CLEANE1  DS    0H                                              @D64ADMK 00878027
+         L     R15,TCBXEXTX-TCBXADR(,R15) PTR FOR CLEANUP      @D64ADMK 00879027
+         LTR   R15,R15           CHECK IF CLEANUP PTR IS OK    @DY45196 00880027
+         BZ    CLEANE9           =0 -> EXIT HAS NOT BEEN USED  @DY45196 00881027
+CLEANE2  DS    0H                                              @D64ADMK 00882027
+*        LM    R0,R15,SVUR00-SVUARA(R15) GET LAST REGS BACK    @D64ADMK 00883027
+         L     R14,SVUR0E-SVUARA(R15) GET REG14 BACK           @DY45196 00884027
+         LTR   R14,R14           CHECK IF SAVEAREA IS OK       @DY45196 00885027
+         BZ    CLEANE9           =0 -> EXIT HAS NOT BEEN USED  @DY45196 00886027
+         L     R2,TCBSAVE        USER'S SAVE AREA              @D64ADMK 00887027
+         L     R3,SVUR03-SVUARA(R15)  GET REG 3 BACK           @D64ADMK 00888027
+         L     R6,DISPAD                                       @D64ADMK 00889027
+         L     R8,TIBPTR                                       @D64ADMK 00890027
+************************************************************** @D64ADMK 00891027
+* WRITE DEBUG ENTRY                                            @D64ADMK 00892027
+************************************************************** @D64ADMK 00893027
+         MVC   EXTNAME,PSTXINFE                                @D64ADMK 00894027
+         TM    TCBEXITF,TCBPOACT  POST EXIT ACTIVE             @D64ADMK 00895027
+         BO    CLEANE3                                         @D64ADMK 00896027
+         MVC   EXTNAME,ETXRINFE                                @D64ADMK 00897027
+CLEANE3  DS    0H                                              @D64ADMK 00898027
+         MVC   EXTPTASK,TIBRTID-TIBADR(R3)                     @D66ODOW 00899027
+         MVC   EXTPSTAT,TIBRQID-TIBADR(R3)                     @D64ADMK 00900027
+         MVC   EXTPFLAG,TIBFLAG-TIBADR(R3)                     @D64ADMK 00901027
+         MVC   EXTPCNCL,TIBCNCL-TIBADR(R3)                     @D64ADMK 00902027
+         ST    R15,EXTDSAVE                                    @D64ADMK 00903027
+         ST    R2,EXTUSAVE                                     @D64ADMK 00904027
+         DEBUG USERDATA,XXDBGMC,EXTINFO                        @D64ADMK 00905027
+************************************************************** @D64ADMK 00906027
+* RELOAD ORIGINAL STATUS FROM 2ND BUFFER                       @D64ADMK 00907027
+************************************************************** @D64ADMK 00908027
+         MVC   SVEPSW-SVEARA(8,R2),SVUPSW-SVUARA(R14) OLD PSW  @D64ADMK 00909027
+         MVC   SVER00-SVEARA(36,R2),SVUR00-SVUARA(R14) OLD REGS@D64ADMK 00910027
+         MVC   SVER09-SVEARA(28,R2),SVUR09-SVUARA(R14) OLD REGS@D64ADMK 00911027
+         L     R2,TCBARSAV                                     @D64ADMK 00912027
+         MVC   0(64,R2),SVUAREG-SVUARA(R14) ORIGINAL AREGS     @D64ADMK 00913027
+         NI    TCBEXITF,XFF-TCBEXACT-TCBPOACT DEL POSTEX/ETXR  @D64ADMK 00914027
+         L     R1,TIBPTR          CURRENT TASK'S TIB           @D64ADMK 00915027
+         L     R5,ASRQTAB         GET SRQTAB BASE              @D64ADMK 00916027
+         LA    R5,SRQMEXI-SRQTAB(,R5) ETXR/POSTEXIT DELAY QUEUE@D64ADMK 00917027
+         BAL   RF,RPOST           WAKEUP DELAYED DETACH        @D64ADMK 00918027
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            00919027
+CLEANE9  DS    0H                                              @D64ADMK 00920027
+         BSM   0,R7                                            @D64ADMK 00921027
+ETXRINFS DC    CL3'ETR'           AREA FOR DEBUG INFORMATION   @D66ODOW 00922027
+ETXRINFE DC    CL3'ETD'           AREA FOR DEBUG INFORMATION   @D66ODOW 00923027
+PSTXINFS DC    CL3'PSX'           AREA FOR DEBUG INFORMATION   @D66ODOW 00924027
+PSTXINFE DC    CL3'PSD'           AREA FOR DEBUG INFORMATION   @D66ODOW 00925027
+EXTINFO  DS    0F                 AREA FOR DEBUG INFORMATION   @D64ADMK 00926027
+EXTNAME  DC    CL3' '             EYECATCHER                   @D66ODOW 00927027
+EXTPSTAT DC    XL1'0'             POSTING TASK STATUS          @D64ADMK 00928027
+EXTPTASK DC    XL2'0'             POSTING TASK ID              @D66ODOW 00929027
+EXTPFLAG DC    XL1'0'             POSTING TASK TIBFLAG         @D64ADMK 00930027
+EXTPCNCL DC    XL1'0'             POSTING TASK CANCEL CODE     @D64ADMK 00931027
+EXTDSAVE DC    XL4'0'             DOUBLE SAVE AREA PTR         @D64ADMK 00932027
+EXTUSAVE DC    XL4'0'             CURRENT USER SAVE AREA PTR   @D64ADMK 00933027
+EXTINF1  DS    0H                 AREA FOR DEBUG INFORMATION   @D64ADMK 00934027
+EXTPSW   DC    XL8'0'             PSW OF CALLED EXIT           @D64ADMK 00935027
+EXTREG1  DC    XL4'0'             REG1 INPUT TO CALLED EXIT    @D64ADMK 00936027
+EXTREGD0 DC    XL4'0'             REG13/REG0 INPUT TO CA. EXIT @D64ADMK 00937027
+EXTINF2  DS    0H                 AREA FOR DEBUG INFORMATION   @D64ADMK 00938027
+EXTREG14 DC    XL4'0'             REG14 INPUT TO CALLED EXIT   @D64ADMK 00939027
+EXTREG15 DC    XL4'0'             REG15 INPUT TO CALLED EXIT   @D64ADMK 00940027
+EXTCOMPL DC    XL4'0'             POSTEXIT COMPLETION CODE     @D64ADMK 00941027
+         DC    XL4'0'             RESERVED                     @D64ADMK 00942027
+         DROP  R9                                              @D64ADMK 00943027
+         DROP  R6                                              @D64ADMK 00944027
+         DROP  RA                                              @D64ADMK 00945027
+.NOTN020 ANOP                                                           00946027
+         MEND                                                           00947027

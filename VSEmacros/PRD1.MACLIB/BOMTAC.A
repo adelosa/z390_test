@@ -1,0 +1,194 @@
+STAP     TITLE '$$BOMTAC - ACCESSIBILITY ROUTINE FOR ASCII FILES'       00050000
+* IBM  DISK OPERATING SYSTEM                                            00100000
+* MAGNETIC TAPE IOCS - 5686-007-02-C440                        @U31TUJS 00150000
+         PUNCH ' PHASE   $$BOMTAC,+0,NOAUTO'                            00200000
+IJBOMTAC START 0                                                        00250000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 00300000
+*   DISK IOCS OPEN/CLOSE TAPE ROUTINES                                * 00350000
+*                                                                     * 00400000
+*   ROUTINE: $$BOMTAC                                                 * 00450000
+*                                                                     * 00500000
+*   DESCRIPTIVE NAME=                                                 * 00550000
+*           INSTALLATION ROUTINE TO CHECK THE ACCESSIBILITY           * 00600000
+*           FOR THE VOLUME/FILE FOR ASCII.                            * 00650000
+*                                                                     * 00700000
+*   COPYRIGHT =                                                       * 00750000
+*           5686-007 (C) COPYRIGHT IBM CORP. 1982,1989         @U31TUJS 00800000
+*           LICENSED MATERIAL - PROGRAM PROPERTY OF IBM               * 00850000
+*           REFER TO COPYRIGHT INSTRUCTIONS                           * 00900000
+*           FORM NUMBER G120-2083                                     * 00950000
+*                                                                     * 01000000
+*   STATUS = DOS/VSE VERSION 2 RELEASE 1                       @D147DRR 01050000
+*                                                                     * 01100000
+*   FUNCTION: THIS ROUTINE IS USED FOR CHECKING THE ACCESS            * 01150000
+*             TO THE VOLUME/FILE FOR ASCII MODE.                      * 01200000
+*                                                                     * 01250000
+*   ENTRY:    THIS PHASE IS FETCHED BY ONE OF THE FOLLOWING PHASES    * 01300000
+*             WHEN A VOL1 OR HDR1 OR EOF1 LABEL HAS BEEN READ         * 01350000
+*             AND THE SECURITY BYTE INDICATES THAT THE VOLUME/FILE    * 01400000
+*             IS AN ASCII FILE AND THE VOLUME/FILE IS ACCESS PROTECTED* 01450000
+*                $$BOCPT1 $$BOCPT2 $$BOCPT3 $$BOCPT4 FOR DTFCP FILES  * 01500000
+*                                                                     * 01550000
+*   EXITS:    IF THE ACCESS IS ALLOWED, TO THE CALLING PHASE,         * 01600000
+*             OTHERWISE                                               * 01650000
+*                 TO $$BOMSVA TO REWIND AND UNLOAD THE TAPE AND       * 01700000
+*                 TO $$BOMT0W TO WRITE A MESSAGE ON SYSLOG.           * 01750000
+*                                                                     * 01800000
+*   INPUT:    REGISTER 2 POINTS TO THE ACTIVE DTF.                    * 01850000
+*             REGISTER 4 CONTAINS THE LAST 4 CHARACTERS OF THE        * 01900000
+*                PHASE TO BE FETCHED IF THE VOLUME/FILE IS NOT        * 01950000
+*                ACCESS PROTECTED.                                    * 02000000
+*             REGISTER 6 POINTS TO THE LABEL RECORD.                  * 02050000
+*             REGISTER 14 CONTAINS THE RETURN ADDRESS                 * 02100000
+*                                                                     * 02150000
+*   OUTPUT:   THE TAPE IS REWOUND AND UNLOADED,                       * 02200000
+*               AN ERROR MESSAGE IS DISPLAYED ON SYSLOG AND           * 02250000
+*               THE JOB IS CANCELED.                                  * 02300000
+*                                                                     * 02350000
+*   MESSAGE:  4192I VOLUME ACCESS DENIED                              * 02400000
+*             4193I FILE ACCESS DENIED                                * 02450000
+*                                                                     * 02500000
+*   OPERATING INSTRUCTIONS:                                    @DA31449 02550000
+*             THIS IS THE SOURCE CODE OF COPY BOOK BOMTAC.            * 02600000
+*             IT IS PRESENTED TO YOU ON THE SOURCE STATEMENT LIBRARY  * 02650000
+*             TO ENABLE YOU TO EASILY MAKE CHANGES TO IT, WHICH WILL  * 02700000
+*             SUIT YOUR OWN NEEDS.  PLEASE SEE THE "EXAMPLES" SHOWN.  * 02750000
+*             YOU CAN CHANGE THE CODE AT CERTAIN PLACES,              * 02800000
+*             WHICH STARTS WITH THE COMMENT :                         * 02850000
+*             "THIS PIECE OF CODE IS AN EXAMPLE OF..... "             * 02900000
+*             THE FOLLOWING CHECKS CAN BE EXTENDED:                   * 02950000
+*                VOLUME ACCESS CHECKING                               * 03000000
+*                FILE ACCESS CHECKING                                 * 03050000
+*             AFTER CHANGING THE CODE, PLEASE ASSEMBLE THE SOURCE     * 03100000
+*             AND THEN THE STANDARD OBJECT DECK OF $$BOMTAC WILL      * 03150000
+*             BE REPLACED BY THE NEW ONE.                             * 03200000
+*                                                                     * 03250000
+*   CHANGE ACTIVITY:                                                  * 03300000
+*            THIS IS A NEW MODULE INSTALLED WITH APAR DY30001  @DA30001 03350000
+*            NOT ALL POSSIBLE LABELS ARE CHECKED               @DA31449 03400000
+*            WHICH RESULTS TO AN INVALID MESSAGE               @DA31449 03450000
+*            FROM NOW ON THIS MODULE IS SHIPPED AS SOURCE ONLY @DA31449 03500000
+*            FOR USER MODIFICATION.                            @DA31449 03550000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 03600000
+         SPACE 5                                                        03650000
+REG0     EQU   0                                                        03700000
+REG1     EQU   1                                                        03750000
+DTFREG   EQU   2                                                        03800000
+REG4     EQU   4                                                        03850000
+REG6     EQU   6                                                        03900000
+REG8     EQU   8                                                        03950000
+REG10    EQU   10                                                       04000000
+BASERG   EQU   15                  BASE REGISTER.                       04050000
+         USING *,BASERG            ESTABLISH ADDRESSABILITY.            04100000
+TRANS    DC    C'$$BOMTAC'         TRANSIENT NAME.                      04150000
+         B     OMTAC               SKIP                                 04200000
+         DC    X'3100'  /*@@LVLID*/    VERSION AND MOD LEVEL   @U31TUJS 04250000
+OMTAC    DS    0H                  ADJUST TO HALFWORD BOUNDARY          04300000
+*---------------------------------------------------------------------  04350000
+*        CHECK FOR RETURN FROM REWIND/UNLOAD                            04400000
+*---------------------------------------------------------------------  04450000
+         COMRG REG=REG10                                                04500000
+         USING COMREG,REG10                                             04550000
+         TM    LIOCSCOM+1,X'08'    RETURN FROM $$BOMSVA (REWIND) ?      04600000
+         BO    SVARET              YES, BRANCH                          04650000
+         SPACE                                                          04700000
+         STM   REG0,BASERG,REGSAVE SAVE REGISTERS                       04750000
+*        LR    REG8,REG6           SAVE PTR TO LABEL                    04800000
+*                                  REG6 IS USED FOR MESSAGE NUMBER      04850000
+         CLC   0(4,REG6),VOL1      IS THE ACTUAL LABEL A VOL1 LABEL ?   04900000
+         BNE   HDRCHK              NO, BRANCH. HDR1 IS ASSUMED          04950000
+*---------------------------------------------------------------------  05000000
+*        VOLUME ACCESS CHECKING                                         05050000
+*---------------------------------------------------------------------  05100000
+*                                                                       05150000
+*        THE FOLLOWING PIECE OF CODE IS AN EXAMPLE                      05200000
+*        HOW TO EXTEND THE CHECK FOR THE VOLUME ACCESSIBILITY.          05250000
+*                                                                       05300000
+*        CLC   VSYSCODE(L'VSESYS,REG6),VSESYS   LABEL BUILD BY VSE ?    05350000
+*        BNE   NOVSE               NO, BRANCH                           05400000
+*        CLI   VACCBYTE(REG6),C'5' VOLUME ACCESS CODE = '5' ?           05450000
+*        BE    RETURN              YES, ALLOW ACCESS TO VOLUME          05500000
+*                                                                       05550000
+         B     REWUN               ACCESS TO VOLUME NOT ALLOWED         05600000
+         SPACE                                                          05650000
+*---------------------------------------------------------------------  05700000
+*        FILE ACCESS CHECKING                                           05750000
+*---------------------------------------------------------------------  05800000
+HDRCHK   CLC   HSYSCODE(L'VSESYS,REG6),VSESYS   LABEL BUILD BY VSE ?    05850000
+         BE    HDRCHK1             YES, CHECK ACCESS CODE               05900000
+         CLC   HSYSCODE(L'VSEACT,REG6),VSEACT LBL BUILD BY VSE?@DA31449 05950000
+         BE    HDRCHK1             YES, CHECK ACCESS CODE      @DA31449 06000000
+         CLC   HSYSCODE(L'VSEOLD,REG6),VSEOLD   LABEL BUILD BY VSE ?    06050000
+         BE    HDRCHK1             YES, CHECK ACCESS CODE      @DA31449 06100000
+         CLC   HSYSCODE(L'ALLZERO,REG6),ALLZERO LBL BLD BY VSE?@DA31449 06150000
+         BNE   NOVSE               NO, BRANCH                           06200000
+HDRCHK1  CLI   HACCBYTE(REG6),C'0' FILE ACCESS CODE = '0' ?             06250000
+         BE    RETURN              YES, ALLOW ACCESS TO FILE            06300000
+         CLI   HACCBYTE(REG6),X'00' FILE ACCESS CODE = HEX 00 ?         06350000
+         BE    RETURN              YES, ALLOW ACCESS TO FILE            06400000
+*                                                                       06450000
+*        THE FOLLOWING PIECE OF CODE IS AN EXAMPLE                      06500000
+*        HOW TO EXTEND THE CHECK FOR THE FILE ACCESSIBILITY.            06550000
+*                                                                       06600000
+*        CLI   HACCBYTE(REG6),C'5' VOLUME ACCESS CODE = '5' ?           06650000
+*        BE    RETURN              YES, ALLOW ACCESS TO FILE            06700000
+*                                                                       06750000
+         B     REWUN               ACCESS TO FILE NOT ALLOWED           06800000
+         SPACE                                                          06850000
+*---------------------------------------------------------------------  06900000
+*        RETURN TO CALLING PHASE                                        06950000
+*---------------------------------------------------------------------  07000000
+RETURN   CLI   DTFTYP(DTFREG),X'15' DTFCP FILES ?                       07050000
+         BH    RETURN1             YES, BRANCH                          07100000
+         OI    LIOCSCOM+1,X'08'    SIGNAL REENTRY TO DTFMT OPEN PHASE   07150000
+         B     RETURN2                                                  07200000
+RETURN1  OI    LIOCSCOM+1,X'80'    SIGNAL REENTRY TO DTFCP OPEN PHASE   07250000
+RETURN2  LM    REG0,BASERG,REGSAVE RELOAD REGISTERS                     07300000
+         ST    REG4,TRANS+4        BUILD NAME OF PHASE TO BE FETCHED    07350000
+         LA    REG1,TRANS          LOAD NAME OF PHASE TO BE FETCHED     07400000
+         SVC   2                   FETCH THE PHASE                      07450000
+         SPACE                                                          07500000
+*---------------------------------------------------------------------  07550000
+*        REWIND AND UNLOAD THE TAPE                                     07600000
+*---------------------------------------------------------------------  07650000
+NOVSE    EQU   *                   LABEL NOT BUILD BY VSE               07700000
+REWUN    LA    REG6,11             INDICATE TAPE REWIND UNLOAD          07750000
+         L     REG4,TRANS+4        SAVE CALLING ROUTINE NAME            07800000
+         LA    REG1,BOMSVA         FETCH SVA TRANSFER MODULE            07850000
+         SVC   2                                                        07900000
+         SPACE                                                          07950000
+*---------------------------------------------------------------------  08000000
+*        WRITE A MESSAGE ON SYSLOG AND CANCEL THE JOB                   08050000
+*---------------------------------------------------------------------  08100000
+SVARET   EQU   *                   RETURN FROM REWIND UNLOAD            08150000
+         LM    REG0,BASERG,REGSAVE RELOAD REGISTERS                     08200000
+         NI    LIOCSCOM+1,X'FF'-X'08' RESET RETURN INDICATOR            08250000
+         LA    REG0,MSG4192        MSG: VOLUME ACCESS DENIED            08300000
+         CLC   0(4,REG6),VOL1      IS THE ACTUAL LABEL A VOL1 ?         08350000
+         BE    VOL1AC              YES, BRANCH                          08400000
+         LA    REG0,MSG4193        MSG: FILE ACCESS DENIED              08450000
+VOL1AC   EQU   *                                                        08500000
+         LA    REG1,BOMT0W         LOAD NAME OF MESSAGE WRITER          08550000
+         SVC   2                   DISPLAY MESSAGE AND CANCEL JOB       08600000
+         EJECT                                                          08650000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 08700000
+*        CONSTANTS AND WORK AREA                                      * 08750000
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 08800000
+VSYSCODE EQU   24                  OFFSET TO SYSTEM CODE IN VOL1 LABEL  08850000
+HSYSCODE EQU   60                  OFFSET TO SYSTEM CODE IN HDR1 LABEL  08900000
+VACCBYTE EQU   10                  OFFSET TO ACCESS BYTE IN VOL1 LABEL  08950000
+HACCBYTE EQU   53                  OFFSET TO ACCESS BYTE IN HDR1 LABEL  09000000
+DTFTYP   EQU   20                  OFFSET IN DTF FOR DTF TYPE           09050000
+MSG4192  EQU   11                  CODE FOR MSG 4192                    09100000
+MSG4193  EQU   12                  CODE FOR MSG 4193                    09150000
+REGSAVE  EQU   TRANS+1700          REGISTER SAVE AREA                   09200000
+VOL1     DC    C'VOL1'                                                  09250000
+BOMSVA   DC    C'$$BOMSVA'                                              09300000
+BOMT0W   DC    C'$$BOMT0W'                                              09350000
+VSESYS   DC    C'IBMZLB '          SYSTEM CODE FOR LABEL VERSION 3      09400000
+VSEACT   DC    C'IBMDOSVS  '       SYSTEM CODE FOR DOS/VSE     @DA31449 09450000
+VSEOLD   DC    C'DOS VER 5 '       SYSTEM CODE FOR DOS/VSE              09500000
+ALLZERO  DC    X'00000000000000000000'  ZERO SYSTEM CODE       @DA31449 09550000
+         EJECT                                                          09600000
+         MAPCOMR                                                        09650000
+         END                                                            09700000

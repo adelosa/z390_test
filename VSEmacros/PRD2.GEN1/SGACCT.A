@@ -1,0 +1,804 @@
+         MACRO                                                          00050000
+         SGACCT                                                         00100000
+         GBLB   &SGACCT           PRINT REQUIRED               @D14BDFR 00150000
+         GBLB   &BGDEBUG                                       @D14BDFR 00200000
+         ACTR   1000                                           @D14BDFR 00250000
+         AIF    (NOT &BGDEBUG OR NOT &SGACCT).NOPRT0           @D14BDFR 00300000
+         PRINT  GEN                                            @D14BDFR 00350000
+.NOPRT0  ANOP                                                  @D14BDFR 00400000
+***************************************************************         00450000
+*                                                             *         00500000
+.*       IBM DISK OPERATING SYSTEM                            *         00550000
+*        SUPERVISOR - SGACCT - 5686-066-06                    *         00600003
+.*                                                            *         00650000
+*        LICENCED MATERIALS - PROPERTY OF IBM                 *         00700000
+*        "RESTRICTED MATERIALS OF IBM"                        *         00750003
+*        5686-066                                             *         00800003
+*        (C) COPYRIGHT IBM CORP. 1979, 2001                   *         00810003
+*                                                             *         00900000
+***************************************************************         00950000
+.* /* START OF SPECIFICATIONS ***************************************** 01000000
+.*                                                                      01050000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         01100000
+.*                                                                      01150000
+.*01* DESCRIPTIVE NAME = JA COUNTERS UPDATE                             01200000
+.*                                                                      01250000
+.*01* NOTES = CHANGE ACTIVITY                                           01300000
+.*    NEW MODULE - FIRST RELEASE 35                            @D35EDFG 01350000
+.*    ADAPTION TO REL. 1.2                                     @D36IDFR 01400000
+.*                                                             @D36IDFG 01450000
+.*    ADAPTION TO REL. 2.1                                     @D14BDFR 01500000
+.*    NOT ALL TAPE ACCOUNTING SIO INFORMATION IS SHOWN ON THE  @DA35543 01550000
+.*    ACCOUNTING REPORT AFTER A PACCOUNT.                      @DA35543 01600000
+.*    HANDLE JOB RUN TIME CALC OF JOB DURATION OVER 80 DAYS    @DA36380 01650000
+.*    MORE PARTITION ADAPTATION                                @D51IDIS 01700000
+.*    REMOVE PAGE FAULT PROCESSING, PAGE-IN THE WHOLE          @KD40376 01716601
+.*    JA TABLE AND CHECK IF PART. IS DEALLOCATED AFTER PAGE F. @KD40376 01733201
+.*                                                             @D14BDBC 01750000
+.**** END OF SPECIFICATIONS ******************************************/ 01800000
+         TITLE 'DOS SUPERVISOR  SGACCT  JA COUNTERS UPDATE'             01850000
+************************************************************** @D14BDBC 01900000
+* SGACCT CONTAINS THE CODE OF THE GETJA MACRO                  @D14BDBC 01950000
+*                                                              @D14BDBC 02000000
+* FOR THE GETJA_MACRO THERE ARE TWO FORMATES:                  @D14BDBC 02050000
+*                NO PARAMETER FORMAT   AND                     @D14BDBC 02100000
+*                PARAMETER FORMAT                              @D14BDBC 02150000
+*                                                              @D14BDBC 02200000
+*                                                              @D14BDBC 02250000
+* PARAMETER :                                                  @D14BDBC 02300000
+* ===========                                                  @D14BDBC 02350000
+*                                                              @D14BDBC 02400000
+* NO PARAMETER FORMAT:                                         @D14BDBC 02450000
+*                                                              @D14BDBC 02500000
+*        FOR THIS FORMAT THE INTERFACE IS SVC 102,             @D14BDBC 02550000
+*                        THE ENTRY POINT IS SGLINK GETJA,      @D14BDBC 02600000
+*                        NO REGISTERS ARE DESTROIED,           @D14BDBC 02650000
+*                        AND FOR THE EXECUTION:                @D14BDBC 02700000
+*                              ACTION = UPDATE AND             @D14BDBC 02750000
+*                              PART THE CURRENT ONE IS ASSUMED @D14BDBC 02800000
+*                                                              @D14BDBC 02850000
+* PARAMETER FORMAT:                                            @D14BDBC 02900000
+*                                                              @D14BDBC 02950000
+*        FOR THIS FORMAT THE INTERFACE IS SVC 107,             @D14BDBC 03000000
+*                        THE SVC07 CODE CALLS GETJA            @D14BDBC 03050000
+*                        AT ENTRY POINT SGLINK GETJA,          @D14BDBC 03100000
+*                        R0, R1 AND R15 ARE DESTROIED          @D14BDBC 03150000
+*                                                              @D14BDBC 03200000
+*                        AND                                   @D14BDBC 03250000
+*                                                              @D14BDBC 03300000
+*   FOR THE GETJA_MACRO THERE ARE 2 PARAMETER:                 @D14BDBC 03350000
+*                                                              @D14BDBC 03400000
+*     ACTION = ( UPDATE | CLRTIME | RESET )                    @D14BDBC 03450000
+*                   ( CLRTIME AND RESET ARE RESTRICTED TO JCL) @D14BDBC 03500000
+*       R0 = 0 INDICATES GETJA ACTION PARAMETER = UPDATE       @D14BDBC 03550000
+*       R0 = 1 INDICATES GETJA ACTION PARAMETER = CLRTIME      @D14BDBC 03600000
+*          THIS PARAMETER IS FOR JCL ONLY                      @D14BDBC 03650000
+*       R0 = 2 INDICATES GETJA ACTION PARAMETER = RESET        @D14BDBC 03700000
+*          THIS PARAMETER IS FOR JCL ONLY                      @D14BDBC 03750000
+*                                                              @D14BDBC 03800000
+*                        AND                                   @D14BDBC 03850000
+*                                                              @D14BDBC 03900000
+*     PART   = ( NAME | (R1) | (1)    )                        @D14BDBC 03950000
+*                   WHERE NAME IS A 2 BYTE FLD CONTAINING PIK  @D14BDBC 04000000
+*                         OR REG1 CONTAINS THE PIK             @D14BDBC 04050000
+*               IF THE PART PARAMETER IS OMITTED THE CURRENT   @D14BDBC 04100000
+*               PARTITION IS ASSUMED.                          @D14BDBC 04150000
+*                                                              @D14BDBC 04200000
+*      R1 CONTAINS THE PIK AT ENTRY SGLINK GETJAP              @D14BDBC 04250000
+*                                                              @D14BDBC 04300000
+*                                                              @D14BDBC 04350000
+* FUNCTION AND                                                 @D14BDBC 04400000
+* ============                                                 @D14BDBC 04450000
+* THE MEANING OF THE PARAMETER :                               @D14BDBC 04500000
+* ==============================                               @D14BDBC 04550000
+* POST-GETJA:                                                           04600000
+* ===========                                                           04650000
+*                                                              @D14BDBC 04700000
+*                                                              @D14BDBC 04750000
+*                                                              @D14BDBC 04800000
+* ---- ACTION PARAMETER OPTION DESCRIPTION:                    @D14BDBC 04850000
+*                                                              @D14BDBC 04900000
+*         LET XXX DENOTE THE VALUE OF ANY FLD OR REG           @D14BDBC 04950000
+*                    BEFORE  GETJA EXECUTION                   @D14BDBC 05000000
+*             THEN XXX' DENOTES ITS VALUE                      @D14BDBC 05050000
+*                    AFTER GETJA = SVC102 EXECUTION            @D14BDBC 05100000
+*         LET PART DENOTE ANY PARTITION                        @D14BDBC 05150000
+*         LET R-PART DENOTE THE REQUESTED PARTITION            @D14BDBC 05200000
+*                                                              @D14BDBC 05250000
+*                                                              @D14BDBC 05300000
+*         LET INTC DENOTE THE INTERVALL SINCE THE  L A S T     @D14BDBC 05350000
+*                            THE LAST GETJA( ACTION = UPDATE)  @D14BDBC 05400000
+*                             OF THE REQUESTED PARTITION       @D14BDBC 05450000
+*                                         OR                   @D14BDBC 05500000
+*                            SINCE IPL.                        @D14BDBC 05550000
+*                                                              @D14BDBC 05600000
+*         LET INTCLR DENOTE THE INTERVALL SINCE THE  L A S T   @D14BDBC 05650000
+*                            GETJA(ACTION = CLEAR) OF          @D14BDBC 05700000
+*                            THE REQU.   PARTITION             @D14BDBC 05750000
+*                                         OR                   @D14BDBC 05800000
+*                            SINCE IPL.                        @D14BDBC 05850000
+*                                                              @D14BDBC 05900000
+*         LET INTRST DENOTE THE INTERVALL SINCE THE            @D14BDBC 05950000
+*                            SINCE THE LAST                    @D14BDBC 06000000
+*                            GETJA(ACTION = RESET)             @D14BDBC 06050000
+*                            OF THE REQU.   PARTITION          @D14BDBC 06100000
+*                                         OR                   @D14BDBC 06150000
+*                            SINCE IPL.                        @D14BDBC 06200000
+*                                                              @D14BDBC 06250000
+*         LET INTMOVE DENOTE THE INTERVALL FROM                @D14BDBC 06300000
+*                            THE LAST GETJA( ACTION = UPDATE)  @D14BDBC 06350000
+*                            B E F O R E  THE LAST             @D14BDBC 06400000
+*                            GETJA(ACTION = RESET)             @D14BDBC 06450000
+*                            TO  THE LAST                      @D14BDBC 06500000
+*                            GETJA(ACTION = RESET)             @D14BDBC 06550000
+*                            OF THE REQU.   PARTITION          @D14BDBC 06600000
+*                                                              @D14BDBC 06650000
+*         FOR ANY TIME INTERVALL J                             @D14BDBC 06700000
+*                                                              @D14BDBC 06750000
+*            LET CPU-TIME(J) = THE CPUTIME CHARGED TO THE      @D14BDBC 06800000
+*                                    R-PARTITION WHILE J       @D14BDBC 06850000
+*                                                              @D14BDBC 06900000
+*            LET OVH-TIME(J) = THE OVHTIME CHARGED TO THE      @D14BDBC 06950000
+*                                    R-PARTITION WHILE J       @D14BDBC 07000000
+*              (THE OVH TIME IS DISTRIBUTED TO THE ACTIVE      @D14BDBC 07050000
+*               PARTITIONS WITH RESPEC TO THE CPU TIME )       @D14BDBC 07100000
+*                                                              @D14BDBC 07150000
+*            LET BND-TIME(J) = THE BNDTIME CHARGED TO THE      @D14BDBC 07200000
+*                                    R-PARTITION WHILE J       @D14BDBC 07250000
+*              (THE OVH TIME IS DISTRIBUTED TO THE ACTIVE      @D14BDBC 07300000
+*               PARTITIONS )                                   @D14BDBC 07350000
+*                                                              @D14BDBC 07400000
+*            THE UNIT IS 1/300 SEC.                            @D14BDBC 07450000
+*                                                              @D14BDBC 07500000
+*            THE CONVERSION FACTORS ARE JACNVRT AND GETJACON   @D14BDBC 07550000
+*                                                              @D14BDBC 07600000
+*                                                              @D14BDBC 07650000
+* R0=0 INDICATES ACTION = UPDATE:                              @D14BDBC 07700000
+*                                                              @D14BDBC 07750000
+*         THE TIME AND START I/O RELATED SUPERVISOR ACCOUNTING @D14BDBC 07800000
+*         FLDS OF THE R-PARTITION ARE UPDATED.                 @D14BDBC 07850000
+*                                                              @D14BDBC 07900000
+*                ACCTNSIO' = NUMBER OF ENTRIES  OF ACCTSIOS'   @D14BDBC 07950000
+*                ACCTLEN'  = BYTE-LENTH OF TOTAL ACCTABLE      @D14BDBC 08000000
+*                          = ACCTALEN + 1 + 6*ACCTNSIO'        @D14BDBC 08050000
+*                ACCTCLCK' = ACCTCLCK                          @D14BDBC 08100000
+*                          = MAX ( START(INTCLR),              @D14BDBC 08150000
+*                                   , START(INTRST)-INTMOVE )) @D14BDBC 08200000
+*                ACCTCPUT' =                                   @D14BDBC 08250000
+*                  = MIN (  CPU-TIME(INTCLR), CPU-TIME(INTRST) @D14BDBC 08300000
+*                ACCTOVHT' =                                   @D14BDBC 08350000
+*                  = MIN (  OVH-TIME(INTCLR),                  @D14BDBC 08400000
+*                        OVH-TIME( INTRST)+CPU-TIME(INTMOVE) + @D14BDBC 08450000
+*                                        + OVH-TIME(INTMOVE) ) @D14BDBC 08500000
+*                ACCTBNDT' =                                   @D14BDBC 08550000
+*                  = MIN (  BND-TIME(INTCLR),                  @D14BDBC 08600000
+*                                       BND-TIME( INTRST) +    @D14BDBC 08650000
+*                                        + BND-TIME(INTMOVE) ) @D14BDBC 08700000
+*                ACCTDUR'  = MIN (DURATION(INTCLR) ,           @D14BDBC 08750000
+*                                          DURATION(INTRST))   @D14BDBC 08800000
+*                                        + DURATION(INTMOVE) ) @D14BDBC 08850000
+*                ACCTSIOS' = LIST OF ( CUU, NUMBER OF SIOS     @D14BDBC 08900000
+*                                           FOR R-PART TO CUU  @D14BDBC 08950000
+*                                            WHILE INTRST)     @D14BDBC 09000000
+*                                                              @D14BDBC 09050000
+*         THE INTERNAL SIO COUNT                               @D14BDBC 09100000
+*         FLDS OF THE R-PARTITION ARE CLEARED.                 @D14BDBC 09150000
+*                                                              @D14BDBC 09200000
+*                FOR NON SHAREABLE DEVICES:                    @D14BDBC 09250000
+*                    PBXJACNT' = 0                             @D14BDBC 09300000
+*                FOR SHAREABLE DEVICES:                        @D14BDBC 09350000
+*                    USAGE/SIOCOUNT(PIK, DEVICE)' = 0          @D14BDBC 09400000
+*                                                              @D14BDBC 09450000
+*         THE SUPERV. PCB ACCOUNTING TIME FLDS OF EACH PART    @D14BDBC 09500000
+*         ARE UPDATED.                                         @D14BDBC 09550000
+*                PCPUTIME' = POST-UPDJA (PCPUTIME)             @D14BDBC 09600000
+*                  = MIN (  CPU-TIME(INTCLR), CPU-TIME(INTRST) @D14BDBC 09650000
+*                POVHTIME' = POST-UPDJA (POVHTIME)             @D14BDBC 09700000
+*                  = MIN (  OVH-TIME(INTCLR),                  @D14BDBC 09750000
+*                        OVH-TIME( INTRST)+CPU-TIME(INTMOVE) + @D14BDBC 09800000
+*                                        + OVH-TIME(INTMOVE) ) @D14BDBC 09850000
+*                PBNDTIME' = POST-UPDJA (PBNDTIME)             @D14BDBC 09900000
+*                  = MIN (  BND-TIME(INTCLR),                  @D14BDBC 09950000
+*                                       BND-TIME( INTRST) +    @D14BDBC 10000000
+*                                        + BND-TIME(INTMOVE) ) @D14BDBC 10050000
+*                                                              @D14BDBC 10100000
+*                                                              @D14BDBC 10150000
+* R0=1 INDICATES  ACTION = CLRTIME:                            @D14BDBC 10200000
+*          THIS PARAMETER IS FOR JCL ONLY                      @D14BDBC 10250000
+*                                                              @D14BDBC 10300000
+*         THE TIME RELATED SUPERVISOR ACCOUNTING FLDS          @D14BDBC 10350000
+*         OF THE R-PART ARE CLEARED.                           @D14BDBC 10400000
+*                ACCTCLCK' = CLCK  FROM SYSTEM                 @D14BDBC 10450000
+*                ACCTCPUT' = 0                                 @D14BDBC 10500000
+*                ACCTOVHT' = 0                                 @D14BDBC 10550000
+*                ACCTBNDT' = 0                                 @D14BDBC 10600000
+*                ACCTDUR'  = 0                                 @D14BDBC 10650000
+*                                                              @D14BDBC 10700000
+*         THE START I/O RELATED SUPERVISOR ACCOUNTING          @D14BDBC 10750000
+*         FLDS OF THE R-PARTITION ARE UPDATED.                 @D14BDBC 10800000
+*                ACCTNSIO' = NUMBER OF ENTRIES  OF ACCTSIOS'   @D14BDBC 10850000
+*                ACCTLEN'  = BYTE-LENTH OF TOTAL ACCTABLE      @D14BDBC 10900000
+*                ACCTSIOS' = LIST OF ( CUU, NUMBER OF SIOS     @D14BDBC 10950000
+*                                           TO CUU FOR R-PART  @D14BDBC 11000000
+*                                            WHILE INTRST)     @D14BDBC 11050000
+*                                                              @D14BDBC 11100000
+*         AND THE SUPERV. PCB ACC. TIME FLDS                   @D14BDBC 11150000
+*         OF THE R-PART ARE CLEARED.                           @D14BDBC 11200000
+*                PCPUTIME' = 0                                 @D14BDBC 11250000
+*                POVHTIME' = 0                                 @D14BDBC 11300000
+*                PBNDTIME' = 0                                 @D14BDBC 11350000
+*                                                              @D14BDBC 11400000
+*         THE INTERNAL SIO COUNT                               @D14BDBC 11450000
+*         FLDS OF THE R-PARTITION ARE CLEARED.                 @D14BDBC 11500000
+*                                                              @D14BDBC 11550000
+*                FOR NON SHAREABLE DEVICES:                    @D14BDBC 11600000
+*                    PBXJACNT' = 0                             @D14BDBC 11650000
+*                FOR SHAREABLE DEVICES:                        @D14BDBC 11700000
+*                    USAGE/SIOCOUNT(PIK, DEVICE)' = 0          @D14BDBC 11750000
+*                                                              @D14BDBC 11800000
+*                                                              @D14BDBC 11850000
+*                                                              @D14BDBC 11900000
+* R0=2 INDICATES ACTION = RESET:                               @D14BDBC 11950000
+*          THIS PARAMETER IS FOR JCL ONLY                      @D14BDBC 12000000
+*                                                              @D14BDBC 12050000
+*         THE TIME AND START I/O RELATED SUPERVISOR ACCOUNTING @D14BDBC 12100000
+*         FLDS ARE RESET.                                      @D14BDBC 12150000
+*                                                              @D14BDBC 12200000
+*         I.E.:  GETJA  CLEARES THE SIO COUNTERS               @D14BDBC 12250000
+*                      AND FOR THE TIME FLDS OF R-PART         @D14BDBC 12300000
+*              GETJA  S I M U L A T E S                        @D14BDBC 12350000
+*              A CLEARING OF THE ACCOUNTING RELATED FLDS       @D14BDBC 12400000
+*              WITH THE  L A S T  C A L L                      @D14BDBC 12450000
+*              OF  G E T J A                                   @D14BDBC 12500000
+*              FOR R-PART   AND                                @D14BDBC 12550000
+*              IN ADDITION , GETJA  M O V E S                  @D14BDBC 12600000
+*              CPU-TIME TO OVH-TIME.                           @D14BDBC 12650000
+*                                                              @D14BDBC 12700000
+*                ACCTNSIO' = 0                                 @D14BDBC 12750000
+*                ACCTLEN'  = BYTE-LENTH OF TOTAL ACCTABLE      @D14BDBC 12800000
+*                          = ACCTALEN + 1                      @D14BDBC 12850000
+*                ACCTCLCK' = CLOCK - INTC                      @D14BDBC 12900000
+*                ACCTCPUT' = 0                                 @D14BDBC 12950000
+*                ACCTOVHT' = OVH-TIME(INTC)                    @D14BDBC 13000000
+*                                 +CPU-TIME(INTC)              @D14BDBC 13050000
+*                ACCTBNDT  = BND-TIME(INTC)                    @D14BDBC 13100000
+*                ACCTDUR'  = DURATION(INTC)      _             @D14BDBC 13150000
+*                ACCTSIOS' = 20 00 00             |            @D14BDBC 13200000
+*                             .                   |  TOTAL     @D14BDBC 13250000
+*                             .                    > NUM. OF   @D14BDBC 13300000
+*                             .                   |  DEV.      @D14BDBC 13350000
+*                             .                   |            @D14BDBC 13400000
+*                            20 00 00            _|            @D14BDBC 13450000
+*                            20                                @D14BDBC 13500000
+*                                                              @D14BDBC 13550000
+*                                                              @D14BDBC 13600000
+*                                                              @D14BDBC 13650000
+*          AND THE SUPERV. PCB ACC. TIME FLDS OF R-PART        @D14BDBC 13700000
+*                PCPUTIME' = 0                                 @D14BDBC 13750000
+*                POVHTIME' =                                   @D14BDBC 13800000
+*                          = OVH-TIME( INTC)+CPU-TIME(INTC)    @D14BDBC 13850000
+*                PBNDTIME' =                                   @D14BDBC 13900000
+*                          = BND-TIME(INTC),                   @D14BDBC 13950000
+*                                                              @D14BDBC 14000000
+*          THE INTERNAL SIO COUNTS FOR THE R-PART              @D14BDBC 14050000
+*          ARE CLEARED                                         @D14BDBC 14100000
+*                FOR NON SHAREABLE DEVICES:                    @D14BDBC 14150000
+*                    PBXJACNT' = 0                             @D14BDBC 14200000
+*                FOR SHAREABLE DEVICES:                        @D14BDBC 14250000
+*                    USAGE/SIOCOUNT(PIK, DEVICE)' = 0          @D14BDBC 14300000
+*                                                              @D14BDBC 14350000
+*  NOTE: IF ACCTSWTC  INDICATES ACCTACTV                       @D14BDBC 14400000
+*  =====    I.E.:   FROM GETJA ACTION = UPDATE FOR $JOBACCT    @D14BDBC 14450000
+*                   TO GETJA ACTION = RESET AFTER $JOBACCT     @D14BDBC 14500000
+*                                                              @D14BDBC 14550000
+*      THEN EACH GETJA REQUEST OTHER THEN BY JCL IS SUPPRESSED @D14BDBC 14600000
+*                                                              @D14BDBC 14650000
+***************************************************************         14700000
+*                                                              @D14BDBC 14750000
+* ALGORITHM:                                                   @D14BDBC 14800000
+* ============                                                 @D14BDBC 14850000
+* ============                                                 @D14BDBC 14900000
+*    IF ENTRY IS GETJA :                                       @D14BDBC 14950000
+*       R0 := 0 = UPDATE ACTION PARAMETER OPTION               @D14BDBC 15000000
+*       R1 := CURRENT PIK                                      @D14BDBC 15050000
+*    ENDIF                                                     @D14BDBC 15100000
+*    EXECUTE ACTION PARAMETER EVALUATION                       @D14BDBC 15150000
+*      WHICH  SAVES THE PART PARAM. AND ESTABL. ADDRESSABILITY @D14BDBC 15200000
+*                  AND                                         @D14BDBC 15250000
+*      WHICH SAVES AND CHECKS THE ACTION PARAMETER             @D14BDBC 15300000
+*    EXECUTE SIOS ACTION = GETJAP00, PART = GETJAP01/2         @D14BDBC 15350000
+*      WHICH UPDATES OR RESETS THE SIO RELATED FLDS            @D14BDBC 15400000
+*    EXECUTE GETJAT ACTION = GETJAP00, PART = GETJAP01/2       @D14BDBC 15450000
+*      WHICH UPDATES, CLEARES OR RESETS THE TIME RELATED FLDS  @D14BDBC 15500000
+*                                                              @D14BDBC 15550000
+* NOTE: THE UPDATE - RESET MECHANISMS FOR THE SIO FLDS         @D14BDBC 15600000
+*                                     AND FOR THE TIME FLDS    @D14BDBC 15650000
+*                                     ARE DIFFERENT.           @D14BDBC 15700000
+*                                                              @D14BDBC 15750000
+*                                                              @D14BDBC 15800000
+*                                                              @D14BDBC 15850000
+**********************************************************************  15900000
+         DC    CL8'SGACCT'       MACRO NAME                    @D51IDIS 15950000
+         DC    CL8'06/17/94'     LAST CHANGE                   @D61MPIS 16000001
+         DC    C'DY36380 '       LAST APAR FIXED               @DA36380 16050000
+         USING DISP,R6                                                  16100000
+         USING GETJA,RC                                        @D14BDFR 16150000
+*-------------------------------------------------------------          16162501
+* GETJA    - ENTRY POINT FOR SVC 102, NO PARAMETER SPECIFIED            16175001
+*-------------------------------------------------------------          16187501
+GETJA    DS    0H                                              @D14BDBC 16200000
+* SGLINK GETJA  INPUT=(R0,R1,R6,RC)                                    *16250000
+                 WORK=(R0,R1,R2,R3,R4,R5,R7,R8,R9,RA,RB,RE,RF) @D14BDBC 16300000
+         L     R5,ASRQTAB                                      @D61MPIS 16350001
+         LA    R5,SRQSAT-SRQTAB(,R5) ALREADY GATED             @D61MPIS 16400001
+         TM    RBSAT-SRQSAT(R5),FREEBIT RESOURCE FREE          @D66ODOW 16450003
+         BNO   RESVCX                                          @D66ODOW 16500003
+         MVI   RID+1,SATBND                                    @D14BDBC 16550000
+         SR    R0,R0             SET ACTION PARAM TO UPDATE    @KD40376 16600001
+         LH    R1,PIK            SET PART PARAM TO CURRENT PART@D14BDBC 16650000
+*-------------------------------------------------------------          16662501
+* GETJAP   - ENTRY POINT FOR SVC 107 WITH ACTION PARAMETER              16675001
+*-------------------------------------------------------------          16687501
+GETJAP   EQU   *                 ENTRY FOR SVC107 WITH PARAM.  @D14BDBC 16700000
+* SGLINK GETJAP  INPUT=(R0,R1,R6,RC)                                   *16750000
+                  WORK=(R2,R3,R4,R5,R7,R8,R9,RA,RB,RE,RF)      @D14BDBC 16800000
+         TM    SUPVFLAG,JAACT    JOB ACCOUNTING ACTIVE         @D14BDFR 16850000
+         BZR   R6                NO, EXIT                      @D14BDFR 16900000
+*------------------------------------------------------------- @D14BDBC 16950000
+*  PARAMETER EVALUATION:                                       @D14BDBC 17000000
+*                                                              @D14BDBC 17050000
+*  ALGORITHM:                                                  @D14BDBC 17100000
+*                                                              @D14BDBC 17150000
+*    ESTABL. ADDRESSABILITY AND SAVE THE PART. PARAM R1        @D14BDBC 17200000
+*                                                              @D14BDBC 17250000
+*    SAVE THE ACTION PARAM R0                                  @D14BDBC 17300000
+*                                                              @D14BDBC 17350000
+*    IF JCSW5 IN R-PART COMREG INDICATES  JCL IS ACTIVE        @D14BDBC 17400000
+*                                               (JCLACTIV ON)  @D14BDBC 17450000
+*                                                              @D14BDBC 17500000
+*       THEN                                                   @D14BDBC 17550000
+*                                                              @D14BDBC 17600000
+*           IF THE ACTION PARAMETER R0 = GETJAP00              @D14BDBC 17650000
+*                   IS NOT OF POSSIBLE VALUE = 0, 1, OR 2      @D14BDBC 17700000
+*                                                              @D14BDBC 17750000
+*              THEN  CANCEL INVALID SVC                        @D14BDBC 17800000
+*                                                              @D14BDBC 17850000
+*           OTHERWISE                                          @D14BDBC 17900000
+*                                                              @D14BDBC 17950000
+*             EXECUTE GETJA (ACTION = R0 ,PART = R1 )          @D14BDBC 18000000
+*    EXECUTE SIOS ACTION = GETJAP00, PART = GETJAP01/2         @D14BDBC 18050000
+*                     (LABEL IS GETJAM)                        @D14BDBC 18100000
+*                                                              @D14BDBC 18150000
+*    OTHERWISE                                                 @D14BDBC 18200000
+*                                                              @D14BDBC 18250000
+*       IF ACTION NOT UPDATE                                   @D14BDBC 18300000
+*                                                              @D14BDBC 18350000
+*          THEN  CANCEL INVALID SVC                            @D14BDBC 18400000
+*                                                              @D14BDBC 18450000
+*       OTHERWISE                                              @D14BDBC 18500000
+*                                                              @D14BDBC 18550000
+*          IF ACCTSWTC INDICATES JCL-N/$JOBACCT ACTIVE         @D14BDBC 18600000
+*                                         (ACCACTV ON)         @D14BDBC 18650000
+*                                                              @D14BDBC 18700000
+*             THEN  SUPPRESS GETJA REQUEST                     @D14BDBC 18750000
+*                                                              @D14BDBC 18800000
+*          OTHERWISE                                           @D14BDBC 18850000
+*                                                              @D14BDBC 18900000
+*             EXECUTE GETJA (ACTION = R0 ,PART = R1 )          @D14BDBC 18950000
+*                     (LABEL IS GETJAM)                        @D14BDBC 19000000
+*                                                              @D14BDBC 19050000
+*------------------------------------------------------------- @D14BDBC 19100000
+*---ADDRESSABILITY AND PARTITION PARAMETER EVALUATION:         @D14BDBC 19150000
+*                                                              @D14BDBC 19200000
+         SRL   R1,2         GET OFFSET ...                     @D51IDIS 19250000
+         A     R1,APCBATAB         ... INTO PCBATAB            @D51IDIS 19300000
+         ST    R1,GETJAP03  SAVE ADDRESS OF PCB PTR            @KD40376 19325001
+         L     R1,0(,R1)    GET CORRESP. PCB ADDRESS           @D51IDIS 19350000
+         LTR   R1,R1        PCB ADDRESS AVAILABLE ?            @D51IDIS 19400000
+         BZR   R6           NO, EXIT                           @D51IDIS 19450000
+         USING PCBADR,R1          -COMREG ADDRESSABLE          @D51IDIS 19500000
+         L     R5,PCBTOKEN                                     @KD40376 19516601
+         ST    R5,GETJAP04                                     @KD40376 19533201
+         L     R5,PCECOMRA                                     @D51IDIS 19550000
+         DROP  R1                                              @D14BDBC 19600000
+         ST    R5,GETJAP01       SAVE COMREG ADDR OF R-PART    @D14BDBC 19650000
+         ST    R1,GETJAP02       SAVE PCB ADDR FOR R-PART      @D51IDIS 19700000
+         USING COMREG,R5         R-PARTITION ADDRESSABLE       @D14BDBC 19750000
+         L     R9,JAPART         POINT TO R-PART   JA TABLE    @D14BDBC 19800000
+         USING ACCTABLE,R9                                     @D14BDBC 19850000
+*------------------------------------------------------------- @D14BDBC 19900000
+*---ACTION  PARAMETER EVALUATION:                              @D14BDBC 19950000
+*                                                              @D14BDBC 20000000
+         STC   R0,GETJAP00       SAVE ACTION PARAMETER         @D14BDBC 20050000
+         L     R5,CRADDR         GET CURRENT COMREG            @D14BDBC 20100000
+         TM    JCSW5,JCLACTIV    IS THIS REQUEST BY JCL?       @D14BDBC 20150000
+         L     R5,GETJAP01       RESTORE REQUESTED COMREG      @D14BDBC 20200000
+         BZ    GETJAV10          --> NOT JCL ACTION PARAM EVAL.@D14BDBC 20250000
+         CLI   GETJAP00,GETJARST IS ACTION PARAM OF POSSIB.VAL.@KD40376 20300001
+         BNH   GETJAUPS          IF POSSIB. EVALUTE PART PARAM @D14BDBC 20350000
+GETJAV10 CLI   GETJAP00,GETJAUPD IS ACTION PARAM = UPDATE      @D14BDBC 20400000
+         BNE   ERR21             NO, CANCEL DUE TO INVALID SVC @D14BDBC 20450000
+         TM    ACCTSWTC,ACCTACTV IS $JOBACCT ACTIVE            @D14BDBC 20500000
+         BOR   R6                YES, EXIT                     @D14BDFR 20550000
+*------------------------------------------------------------- @D14BDBC 20600000
+*  END OF PARAMETER EVALUATION                                 @D14BDBC 20650000
+*------------------------------------------------------------- @D14BDBC 20700000
+*------------------------------------------------------------- @D14BDBC 20750000
+*  SIOS ACTION = PARAMETER R0 = GETJAO00                       @D14BDBC 20800000
+*------------------------------------------------------------- @D14BDBC 20850000
+*---------------------------------------------------           @D14BDBC 20900000
+* FOR EACH ACTION PARAMETER VALUE: EXECUTE SIO UPDATE=GETJAUPS @D14BDBC 20950000
+*---------------------------------------------------           @D14BDBC 21000000
+* PREPARE LOOP ON DEVICES FOR GETJA-UPDATE-SIOS = GETJAUPS     @D14BDBC 21050000
+* , LOOP REG = RA                                              @D14BDBC 21100000
+*---------------------------------------------------           @D14BDBC 21150000
+GETJAUPS LH    RA,IJBNDEV         GET NUMBER OF DEVICES        @D14BDBC 21200000
+         SR    RE,RE              INITIALIZE PUB INDEX         @D14BDBC 21250000
+         LA    R3,ACCTABLE     COMPUTE END ADDRESS  OF         @KD40376 21253101
+         A     R3,ACCTABLN            - ACCTABLE FOR EX INSTR. @KD40376 21256201
+         N     R3,PADDRMSK     AJUST TO PAGE BOUNDARY          @KD40376 21259301
+         CR    R3,R9           ADDRESS LOWER AS START ADDRESS? @KD40376 21262401
+         BNH   GETJAPC0        YES, JA TABLE WITHIN ONE PAGE   @KD40376 21265501
+         BCTR  R3,0                   - ONE                    @KD40376 21268601
+GETJAPC0 DS    0H                                              @KD40376 21271701
+         CLC   ACCTABLE(2),0(R3)               PAGE IN JA TAB. @KD40376 21274801
+         L     R3,GETJAP03       GET ADDRESS OF PCB PTR        @KD40376 21277901
+         ICM   R3,15,0(R3)       PARTITION DEALLOCATED ?       @KD40376 21281001
+         BZR   R6                YES, RETURN TO CALLER         @KD40376 21284101
+         USING PCBADR,R3                                       @KD40376 21287201
+         CLC   PCBTOKEN,GETJAP04 TOKEN CHANGED ?               @KD40376 21290301
+         BNER  R6                YES, RETURN TO CALLER         @KD40376 21293401
+         DROP  R3                                              @KD40376 21296501
+*---------------------------------------------------           @D14BDBC 21300000
+* LOOP ON DEVICES FOR GETJASIO EXECUTION FOR                   @D14BDBC 21350000
+* R-PARTITION USING ENTRY POINT GETJASI1.                      @D14BDBC 21400000
+* ENTRY POINT GETJASIO LOADS BASE REG RC NEW.                  @D14BDBC 21450000
+* NOTE, GETFLD_PAR : PU = RE                                   @D14BDBC 21500000
+*---------------------------------------------------           @D14BDBC 21550000
+* NOTE, GETJASIO-PAR: RE = DEVICE-PARAMETER = DEVICE INDEX     @D14BDBC 21600000
+*                AND  R5 = R-     -PART-ID-COMREG-ADDRESS      @D14BDBC 21650000
+*                AND  R9 = R-     -PART-ID-JOB ACCOUNTING TABLE         21675001
+* AND PRE-GETJASIO  : PCBPRT = R-      PART-ID-PCBADR-ADDRESS  @D14BDBC 21700000
+*---------------------------------------------------           @D14BDBC 21750000
+*SGLINK  GETJASI1   INPUT=(R5,R7,R9,RC,RE)                             *21800001
+                          WORK=(R0,R1,R2,R3,R4,R8,RB)                   21850001
+GETJA00  BAS   R7,GETJASI1                                     @D66ODOW 21900003
+*                                 MOVE DEVICE COUNTERS         @D14BDBC 21950000
+*                                - TO PARTITION JA TABLE       @D14BDBC 22000000
+*                                 BUT KEEP BASE REG RC         @D14BDBC 22050000
+         LA    RE,1(RE)           NEXT DEVICE                  @D14BDBC 22100000
+         BCT   RA,GETJA00         LOOP BACK                    @D14BDBC 22150000
+*------------------------------------------------------        @D14BDBC 22200000
+* END LOOP ON DEVICES FOR GETJASIO EXECUTION                   @D14BDBC 22250000
+*------------------------------------------------------        @D14BDBC 22300000
+*------------------------------------------------------------- @D14BDBC 22350000
+*  END OF ACCTJAUPS                                            @D14BDBC 22400000
+*------------------------------------------------------------- @D14BDBC 22450000
+         CLI   GETJAP00,GETJARST IS ACTION = RESET?            @D14BDBC 22500000
+         BNE   GETJAT            SKIP CLEARING IF NOT          @D14BDBC 22550000
+*------------------------------------------------------------- @D14BDBC 22600000
+* CASE ACTION = RESET:   EXECUTE GETJA-RESET-SIOS = GETJARSS   @D14BDBC 22650000
+*------------------------------------------------------------- @D14BDBC 22700000
+GETJARSS EQU   *               RESET   ACCTSIOS & RELATED FLDS @D14BDBC 22750000
+         LA    R2,ACCTSIOS             INIT REG FOR RESET LOOP @D14BDBC 23000000
+         LH    R3,ACCTNSIO             LEN OF RESET LOOP       @D14BDBC 23050000
+         LTR   R3,R3           LOOP COUNT ZERO ?               @D51IDIS 23100000
+         BZ    GETJAR06        YES, IGNORE RESET LOOP          @D51IDIS 23150000
+GETJAR05 XC    0(L'ACCTSIOS,R2),0(R2)  RESET SIO FLD           @D14BDBC 23200000
+         MVI   0(R2),ACCTEND                     - TO 20 00 00 @D14BDBC 23250000
+         LA    R2,L'ACCTSIOS(R2)       ADD LEN OF SIO ENTRY    @D14BDBC 23300000
+         BCT   R3,GETJAR05             NEXT SIO FLD            @D14BDBC 23350000
+         XC    ACCTNSIO,ACCTNSIO       CLEAR NO. OF SIO'S      @D14BDBC 23400000
+GETJAR06 DS    0H                                              @D51IDIS 23450000
+         XC    ACCTLEN,ACCTLEN         RESET LENGTH OF         @D14BDBC 23500000
+         MVI   ACCTLEN+1,ACCTALEN+1    - TOTAL R-PART  JA TAB. @D14BDBC 23550000
+         L     R5,GETJAP02       SAVE PCB ADDR FOR R-PART      @D51IDIS 23600000
+         USING PCBADR,R5                                       @D51IDIS 23650000
+         MVC   PCBASIO(4),PCBTSIO      SET SIO FOR NEW INTERVAL@D51IDIS 23700000
+*------------------------------------------------------------- @D14BDBC 23850000
+*  END OF SIOS ACTION (ACTION PARAMETER)                       @D14BDBC 23900000
+*------------------------------------------------------------- @D14BDBC 23950000
+         DROP  R5,R9                                           @D14BDBC 24000000
+*------------------------------------------------------        @D14BDBC 24050000
+* GETJAT (ACTION PARAMETER)                                    @D14BDBC 24100000
+*  = GETJA-TIME WHICH                                          @D14BDBC 24150000
+* CLEARS, RESETS OR UPDATES TIME RELATED ACCOUNTING FLDS       @D14BDBC 24200000
+*------------------------------------------------------        @D14BDBC 24250000
+*                                                              @D14BDBC 24300000
+GETJAT   DS    0H                                              @D51IDIS 24350000
+         ST    RD,GETSAVE         SAVE REGISTER                @D51IDIS 24400000
+         L     RD,AEXTCPUT        UPDJA BASE                   @D51IDIS 24450000
+         USING EXTCPUT,RD                                      @D51IDIS 24500000
+         BAS   R9,UPDJA           UPDATE ALL PCB JA COUNTERS   @D66ODOW 24550003
+*SGLINK  UPDJA,INPUT=(R6,R9,RD),WORK=(R0,R1,R2,R3,R4,R5)       @D14BDFR 24600000
+         DROP  RD                                              @D14BDFR 24650000
+         L     RD,GETSAVE         RESTORE REGISTER             @D51IDIS 24700000
+         L     R5,GETJAP01        R-PART  COMREG POINTER       @D14BDFR 24750000
+         USING COMREG,R5                                       @D14BDFR 24800000
+         L     R9,JAPART          POINT TO R-PART  JA TABLE    @D14BDFR 24850000
+         USING ACCTABLE,R9                                     @D14BDFR 24900000
+         L     R5,GETJAP02        POINT TO R-PART  PCB         @D14BDFR 24950000
+         USING PCBADR,R5                                       @D14BDFR 25000000
+         CLI   GETJAP00,GETJARST IS ACTION = RESET?            @D14BDBC 25050000
+         BE    GETJARTT          EXECUTE GETJARTT              @D14BDBC 25100000
+         CLI   GETJAP00,GETJAUPD IS ACTION = UPDATE?           @D14BDBC 25150000
+         BE    GETJAUPT          EXECUTE GETJAUPT              @D14BDBC 25200000
+*------------------------------------------------------------- @D14BDBC 25250000
+* CASE ACTION = CLRTIME THEN EXECUTE GETJA-CLR-TIME = GETJACLT @D14BDBC 25300000
+*------------------------------------------------------------- @D14BDBC 25350000
+GETJACLT EQU   *                                               @D14BDBC 25400000
+         STCK  ACCTCLCK     STORE CURRENT TIME                 @D14BDBC 25450000
+         XC    ACCTCPUT(12),ACCTCPUT CLEAR TIME FLDS IN JATAB  @D14BDBC 25500000
+         XC    PCPUTIME(24),PCPUTIME CLEAR TIME FLDS IN PCB    @D14BDBC 25550000
+         XC    ACCTDUR,ACCTDUR    CLEAR DURATION FLD IN JATAB  @D14BDBC 25600000
+         B     GRETURN            RETURNE TO DISP.             @D14BDBC 25650000
+*------------------------------------------------------------- @D14BDBC 25700000
+* CASE ACTION = RESET THEN EXECUTE GETJA-RESET-TIME = GETJARTT @D14BDBC 25750000
+*                       WHICH RESETS THE PCB FLDS AND ACCTCLCK @D14BDBC 25800000
+*                       AND EXECUTE GETJA-UPD-TIME = GETJAUPT  @D14BDBC 25850000
+*------------------------------------------------------------- @D14BDBC 25900000
+GETJARTT EQU   *                                               @D14BDBC 25950000
+* FOR XXX = CPU, OVH, BND THE LOOP COMPUTES THE FOLLOWING:     @D14BDBC 26000000
+*     PXXXTIME' = PXXXTIME - (ACCTXXXT * JACNVRT)              @D14BDBC 26050000
+         LA    R3,3               LOOP ON TIME FIELDS          @D14BDBC 26100000
+         LA    RE,PCPUTIME        FIRST TIME FIELD IN PCB      @D14BDBC 26150000
+         LA    RF,ACCTCPUT        FIRST TIME FIELD IN JA TABLE @D14BDBC 26200000
+         SR    R1,R1              INIIT OFFSETFOR LOOP         @D14BDBC 26300000
+*        CLC   ACCTCPUT,ACCTBNDT  PAGE IN USED PART OF JA TAB. @KD40376 26350001
+GETJAT10 L     R1,0(RF)           GET TIME FIELD IN JA TABLE   @D14BDBC 26400000
+         M     R0,JACNVRT     CONVERT BACK FROM 1/300 SEC UNIT @D14BDBC 26450000
+         STM   R0,R1,GETJAWRK     SAVE IN WORKFLD              @D14BDBC 26500000
+         LM    R0,R1,0(RE)        GET TIME FIELD IN PCB        @D14BDFR 26550000
+         SL    R1,GETJAWRK+4      LOW ORDER DIFFERENCE         @D14BDBC 26600000
+         BC    CARRY,GETJAT11     SKIP IF NO BORROW            @D14BDBC 26650000
+         SL    R0,F1              ACCOUNT FOR OVERFLOW         @D14BDBC 26700000
+GETJAT11 SL    R0,GETJAWRK        HIGH ORDER DIFFERENCE        @D14BDBC 26750000
+         STM   R0,R1,0(RE)        SAVE DIFFERENCE IN PCB FLD   @D14BDBC 26800000
+         LA    RE,8(RE)           NEXT TIME FIELD IN PCB       @D14BDBC 26850000
+         LA    RF,4(RF)           NEXT TIME FIELD IN JA TABLE  @D14BDBC 26900000
+         BCT   R3,GETJAT10        COMPUTE NEXT DIFFERENCE      @D14BDBC 26950000
+*  MOVE CPU- TO OVH TIME                                       @D14BDBC 27000000
+         LM    R0,R1,PCPUTIME     POVHTIME := PCPUTIME         @D14BDBC 27050000
+         AL    R1,POVHTIME+4                  + POVHTIME       @D14BDBC 27100000
+         BC    NOCARRY,GETJA07                                 @D14BDBC 27150000
+         AL    R0,F1                                           @D14BDBC 27200000
+GETJA07  AL    R0,POVHTIME                                     @D14BDBC 27250000
+         STM   R0,R1,POVHTIME                                  @D14BDBC 27300000
+         XC    PCPUTIME(8),PCPUTIME  PCPUTIME := 0             @D14BDBC 27350000
+*                                                              @D14BDBC 27500000
+*     ACCTCLCK' = ACCTCLCK + (ACCTDUR * GETJACON)              @D14BDBC 27550000
+GETJA09  L     R1,ACCTDUR         GET DURATION IN JA TABLE     @D14BDBC 27600000
+         M     R0,GETJACON    CONVERT BACK FROM 1/300 SEC UNIT @D14BDBC 27650000
+         AL    R1,ACCTCLCK+4      LOW ORDER SUM                @D14BDBC 27700000
+         BC    NOCARRY,GETJAT12   SKIP IF NO OVERFLOW          @D14BDBC 27750000
+         AL    R0,F1              ACCOUNT FOR OVERFLOW         @D14BDBC 27800000
+GETJAT12 AL    R0,ACCTCLCK        HIGH ORDER SUM               @D14BDBC 27850000
+         STM   R0,R1,ACCTCLCK     SAVE SUM IN ACCTCLCK         @D14BDBC 27900000
+*                                                              @D14BDBC 27950000
+*  CONTINUE WITH GETJAUPT = GETJA-UPDATE-TIME                  @D14BDBC 28000000
+*------------------------------------------------------------- @D14BDBC 28050000
+* CASE ACTION = UPDATE THEN EXECUTE GETJA-UPD-TIME = GETJAUPT  @D14BDBC 28100000
+*------------------------------------------------------------- @D14BDBC 28150000
+GETJAUPT EQU   *                                               @D14BDBC 28200000
+         LA    R3,3               LOOP ON TIME FIELDS          @D14BDBC 28250000
+         LA    RE,PCPUTIME        FIRST TIME FIELD IN PCB      @D14BDBC 28300000
+         LA    RF,ACCTCPUT        FIRST TIME FIELD IN JA TABLE @D14BDBC 28350000
+GETJAT13 LM    R0,R1,0(RE)        GET TIME FIELD IN PCB        @D14BDFR 28400000
+         D     R0,JACNVRT         CONVERT TO 1/300 SEC UNIT    @D14BDFR 28450000
+         ST    R1,0(RF)           SAVE TIME IN JA TABLE        @D14BDBC 28500000
+         LA    RE,8(RE)           NEXT TIME FIELD IN PCB       @D14BDBC 28550000
+         LA    RF,4(RF)           NEXT TIME FIELD IN JA TABLE  @D14BDBC 28600000
+         BCT   R3,GETJAT13        UPDATE NEXT COUNTER          @D14BDBC 28650000
+*                                                              @D14BDBC 28700000
+         STCK  GETJAWRK     STORE CURRENT TIME INTO WORK FLD   @D14BDBC 28750000
+         BNZ   GETJANOK     BR IF CLCK IS NOT OK               @D14BDBC 28800000
+         LM    RE,RF,GETJAWRK  GET CURRENT TIME                @D14BDBC 28850000
+         LM    R0,R1,ACCTCLCK  GET INTERN. JOB STEP START TIME @D14BDBC 28900000
+         SLR   RF,R1        LOW ORDER DIFFERENCE               @D14BDBC 28950000
+         BC    CARRY,GETJANOC     SKIP IF NO BORROW            @D14BDBC 29000000
+         A     R0,F1        ACCOUNT FOR OVERFLOW               @D14BDBC 29050000
+GETJANOC SLR   RE,R0        HIGH ORDER DIFFERENCE              @D14BDBC 29100000
+         LTR   RE,RE        POSITIVE VALUE ?                   @DA36380 29150000
+         BM    GETJANOK     NO, ==> OVERFLOW                   @DA36380 29200000
+         C     RE,GETJACON  VALUE TOO HIGH ?                   @DA36380 29250000
+         BNL   GETJANOK     YES, ==> PREVENT DIVISION EXCEPTION@DA36380 29300000
+         SRDL  RE,1         DEVIDE BY 2                        @DA36380 29350000
+         D     RE,GETJACON  CONVERT TO 1/300 SEC UNIT          @D14BDBC 29400000
+         SR    RE,RE                                           @DA36380 29450000
+         SLDL  RE,1         MULTIPLY RESULT BY 2               @DA36380 29500000
+         LTR   RE,RE        WAS THERE AN OVERFLOW ?            @DA36380 29550000
+         BZ    GETJAT14     NO, ==> OK                         @DA36380 29600000
+GETJANOK XR    RF,RF        CLCK NOT OK IMPLIES ACCTDUR = 0    @D14BDBC 29650000
+GETJAT14 ST    RF,ACCTDUR   SAVE DURATION OR 0 IF CLOCK NOT OK @D14BDBC 29700000
+*------------------------------------------------------        @D14BDBC 29800000
+* END OF GETJAT (ACTION PARAMETER)                             @D14BDBC 29850000
+*------------------------------------------------------        @D14BDBC 29900000
+GRETURN  BR    R6                 RETURN TO DISP.              @D14BDBC 29950000
+*-------------------------------------------------             @D14BDBC 30000000
+* LOCAL VARIABLES:                                             @D14BDBC 30050000
+*----------------                                              @D14BDBC 30100000
+GETJAWRK DS    2F           LOCAL WORK FLD SHORT TIME SAVE     @D14BDBC 30150000
+JACNVRT  DC    F'208'         TIME CONVERSION FACTOR FOR       @D14BDFR 30200000
+*                                ACCTCPU, ACCTOVH, ACCTBND     @D14BDBC 30250000
+GETJACON DC    F'13653333'  TIME CONVERSION FACTOR FOR ACCTDUR @D14BDBC 30300000
+GETJAP00 DC    X'00'        INTERNAL ACTION PARAMETER          @D14BDBC 30350000
+GETJAUPD EQU   X'00'        ACTION = UPDATE                    @D14BDBC 30400000
+GETJACLR EQU   X'01'        ACTION = CLRTIME                   @D14BDBC 30450000
+GETJARST EQU   X'02'        ACTION = RESET                     @D14BDBC 30500000
+GETJAP01 DC    F'00'        COMGEG ADDR OF THE R-PART          @D14BDBC 30550000
+GETJAP02 DC    F'00'        PCB ADDR OF THE R-PART             @D14BDBC 30600000
+GETJAP03 DC    F'00'        ADDRESS OF PCB PTR IN PCBATAB      @KD40376 30616601
+GETJAP04 DC    F'00'        SAVED PCB TOKEN                    @KD40376 30633201
+         DROP  R5,R9                                           @D14BDBC 30650000
+*---------------------------------------------------           @D14BDBC 30700000
+* END OF MAIN ROUTINE                                          @D14BDBC 30750000
+*---------------------------------------------------           @D14BDBC 30800000
+*---------------------------------------------------           @D14BDBC 30850000
+* GETJASIO MODULE                                              @D14BDBC 30900000
+*---------------------------------------------------           @D14BDBC 30950000
+* NOTE, GETJASIO-PAR: RE = DEVICE-PARAMETER = DEVICE INDEX     @D14BDBC 31000000
+*                  AND  R5 = R-     -PART-ID-COMREG-ADDRESS    @D14BDBC 31050000
+*                                                              @D14BDBC 31100000
+* AND PRE-GETJASIO: PCBPRT = R-      PART-ID-PCBADR-ADDRESS    @D14BDBC 31150000
+*                                                              @D14BDBC 31200000
+* AND POST-GETJASIO: RE' = RE AND R5' = R5                     @D14BDBC 31250000
+*                                                              @D14BDBC 31300000
+* GETJASI1 IS ENTRY POINT FOR GETJA WITHOUT LOADING BASE RC    @D14BDBC 31350000
+*-----------------------------------------------------------   @D14BDBC 31400000
+*-------------------------------------------------------------          31412501
+* GETJASIO - ENTRY POINT FOR EXTERNAL CALLERS                           31425001
+*        AMODE: ANY                                            @D66ODOW 31426003
+*-------------------------------------------------------------          31437501
+*SGLINK  GETJASIO   INPUT=(R5,R7,RE),                                  *31450000
+                          WORK=(R0,R1,R2,R3,R4,R8,R9,RB,RC)    @D14BDBC 31500000
+GETJASIO BASR  RC,0         PREPARE RC = BASE ADDRESS          @D66ODOW 31550003
+         LA    R1,*-GETJA    - FOR ENTRY POINT GETJASIO        @D14BDBC 31600000
+         SR    RC,R1         - FROM OUTSIDE GETJA              @D14BDBC 31650000
+         USING COMREG,R5    MAKE COMREG ADDRESSABLE            @D14BDBC 31700000
+         LH    R1,PID       PIK OF SERVICED PARTITION          @DA35543 31750000
+         LH    RF,BGCOMPT   GET BG COMREG ADDRESS              @D51IDIS 31800000
+         CR    R5,RF        SERVICE FOR BG ?                   @DA35543 31850000
+         BNE   GETJAPCB     NO  ===>                           @DA35543 31900000
+         LA    R1,16        GET BG PIK                         @DA35543 31950000
+GETJAPCB DS    0H                                              @D51IDIS 32000000
+         SRL   R1,2         GET OFFSET INTO PCBATAB            @D51IDIS 32050000
+         A     R1,APCBATAB  GET POINTER TO PCB ADDRESS         @D51IDIS 32100000
+         ST    R1,GETJAP03  SAVE ADDRESS OF PCB PTR            @KD40376 32125001
+         L     R1,0(,R1)    GET PCB ADDRESS                    @D51IDIS 32150000
+         LTR   R1,R1        PCB ADDRESS AVAILABLE ?            @D51IDIS 32200000
+         BZR   R7           NO, RETURN TO CALLER               @D51IDIS 32250000
+         ST    R1,GETJAP02  SAVE PCB ADDR FOR R-PART           @DA35543 32300000
+         ST    R5,GETJAP01  SAVE COMREG ADDRESS OF R-PART      @DA35543 32350000
+         USING PCBADR,R1                                       @KD40376 32358901
+         L     R9,PCBTOKEN  GET PCB TOKEN AND ...              @KD40376 32367801
+         DROP  R1                                              @KD40376 32376701
+         ST    R9,GETJAP04                    ... SAVE IT      @KD40376 32385601
+         ICM   R9,15,JAPART MAKE PART-ACCTABLE, AVAILABLE ?    @D61NDIS 32391501
+         BZR   R7           NO, RETURN TO CALLER               @D61NDIS 32397401
+         USING ACCTABLE,R9   -ADDRESSABLE                      @KD40376 32403401
+         LA    R8,ACCTABLE     COMPUTE END ADDRESS  OF         @KD40376 32412301
+         A     R8,ACCTABLN            - ACCTABLE FOR EX INSTR. @KD40376 32421201
+         N     R8,PADDRMSK     AJUST TO PAGE BOUNDARY          @KD40376 32430101
+         CR    R8,R9           ADDRESS LOWER AS START ADDRESS? @KD40376 32439001
+         BNH   GETJAPC1        YES, JA TABLE WITHIN ONE PAGE   @KD40376 32447901
+         BCTR  R8,0                   - ONE                    @KD40376 32456801
+GETJAPC1 DS    0H                                              @KD40376 32465701
+         CLC   ACCTABLE(2),0(R8)               PAGE IN JA TAB. @KD40376 32474601
+         L     R8,GETJAP03       GET ADDRESS OF PCB PTR        @KD40376 32483501
+         ICM   R8,15,0(R8)       PARTITION DEALLOCATED ?       @KD40376 32492401
+         BZR   R7                YES, RETURN TO CALLER         @KD40376 32501301
+         USING PCBADR,R8                                       @KD40376 32510201
+         CLC   PCBTOKEN,GETJAP04 TOKEN CHANGED ?               @KD40376 32519101
+         BNER  R7                YES, RETURN TO CALLER         @KD40376 32528001
+         DROP  R8                                              @KD40376 32536901
+*-------------------------------------------------------------          32545801
+* GETJASI1 - ENTRY POINT FOR LOOP OVER CUUS                             32554701
+*-------------------------------------------------------------          32563601
+*SGLINK  GETJASI1   INPUT=(R5,R7,R9,RC,RE)                             *32572501
+                          WORK=(R0,R1,R2,R3,R4,R8,RB)                   32581401
+GETJASI1 DS    0H                                              @KD40376 32590301
+         LH    R3,ACCTNSIO  INIT LOOP ON CUU'S                 @D14BDBC 32600000
+         LR    R4,RE        GET PUB INDEX                      @D51IDIS 32650000
+         SLL   R4,2         GET OFFSET INTO PUB EXT ADDR. TABLE@D51IDIS 32700000
+         A     R4,APBXAREA  GET POINTER TO ENTRY               @D51IDIS 32750000
+         L     R4,0(,R4)    GET PUBX POINTER                   @D51IDIS 32800000
+         USING PBXADR,R4    MAKE DEV-PBXADR ADDRESSABLE        @D14BDBC 32850000
+*---------------------------------------------------           @D14BDBC 32900000
+* GET SIOS COUNTER                                             @D14BDBC 32950000
+*---------------------------------------------------           @D14BDBC 33000000
+         TM    PBXFLAG1,PBXSHR IS DEVICE SHARABLE?             @D14BDBC 33050000
+         BZ    GETJA20      SKIP IF NOT                        @D14BDBC 33100000
+*---------------------------------------------------           @D14BDBC 33150000
+* SHAREABLE PATH                                               @D14BDBC 33200000
+*---------------------------------------------------           @D14BDBC 33250000
+         L     R8,GETJAP02  MAKE PART-PCB                      @D14BDBC 33300000
+         USING PCBADR,R8     -ADDRESSABLE                      @D14BDBC 33350000
+         L     R8,PCBCNT    USAGE/SIO-COUNTER-ADDRESS          @D14BDBC 33400000
+         A     R8,PBXJAOFF   GET PBX-OFFSET                    @D14BDBC 33450000
+         L     R2,0(R8)     GET NUMBER OF SIOS                 @D14BDBC 33600000
+         XC    0(L4,R8),0(R8)  CLEAR DEVICE-SIO-COUNTER        @D14BDBC 33650000
+         B     GETJA30      SKIP NON SHARABLE PATH             @KD40376 33700001
+         DROP  R8                                              @D14BDBC 33750000
+*---------------------------------------------------           @D14BDBC 33800000
+* END SHAREABLE PATH                                           @D14BDBC 33850000
+*---------------------------------------------------           @D14BDBC 33900000
+* NON SHAREABLE PATH                                           @D14BDBC 33950000
+*---------------------------------------------------           @D14BDBC 34000000
+GETJA20  GETFLD PU=(RE),FIELD=OWNER                            @D14BDBC 34050000
+         LTR   RF,RF        DOES PART OWNER EXIST?             @D14BDBC 34100000
+         BZ    GETJA70      BRANCH IF NOT                      @D14BDBC 34150000
+         L     R2,GETJAP02  MAKE PART-PCB                      @D14BDJB 34200000
+         USING PCBADR,R2     -ADDRESSABLE                      @D14BDJB 34250000
+         CH    R1,PCBPIK    IS PART OWNER ?                    @D14BDBC 34300000
+         DROP  R2                                              @D14BDJB 34350000
+         BNE   GETJA70      BRANCH IF NOT                      @D14BDBC 34400000
+         L     R2,PBXJACNT  GET SIOS COUNTER                   @D14BDBC 34550000
+         XC    PBXJACNT,PBXJACNT CLEAR PBXJACNT                @D14BDBC 34600000
+*---------------------------------------------------           @D14BDBC 34650000
+* END NON SHAREABLE PATH                                       @D14BDBC 34700000
+*---------------------------------------------------           @D14BDBC 34750000
+*---------------------------------------------------           @D14BDBC 34800000
+* END GET SIOS COUNTER                                         @D14BDBC 34850000
+*---------------------------------------------------           @D14BDBC 34900000
+GETJA30  LTR   R2,R2        IS COUNTER = ZERO?                 @D14BDBC 34950000
+         BZ    GETJA70      SKIP UPDATE IF ZERO                @D14BDBC 35000000
+         TM    ACCTSWTC,ACCTACTV       SKIP UPDATE JA TABLE    @D14BDBC 35050000
+         BO    GETJA70                  - IF $JOBACCT ACTIVE   @D14BDBC 35100000
+*---------------------------------------------------           @D14BDBC 35150000
+* UPDATE ACCTSIOS (PART-ACCTABLE)                              @D14BDBC 35200000
+*---------------------------------------------------           @D14BDBC 35250000
+*---------------------------------------------------           @D14BDBC 35300000
+* PREPARE LOOP ON CUUS (ACCTSIOS)    LOOP REG = R1             @D14BDBC 35350000
+*---------------------------------------------------           @D14BDBC 35400000
+         LR    RB,RE        GET DEVICE INDEX                   @D14BDBC 35450000
+         SLL   RB,3         GET OFFSET FOR DEVICE PUB          @D14BDBC 35500000
+         AH    RB,PUBPT     ADD PUB-TABLE ADDRESS              @D14BDBC 35550000
+         USING PUBADR,RB    MAKE PUB ADDRESSIBLE               @D14BDBC 35600000
+         LH    R0,PUBCHANN  GET CURRENT 0CUU                   @D14BDBC 35650000
+         DROP  RB           REMAKE PUB ADDRESSIBLE             @D14BDBC 35700000
+         SR    RB,RB        INIT ACCTSIOS-OFFSET               @D14BDBC 35750000
+         LTR   R3,R3        IS  ACCTSIOS EMPTY ?               @D14BDBC 36000000
+         BZ    GETJA60      SKIP IF EMPTY                      @D14BDBC 36050000
+*---------------------------------------------------           @D14BDBC 36100000
+* LOOP ON CUUS FOR UPDATE                                      @D14BDBC 36150000
+*---------------------------------------------------           @D14BDBC 36200000
+GETJA40  CH    R0,ACCTSIOS(RB)  IS                             @D14BDBC 36250000
+*                                CURRENT CUU = THIS CUU        @D14BDBC 36300000
+         BNE   GETJA50           SKIP IF NOT                   @D14BDBC 36350000
+         A     R2,0(RB)          UPDATE COUNTER                @D14BDBC 36400000
+         ORG   *-2               AVOID ALIGNMENT ...           @D14BDBC 36450000
+         DC    S(ACCTSIOS+2)                     ... ERROR     @D14BDBC 36500000
+         ST    R2,0(RB)            -OF THIS CUU BY R2          @D14BDBC 36550000
+         ORG   *-2               AVOID ALIGNMENT ...           @D14BDBC 36600000
+         DC    S(ACCTSIOS+2)                     ... ERROR     @D14BDBC 36650000
+         B     GETJA70          SKIP REST AND RETURNE          @D14BDBC 36700000
+GETJA50  A     RB,F6            GET OFFSET FOR NEXT CUU        @D14BDBC 36750000
+         BCT   R3,GETJA40         LOOP BACK                    @D14BDBC 36800000
+*---------------------------------------------------           @D14BDBC 36850000
+* END LOOP ON CUUS WHICH ARE ELEMENT ACCTSIOS                  @D14BDBC 36900000
+*---------------------------------------------------           @D14BDBC 36950000
+GETJA60  STH   R0,ACCTSIOS(RB)  INSERT NEW ACCTSIOS-FIELD CUU  @D14BDBC 37000000
+         ST    R2,0(RB)         INSERT COUNTER                 @D14BDBC 37050000
+         ORG   *-2               AVOID ALIGNMENT ...           @D14BDBC 37100000
+         DC    S(ACCTSIOS+2)                     ... ERROR     @D14BDBC 37150000
+         LH    RB,ACCTNSIO      UPDATE ACCTNSIO                @D14BDBC 37200000
+         LA    RB,1(RB)                                        @D14BDBC 37250000
+         STH   RB,ACCTNSIO                                     @D14BDBC 37300000
+         LH    RB,ACCTLEN       UPDATE ACCTLEN                 @D14BDBC 37350000
+         A     RB,F6            UPDATE ACCTLEN                 @D14BDBC 37400000
+         STH   RB,ACCTLEN       UPDATE ACCTLEN                 @D14BDBC 37450000
+         DROP  R4                                              @D14BDBC 37500000
+*---------------------------------------------------           @D14BDBC 37550000
+* END UPDATE ACCTSIOS (PART-ACCTABLE)                          @D14BDBC 37600000
+*---------------------------------------------------           @D14BDBC 37650000
+GETJA70  BR    R7           RETURN TO CALLER                   @D14BDBC 37700000
+GETSAVE  DC    F'0'         REGISTER SAVE AREA                 @D51IDIS 37800000
+         DROP  R5,R9                                           @D14BDBC 37850000
+*---------------------------------------------------           @D14BDBC 37900000
+* ENDMODULE GETJASIO                                           @D14BDBC 37950000
+*---------------------------------------------------           @D14BDBC 38000000
+         DROP  R6,RC                                           @D14BDBC 38050000
+         AIF    (NOT &BGDEBUG OR NOT &SGACCT).NOPRT1           @D14BDFR 38100000
+         PRINT  NOGEN                                          @D14BDFR 38150000
+.NOPRT1  ANOP                                                  @D14BDFR 38200000
+         MEND                                                           38250000

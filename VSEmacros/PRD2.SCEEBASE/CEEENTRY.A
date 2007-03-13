@@ -1,0 +1,298 @@
+         MACRO                                                          00001000
+&NAME    CEEENTRY &PPA=PPA,            Lable of PPA.                   X00002000
+               &AUTO=CEEDSASZ,         Size of automatic storage.      X00003000
+               &MAIN=YES,              Main entry                      X00004000
+               &NAB=YES,               OK to use previous NAB value    X00005000
+               &PARMREG=1,             Register to hold parms.         X00006000
+               &BASE=11,               Base reg for this module.       X00007000
+               &EXECOPS=YES,           Honor run-time options.         X00008000
+               &HOOK=NO,               Generate an EXecute entry hook. X00009000
+               &RMODE=,                Requested RMODE            @01A X00010000
+               &PLIST=HOST             Plist format.                    00011000
+.********************************************************************** 00012000
+.*                                                                    * 00013000
+.*  CEEENTRY- LE/VSE Entry code.                                      * 00014000
+.*                                                                    * 00015000
+.*  Licensed Materials - Property of IBM                              * 00016000
+.*                                                                    * 00017000
+.*  5686-066  (C) Copyright IBM Corp. 1991,  2001                     * 00018000
+.*  All rights reserved.                                              * 00019000
+.*                                                                    * 00020000
+.*      US Government Users Restricted Rights - Use, duplication or   * 00021000
+.*      disclosure restricted by GSA ADP Schedule Contract with IBM   * 00022000
+.*      Corp.                                                         * 00023000
+.*                                                                    * 00024000
+.*  STATUS - Release level of this macro                              * 00025000
+.*         LE/VSE Version 1 Release 4 Modification 2                  * 00026000
+.*                                                                    * 00027000
+.*  FUNCTION:                                                         * 00028000
+.*      This macro used to provide an LE/VSE enabled prolog.          * 00029000
+.*      Code is generated in co-operation with the CEEPPA macro.      * 00030000
+.*      &NAME = CSECT name of entry.                                  * 00031000
+.*      &PPA  = PPA is default label of the corresponding PPA         * 00032000
+.*              generated.                                            * 00033000
+.*      &AUTO = Used by prologue code as the size of the automatic    * 00034000
+.*              DSA to acquire.                                       * 00035000
+.*      &NAB  = YES Previous save area has nab value.                 * 00036000
+.*            = NO  Find the NAB. Do not use previous save area.      * 00037000
+.*      &MAIN = YES When the LE/VSE environment should be brought up. * 00038000
+.*              NO  Used when the LE/VSE environment already active   * 00039000
+.*              and only prologue code is needed.                     * 00040000
+.*      &PARMREG=1  Register to hold parms.                           * 00041000
+.*      &RMODE=,    Control CSECT RMODE via this option.      @PQ26738* 00042000
+.*                  Valid options under VSE are 24 or ANY     @PQ26738* 00043000
+.*      &BASE  =11  Base reg for this module. Can specify     @PQ26738* 00044000
+.*                  mulitple regs if enclosed within brackets.@PQ26738* 00045000
+.*                                                                    * 00046000
+.*  History - History of changes to this macro                        * 00047000
+.*                                                                    * 00048000
+.*      10/09/94 - (JL )  Add PLIST parameter                 @NX0178A* 00049000
+.* $01  06/21/99 - (GWH)  1.Add RMODE option                  @PQ26738* 00050000
+.*                        2.Allow multiple base registers     @PQ26738* 00051000
+.* $02  24/03/2000 (GWH)  Allow for multiple executions of    @PQ36828* 00052000
+.*                        CEEENTRY MAIN=NO in a single Assembly.      * 00053000
+.*                                                                    * 00054000
+.* ****************************************************************** * 00055000
+.*     LE/VSE Version 1 Release 4 Modification Level 2 Changes :      * 00056000
+.*                                                                    * 00057000
+.* $03 21/03/2002 (GWH)   1. Reduce MNOTE indicator for RMODE option  * 00058000
+.*                         to a MNOTE *.                              * 00059000
+.*                        2. Set all conditional code and generated   * 00060000
+.*                         code to uppercase.                         * 00061000
+.*                        3. Port VSE relevant parts of LE z/OS       * 00062000
+.*                         APAR PQ46427.    PQ58992 = @03         @03A* 00063000
+.*                                                                    * 00064000
+.********************************************************************** 00065000
+        GBLC   &CEEOEPVNX        Label of Main Entry.                   00066000
+        GBLB   &CEEMAIN          Set on to indicate compile unit main   00067000
+        GBLC   &CEEBASE          Base register.                         00068000
+        GBLC   &CEEENTRYN        Name from label.                       00069000
+        GBLB   &CEEEXOPS         Execops/Noexecops                      00070000
+        GBLB   &CEEHOOK          Hook on/off                            00071000
+        GBLA   &CEEPLIST         Plist format                 @NX0178A* 00072000
+        GBLC   &CEEENTRY_DROP    Drop for previous CEEENTRY    @02D     00073000
+        LCLB   &SUBPGM           Flag for First CEEENTRY                00074000
+        LCLB   &CMAIN            Label is Main Entry.                   00075000
+        LCLB   &CNAB             Nab ok to use.                         00076000
+        LCLC   &OEPVNX                                                  00077000
+        LCLA   &NOBASE           NO OF REGISTERS IN BASE       @01A     00078000
+        LCLA   &LPCNT            LOOP COUNTER                  @01A     00079000
+        LCLC   &LASTBASE         LAST USED BASE REGISTER       @01A     00080000
+        LCLC   &SBASE            STRING FOR BASE REGISTERS     @01A     00081000
+&SUBPGM SETB   1                 Flag as sub program                    00082000
+        AIF    ('&CEEBASE' NE '').BSET                                  00083000
+&CEEBASE SETC '&BASE'                                                   00084000
+&SUBPGM SETB   0                 Turn off sub program flag.             00085000
+.BSET   ANOP                                                            00086000
+&NOBASE SETA  K'&BASE            NUMBER OF CHARACTERS          @01A     00087000
+        AIF   ('&BASE'(1,1) NE '(' ).SINGLEBASE                @01A     00088000
+&SBASE  SETC  '&BASE'(2,K'&BASE-2)                             @01A     00089000
+&NOBASE SETA  N'&BASE            NUMBER OF REGISTERS SPECIFIED @01A     00090000
+        AGO   .BASEOK                                          @01A     00091000
+.SINGLEBASE   ANOP ,                                           @01A     00092000
+&SBASE  SETC  '&BASE'            INIT STRING                   @01A     00093000
+&NOBASE SETA  1                  NUMBER OF REGISTERS SPECIFIED @01A     00094000
+.BASEOK ANOP  ,                                                @01A     00095000
+.*                                                                      00096000
+.*                              Set main option                         00097000
+.*                                                                      00098000
+&CMAIN  SETB    0        Main NO                                        00099000
+        AIF   ('&MAIN'(1,1) EQ 'N').DISG1                               00100000
+&CMAIN  SETB    1         Main YES                                      00101000
+        AIF   ('&MAIN'(1,1) EQ 'Y').DISG1                               00102000
+        MNOTE 4,'MAIN PARAMETER ''&MAIN'' SHOULD BE ''YES'' or ''NO'''  00103000
+        MNOTE *,'MAIN PARAMETER ''YES'' WILL BE USED'                   00104000
+.DISG1  ANOP  ,                                                         00105000
+&CEEMAIN SETB (NOT &CMAIN)      OFF is MAIN and ON is subprog  @02D     00106000
+.*                                                                      00107000
+.*                              Set EXECOPS option.                     00108000
+.*                                                                      00109000
+        AIF (&CEEMAIN EQ 0).EXOPS1   Skip EXECOPS if not MAIN  @03A     00110000
+&CEEEXOPS SETB    1             Set EXECOPS off.                        00111000
+        AIF   ('&EXECOPS'(1,1) EQ 'N').EXOPS1                           00112000
+&CEEEXOPS SETB    0             Set EXECOPS on.                         00113000
+        AIF   ('&EXECOPS'(1,1) EQ 'Y').EXOPS1                           00114000
+        MNOTE 4,'EXECOPS PARAMETER ''&EXECOPS'' SHOULD BE ''YES'' or'   00115000
+        MNOTE *,'''NO'''                                                00116000
+        MNOTE *,'EXECOPS PARAMETER ''YES'' WILL BE USED'                00117000
+.EXOPS1 ANOP ,                                                          00118000
+.*                                                                      00119000
+.*                              Set NAB  option                         00120000
+.*                                                                      00121000
+&CNAB   SETB    0       NAB unknown                                     00122000
+        AIF   ('&NAB'(1,1) EQ 'N').DISG2                                00123000
+&CNAB   SETB    1       NAB OK to use                                   00124000
+        AIF   ('&NAB'(1,1) EQ 'Y').DISG2                                00125000
+        MNOTE 4,'NAB PARAMETER ''&NAB'' SHOULD BE ''YES'' or ''NO'''    00126000
+        MNOTE *,'NAB PARAMETER ''YES'' WILL BE USED'                    00127000
+        AGO   .DISG1C                                                   00128000
+.DISG2  ANOP  ,                                                         00129000
+        AIF (&CNAB EQ 1).DISG1C                                         00130000
+        AIF (&CMAIN EQ 0).DISG1C                                        00131000
+&CNAB   SETB    1       NAB OK to use                                   00132000
+        MNOTE 4,'NAB PARAMETER ''YES'' WILL BE USED WITH MAIN ''YES'''  00133000
+.DISG1C ANOP ,                 From If main then skip nab code.         00134000
+.*                                                                      00135000
+.*                              Get PLIST form                @NX0178A* 00136000
+.*                                                                      00137000
+        AIF (&CMAIN EQ 0).PLI5          Skip PLIST if not MAIN    @03A  00138000
+        AIF ('&PLIST' NE 'OS').PLI4                                     00139000
+&CEEPLIST SETA 7                                                        00140000
+        AGO .PLI5                                                       00141000
+.PLI4   AIF  ('&PLIST' EQ 'HOST').PLI4A                                 00142000
+        MNOTE 4,'PLIST PARAMETER SHOULD BE ''HOST'''                    00143000
+        MNOTE *,'OR ''OS'''                                             00144000
+        MNOTE *,'''HOST'' WILL BE USED'                                 00145000
+.PLI4A  ANOP ,                                                          00146000
+&CEEPLIST SETA 2                                                        00147000
+.PLI5   ANOP ,                                                          00148000
+.*                                                                      00149000
+.*                              Get CSECT name                          00150000
+.*                                                                      00151000
+&OEPVNX SETC '&NAME'                                                    00152000
+        AIF   ('&NAME' NE '').SKPS2                                     00153000
+        MNOTE 4,'A LABEL MUST BE PROVIDED. ''TEMPNAME'' USED'           00154000
+&OEPVNX SETC 'TEMPNAME'                                                 00155000
+.SKPS2  ANOP ,                                                          00156000
+        AIF (&SUBPGM).SKPS8                                             00157000
+.*                              Primary CSECT identifiers.              00158000
+&OEPVNX CSECT ,                                                         00159000
+        AIF   ('&RMODE' NE '').SKPS2A                          @01A     00160000
+        MNOTE *,'DEFAULT RMODE(ANY) WILL BE USED.'             @01A     00161000
+&OEPVNX RMODE ANY                                                       00162000
+        AGO .SKPS2B                                                     00163000
+.SKPS2A ANOP ,                                                 @01A     00164000
+&OEPVNX RMODE &RMODE            Pull in RMODE requested        @01A     00165000
+.SKPS2B ANOP ,                                                 @01A     00166000
+&OEPVNX AMODE ANY                                                       00167000
+&CEEOEPVNX SETC '&OEPVNX'                                               00168000
+        AGO .SKPS9                                                      00169000
+.SKPS8  ANOP ,                                                          00170000
+&CEEENTRYN SETC '&OEPVNX'        Save secondary entry name.             00171000
+.*                              Secondary entry points.                 00172000
+&CEEOEPVNX CSECT ,                                                      00173000
+        DC   H'0'                                                       00174000
+        CNOP 0,4                                                        00175000
+&OEPVNX EQU *                                                           00176000
+.SKPS9  ANOP ,                                                          00177000
+           ENTRY &OEPVNX                                                00178000
+.*                                                                      00179000
+.* Generate entry vector table.                                         00180000
+.*                                                                      00181000
+         AIF   ('&CEEENTRY_DROP' EQ '').NODROP                 @02D     00182000
+         DROP  &CEEENTRY_DROP                                  @02D     00183000
+.NODROP  ANOP                                                  @02D     00184000
+&CEEENTRY_DROP SETC  '&SBASE'                                  @02D     00185000
+         PUSH  USING                                                    00186000
+         DROP  ,                                               @02D     00187000
+         USING *,15                                                     00188000
+         B     CEEZ&SYSNDX                                              00189000
+         DC    X'00C3C5C5'                                              00190000
+CEEY&SYSNDX   DC    A(((&AUTO+7)/8)*8)  . Size of automatic storage.    00191000
+         DC    A(&PPA-&OEPVNX)    . Address of PPA for this program     00192000
+         B     1(,15)                                                   00193000
+CEEZ&SYSNDX EQU *                                                       00194000
+         STM   14,12,CEEDSAR14-CEEDSA(13)                               00195000
+         AIF   (&CMAIN NE 0).SKPS3                             @02D     00196000
+         LR    &BASE(1),15                                     @02D     00197000
+         DROP  15                                              @01A     00198000
+         POP    USING                                          @02D     00199000
+         USING &OEPVNX,&SBASE                                  @02C     00200000
+&LASTBASE SETC  '&BASE(1)'       THE LAST SPECIFIED BASE       @01A     00201000
+&LPCNT  SETA  2                  INITIALISE LOOP COUNTER       @01A     00202000
+.LP01    AIF   (&LPCNT GT &NOBASE).DONE1                       @01A     00203000
+         LA    &BASE(&LPCNT),2048(&LASTBASE)                   @01A     00204000
+         LA    &BASE(&LPCNT),2048(&BASE(&LPCNT))               @01A     00205000
+&LASTBASE SETC  '&BASE(&LPCNT)'                                @01A     00206000
+&LPCNT    SETA  &LPCNT+1                                       @01A     00207000
+          AGO   .LP01                                          @01A     00208000
+.DONE1    ANOP  ,                                              @01A     00209000
+         AIF   ('&PARMREG' EQ '1').SKPS4                       @02D     00210000
+         LR    &PARMREG,1                                               00211000
+         AGO   .SKPS4                                          @02D     00212000
+.SKPS3   ANOP  ,                                                        00213000
+.*                                                                      00214000
+.* Generate MAIN entry code to initialise Language Environment @03C     00215000
+.* and setup base registers.                                   @03A     00216000
+.*                                                                      00217000
+         L     2,=A(CEEINPL)                                            00218000
+         L     15,=V(CEEINT)                                            00219000
+         DROP  15                                       @03M   @01A     00220000
+         BALR  14,15                                                    00221000
+         LR    2,1                                                      00222000
+         L     14,752(,12)                                              00223000
+         OI    8(14),X'80'                                              00224000
+         BALR  &BASE(1),0                                      @01A     00225000
+         USING *,&BASE(1)                                      @01A     00226000
+         L     &BASE(1),=A(&CEEOEPVNX)                         @01A     00227000
+         POP   USING                                    @03M   @02D     00228000
+         USING &CEEOEPVNX,&SBASE                               @01A     00229000
+&LASTBASE SETC  '&BASE(1)'       THE LAST SPECIFIED BASE       @01A     00230000
+&LPCNT  SETA  2                  INITIALISE LOOP COUNTER       @01A     00231000
+.LP02    AIF   (&LPCNT GT &NOBASE).DONE2                       @01A     00232000
+         LA    &BASE(&LPCNT),2048(&LASTBASE)                   @01A     00233000
+         LA    &BASE(&LPCNT),2048(&BASE(&LPCNT))               @01A     00234000
+&LASTBASE SETC  '&BASE(&LPCNT)'                                @01A     00235000
+&LPCNT    SETA  &LPCNT+1                                       @01A     00236000
+          AGO   .LP02                                          @01A     00237000
+.DONE2    ANOP  ,                                              @01A     00238000
+         AGO  .SKPS5                                                    00239000
+.SKPS4  ANOP ,                                                          00240000
+         AIF  (&CNAB EQ 1).SKPS5                                        00241000
+         GETFLD FIELD=CELANCH            Get the anchor vector address  00242000
+         L     12,0(,1)                  A(Get Anchor Routine)          00243000
+         LM    15,1,CEEDSAR15-CEEDSA(13) Restore regs used by GETFLD    00244000
+         BALR  14,12                     Call anchor lookup.            00245000
+         L     15,CEECAACELV-CEECAA(,12)  Get LIBVEC                    00246000
+         L     15,CEECELVGTUN(,15)     Get A(Get User NAB)              00247000
+         BALR  14,15                                                    00248000
+         LR    1,15                    Set NAB in R1                    00249000
+         AGO  .SKPS6                                                    00250000
+.SKPS5  ANOP ,                                                          00251000
+         L     1,CEEDSANAB-CEEDSA(,13)  Get the current NAB             00252000
+.SKPS6  ANOP ,                                                          00253000
+         L     0,CEEY&SYSNDX                                            00254000
+         ALR   0,1                     Compute new value.               00255000
+         CL    0,CEECAAEOS-CEECAA(,12)  Compare with EOS.               00256000
+         BNH   CEEX&SYSNDX                                              00257000
+         AIF   (&CNAB EQ 0).SKPS61                                      00258000
+         L     15,CEECAAGETS-CEECAA(,12) Get address overflow routine   00259000
+         AGO  .SKPS62                                                   00260000
+.SKPS61  ANOP  ,                                                        00261000
+         L     15,CEECAAGETS1-CEECAA(,12) Get address overflow routine  00262000
+.SKPS62  ANOP  ,                                                        00263000
+         BALR  14,15                   Get another stack segment.       00264000
+         LR    1,15                                                     00265000
+CEEX&SYSNDX EQU *                                                       00266000
+         ST    13,CEEDSABKC-CEEDSA(,1)  Set back chain.                 00267000
+         ST    0,CEEDSANAB-CEEDSA(,1)   Set new NAB value               00268000
+         XC    CEEDSAFLAGS-CEEDSA(,1),CEEDSAFLAGS-CEEDSA(1) . Clear     00269000
+         ST    1,CEEDSAFWC-CEEDSA(,13)  Set forward chain.              00270000
+         LR    13,1                    Set save area address            00271000
+         USING CEEDSA,13               Addressability to SF             00272000
+         MVC   CEEDSALWS,CEECAALWS-CEECAA(12) Get LWS addr              00273000
+         AIF   (&CMAIN EQ 0).SKPS11                                     00274000
+         AIF   ('&PARMREG' EQ '2').SKPS7                                00275000
+         LR    &PARMREG,2                                               00276000
+         AGO   .SKPS7                                                   00277000
+.SKPS11  ANOP  ,                                                        00278000
+         AIF   ('&PARMREG' NE '1').SKPS7                                00279000
+         L     1,4(,13)                 get previous save.              00280000
+         L     1,24(,1)                restore original R1              00281000
+.SKPS7   ANOP  ,                                                        00282000
+        AIF (&SUBPGM EQ 0).SKPS10                                       00283000
+.SKPS10  ANOP  ,                                                        00284000
+.*                                                                      00285000
+.*                              Set HOOK option.                        00286000
+.*                                                                      00287000
+&CEEHOOK SETB    0              Set HOOK off.                           00288000
+        AIF   ('&HOOK'(1,1) EQ 'N').HOOK2                               00289000
+&CEEHOOK SETB    1              Set EXECOPS on.                         00290000
+        AIF   ('&HOOK'(1,1) EQ 'Y').HOOK1                               00291000
+        MNOTE 4,'HOOK PARAMETER ''&HOOK'' SHOULD BE ''YES'' or ''NO'''  00292000
+        MNOTE *,'HOOK PARAMETER ''NO'' WILL BE USED'                    00293000
+        AGO   .HOOK2                                                    00294000
+.HOOK1  EX    0,CEECAAENTRY-CEECAA(12)                                  00295000
+.HOOK2  ANOP  ,                                                         00296000
+.END    ANOP ,                                                          00297000
+         MEND                                                           00298000

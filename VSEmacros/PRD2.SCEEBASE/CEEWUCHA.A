@@ -1,0 +1,438 @@
+*PROCESS FLAG(NOPUSH)                                                   00001000
+        TITLE 'Sample user-written condition handler for CICS'          00002000
+**********************************************************************  00003000
+*                                                                    *  00004000
+*    IBM LANGUAGE ENVIRONMENT/VSE  V1.R4.M3                          *  00005000
+*                                                                    *  00006000
+*    LICENSED MATERIALS - PROPERTY OF IBM                            *  00007000
+*                                                                    *  00008000
+*      5686-066-32-75K  (C) COPYRIGHT IBM CORP. 1998 2002            *  00009000
+*                                                                    *  00010000
+*      ALL RIGHTS RESERVED.                                          *  00011000
+*                                                                    *  00012000
+*      US GOVERNMENT USERS RESTRICTED RIGHTS - USE, DUPLICATION OR   *  00013000
+*      DISCLOSURE RESTRICTED BY GSA ADP SCHEDULE CONTRACT WITH IBM   *  00014000
+*      CORP.                                                         *  00015000
+*                                                                    *  00016000
+**********************************************************************  00017000
+**********************************************************************  00018000
+* CEEWUCHA                                                           *  00019000
+*                                                                    *  00020000
+*   COBOL CONDITIONS                                                 *  00021000
+*     The purpose of this routine is to provide sample code that     *  00022000
+*     does three things for COBOL Conditions                         *  00023000
+*                                                                    *  00024000
+*     - provide compatibility with existing VS COBOL II applications *  00025000
+*       running under CICS. This handler will change the basic       *  00026000
+*       defaults of Language Environment's condition handling.       *  00027000
+*       HANDLE ABEND LABEL will get control when a run-time error    *  00028000
+*       (such as IGZ0061S) occurs. See "Managing Messages, Abend     *  00029000
+*       Codes, and Dump Services" in the IBM COBOL for MVS & VM      *  00030000
+*       Release 2 Compiler and Run-Time Migration Guide for          *  00031000
+*       additional information.                                      *  00032000
+*                                                                    *  00033000
+*     - convert all unhandled COBOL run-time detected errors to      *  00034000
+*       the corresponding user 1xxx abend issued by VS COBOL II.     *  00035000
+*                                                                    *  00036000
+*     - cause Language Environment's condition handling to ignore    *  00037000
+*       and not print COBOL's message IGZ0014W which is generated    *  00038000
+*       when IGZETUN or IGZEOPT is linkedited with a VS COBOL II     *  00039000
+*       application.                                                 *  00040000
+*                                                                    *  00041000
+*    COBOL NOTES:                                                       00042000
+*     - You can remove or comment out any of the above three         *  00043000
+*       features that you don't want. For example, to not convert    *  00044000
+*       all unhandled COBOL run-time detected errors to user 1xxx    *  00045000
+*       abends, change the code after label CONTABND to B OUT.       *  00046000
+*                                                                    *  00047000
+*  PL/I CONDITIONS UNDER CICS                                        *  00048000
+       GBLC   &PLI                                                      00049000
+*      If you want to handle PL/I Conditions in a CICS environment   *  00050000
+*      change the following SETC value to 'YES'                      *  00051000
+&PLI   SETC   'NO '  <===== Change To 'YES' for PL/I handler code       00052000
+*                                                                    *  00053000
+*      This version of the handler, supports all PL/I software       *  00054000
+*      signals which result in 'Severe' or 'Critical' error messages.*  00055000
+*      In PL/I, these are messages with codes that end in 'S' or 'C' *  00056000
+*      (ie: IBM0300S). Severe (S) equates to LE Severity 3. Critical *  00057000
+*      (C) equates to LE Severity 4.                                 *  00058000
+*                                                                    *  00059000
+*   ***NOTE - the PL/I handler code contains EXEC CICS statements so *  00060000
+*            if this code is used it must first be run thru the CICS *  00061000
+*            command level translator with the NOPROLOG, NOEPILOG,   *  00062000
+*            and SYSEIB parms.                                       *  00063000
+*                                                                    *  00064000
+* GENERAL NOTES                                                      *  00065000
+*     - Some default services normally applied by Language           *  00066000
+*       Environment have not been done when this handler is called.  *  00067000
+*       This handler therefore issues the message associated with    *  00068000
+*       the condition. Code is also provided for dump services.      *  00069000
+*                                                                    *  00070000
+*     - This user condition handler is written in assembler since    *  00071000
+*       it may be invoked from multiple languages.                   *  00072000
+*                                                                    *  00073000
+*     - To install select one of the following sample JCL members    *  00074000
+*       CEEWWCHA.Z   -   Batch Assembly.                             *  00075000
+*       CEEWCCHA.A   -   CICS  Assembly. Use if you've  set          *  00076000
+*                        &PLI to 'YES'                               *  00077000
+*       Modify the selected JCL to specify your installation         *  00078000
+*       default libraries and run to create the PHASE.               *  00079000
+*                                                                    *  00080000
+*     - To use this condition handler under CICS, specify            *  00081000
+*       USRHDLR(CEEWUCHA) in your CEECOPT or CEEUOPT run-time        *  00082000
+*       options. The module, CEEWUCHA, must be available at          *  00083000
+*       run-time (e.g., via LIBDEF ) and defined in                  *  00084000
+*       the PPT for your CICS region.                                *  00085000
+*                                                                    *  00086000
+*     - To use this condition handler under non-CICS, specify        *  00087000
+*       USRHDLR(CEEWUCHA) in your CEEDOPT or CEEUOPT run-time        *  00088000
+*       options. The module, CEEWUCHA, must be available at          *  00089000
+*       run-time (e.g., via LIBDEF, SVA,  etc.).                     *  00090000
+*                                                                    *  00091000
+*       Note: Do not activate (change &PLI to 'YES') the PL/I        *  00092000
+*       Condition handling code in an non-CICS environment as this   *  00093000
+*       code is specific for CICS-PL/I only.                         *  00094000
+*                                                                    *  00095000
+*     - To change the name of this condition handler, change all     *  00096000
+*       instances of CEEWUCHA to the new name (xxxxxxxx). Then       *  00097000
+*       use the USRHDLR(xxxxxxxx) run-time option to activate it.    *  00098000
+*                                                                    *  00099000
+**********************************************************************  00100000
+*                                                                       00101000
+**********************************************************************  00102000
+*     Prologue.                                                      *  00103000
+**********************************************************************  00104000
+CEEWUCHA CEEENTRY AUTO=DSASIZ,    Amount of main memory to obtain      +00105000
+               PPA=PPA1,          Program Prolog Area for this routine +00106000
+               MAIN=NO,           This program is not a MAIN program   +00107000
+               NAB=YES,           YES--called under Language Env.      +00108000
+               PARMREG=R3,        R1 value is saved here               +00109000
+               BASE=R11           Base register for executable code,    00110000
+*                                      constants, and static variables  00111000
+         USING CEECAA,R12         Common Anchor Area addressability     00112000
+         USING CEEDSA,R13         Dynamic Storage Area addressability   00113000
+         USING UHDLARGS,R3        User Handler Args addressability      00114000
+**********************************************************************  00115000
+*     Locate arguments.                                              *  00116000
+**********************************************************************  00117000
+         L     R10,@CURCOND       Get address of Condition Token        00118000
+         USING TOK,R10            Condition Token addressability        00119000
+         L     R4,@RESCODE        Get address of Result Code            00120000
+         USING $RESCODE,R4        Result Code addressability            00121000
+         MVC   RESCODE,=A(CIB_PERCOLATE)    Indicate PERCOLATE action   00122000
+**********************************************************************  00123000
+*     First check to see if the condition happened in a COBOL        *  00124000
+*     program.                                                       *  00125000
+**********************************************************************  00126000
+         SR    R5,R5              Request addr of most recent condition 00127000
+         LA    R6,CIB_PTR         Address of where CIB is to be stored  00128000
+         LA    R7,FC_2            Address of 12-byte feedback code      00129000
+         LA    R1,PARM1           Address of parm list for CEE5CIB      00130000
+         STM   R5,R7,PARM1        Save parm addresses in parm list      00131000
+         CALL  CEE5CIB            Call CEE5CIB to get address of CIB    00132000
+         L     R9,CIB_PTR         Get address of CIB                    00133000
+         USING CEECIB,R9          CIB addressibility                    00134000
+******************************************************************      00135000
+* For PL/I - CICS Only                                                  00136000
+******************************************************************      00137000
+         AIF  ('&PLI' NE 'YES').PLI001                                  00138000
+         CLC   CIB_MID,PLI_MID    Condition raised in a PL/I program?   00139000
+         BE    TESTMSG            Yes, go check message                 00140000
+.PLI001  ANOP                                                           00141000
+         CLC   CIB_MID,COBOL_MID  Condition raised in a COBOL program?  00142000
+         BNE   OUT                  No, get out                         00143000
+**********************************************************************  00144000
+*     Process condition.                                             *  00145000
+**********************************************************************  00146000
+TESTMSG  EQU   *                                                        00147000
+         CLC   TOK_FACID,TOK_FACID_CBL  Is the facility id IGZ?         00148000
+         BE    DOIGZABD           Yes -- proceed with abend             00149000
+*                                                                       00150000
+         CLC   TOK_FACID,TOK_FACID_CEE  Is the facility id CEE?         00151000
+         BE    DOCEEABD           Yes -- proceed with abend             00152000
+*                                                                       00153000
+******************************************************************      00154000
+* For PL/I - CICS Only                                                  00155000
+******************************************************************      00156000
+         AIF  ('&PLI' NE 'YES').PLI002                                  00157000
+         CLC   TOK_FACID,TOK_FACID_PLI  Is the facility id PL/I? PL/I   00158000
+         BE    DOPLIABD           Yes -- proceed with abend      PL/I   00159000
+.PLI002  ANOP                                                           00160000
+*******************************************************************     00161000
+         B     OUT                Return to Language Environment        00162000
+*                                   condition manager                   00163000
+         SPACE 4                                                        00164000
+**********************************************************************  00165000
+*     Process COBOL condition (facility ID IGZ).                     *  00166000
+**********************************************************************  00167000
+DOIGZABD EQU   *                                                        00168000
+         LH    R2,TOK_MSGNUM      Move the message number in            00169000
+**********************************************************************  00170000
+*     Look for message IGZ0014W. If that is the current condition,   *  00171000
+*     we will ignore it and resume.                                  *  00172000
+**********************************************************************  00173000
+         CH    R2,=H'14'          Msg IGZ0014W (IGZETUN/IGZEOPT linked  00174000
+*                                 with module?                          00175000
+         BNE   CONTABND             No, continue with abend             00176000
+*                                                                       00177000
+         MVC   RESCODE,=A(CIB_RESUME)  Indicate RESUME action           00178000
+         B     OUT                Get out and ignore it                 00179000
+*                                                                       00180000
+CONTABND EQU   *                                                        00181000
+**********************************************************************  00182000
+*     Percolate any other severity 1 warning messages                *  00183000
+**********************************************************************  00184000
+         CLC   TOK_SEV,SEV1       Check the severity level?             00185000
+         BNH   OUT                  If not > 1, get out                 00186000
+**********************************************************************  00187000
+*     Convert the message number to the corresponding VS COBOL II    *  00188000
+*     abend code (message number + 1000) and abend.                  *  00189000
+**********************************************************************  00190000
+         AL    R2,L_1THOU         Add 1000                              00191000
+         B     PROCABND           Call CEE5ABD                          00192000
+         SPACE 4                                                        00193000
+**********************************************************************  00194000
+*     Process PL/I condition (facility ID IBM).                      *  00195000
+**********************************************************************  00196000
+******************************************************************      00197000
+* For PL/I - CICS Only                                                  00198000
+******************************************************************      00199000
+         AIF  ('&PLI' NE 'YES').PLI003                                  00200000
+DOPLIABD EQU   *                                              PL/I      00201000
+         MVC   RESCODE,=A(CIB_PERCOLATE)   Indicate PERCOLATE PL/I      00202000
+         LH    R2,TOK_MSGNUM      Move the message number in  PL/I      00203000
+         CH    R2,=H'281'         Test for Error Prom.(Pgm Ck)PL/I      00204000
+         BE    OUT                If yes, return and percolatePL/I      00205000
+         CH    R2,=H'301'         Test for Zero Divide S0CB   PL/I      00206000
+         BE    OUT                If yes, return and percolatePL/I      00207000
+         CH    R2,=H'342'         Test for Dec Overflow S0CA  PL/I      00208000
+         BE    OUT                If yes, return and percolatePL/I      00209000
+         CH    R2,=H'461'         Test for OVERFLOW S0CC      PL/I      00210000
+         BE    OUT                If yes, return and percolatePL/I      00211000
+         CH    R2,=H'482'         Test for FIXEDOVERFLOW S0CA PL/I      00212000
+         BE    OUT                If yes, return and percolatePL/I      00213000
+         CLC   TOK_SEV,SEV3       Check for Severity 3.       PL/I      00214000
+         BE    DOAPLSAB             If =3, go issue APLS abendPL/I      00215000
+         CLC   TOK_SEV,SEV4       Check for Severity 4.       PL/I      00216000
+         BNE   OUT                  If not =4, get out        PL/I      00217000
+*                                                                       00218000
+DOAPLSAB EQU   *                                              PL/I      00219000
+         USING DFHEIBLK,DFHEIBR           . Map EIB           PL/I      00220000
+         EXEC  CICS ADDRESS EIB(DFHEIBR)  . Addr CICS EIB     PL/I      00221000
+         EXEC  CICS ABEND ABCODE('APLS')  . Issue APLS abend  PL/I      00222000
+*******************************************************************     00223000
+*  End of PL/I - CICS ONLY CODE Block                         PL/I      00224000
+*******************************************************************     00225000
+.PLI003  ANOP                                                           00226000
+*                                                                 *     00227000
+**********************************************************************  00228000
+*     Process Language Environment condition (facility ID CEE).      *  00229000
+**********************************************************************  00230000
+DOCEEABD EQU   *                                                        00231000
+**********************************************************************  00232000
+*     Percolate any severity 1 warning messages                      *  00233000
+**********************************************************************  00234000
+         CLC   TOK_SEV,SEV1       Check the severity level?             00235000
+         BNH   OUT                  If not > 1, get out                 00236000
+*                                                                       00237000
+         LH    R2,TOK_MSGNUM      Move the message number in            00238000
+**********************************************************************  00239000
+*     Look for some abend codes that would have been intercepted     *  00240000
+*     by a previous EXEC HANDLE.                                     *  00241000
+**********************************************************************  00242000
+         CH    R2,=H'198'         Second pass Condition previously      00243000
+*                                 percolated?                           00244000
+         BE    OUT                  Yes, get out                        00245000
+**********************************************************************  00246000
+*     Look for ABEND condition. If a ABEND HANDLE LABEL was not      *  00247000
+*     pending, we would not have gotten here. Percolate for these    *  00248000
+*     conditions.                                                    *  00249000
+**********************************************************************  00250000
+         CH    R2,=H'3250'        Previous abend?                       00251000
+         BE    OUT                  Yes, get out                        00252000
+**********************************************************************  00253000
+*     Look for those conditions that represent a program check.      *  00254000
+*     Again if a HANDLE was present we would not need to be here.    *  00255000
+**********************************************************************  00256000
+         CH    R2,=H'3200'        Low end of program check?             00257000
+         BL    PROCABND             No, ok                              00258000
+         CH    R2,=H'3215'        High end of program check?            00259000
+         BNH   OUT                Was within range, percolate           00260000
+*                                                                       00261000
+         SPACE 4                                                        00262000
+**********************************************************************  00263000
+*                  Input:         R2  has abend code.                *  00264000
+*                                 R10 has address of condition token.*  00265000
+**********************************************************************  00266000
+PROCABND EQU   *                                                        00267000
+**********************************************************************  00268000
+*     Call Message out services. We are about to collapse the        *  00269000
+*     condition manager. It is time to print error message.          *  00270000
+**********************************************************************  00271000
+         LR    R5,R10             Address of Condition Token            00272000
+         LA    R6,TWO             Address of Dest (2=write to MSGFILE)  00273000
+         LA    R7,FC_1            Address of Feedback Code              00274000
+         STM   R5,R7,PARM1        Save parm addresses in parm list      00275000
+         LA    R1,PARM1           Address of parm list for CEEMSG       00276000
+         CALL  CEEMSG             Call CEEMSG to issue message          00277000
+**********************************************************************  00278000
+*     Call LE DUMP Routines to output trace information.             *  00279000
+**********************************************************************  00280000
+         LA    R5,DUMP_T          Address of Dump Title                 00281000
+         LA    R6,DUMP_O          Address of Dump Options               00282000
+         LA    R7,FC_1            Address of Feedback Code              00283000
+         STM   R5,R7,PARM1        Save parm addresses in parm list      00284000
+         LA    R1,PARM1           Address of parm list for CEE5DMP      00285000
+         CALL  CEE5DMP            Call CEE5DMP to generate a dump       00286000
+**********************************************************************  00287000
+*     Call CEE5ABD to initiate an abend.                             *  00288000
+**********************************************************************  00289000
+         ST    R2,ABCODE          Store abend code in ABCODE            00290000
+         LA    R1,ABCODE          Address of ABCODE                     00291000
+         ST    R1,PARM1           Make it first parameter               00292000
+*                                 Parm 2 should always be clean OPT     00293000
+         LA    R1,CLEAN_OPT       Get address of Cleanup Option         00294000
+         ST    R1,PARM2           Make it second parameter              00295000
+         LA    R1,ABDPARMS        Point to parameter list for CEE5ABD   00296000
+         CALL  CEE5ABD            Invoke CEE5ABD callable service AWI   00297000
+**********************************************************************  00298000
+*     Epilogue.                                                      *  00299000
+**********************************************************************  00300000
+OUT      CEETERM RC=0             Return to Language Environment        00301000
+*                                                                       00302000
+**********************************************************************  00303000
+*     Program Constants and Local Static Variables.                  *  00304000
+**********************************************************************  00305000
+PPA1     CEEPPA ,                 Program Prolog Area for this routine  00306000
+*                                                                       00307000
+         LTORG ,                  Place literal pool here               00308000
+         EJECT                                                          00309000
+**********************************************************************  00310000
+*     Constants.                                                     *  00311000
+**********************************************************************  00312000
+TOK_FACID_CBL  DC  C'IGZ'                                               00313000
+TOK_FACID_CEE  DC  C'CEE'                                               00314000
+******************************************************************      00315000
+* For PL/I - CICS Only                                                  00316000
+******************************************************************      00317000
+         AIF  ('&PLI' NE 'YES').PLI004                                  00318000
+TOK_FACID_PLI  DC  C'IBM'                                       PL/I    00319000
+SEV3           DC  H'3'        Severity Level 3                 PL/I    00320000
+SEV4           DC  H'4'        Severity Level 4                 PL/I    00321000
+PLI_ABCODE     DC  CL4'APLS'   Set PL/I Software abend code     PL/I    00322000
+PLI_MID        DC  A(10)       Member ID for PL/I programs      PL/I    00323000
+.PLI004  ANOP                                                           00324000
+******************************************************************      00325000
+L_1THOU        DC  F'1000'                                              00326000
+CLEAN_OPT      DC  F'1'                                                 00327000
+SEV1           DC  H'1'                                                 00328000
+COBOL_MID      DC  A(5)        Member ID for cobol programs             00329000
+TWO      DC    F'2'                                                     00330000
+DUMP_O   DC    CL256'''ENCLAVE(CURRENT),TRACEBACK,NOFILES,NOENTRY,STACK+00331000
+               FRAME(0)'''                                              00332000
+DUMP_T   DC    CL80'CEEWUCHA-> UNHANDLED CONDITION. '                   00333000
+**********************************************************************  00334000
+*     Condition token structure.                                     *  00335000
+**********************************************************************  00336000
+TOK            DSECT                                                    00337000
+TOK_DATA       DS  0CL8                                                 00338000
+TOK_SEV        DS  CL2         Severity                                 00339000
+TOK_MSGNUM     DS  CL2         Message number                           00340000
+TOK_CASE       DS  CL1         Case                                     00341000
+TOK_FACID      DS  CL3         Facility id                              00342000
+TOK_ISA        DS  F           Instance specific info                   00343000
+**********************************************************************  00344000
+*     Map Arguments to User-Written Condition Handler.               *  00345000
+**********************************************************************  00346000
+UHDLARGS DSECT                                                          00347000
+@CURCOND DS    A             Address of 12-byte Current Condition Token 00348000
+@TOKEN   DS    A             Address of 32-bit token value from CEEHDLR 00349000
+@RESCODE DS    A             Address of 4-byte Result Code              00350000
+@NEWCOND DS    A             Address of 12-byte New Condition Token     00351000
+         SPACE 3                                                        00352000
+$CURCOND DSECT ,             Mapping of the current condition           00353000
+CURCOND  DS    A             Condition token that identifies the        00354000
+*                                 current condition being processed     00355000
+         SPACE 3                                                        00356000
+$TOKEN   DSECT ,             Mapping of the 32-bit Token Argument       00357000
+TOKEN    DS    A             Value of 32-bit Token from CEEHDLR call    00358000
+         SPACE 3                                                        00359000
+$RESCODE DSECT ,             Mapping of Result Code Argument            00360000
+RESCODE  DS    F             Result Code specifies the action for       00361000
+*                            the condition manager to take when         00362000
+*                            control returns from the user handler:     00363000
+*        CIB_RESUME          Resume at the resume cursor                00364000
+*                            (condition has been handled)               00365000
+*        CIB_PERCOLATE       Percolate to the next condition handler    00366000
+*                            (if a Result Code is not explicitly set    00367000
+*                             by the handler, this is the default)      00368000
+*        CIB_PROMOTE         Promote to the next condition handler      00369000
+*                            (New Condition has been set)               00370000
+* (See the Language Environment Programming Guide for other result      00371000
+*      code values.)                                                    00372000
+         SPACE 3                                                        00373000
+$NEWCOND DSECT ,             Mapping of the New Condition Argument      00374000
+NEWCOND  DS    CL12          New Condition (condition token) specifies  00375000
+*                                 the condition promoted to.            00376000
+******************************************************************      00377000
+* For PL/I - CICS Only                                                  00378000
+******************************************************************      00379000
+         AIF  ('&PLI' NE 'YES').PLI005                                  00380000
+         COPY DFHEIBLK        Bring in the EIB DSECT            PL/I    00381000
+.PLI005  ANOP                                                           00382000
+******************************************************************      00383000
+*                                                                *      00384000
+         EJECT                                                          00385000
+**********************************************************************  00386000
+*     Map the Dynamic Storage Area (DSA).                            *  00387000
+**********************************************************************  00388000
+         CEEDSA ,            Map standard CEE DSA prologue              00389000
+**********************************************************************  00390000
+*     Local Automatic (Dynamic) Storage.                             *  00391000
+**********************************************************************  00392000
+ABDPARMS DS 0F               Parameter list for CEE5ABD                 00393000
+PARM1    DS    A             Address of Abend Code                      00394000
+PARM2    DS    A             Address of Cleanup option                  00395000
+PARM3    DS    A             Address of Cleanup option                  00396000
+ABCODE   DS    A             Address of temporary variable              00397000
+*                                                                       00398000
+FC_1     DS    CL12          Feedback Code condition token              00399000
+FC_2     DS    CL12          Feedback Code condition token              00400000
+CIB_PTR  DS    A             Pointer to CIB                             00401000
+******************************************************************      00402000
+* For PL/I - CICS Only                                                  00403000
+******************************************************************      00404000
+         AIF  ('&PLI' NE 'YES').PLI006                                  00405000
+         DFHEISTG DSECT=NO   CICS Needed parms            PL/I          00406000
+DFHEIBR  EQU   8             Pointer to CICS EIB          PL/I          00407000
+.PLI006  ANOP                                                           00408000
+**********************************************************************  00409000
+*     Symbolic Register Definitions and Usage.                       *  00410000
+**********************************************************************  00411000
+R1       EQU   1             Parameter list address (upon entry)        00412000
+R2       EQU   2             Work register (Usually the MSG number)     00413000
+R3       EQU   3             Parameter list address (after CEEENTRY)    00414000
+R4       EQU   4             Will point to Result Code Argument         00415000
+R5       EQU   5             Work REG to set up parm list               00416000
+R6       EQU   6             Work REG to set up parm list               00417000
+R7       EQU   7             Work REG to set up parm list               00418000
+R9       EQU   9             Base addres for condition CIB              00419000
+R10      EQU   10            Will point to Condition Token Argument     00420000
+R11      EQU   11            Base register for executable code          00421000
+R12      EQU   12            Common Anchor Area address                 00422000
+R13      EQU   13            Save Area/Dynamic Storage Area address     00423000
+R14      EQU   14            Return point address                       00424000
+R15      EQU   15            Entry point address                        00425000
+*                                                                       00426000
+DSASIZ   EQU   *-CEEDSA      Length of DSA                              00427000
+         EJECT                                                          00428000
+**********************************************************************  00429000
+*     Map the Common Anchor Area (CAA).                              *  00430000
+**********************************************************************  00431000
+         CEECAA                                                         00432000
+**********************************************************************  00433000
+*     Map the Condition Information Block (CIB).                     *  00434000
+**********************************************************************  00435000
+         CEECIB                                                         00436000
+*                                                                       00437000
+         END   ,                  of CEEWUCHA                           00438000

@@ -1,0 +1,1041 @@
+         MACRO                                                          00050000
+         SGUNATT                                                        00100000
+         GBLB &SGUNATT            SGUNATT PRINT CONTROL SWITCH          00125000
+         GBLB &VSE280             z/VSE RELEASE SWITCH                  00126025
+.*                                                                      00150000
+.*       IBM DISK OPERATING SYSTEM                                      00200000
+*        SUPERVISOR - SGUNATT - 5686-066                                00250000
+       AGO  .ZZZ                                            *           00550000
+*      LICENSED MATERIALS - PROPERTY OF IBM                 *           00600000
+*      THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *           00650000
+*      5686-CF7 (C) COPYRIGHT IBM CORP. 1989, 2004          *           00720029
+*      SEE COPYRIGHT INSTRUCTIONS                           *           00750000
+.ZZZ   ANOP                                                 *           00800000
+.**** START OF SPECIFICATIONS ***************************************** 00850000
+.*                                                                      00900000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                         00950000
+.*                                                                      01000000
+.*01* DESCRIPTIVE NAME = UNATTENDED NODES RE-IPL                        01050000
+.*                                                                      01100000
+.*  STATUS           =  NEW MACRO - FIRST RELEASE 4.1                   01150000
+*                                                                       01200000
+*   FUNCTION         =  THIS MACRO CONTAINS THE ROUTINES TO HANDLE      01250000
+*                       SVC 31 WHICH IS CALLED BY THE EXPANSION OF      01300000
+*                       THE MACRO REIPL, AND THE RE-IPL ITSELF.         01350000
+.*                                                                      01400000
+.*  RESTRICTIONS     =  MUST BE LOCATED IN SUPERVISOR FIXED STORAGE     01450000
+.*                      BELOW 16 MB REAL                                01500000
+*                                                                       01550000
+*   REGISTER CONVENT.=  R0 - PARAMETER REGISTER                         01600000
+*                    =  R1 - PARAMETER REGISTER                         01650000
+*                    =  R2 - WORK REGISTER                              01700000
+*                    =  R3 - PARAMETER SAVE/WORK REGISTER               01750000
+*                    =  R4 - WORK REGISTER                              01800000
+*                    =  R5 - WORK REGISTER                              01850000
+*                    =  R6 - BASE REGISTER OF DISPATCHER                01900000
+*                    =  R7 - PARAMETER SAVE/WORK REGISTER               01950000
+*                    =  R8 - TIB POINTER                                02000000
+*                    =  RC - BASE REGISTER OF THESE ROUTINES            02050000
+*                    =  RD - WORK REGISTER                              02100000
+*                    =  RE - WORK REGISTER                              02150000
+*                    =  RF - WORK REGISTER                              02200000
+.*                                                                      02250000
+.*  MACRO TYPE       =  ASSEMBLER                                       02300000
+*                                                                       02350000
+*   ENTRY POINT      =  SVC31, DOREIPL, DOREOPS                         02400000
+*                                                                       02450000
+*   CALLER           =  SVC31   VIA SVC INTERFACE HANDLER               02500000
+*                       DOREIPL FROM EMERGENCY MESSAGE HANDLER,         02550000
+*                               FROM HARD WAIT, AND FROM SVC31          02600000
+*                       DOREOPS FROM HARD WAIT IN CASE OF               02650000
+*                               OPERATE=SELFACT    OR                   02683300
+*                               IPL IN CASE OF SA                       02716600
+*                                                                       02750000
+*   INPUT            =  R0 - FUNCTION CODE FROM MACRO REIPL             02800000
+*                            REPRESENTING DEVICE AND ACTION             02850000
+*                            1 = DEVICE PRIMARY                         02900000
+*                            2 = DEVICE ALTERNATE                       02950000
+*                            4 = ACTION RESET                           03000000
+*                            FUNCTION CODE REPRESENTING CALLER          03050000
+*                          X'10 = REQUESTOR IS HARD WAIT                03100000
+*                          X'20 = REQUESTOR IS IMLSP MACRO              03150000
+*                       THE FOLLOWING DOES NOT APPLY FOR FC = X'20'     03200000
+*                       R1 - ADDRESS OF PARAMETER LIST                  03250000
+*                       PARAMETER LIST (8 BYTES)                        03300000
+*                            WORD 1 - ADDRESS OF IDUMPNO                03350000
+*                            WORD 2 - ADDRESS OF SYMPTOM STRING         03400000
+*                       IDUMPNO - 8 CHAR                                03450000
+*                       SYMPTOM STRING - 2 BIN LENGTH OF STRING         03500000
+*                                 FOLLOWED BY MAX 80 CHAR STRING        03550000
+*                                                                       03600000
+*   OUTPUT(ASSEMBLER)=  NONE                                            03650000
+*                                                                       03700000
+*   EXIT NORMAL      =  NONE                                            03750000
+*                                                                       03800000
+*   EXIT ERROR       =  ILLEGAL SVC IS FORCED WHEN                      03850000
+*                       - PASSED PARAMETERS INVALID                     03900000
+*                       - REQUESTOR IS NOT AUTHORIZED                   03950000
+.*                                                                      04000000
+.*  EXTERNAL REFEREN.=  NONE                                            04050000
+.*                                                                      04100000
+.*  DATA AREAS       =  NONE                                            04150000
+.*                                                                      04200000
+.*  CONTROL BLOCKS   =  UNATTCB                                         04250000
+.*                                                                      04300000
+.*  TABLES           =  NONE                                            04350000
+.*                                                                      04400000
+.*  MACROS           =  UNATTCB                                         04450000
+*                                                                       04500000
+*   AUTHORIZATION    =  FLAG PCBARIPL                                   04550000
+*                                                                       04600000
+.*  CHANGE ACTIVITIES=  NEW MACRO   FIRST RELEASE 4.1                   04650000
+.*  CHANGE 01        =  AF 4.1.2 SCLP SUPPORT                  @D31EMMZ 04700000
+.*  CHANGE 02        =  AF 5.1.0 ADAPTION TO CHANGED CNTR.BLOCK@D51IDMZ 04750000
+.*  CHANGE 03        =  AF 5.1.0 ESA SUPPORT                   @D51GDMZ 04800000
+.*  CHANGE 04        =  SPDT SUPPORT                           @DXXXXMZ 04833300
+.*  CHANGE 05        =  ENABLE SPDT SUPPORT UNDER VM           @D52VDMZ 04866600
+.*  CHANGE 06        =  RAS BASE REGISTER CHANGE               @MCRASHH 04883300
+.*  CHANGE 07        =  WAIT FOR FINAL CSCH STATUS             @DA43182 04891600
+.*  CHANGE 08        =  PREVENT LOOP IF SUBCHANNEL NOT OPER.   @DA43275 04895800
+.*  CHANGE 10        =  TURBO DISPATCHER SUPPORT               @D61RDOW 04898600
+.*  CHANGE 11        =  CSCH LOOP, CONTINUE IF CLEAR IS ACCEPT.@DY43490 04899200
+.*  CHANGE 12        =  UNATT-PROCESSING DEACTIVATED           @D68ADAP 04899321
+.*                                                                      04900000
+.*  A000000-999999                                    @D31QDAZ/@D31QDHB 04950000
+.*  ENSURE SUBCHANNEL TO BE SET TO INITIAL STATE               @DA41879 04975000
+.*  WAITFFD AT RE-IPL                                          @DY43606 04985000
+.*  PREVENT H/W IN CASE OF CRW PENDING MACHINE CHECK           @DY44069 04992000
+.*                                                                      05000000
+.** END OF SPECIFICATIONS ********************************************* 05050000
+*                                                                       05100000
+         AIF  (NOT &SGUNATT).UNOPR10                                    05250000
+         PRINT GEN                                                      05300000
+.UNOPR10 ANOP                                                           05350000
+         TITLE 'VSE SUPERVISOR     SGUNATT     UNATTENDED OPERATION   ' 05364200
+         DC    CL8'SGUNATT'                                    @D61CDAP 05378400
+         DC    CL8'z/VSE'         CHANGE ACT.CODE / LAST APAR  @DY44069 05405621
+         SPACE 3                                                        05406800
+         USING SVC31,RC           SVC-31 BASE POINTER          @D61BDAP 05414100
+         USING DISP,R6            DISAPATCHER BASE POINTER     @D61BDAP 05421400
+         USING TIBADR,R8          TIB BASE POINTER             @D61BDAP 05428700
+         USING TCBADR,RA          TCB BASE POINTER             @D61BDAP 05436000
+         USING SVEARA,RB          SAVE AREA BASE POINTER       @D61BDAP 05443300
+SVC31    DS    0H                 RE-IPL SVC                   @D61BDAP 05450900
+         TM    IJBFLG08,IJBSAENV  STAND ALONE ENVIRONMENT      @D61BDAP 05466600
+         BZ    SVC31020           NO,                          @D61RDOW 05471700
+SVC31010 TDSERV FUNC=RESTART      CPU TO BE RESTARTED          @D61RDAP 05476800
+         L     R2,ADOREOPS        ROUTINE ADDRESS              @D61BDAP 05481900
+         L     RC,ADOREIPL        DOREIPL BASE ADDRESS         @D61BDAP 05487100
+         BR    R2                      ======================> @D61BDAP 05508000
+SVC31020 LR    R3,R1              KEEP ADDRESS OF PARM LIST    @D31QDMZ 05528900
+         STC   R0,UNATPARM        STORE FUNCTION CODE                   05550000
+.*       CHECK FOR UNIQUE AUTHORIZATION OF CALLER                       05600000
+         LH    R5,PIK             LOAD PARTITION ID                     05700000
+         LTR   R5,R5              IS THIS AR-PARTITION         @D61NDAP 05716600
+         BZ    SVC31010           YES,                         @D61NDAP 05733200
+         SRL   R5,2               GET OFFSET ON PCBATAB        @D51IDMZ 05750000
+         A     R5,APCBATAB        ADDRESS PCB POINTER          @D51IDMZ 05800000
+         L     R5,0(,R5)          GET PCB POINTER              @D51IDMZ 05850000
+         USING PCBADR,R5                                                05900000
+         TM    PCBSSFL2,PCBARIPL  SUBSYSTEM FLAG ON                     05950000
+         BZ    ERR21              NO,  ====================>>>          06000000
+         DROP  R5                 RELEASE PCB BASE                      06050000
+         TM    UNATPARM,UNATIMLS  IML REQUESTED                @DXXXXMZ 06100000
+         BZ    ERR21                   ====================>>> @D68ADAP 06150021
+         BZ    SVC31030           NO, REIPL REQUESTED          @DXXXXMZ 06160021
+         LPSW  IMLSPPSW           WAIT ====================>>> @DXXXXMZ 06200000
+         SPACE 1                                                        06250000
+         DROP  R8                 RELEASE TIB BASE             @D61BDAP 06251021
+         DS    0D                                              @D51IDMZ 06260021
+IMLSPPSW DC    X'000A0000'        IML PSW                      @DXXXXMZ 06270021
+         DC    X'00000FFF'                                     @D68ADAP 06280021
+SVC31030 DS    0H'0'                                                    06281022
+         AIF   (&VSE280).Y280040                                        06290021
+.*       VALIDATE PARAMETER LIST                                        06333200
+         LA    R2,7(,R3)          LAST BYTE OF PARAMETER LIST           06374921
+         BAL   R8,VALIDSVA        VALIDATE 8 BYTES                      06416400
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)                      06458000
+         L     R1,0(,R3)          ADDRESS FIRST PARAMETER               06500000
+         LA    R2,7(,R1)          VALIDATE 8 BYTES                      06550000
+         BAL   R8,VALIDSVA        CHECK VALIDITY 8 BYTES                06600000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)                      06650000
+         L     R1,4(,R3)          FIRST BYTE OF LENGTH FIELD            06700000
+         LA    R2,1(,R1)          LAST BYTE OF LENGTH FIELD             06750000
+         BAL   R8,VALIDSVA        VALIDATE 2 BYTES                      06800000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)                      06850000
+         LH    R4,0(,R1)          GET LENGTH                            06900000
+         C     R4,F1              AT LEAST 1 BYTE                       06950000
+         BL    ERR21              NO,  ====================>>>          07000000
+         CH    R4,UNATLMAX        LENGTH GREATER MAXIMUM                07050000
+         BH    ERR21              YES, ====================>>>          07100000
+         LA    R2,1(R1,R4)        LAST BYTE OF SYMPTON STRING           07150000
+         BAL   R8,VALIDSVA        VALIDATE SYMPTON STRING               07175000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)                      07200000
+         L     R8,TIBPTR          TIB BASE ADDRESS             @D61RDAP 07225000
+         USING TIBADR,R8          TIB BASE POINTER             @D61RDAP 07250000
+         TDSERV FUNC=RESTART      CPU TO BE RESTARTED          @D61RDAP 07275000
+         LA    R4,1(,R4)          LENGTH CODE FOR MOVE                  07300000
+         EX    R4,UNATMOV         COPY SECOND PARAMETER                 07350000
+         L     R1,0(,R3)          ADDR. OF DUMP IDENTIFICATION          07400000
+         MVC   UNATSY1,0(R1)      COPY IDUMPNO                          07450000
+         IC    R0,UNATPARM        SUPPORT PARAMETER                     07550000
+         LA    R1,UNATPLI         ADDRESS FIXED PARM LIST               07600000
+         L     RC,ADOREIPL        ADDRESS ROUTINE DOREIPL               07650000
+         BR    RC                      ======================>          07700000
+*SGLINK  DOREIPL,INPUT=(R0,R1,R12),WORK=(RC,RD)                         07750000
+         SPACE 2                                                        07950000
+UNATMOV  MVC   UNATSY2(0),0(R1)   COPY LENGTH + SYMPTON STRING          08000000
+         SPACE 2                                                        08002100
+         DROP  R8                 RELEASE TIB BASE             @D61RDAP 08045600
+         DROP  RA                 RELEASE TCB BASE             @D61RDAP 08046800
+         DROP  R6                 RELEASE DISP BASE POINTER    @D61RDAP 08048000
+         DROP  RC                 RELEASE SVC31 BASE POINTER   @D61RDAP 08049200
+         SPACE 2                                               @D61RDAP 08050400
+*************************************************************           08150000
+*    LOCAL DATA OF SVC 31                                               08200000
+*                                                                       08250000
+*    THE FIELD UNATPARM CONTAINS THE USER PARAMETER WHICH               08300000
+*    HAVE BEEN PASSED BY THE SVC31 IN REGISTER 0.                       08350000
+*************************************************************           08400000
+.Y280040 ANOP                                                           08410023
+UNATPLI  DC    A(UNATSY1)         PARM LIST IN FIXED STORAGE            08450000
+         AIF   (&VSE280).Y280050                                        08460024
+         DC    A(UNATSY2)                                               08500000
+         DC    A(UNATSY3)                                               08550000
+         DC    A(UNATSY4)                                               08600000
+         DC    A(UNATSY5)                                               08650000
+         DC    A(UNATSY6)                                               08700000
+         DC    A(UNATSY7)                                               08750000
+         DC    A(UNATSY9)                                               08800000
+UNATLMAX DC    AL2(L'UNASYMP2)    MAX. LENGTH SYMPTOM STRING            09000000
+.Y280050 ANOP                                                           09010023
+UNATPARM DC    XL1'00'            FUNCTION CODE                         09050000
+         EJECT                                                          09100000
+*************************************************************           09150000
+*                                                                       09200000
+*        ROUTINE DOREIPL.                                               09250000
+*                                                                       09300000
+*        FUNCTION=    INITIATE RE-IPL                                   09350000
+*                                                                       09450000
+*        INPUT=       REGISTER 0 -     FUNCTION CODE                    09500000
+*                                      (DESCRIPTION SEE PROLOG)         09550000
+*                     REGISTER 1 -     ADDRESS OF PARAMETER LIST        09600000
+*                 PARAMETER LIST -     TWO 4-BYTE ADDRESSES             09650000
+*                                      (DESCRIPTION SEE PROLOG)         09700000
+*                                                                       09750000
+*        CALLED BY=   SVC31, SYSERROR                                   09800000
+*                                                                       10050000
+*************************************************************           10100000
+         SPACE 1                                                        10150000
+         USING DOREIPL,RC         DOREIPL  BASE POINTER                 10250000
+DOREIPL  L     RF,XXARPTR         ADDRESS OF DEBUG CONTROL     @D61NDAP 10310000
+         LTR   RF,RF              DEBUG GEN'ED SUPERVISOR      @D61NDAP 10320000
+         BM    DOREI000           YES,                         @D61NDAP 10330000
+         L     R8,4(,RF)          CONTROL AREA ADDRESS         @D61NDAP 10340000
+         USING XXESINFO,R8        DEBUG TRACE INFO BASE        @D61NDAP 10350000
+         L     R8,XXDBGSAV        GET  SUPERVISOR DEBUG ADDR.  @D61NDAP 10360000
+         DROP  R8                 RELEASE TRACE INFO BASE      @D61NDAP 10369900
+         ST    R8,0(,RF)          REUSE SUPERVISOR DEBUG AREA  @D61NDAP 10379900
+DOREI000 LR    R7,R1              SAVE ADDRESS OF UNATPLI      @D61NDAP 10389900
+         MVC   X'60'(8),UNAOFPSW  SET  DISABLE PSW             @D61NDAP 10475000
+         SVC   33                 FORCE DISABLED STATE         @D61NDAP 10525000
+DOREI010 STC   R0,UNATREQ         SAVE REQUESTORS FLAGS                 10575000
+         LCTL  RE,RE,UNATCTLE     DISABLE CRW REPORT           @DY44069 10595000
+         MVC   UNATDPSW,DUMMYPSW  COPY HARDWAIT PSW                     10625000
+         MVC   XTNPSW(ASYSCOM-XTNPSW),UNATNPSW  REPLACE NPSWS           10750000
+DOREI020 STCRW UNASTCRW           EMPTY HARDWARE CRW STACK     @D61NDAP 10783300
+         BC    8,DOREI020         EMPTY HARDWARE CRW'S         @D61NDAP 10816600
+         STIDP UNACPUID           GET CPUID                             10850000
+         CLI   UNACPUID,XFF       RUNNING UNDER VM                      10900000
+         BNE   DOREI040           NO,                                   10950000
+         LA    R8,L'UNCPCMD2      LENGTH OF COMMAND            @D61NDAP 11000000
+         LA    R2,UNCPCMD2        AVOID PSEUD0 PAGE FAULTS              11050000
+         DC    X'83',X'28',XL2'0008'  GIVE CP DIAGNOSE                  11100000
+DOREI040 DS    0H'0'                                                    11101022
+         AIF   (&VSE280).Y280060                                        11110022
+         TM    UNATREQ,UNATHARD   ENTERED FROM HARD WAIT                11150022
+         BZ    DOREI050           NO,                                   11200000
+.*       BUILD SYMPTOM STRING FOR HARD WAIT RE-IPL REQUESTOR            11750000
+         LA    R3,UNATSY2         ADDRESS SYMPTOM STRING                11850000
+         USING ADSSECT3,R3                                              11900000
+         XC    ADSS3LNG,ADSS3LNG  LENGTH OF STRING                      11950000
+         MVI   ADSS3LNG+1,ADSS3SL                                       12000000
+         MVC   ADSS3PID,ADSS3PIC  CONSTANT: PIDS/                       12050000
+         MVC   ADSS3PPP,SUPIDC2   SUPERVISOR PRODUCT NUMBER             12100000
+         MVC   ADSS3AB,ADSS3ABC   CONSTANT: AB/                         12150000
+         UNPK  ADSS3AAA(L'ADSS3AAA+1),SYSS00(5)  HARD WAIT CODE         12200000
+         TR    ADSS3AAA,UNATRTAB  MAKE IT PRINTABLE                     12250000
+         MVC   ADSS3PR,ADSS3PRC   CONSTANT: PRCS/                       12300000
+         UNPK  ADSS3PRR(L'ADSS3PRR+1),IJBHWORI(3) H/W ORIGIN            12350000
+         TR    ADSS3PRR,UNATRTAB  ORIGINATORS - MAKE IT PRINTABLE       12400000
+         MVI   ADSS3RID,BLANK     CLEAR ADSS3RID                        12450000
+         DROP  R3                                                       12500000
+         MVC   UNATSY4,EXOLDP     SAVE OLD PSW'S                        12550000
+         MVC   UNATSY5,EXTINTC    SAVE INTERRUPTION CODES               12600000
+         MVC   UNATSY6,CHNADRSA   SAVE I/O ADDRESS                      12650000
+         MVC   UNATSY7,CSW        SAVE CSW,CAW                          12700000
+         MVC   UNATSY9,EXCSW      SAVE LIM. CHANNEL LOGOUT              12750000
+DOREI050 TM    UNAINDI,IJBUNATT   IS SYSTEM UNATTENDED                  12800000
+         BO    DOREC000           YES                                   12850000
+DOREHW08 MVI   IJBIPORG,HWIPL008  SET HARD WAIT CODE                    12900000
+         B     DOREFI20           HARD WAIT                             13200000
+DOREHW12 MVI   IJBIPORG,HWIPL012  NO, NOT OPERATIONAL          @D61NDAP 13208000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13216000
+DOREHW16 MVI   IJBIPORG,HWIPL016  NO, I/O ERROR                @D61NDAP 13224000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13232000
+DOREHW20 MVI   IJBIPORG,HWIPL020  NO, RECORD ON DASD DESTROYED @D61NDAP 13240000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13248000
+DOREHW24 MVI   IJBIPORG,HWIPL024  AUTOIPL WAS OFF              @D61NDAP 13256000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13264000
+DOREHW28 MVI   IJBIPORG,HWIPL028  YES, SAME REASON LIMIT IS 0  @D61NDAP 13272000
+         B     DOREFI20           FINAL HARD WAIT              @D61NDAP 13280000
+DOREHW32 MVI   IJBIPORG,HWIPL032  YES, TOTAL LIMIT REACHED     @D61NDAP 13288000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13296000
+DOREHW36 MVI   IJBIPORG,HWIPL036  ALTERNATE DEVICE NON-EXISTING@D61NDAP 13304000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13312000
+DOREHW40 MVI   IJBIPORG,HWIPL040  YES,NO SWITCH POSSIBLE       @D61NDAP 13320000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13328000
+DOREHW44 MVI   IJBIPORG,HWIPL044  REQUESTED IPL DEV. NOT POSS. @D61NDAP 13336000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13344000
+DOREHW48 MVI   IJBIPORG,HWIPL048  NO, HAD BEEN SWITCHED BEFORE @D61NDAP 13352000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13360000
+DOREHW56 MVI   IJBIPORG,HWIPL056  I/O ERROR DURING WRITE       @D61NDAP 13368000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13376000
+DOREHW84 MVI   IJBIPORG,HWIPL084  CLOCK NOT IN PROPER STATE    @D61NDAP 13384000
+         B     DOREFI20           HARD WAIT                    @D61NDAP 13392000
+.Y280060 ANOP                                                           13392122
+DOREHW68 MVI   IJBIPORG,HWIPL068  I/O ERROR ON IPL READ        @D61NDAP 13393022
+         B     DOREFINI           DO FINAL HARD WAIT           @D61NDAP 13394022
+         DROP  RC                 RELEASE DOREIPL BASE         @D61NDAP 13401000
+DOREER10 MVI   IJBIPORG,HWIPL072  MACHINE CHECK DURING REIPL   @D61NDAP 13402000
+         LPSW  MCOLDP             SIMPLY IGNORE THAT MACH.CHECK@DYXXXXX 13402120
+*        IGNORE ALL MACHINE CHECKS, ----> CANNOT RECOVER ANYWAY@DYXXXXX 13402220
+DOREER20 MVI   IJBIPORG,HWIPL076  SVC INTERRUPT DURING REIPL   @D61NDAP 13407900
+         ST    RC,XXERA+12        SAVE REGISTER 12             @D61NDAP 13408900
+         L     RC,ADOREIPL        DOREIPL BASE ADDRESS         @D61NDAP 13409900
+         USING DOREIPL,RC         DOREIPL  BASE POINTER        @D61NDAP 13410900
+         B     DOREFINI           GO TO FINAL HARD WAIT        @D61NDAP 13411900
+DOREER30 DS    0H'0'              PROGRAM CHECK DURING REIPL   @D61NDAP 13412900
+         ST    RC,XXERA+12        SAVE REGISTER 12             @D61NDAP 13413900
+         L     RC,ADOREIPL        DOREIPL BASE ADDRESS         @D61NDAP 13414900
+         USING DOREIPL,RC         DOREIPL  BASE POINTER        @D61NDAP 13415900
+         CLI   PGMINTC+D1,PSPF    WAS IT A PENDING PSEUDO PF            13416800
+         BNE   DOREER32           NO                                    13424000
+         L     RC,XXERA+12        RESTORE R12                           13433000
+         LPSW  PCOLDP             RETURN, SINCE PSEUDO PAGE FLT@D61NDAP 13434000
+DOREER32 MVI   IJBIPORG,HWIPL080  PROGRAM CHECK INTERRUPT      @D61NDAP 13435000
+         B     DOREFINI           GO TO FINAL HARD WAIT        @D61NDAP 13436000
+         SPACE 1                                                        13440000
+         AIF   (&VSE280).Y280080                                        13450024
+DOREC000 TM    UNAFLG,UNAERR      IS RE-IPL OPERATIONAL        @D61NDAP 13460000
+         BO    DOREHW12           NO,                          @D61NDAP 13480000
+.*       READ COUNTER RECORD FROM PRIMARY IPL DEVICE                    13500000
+         LA    R1,UNTSCCW7        POINT TO CKD CHANNEL PROGRAM @D61NDAP 13550000
+         CLI   UNADEVTP,AVRFBA    SYSRES DEVICE ON FBA                  13600000
+         BNE   DOREC010           NO,                                   13650000
+         LA    R1,UNTSCCW1        POINT TO FBA CHANNEL PROGRAM          13700000
+DOREC010 LH    R2,UNAPRIM         GET CUU OF SYSRES                     13750000
+         BAL   R8,DOREIO          DO READ                               13800000
+*SGLINK  DOREIO,INPUT=(R1,R2,R8)                                        13850000
+         CLI   UNATRETC,0         WAS COUNTER RECORD READ               13900000
+         BNE   DOREHW16           NO,                          @D61NDAP 13950000
+DOREC020 L     R4,UNABUFPT        ADDRESS I/O BUFFER                    14000000
+         CLC   UNARECID-UNAR(L'UNARECID+L'UNAVERS,R4),UNARECID          14150000
+         BNE   DOREHW20           RECORD ID OK                 @D61NDAP 14200000
+         MVC   UNAR(256),0(R4)    COPY RECORD TO BUILD AREA             14250000
+         MVC   UNAR+256(UNATRLG-256),256(R4)                            14450000
+         MVI   UNAIREQ,UNAREQ2    ASSUME REIPL PARAM=ERROR              14500000
+         TM    UNATREQ,UNATACTR   IS PARAM=RESET?                       14550000
+         BZ    DOREC025           NO, OK                                14600000
+         MVI   UNAIREQ,UNAREQ1    YES, INDICATE IT                      14650000
+DOREC025 TM    UNATREQ,UNATHARD   HARD WAIT REQUEST                     14700000
+         BZ    DOREC030           NO,                                   14750000
+         MVI   UNAIREQ,UNAREQH    YES, INDICATE IT                      14800000
+         MVC   UNASYMP3(UNAESYMP-UNASYMP3),UNATSY3  COPY SYMPT.         14850000
+.*       MAKE DECISIONS ABOUT WHETHER TO RE-IPL OR NOT                  14900000
+DOREC030 TM    IJBFLG07,IJBAIOFF  IS AUTOIPL OFF               @D31QDMZ 14950000
+         BO    DOREHW24           NO,                          @D61NDAP 15000000
+         LH    R3,UNALIM          GET LIMIT SAME REASON        @D31QDMZ 15050000
+         LTR   R3,R3              ARE REIPLS TO BE SUPPRESSED  @D31QDMZ 15250000
+         BZ    DOREHW28           NO                           @D61NDAP 15300000
+         STCK  UNAITS             STORE CLOCK                           15350000
+         BNZ   DOREHW84           ERROR                        @D61NDAP 15400000
+         MVC   UNAIDEV,UNACURRD   ASSUME CURRENT IPL DEVICE             15450000
+         TM    UNATREQ,UNATPRI    PRIMARY DEVICE REQUESTED              15700000
+         BZ    DOREC035           NO,                                   15750000
+         MVC   UNAIDEV,UNAPRIM    FORCE IPL FROM PRIMARY                15800000
+         B     DOREC040                                                 15850000
+DOREC035 TM    UNATREQ,UNATALT    ALTERNATE DEVICE REQUESTED            15900000
+         BZ    DOREC040           NO,                                   15950000
+         CLC   UNAPRIM,UNASEC     TWO IPL DEVICES PRESENT               16000000
+         BE    DOREHW36           NO,                          @D61NDAP 16050000
+         MVC   UNAIDEV,UNASEC     FORCE IPL FROM ALTERNATE              16100000
+         SPACE 1                                                        16250000
+DOREC040 L     R3,UNATS1          TIME START COUNTING CYCLE             16300000
+         CL    R3,UNAITS          TIME HIGHER THAN CURRENT              16350000
+         BH    DOREC200           YES, UNATS1 IS INVALID                16400000
+         AL    R3,UNATF2H         ADD TWO HOURS                         16450000
+         CL    R3,UNAITS          TIME LOWER THEN CURRENT?              16500000
+         BL    DOREC200           YES, START NEW COUNTING CYCLE         16550000
+.*       NOTE: THE COUNTING CYCLE HAD STARTED WITHIN THE LAST HOUR      16600000
+         TM    IJBFLG07,IJBAION   AUTOIPL ON --> UNLIMITED RE-IPLS?     16650000
+         BNZ   DOREC240           YES, GO DO RE-IPL UPDATE     @D31QDMZ 16700000
+         TM    UNAIREQ,UNAREQ1    IS REQUESTOR SVC31 "RESET"            16750000
+         BNZ   DOREC200           YES, GO DO RE-IPL RESET               16800000
+         L     R5,UNACTRT         GET COUNTER TOTAL                     16850000
+         CH    R5,UNATCMAX        WAS LIMIT REACHED BEFORE              16900000
+         BNL   DOREHW32           YES,                         @D61NDAP 16950000
+         LH    R3,UNALIM          GET LIMIT SAME REASON        @D31QDMZ 17000000
+         L     R5,4(,R7)          ADDRESS MANDATORY SYMPTOMS   @D31QDMZ 17150000
+         CLC   UNASYMP2+2(ADSS3ML),2(R5)  SAME IPL REASON               17200000
+         BNE   DOREC100           NO, GO HANDLE UNEQ SYMPTOMS           17250000
+.*       NOW WE KNOW THAT THE SYMPTOMS OF THIS REQUEST ARE              17300000
+.*       THE SAME AS THOSE OF THE PREVIOUS REQUEST                      17350000
+         L     R5,UNACTRR         GET COUNTER SAME REASON               17400000
+         CR    R5,R3              WAS LIMIT REACHED BEFORE?             17450000
+         BNL   DOREC050           YES, GO HANDLE EXCEEDING              17500000
+         LA    R5,1(,R5)          ADD ONE TO COUNTER                    17550000
+         ST    R5,UNACTRR         STORE IT INTO RECORD                  17600000
+         B     DOREC220           GO DO RE-IPL UPDATE                   17650000
+         SPACE 1                                                        17700000
+**********************************************************************  17750000
+*    THE REASON COUNTER IS EXHAUSTED. SWITCHING IS ONLY POSSIBLE        17800000
+*    TO THE ALTERNATE DEVICE. IN CASE IPL WAS ALREADY DONE FROM THE     17850000
+*    ALTERNATE IPL DEVICE, THE SYSTEM GOES INTO HARD WAIT               17900000
+**********************************************************************  17950000
+         SPACE 1                                                        18000000
+DOREC050 CLC   UNACURRD,UNASEC    IPL DONE FROM ALTERNATE DEV. @D31QDMZ 18050000
+         BE    DOREHW40           YES,                         @D61NDAP 18100000
+         CLC   UNAIDEV,UNASEC     ALTERNATE IPL DEVICE WANTED  @D31QDMZ 18150000
+         BE    DOREC220           YES, DO REIPL UPDATE         @D31QDMZ 18350000
+         TM    UNATREQ,UNATPRI    PRIM. EXPLICITLY SPECIFIED   @D31QDMZ 18400000
+         BO    DOREHW44           YES,                         @D61NDAP 18450000
+         MVC   UNAIDEV,UNASEC     FORCE IPL FROM ALTERNATE     @D31QDMZ 18500000
+         B     DOREC220           DO REIPL UPDATE              @D31QDMZ 18650000
+         SPACE 2                                                        18700000
+**********************************************************************  18750000
+* THIS CODE IS ACTIVATED WHEN THE CURRENT SYMPTOMS ARE DIFFERENT        18800000
+* FROM THOSE OF THE PREVIOUS REQUEST.                                   18850000
+* IN CASE IPL WAS DONE FROM THE ORIGINAL DEVICE (DEVICE WHERE THE       18900000
+* COUNTING CYCLE STARTED ) , UNACURRD=UNAORIGD,                         18950000
+* THE REASON COUNTER IS RESET AND IPL IS PERFORMED.                     19000000
+* IF IPL WAS DONE FROM THE ALTERNATE DEVICE CAUSED BY A SWITCH          19050000
+* THE SYSTEM GOES INTO FINAL HARD WAIT.                                 19100000
+**********************************************************************  19150000
+DOREC100 DS    0H                                                       19200000
+         CLC   UNACURRD,UNAORIGD  STILL ON ORIGINAL DEVICE     @D31QDMZ 19250000
+         BNE   DOREHW48           NO,                          @D61NDAP 19300000
+         LA    R2,1                                                     19350000
+         ST    R2,UNACTRR         RESET COUNTER REASON                  19500000
+         B     DOREC220           UPDATE COUNTER TOTAL                  19550000
+         EJECT                                                          19600000
+*    BUILD COUNTER RECORD RESETTING BOTH COUNTERS AND                   19650000
+*    THE TIME STAMP FOR AN NEW CYCLE TO BEGIN                           19700000
+DOREC200 LA    R2,1                                                     19750000
+         ST    R2,UNACTRT         RESET COUNTER TOTAL                   19800000
+         ST    R2,UNACTRR         RESET COUNTER REASON                  19850000
+         MVC   UNATS1,UNAITS      TIME STAMP INTO RECORD                19900000
+         MVC   UNAORIGD,UNACURRD  START CYCLE ON CURRENT DEVICE         19950000
+         B     DOREC240           GO COMPLETE RECORD                    20000000
+         SPACE 2                                                        20050000
+*    BUILD COUNTER RECORD UPDATING COUNTER TOTAL                        20100000
+DOREC220 L     R2,UNACTRT         GET COUNTER TOTAL                     20150000
+         LA    R2,1(,R2)          ADD ONE TO COUNTER                    20200000
+         ST    R2,UNACTRT         STORE IT INTO RECORD                  20250000
+DOREC240 L     R5,0(,R7)          ADDRESS PARAMETER IDUMPNO             20350000
+         MVC   UNASYMP1,0(R5)                                           20400000
+         L     R5,4(,R7)          ADDRESS PARAMETER SYMPTOM             20450000
+         MVC   UNASYMP2,0(R5)                                           20500000
+         MVC   0(256,R4),UNAR     COPY RECORD TO BUFFER                 20600000
+         MVC   256(UNATRLG-256,R4),UNAR+256                             20650000
+.*       RE-WRITE COUNTER RECORD                                        20700000
+         LA    R1,UNTSCCWA        ASSUME CKD WRITE CHAIN                20750000
+         CLI   UNADEVTP,AVRFBA    SYSRES DEVICE ON FBA                  20800014
+         BNE   DOREC260           NO, INIT FOR CKD                      20850000
+         LA    R1,UNTSCCW4        FBA WRITE CHAIN                       20900000
+DOREC260 LH    R2,UNAPRIM         GET CUU OF SYSRES                     20950000
+         BAL   R8,DOREIO          DO WRITE UPDATE                       21100000
+*SGLINK  DOREIO,INPUT=(R1,R2,R8)                                        21150000
+         CLI   UNATRETC,0         WAS I/O OK?                           21200000
+         BNE   DOREHW56           NO,                                   21250000
+         L     R8,ASYSPCB         GET SYSTEM PCB ADDRESS       @DY45452 21260018
+         USING PCBADR,R8          SYS-PCB BASE POINTER         @DY45452 21270018
+         L     R8,PCECOMRA        GET AR-COMREG ADDRESS        @DY45452 21280018
+         USING COMREG,R8          AR-COMREG BASE POINTER       @DY45452 21290018
+         B     DOREC330                                        @D61NDAP 21409900
+         DROP  R8                 RELEASE AR-COMREG BASE       @DY45452 21410018
+         SPACE 2                                               @D61NDAP 21419900
+.Y280080 ANOP                                                           21420022
+DOREC300 L     RF,XXARPTR         ADDRESS OF DEBUG CONTROL     @D61NDAP 21435100
+         L     R8,4(,RF)          CONTROL AREA ADDRESS         @D61NDAP 21435211
+         USING XXESINFO,R8        DEBUG TRACE INFO BASE        @D61NDAP 21435311
+         NI    XXESINFO,X'BF'     PREVENT CONSISTENCY CHECK    @DY45452 21435418
+         LTR   RF,RF              DEBUG GEN'ED SUPERVISOR      @D61NDAP 21438100
+         BM    DOREC320           YES,                         @D61NDAP 21442100
+         L     R8,XXDBGSAV        GET  SUPERVISOR DEBUG ADDR.  @D61NDAP 21450100
+         DROP  R8                 RELEASE TRACE INFO BASE      @D61NDAP 21453000
+         ST    R8,0(,RF)          REUSE SUPERVISOR DEBUG AREA  @D61NDAP 21456000
+DOREC320 SLR   RF,RF              CLEAR REGISTER               @DY45452 21457018
+         BCTR  RF,0               MAKE THE VALUE NEGATIVE      @DY45452 21458018
+         ICM   RF,3,SYSOCDEV      GET COMMUNICATION DEVICE CUU @DY45452 21459018
+         ST    RF,SCNPSW          SAVE IT FOR $$A$PLB. PHASE   @DY45452 21460018
+         MVC   SCNPSW+4(4),UNCNRIPL SET UNIQUE ID              @DY45452 21460118
+         L     R8,ASYSPCB         GET SYSTEM PCB ADDRESS       @DY45452 21460218
+         USING PCBADR,R8          SYS-PCB BASE POINTER         @DY45452 21460318
+         L     R8,PCECOMRA        GET AR-COMREG ADDRESS        @DY45452 21460418
+         USING COMREG,R8          AR-COMREG BASE POINTER       @DY45452 21460518
+         TM    IJBFLG08,IJBSAENV  STAND ALONE ENVIRONMENT      @D61NDAP 21461008
+         BZ    DOREC330           NO,                          @D61BDAP 21463000
+         TM    IJBRESDV,X'80'     AUTOMATED RESTORE            @D61BDAP 21465900
+         BZ    DOREC330           NO,                          @D61BDAP 21468400
+         NI    IJBRESDV,X'0F'     RESET HIGH ORDER BITS        @D61BDAP 21469300
+         ICM   RF,15,IJBSABLK     SYSWK1 INFORMATION PRESENT   @D61BDAP 21496600
+         BZ    DOREC330           NO,                          @D61BDAP 21497300
+         CLM   RF,12,ADDRMSK+1    CORRECT VALUE                @D61BDAP 21497600
+         BNE   DOREC330           NO,                          @D61BDAP 21498300
+         STCM  RF,3,SCNPSW        SAVE CUU ADDRESS OF SYSWK1   @D61BDAP 21498600
+         XC    IJBSABLK(4),IJBSABLK FIELD NOT USED ANY MORE    @D61BDAP 21499100
+DOREC330 MVC   UNLPPARM(8),COMUSCR SET PREPARED LOADP INFO     @DY45452 21499618
+           AIF   (NOT &VSE280).N280020                         @DSCSI   21499732
+           L     RE,APBXAREA      GET ADDRESS OF PUBX TABLE    @DSCSI   21500232
+DOREC335   ICM   R4,15,0(RE)      PUBX ENTRY ADDRESS           @DSCSI   21500332
+           BM    DOREC340         NOT FOUND                    @DSCSI   21500433
+           USING PBXADR,R4        PUBX BASE POINTER            @DSCSI   21500532
+           LA    RE,4(,RE)        ADVANCE TO NEXT PUBX ENTRY   @DSCSI   21500632
+           CLC   UNAIDEV(2),PBXCUU IS THIS THE RIGHT PUB       @DSCSI   21500732
+           BNE   DOREC335         NO,                          @DSCSI   21500832
+           TM    PBXFLAG,PBXSCSI  IS IT A SCSI DEVICE          @DSCSI   21500932
+           BZ    DOREC340         NO, SKIP SCSI-CODE           @DSCSI   21501033
+           L     RF,UNASRIPL      GET SCSI-REIPL BASE ADDRESS  @DSCSI   21501132
+           BASSM RE,RF            SCSI ====================>>> @DSCSI   21501332
+           DROP  R4               RELEASE PBXADR BASE          @DSCSI   21501432
+.N280020 ANOP                                                  @DSCSI   21501832
+DOREC340 UNPK  UNAWRK1,UNAIDEV(3) PROVIDE INPUT FOR CP COMMAND @DY45452 21501932
+         TR    UNAWRK1,UNATRTAB   MAKE CUU PRINTABLE           @DY45452 21502018
+         MVI   UNAWRK1,BLANK      BLANK UNUSED BYTE            @DY45452 21502118
+         MVI   UNAWRK1+4,BLANK    BLANK UNUSED BYTE            @DY45452 21502218
+         CLI   UNLPPARM+7,C'V'    NATIVE REIPL TO BE SIMULATED @DY45452 21502318
+         BNE   DOREC350           NO, PROCEED NORMAL           @DY45452 21502730
+         MVI   UNLPPARM+7,C' '    RESET SIMULATION INDICATOR   @DY45452 21502818
+         MVC   UNTSCCWT(8),UNTSTEST MAKE THE TIC A READ                 21507000
+         MVI   DOREC650+1,0       NOOP THE BRANCH                       21535500
+         B     DOREC400           SIMULATE NATIVE IPL                   21564032
+         DROP  R8                 RELEASE AR-COMREG BASE       @DY45452 21565018
+DOREC350 CLI   UNACPUID,XFF       RUNNING UNDER VM                      21926031
+         BNE   DOREC400           NO TAKE NATIVE PATH                   21926131
+         SPACE 1                                               @DSCSI   21927031
+.*       UNDER VM ISSUE CP COMMAND: IPL CUU                             21928004
+         LA    R8,L'UNCPCMD1+L'UNAWRK1+L'UNLPPARC+L'UNLPPARM   @D61RDAP 21933100
+         CLI   UNLPPARM,C' '      LOADP GIVEN                  @D61RDAP 21942600
+         BNE   DOREC360           YES,                         @D61RDAP 21956130
+         CLC   UNLPPARM+1(L'UNLPPARM-1),UNLPPARM ALL BLANKS    @D61RDAP 21961600
+         BNE   DOREC360           NO,                          @D61RDAP 21975130
+         LA    R8,L'UNCPCMD1+L'UNAWRK1 USE BASIC LENGTH ONLY   @D61RDAP 21980600
+DOREC360 LA    R2,UNCPCMD1        ADDRESS CP COMMAND: IPL CUU           21994130
+         MVI   IJBIPORG,HWIPL060  PROPHYLACTIC: CP IPL FAILED           22000000
+         MVC   X'90'(8),UNLPPARM  SAVE LOADP INFORMATION       @DY45452 22010018
+         DC    X'83',X'28',XL2'0008'  GIVE CP DIAGNOSE                  22050000
+UNAWTLP  B     UNAWTLP            LOOP UNTIL CP TAKES OVER              22100000
+UNCNRIPL DC    C'RIPL'            CONSTANT                     @D61BDAP 22110031
+         SPACE 1                                                        22150000
+UNCPCMD1 DC    C'IPL'             IPL COMMAND                  @D61RDAP 22190000
+UNAWRK1  DC    CL5'     '         DEVICE ID                    @D61RDAP 22230000
+UNLPPARC DC    C' LOADP '         LOADPARM                     @D61RDAP 22270000
+UNLPPARM DC    C'........'        LOADPARM VALUE               @D61RDAP 22310000
+UNCPCMD2 DC    C'SET PAGEX OFF'   TO AVOID VM PSEUDO PAGE FAULTS        22350000
+UNASTCRW DC    F'0'               WORK AREA FOR STCRW          @D61NDAP 22425000
+         SPACE 2                                                        22450000
+.*       CHECK IF REIPL IS TO BE DELAYED                       @D31EMMZ 22500000
+DOREC400 L     RF,UNASCLPA        GET ADDR OF SCLP I/F ROUTINE @D31EMMZ 22550000
+         BALR  RE,RF              DO SCLP PROCESSING           @D31EMMZ 22700003
+.*       CLEAR ALL SUBCHANNELS                                          23050000
+         LH    R3,YPUBTAB         ADDRESS OF FIRST PUB         @D51GDAP 23700000
+         USING PUBADR,R3          PUB BASE POINTER             @D51GDAP 23750000
+         ICM   RF,15,APBXAREA     ADDRESS OF PUBX ADDRESS TABLE@D51GDAP 23800032
+         BZ    DOREFINI           FINAL HARD WAIT              @D52VDAP 23866632
+DOCSCHLP CLI   PUBCHANN,XFF       END OF PUB TABLE             @D51GDAP 23900000
+         BE    DOREC600           YES,                         @D51GDAP 23950000
+         L     RE,0(,RF)          ADDRESS OF PUBX ENTRY        @D51GDAP 24000000
+         USING PBXADR,RE          PUBX BASE POINTER            @D51GDAP 24050000
+         CLC   PBXSCH(2),XFFFF    VALID SUBCHANNEL NUMBER      @D68ADAP 24060032
+         BE    DORXC040           NO, SKIP THIS DEVICE         @D68ADAP 24070032
+         MVC   DORXASID(2),PBXSCH GET SUBCHANNEL NUMBER        @D51GDAP 24100000
+         CLC   PUBCHANN(2),UNAIDEV IS THIS THE IPL DEVICE      @D51GDAP 24150000
+         BNE   DORXCLR            NO                           @D51GDAP 24200000
+         MVC   DORXIPLD(2),PBXSCH SAVE SUBCHANNEL NUMBER       @D51GDAP 24250000
+         DROP  RE                 RELEASE PUBX BASE            @DA41879 24257800
+DORXCLR  STCK  IPLCLK1            SET START TIME               @D61BDAP 24263000
+DORXC000 L     R2,SCHIB$          GET SCHIB ADDRESS            @DA41879 24268200
+         USING SCHIB,R2           SCHIB BASE POINTER           @DA41879 24273400
+         L     R1,DORXA1          GET R1 FOR CSCH INSTR        @DA41879 24281200
+         CSCH                     CLEAR SUBCHANNEL             @DA41879 24289000
+         BO    DORXC040           NOT OPERATIONAL              @DA41879 24293400
+DORXC010 STSCH SCHIB              GET SUBCHANNEL INFO          @DA41879 24305800
+         BO    DORXC040           PROCESS NEXT SUBCHANNEL      @DA41879 24315400
+         TM    SCHSTB3,SCHSCSP    STATUS PENDING               @DA41879 24320200
+         BO    DORXC020           YES,                         @DA41879 24328000
+         LA    RE,1024            SET LOOP COUNT               @DA41879 24335800
+         BCT   RE,*               GIVE SUBSYSTEM A CHANCE      @DA41879 24343600
+         B     DORXC050                                        @DA41879 24352400
+DORXC020 L     RE,IRB$            ADDRESS OF IRB               @DA41879 24354500
+         USING IRB,RE             IRB BASE POINTER             @DA41879 24357600
+         TSCH  IRB                CLEAR INTERRUPT              @DA41879 24360700
+         TM    IRBSTB2,IRBFCC     IS CSCH ONGOING              @DA43182 24361300
+         BZ    DORXC000           NO, TRY AGAIN                @DA43182 24361900
+DORXC030 MVI   SCHISC,ZERO        SET ISC TO ZERO              @DA41879 24364300
+         MVI   SCHPOM,XFF         SET TO ALL PATHES OPERATIONAL@DA43182 24365400
+         XC    SCHIP,SCHIP        RESET INTERRUPT PARAMETER    @DA41879 24367000
+         MSCH  SCHIB              MODIFY SUBCHANNEL            @DA41879 24374800
+         BC    6,DORXC010         LOOP IF BUSY/STATUS PENDING  @DA41879 24385700
+DORXC040 LA    RF,4(,RF)          ADVANCE TO NEXT PUBX ADDRESS @D51GDAP 24393200
+         LA    R3,PUBLNG(,R3)     ADVANCE TO NEXT PUB          @D51GDAP 24400000
+         B     DOCSCHLP           PROCESS NEXT PUB             @D51GDAP 24450000
+DORXC050 BAL   R4,IPLIOTIM        PREVENT LOOP                 @D61BDAP 24468300
+         B     DORXC010         0 WAIT FOR STATUS              @D61BDAP 24470300
+DORXC060 TM    SCHSTB2,SCHFCC   4 IS CSCH ONGOING              @D61BDAP 24472300
+         BO    DORXC030           YES, ASSUME CSCH DID WORK    @D61BDAP 24474900
+         B     DOREFINI           NO, HARD WAIT                @D61BDAP 24483200
+         DROP  R2                 RELEASE SCHIB BASE           @DA41879 24487200
+         DROP  RE                 RELEASE IRB   BASE           @D61BDAP 24491500
+         DROP  R3                 RELEASE PUB BASE             @D51GDAP 24500000
+DORXA1   DC    F'65536'           HEX FULLWORD 00010000        @D51GDAP 24600000
+DORXASID EQU   DORXA1+2           SUBCHANNEL NUMBER            @D51GDAP 24650000
+DORXIPLD DC    H'0'               SUBCHANNEL OF OF IPL DEVICE  @D51GDAP 24700000
+         SPACE 2                                                        24800000
+.*   NOTE: THIS CODE MUST BE LOCATED IN STORAGE BEYOND                  24842800
+.*         AN ADDRESS OF LOCATION 3000 PLUS LENGTH OF THE               24885600
+.*         IPL BOOTSTRAP PHASE ($$A$IPLX)                               24928400
+.*         LOAD THE IPL RECORDS FROM DASD                               24971200
+DOREC600 LCTL  R6,R6,UNATCTL6     ENABLE ISC ZERO ONLY         @D61BDAP 25014000
+         LA    R1,UNTSCCWI        POINT TO READ IPL CHAIN               25056800
+         LH    R2,UNAIDEV         GET CUU OF WANTED SYSRES              25061100
+         BAL   R8,DOREIO          DO READ IPL                           25065400
+*SGLINK  DOREIO,INPUT=(R1,R2,R8)                                        25069700
+         CLI   UNATRETC,0         WAS I/O OK                            25074000
+         BE    DOREC650           YES, LOAD IPL PSW                     25078300
+         MVI   IJBIPORG,HWIPL068  I/O ERROR ON READING BOOTSTRAP        25082600
+         B     DOREFINI           DO FINAL HARD WAIT                    25086900
+DOREC650 B     DOREC700           ALL WORK IS DONE                      25091200
+         LA    R1,X'10'           POINT TO READ IPL CHAIN               25095500
+         LH    R2,UNAIDEV         GET CUU OF WANTED SYSRES              25100000
+         BAL   R8,DOREIO          DO READ IPL                           25150000
+*SGLINK  DOREIO,INPUT=(R1,R2,R8)                                        25200000
+         CLI   UNATRETC,0         WAS I/O OK                            25250000
+         BNE   DOREHW68           NO, HARD WAIT                         25300000
+.*       SIMULATE INITIAL CPU RESET                                     25471400
+DOREC700 SPX   UNPRE0             SET PREFIX PAGE TO ZERO      @DY43606 25502800
+.*       CLEARING OF CPUTIMER AND CLOCK COMPARATOR NOT REQUIRED         25514200
+         LCTL  0,15,UNATCTLR      INITIALIZE CONTROL REGS      @D61BDAP 25535600
+         L     R2,DORXA1          INDICATE SUBCHANNEL ID WORD  @D51GDAP 25578400
+         ICM   R2,3,DORXIPLD      GET SUBCHANNEL OF IPL DEVICE @D51GDAP 25600000
+         ST    R2,IOINF           SIMULATE INTERRUPT AS H/W    @D51GDAP 25750000
+         MVC   X'90'(8),UNLPPARM  SAVE LOADP INFORMATION       @DY45452 25791018
+.*       PASS CONTROL TO THE IPL BOOTSTRAP MODULE                       25800000
+         LPSW  0                  LOAD IPL PSW FROM LOC ZERO            25850000
+         EJECT                                                          25900000
+         SPACE 2                                                        26900000
+*************************************************************           26950000
+*                                                                       27000000
+*        ROUTINE FINAL HARD WAIT                                        27050000
+*                                                                       27100000
+*        FUNCTION=    PUTS HARD WAIT CODE INTO STORAGE                  27150000
+*                     LOCATION 0 TO 3 AND SYSCOM.                       27200000
+*                     LOADS WAIT PSW.                                   27250000
+*                                                                       27300000
+*        ENTRY= DOREFINI - OVERRIDES ERROR CODE                         27350000
+*        ENTRY= DOREFI20 - LEAVES ORIGINAL ERROR CODE                   27400000
+*                          IF ALREADY SET BEFORE                        27450000
+*                                                                       27500000
+*************************************************************           27550000
+         SPACE 1                                                        27600000
+DOREFINI MVC   SYSS00(L'UNATCODE),UNATCODE                              27650000
+         TM    UNATREQ,UNATHARD   IS HARD WAIT REQUESTED                27700000
+         BNZ   DOREFI80           YES, HARD WAIT THE SYSTEM             27750000
+         MVC   IJBHWC,UNATCODE    NO, PUT COPY INTO SYSCOM              27800000
+         B     DOREFI80                                                 27850000
+DOREFI20 TM    UNATREQ,UNATHARD   IS REQUESTOR HARD WAIT                27900000
+         BNZ   DOREFI80           YES, HARD WAIT CODE SET               28000000
+         MVC   SYSS00(L'UNATCODE),UNATCODE                              28050000
+         MVC   IJBHWC,UNATCODE                                          28100000
+DOREFI80 LPSW  UNATDPSW           FINAL WAIT                            28150000
+         SPACE 2                                                        28300000
+*************************************************************           28350000
+*        SUBROUTINE DO I/O FOR DOREIPL                                  28400000
+*                                                                       28450000
+*        INPUT:     R1 - ADDRESS CHANNEL PROGRAM                        28500000
+*                   R2 - DEVICE ADDRESS                                 28550000
+*                   R8 - RETURN ADDRESS                                 28600000
+*                                                                       28650000
+*        OUTPUT:    UNATRETC - RETURN CODE                              28700000
+*                          X'00' - OK                                   28750000
+*                          X'40' - I/O ERROR FROM MCRAS                 28800000
+*                          X'3F' - ANY CHANNEL STATUS                   28850000
+*                                                                       28900000
+*        CALLS:    RAS EMERGENCY I/O ROUTINE IN MCRAS                   28950000
+*                                                                       29000000
+*        RETURN:   TO CALLER                                            29050000
+*************************************************************           29100000
+         SPACE 1                                                        29150000
+DOREIO   STM   RE,RD,DORESAVE     SAVE REGISTERS               @D61BDAP 29200000
+         ST    R1,CAW             SET UP CAW                            29450000
+         STH   R2,CHNADR          SET UP CUU                            29500000
+         OI    UNAFLG,UNAIPLIP    RE-IPL IN PROGRESS           @D31QDMZ 29600000
+         BAL   R7,IPLIORTN        EXECUTE I/O                  @D52VDAP 29650000
+         B     DOREIO10         0 ERROR OCCURED                @D52VDAP 29771200
+         B     DOREIO20         4 COMPLETED SUCCESSFULLY       @D52VDAP 29814000
+DOREIO10 MVI   UNATRETC,X'40'     NO, INDICATE I/O ERROR                29856800
+         B     DOREIO30                                                 29900000
+DOREIO20 MVC   UNATRETC,CHNSTA    GET CHANNEL STATUS                    29950000
+         NI    UNATRETC,CHANER+CHNCHK  LEAVE ERROR FLAGS                30000000
+DOREIO30 NI    UNAFLG,X'FF'-UNAIPLIP RESET RE-IPL IN PROGRESS  @D52VDAP 30075000
+         LM    RE,RD,DORESAVE     RESTORE CALLERS REGISTERS    @D61BDAP 30112500
+         BR    R8                 RETURN TO CALLER                      30150000
+         EJECT                                                 @D61BDAP 30150400
+***************************************************************@D61BDAP 30150800
+*        STAND ALONE I/O ROUTINE                               @D61BDAP 30151200
+*                                                              @D61BDAP 30151600
+***************************************************************@D61BDAP 30152000
+         SPACE 2                                               @D61BDAP 30152400
+IPLIORTN DS    0H'0'                                           @D61BDAP 30152800
+         L     R4,APBXAREA        GET ADDRESS OF PUBX TABLE    @D61BDAP 30153200
+IPLIO010 ICM   R3,15,0(R4)        PUBX ENTRY ADDRESS           @D61BDAP 30153600
+         BM    IPLIOERR           NOT FOUND                    @D61BDAP 30154000
+         USING PBXADR,R3          PUBX BASE POINTER            @D61BDAP 30154400
+         LA    R4,4(,R4)          ADVANCE TO NEXT PUBX ENTRY   @D61BDAP 30154800
+         CH    R2,PBXCUU          IS RIGHT PUB                 @D61BDAP 30155200
+         BNE   IPLIO010           NO,                          @D61BDAP 30155600
+         L     R1,XASUBSCH        GET SUBCHANNEL MASK          @D61BDAP 30156000
+         ICM   R1,3,PBXSCH        GET SUBCHANNEL SET UP        @D61BDAP 30156400
+         ST    R1,XASUBSCH        SAVE SUBCHANNEL              @D61BDAP 30156800
+         STCK  IPLCLK1            STORE CLOCK1                 @D61BDAP 30156930
+IPLIO030 L     R4,SCHIB$          GET SCHIB ADDRESS            @D68ADAP 30158226
+         USING SCHIB,R4           SCHIB BASE POINTER           @D68ADAP 30158426
+         STSCH SCHIB              TEST SUBCHANNEL              @D61BDAP 30158826
+         BC    1,IPLIOERR         NOT OP ====================> @D61BDAP 30159200
+         TM    SCHSTB3,SCHSCSP    STATUS PENDING               @D61BDAP 30159600
+         BO    IPLIOCLR           YES,                         @D61BDAP 30160000
+         TM    SCHSTB2,SCHFC      IS ANY FUNCTION ACTIVE       @D61BDAP 30160400
+         BNZ   IPLIO050           YES,                         @D61BDAP 30160800
+         TM    SCHSTB3,SCHACSA+SCHACDA IS DEVICE IDLE          @D61BDAP 30161200
+         BZ    IPLIOAVA           YES,                         @D61BDAP 30161600
+         DROP  R4                 RELEASE SCHIB BASE           @DSCSI   30161728
+IPLIO050 BAL   R4,IPLIOTIM        PREVENT INFINITE LOOP        @D51ADTP 30162000
+         B     IPLIO030         0 TIME SLICE NOT EXHAUSTED     @D61BDAP 30162400
+         B     IPLIOCLR         4 TIME SLICE IS EXHAUSTED      @D61BDAP 30162800
+IPLIOCLR DC    0H'0'              INTERRUPT PROCESSING         @D61BDAP 30163200
+         CSCH                     CLEAR SUBCHANNEL             @D61BDAP 30163600
+         BO    IPLIOERR           NOT OPERATIONAL              @D61BDAP 30164000
+IPLIOC10 L     R4,SCHIB$          GET SCHIB ADDRESS            @D68ADAP 30164126
+         USING SCHIB,R4           SCHIB BASE POINTER           @D68ADAP 30164228
+         STSCH SCHIB              GET SUBCHANNEL INFO          @D61BDAP 30164426
+         BO    IPLIOERR           NOT OPERATIONAL              @D61BDAP 30164800
+         TM    SCHSTB3,SCHSCSP    STATUS PENDING               @D61BDAP 30165200
+         BO    IPLIOC20           YES,                         @D61BDAP 30165600
+         DROP  R4                 RELEASE SCHIB BASE           @DSCSI   30165728
+         BAL   R4,IPLIOTIM        PREVENT INFINITE LOOP        @D61BDAP 30166000
+         B     IPLIOC10         0 TIME SLICE NOT EXHAUSTED     @D61BDAP 30166400
+         B     IPLIOERR         4 TIME SLICE IS EXHAUSTED      @D61BDAP 30166800
+IPLIOC20 L     RE,IRB$            ADDRESS OF IRB               @D61BDAP 30167200
+         USING IRB,RE             IRB BASE POINTER             @D61BDAP 30167600
+         TSCH  IRB                CLEAR INTERRUPT              @D61BDAP 30168000
+         TM    IRBSTB2,IRBFCC     IS CSCH ONGOING              @D61BDAP 30168400
+         BZ    IPLIOCLR           NO, TRY AGAIN                @D61BDAP 30168800
+         TM    IRBSTB2,IRBACC     IS CSCH PENDING              @D61BDAP 30169200
+         BO    IPLIOCLR           YES, TRY IT AGAIN            @D61BDAP 30169600
+         DROP  RE                 RELEASE IRB   BASE           @D61BDAP 30170000
+         EJECT                                                 @D61BDAP 30170400
+IPLIOAVA STCK  IPLCLK1            STORE CLOCK1                 @D61BDAP 30170800
+         LA    R5,5               SET RETRY COUNTER            @D61BDAP 30171000
+         L     R4,ORB$            POINT TO ORB                 @D61BDAP 30171200
+         USING ORB,R4             ORB BASE POINTER             @D61BDAP 30171600
+         MVI   ORBLPM,XFF         USE ANY PATH FOR NOW         @D61BDAP 30172000
+         MVC   ORBCCW+1(3),CAW+1  SET CCW ADDRESS              @D61BDAP 30172200
+         MVI   ORBB0,0            USE KEY ZERO                 @D61BDAP 30172400
+         NI    ORBB0,ORBKEY       RESET UNUSED BITS            @D61BDAP 30172800
+         XC    ORBIP,ORBIP        CLEAR INTERRUPT PARAMETER    @D61BDAP 30173200
+         XC    CSW(8),CSW         CLEAR CSW                    @D61BDAP 30173600
+         DROP  R3                 RELEASE PBXADR BASE          @D68ADAP 30175726
+         SSCH  ORB                START SUBCHANNEL             @D61BDAP 30175831
+         DROP  R4                 RELEASE ORB BASE POINTER     @D61BDAP 30175900
+*        DEBUG SIOFLDS,XXDBGMC                                 @D61BDAP 30176000
+         DEBUG SIOFLDS,XXDBGMC                                 @D61BDAP 30176100
+         BC    8,IPLIORUN                                      @D61BDAP 30176200
+         BC    1,IPLIOERR         NOT OPERATIONAL              @D61BDAP 30176300
+         B     IPLIO030           GET STATUS CLEARED           @D61BDAP 30176400
+IPLIORUN L     R4,SCHIB$          GET SCHIB ADDRESS            @D68ADAP 30176528
+         USING SCHIB,R4           SCHIB BASE POINTER           @D68ADAP 30176628
+         STSCH SCHIB              GET SUBCHANNEL INFO          @D61BDAP 30176828
+         BO    IPLIOERR           NOT OPERATIONAL              @D61BDAP 30177200
+         TM    SCHSTB3,SCHSCSP    STATUS PENDING               @D61BDAP 30177600
+         BO    IPLIOA10           YES,                         @D61BDAP 30178000
+         DROP  R4                 RELEASE SCHIB BASE           @DSCSI   30178128
+         BAL   R4,IPLIOTIM        PREVENT INFINITE LOOP        @D61BDAP 30178400
+         B     IPLIORUN         0 TIME SLICE NOT EXHAUSTED     @D61BDAP 30178800
+         B     IPLIOERR         4 TIME SLICE IS EXHAUSTED      @D61BDAP 30179200
+IPLIOA10 L     RE,IRB$            ADDRESS OF IRB               @D61BDAP 30179600
+         USING IRB,RE             IRB BASE POINTER             @D61BDAP 30180000
+         TSCH  IRB                CLEAR INTERRUPT              @D61BDAP 30180400
+         TM    IRBSTB3,IRBSCPS+IRBSCSS+IRBSCSP+IRBACSA+IRBACDA @D61BDAP 30180800
+         BZ    IPLIOA20           SUBCHANNEL IS IDLE           @D61BDAP 30181200
+         OC    CSW(1),IRBSTB0     MOVE IN KEY                  @D61BDAP 30181600
+         OC    CSW+1(7),IRBCCW+1  MOVE IN CCW, ST AND CNT      @D61BDAP 30182000
+         BAL   R4,IPLIOTIM        PREVENT INFINITE LOOP        @D61BDAP 30182400
+         B     IPLIOA10         0 TIME SLICE NOT EXHAUSTED     @D61BDAP 30182800
+         B     IPLIOERR         4 TIME SLICE IS EXHAUSTED      @D61BDAP 30183200
+         DROP  RE                 RELEASE IRB BASE             @D61BDAP 30183600
+IPLIOA20 TM    CSW+4,X'02'        UNUSUAL DEVICE STATUS        @D61BDAP 30183800
+         BZ    IPLIOA30           NO,                          @D61BDAP 30184000
+         BCT   R5,IPLIOCLR        RETRY COUNT EXHAUSTED        @D61BDAP 30184200
+         B     IPLIOERR           YES, TREAT AS ERROR          @D61BDAP 30184400
+IPLIOA30 TM    CSW+5,X'30'        UNUSUAL CHANNEL STATUS       @D61BDAP 30184600
+         BZ    IPLIOCMP           NO, I/O WAS OK               @D61BDAP 30184800
+IPLIOERR B     0(,R7)             ERROR RETURN                 @D61BDAP 30185600
+IPLIOCMP B     4(,R7)             I/O COMPLETED SUCCESSFULLY   @D61BDAP 30186000
+         SPACE 1                                               @D61BDAP 30186400
+IPLIOTIM STCK  IPLCLK2            STORE CLOCK2                 @D61BDAP 30186800
+         L     R0,IPLCLK2         LOAD SECOND TIME             @D61BDAP 30187200
+         SL    R0,IPLCLK1         SUBTRACT FIRST TIME          @D28DR06 30187620
+         SL    R0,IPLWT10         SUBTRACT CONSTANT            @D28DR06 30188020
+         LTR   R0,R0              IS THE RESULT STILL > 0      @D28DR06 30188120
+         BP    4(,R4)             YES, RETURN                  @D61BDAP 30188420
+         LA    R0,1024            SET LOOP COUNT               @D61BDAP 30188800
+         BCT   R0,*               GIVE SUBSYSTEM A CHANCE      @D61BDAP 30189200
+         BR    R4                 RETURN                       @D61BDAP 30190000
+         SPACE 1                                               @D61BDAP 30190400
+         DROP  RC                 DROP DOREIPL BASE POINTER             30200000
+         DROP  RB                 RELEASE SAVE AREA BASE       @D61BDAP 30205000
+         SPACE 1                                               @D61BDAP 30210000
+IPLCLK1  DC    D'0'                                            @D61BDAP 30220000
+IPLCLK2  DC    D'0'                                            @D61BDAP 30230000
+IPLWT10  DC    F'10'              DELAY OF 10 SECONDS          @D61BDAP 30240000
+         AIF   (&VSE280).Y280100                                        30241024
+         SPACE 2                                                        30250000
+*************************************************************           30300000
+*                                                                       30350000
+*        SUBROUTINE DOREHASH.                                           30400000
+*                                                                       30450000
+*        FUNCTION=    CALCULATES A HASH SUM OF BYTES FROM               30500000
+*                       ADDRESS DOREIPL TO ADDRESS DOREEND              30550000
+*                       BY DOING AN EXCLUSIV OR INSTRUCTION             30600000
+*                       PER SEGMENT OF THREE BYTES.                     30650000
+*                                                                       30700000
+*        INPUT=       REGISTER 15 - ADDRESS OF DOREHASH                 30750000
+*                     REGISTER 14 - RETURN ADDRESS                      30800000
+*                                                                       30850000
+*        OUTPUT=      REGISTER 1  - HASHING RESULT                      30900000
+*                                                                       30950000
+*        CALLED BY=   INTERNAL - DOREIPL                                31000000
+*                     EXTERNAL - IPL PHASE $IPLRT7(IPLUNATT)            31050000
+*                              - AR COMMAND AUTOIPL                     31100000
+*                                                                       31150000
+*        RETURN=      TO CALLER VIA REGISTER 14                         31200000
+*                                                                       31250000
+*************************************************************           31300000
+         SPACE 1                                                        31350000
+         USING DOREHASH,RF                                              31400000
+DOREHASH STM   R2,R5,DORESAVE      SAVES CALLERS REGISTERS              31450000
+         SLR   R1,R1               CLEARS HASH COUNT REGISTER           31500000
+         L     R3,DOREAL3          GETS LOOP CONTROL                    31550000
+         L     R4,ADOREBEG         ADDRESSES INPUT DATA                 31600000
+DOHSHL3  SLR   R5,R5                                                    31650000
+         ICM   R5,M14,0(R4)        ISOLATES 3 BYTES OF INPUT DATA       31700000
+         XR    R1,R5               DOES HASHING OF 3 BYTES              31750000
+         LA    R4,L3(,R4)          BUMPS ADDRESS OF INPUT DATA          31800000
+         BCT   R3,DOHSHL3          REPEATS LOOP                         31850000
+         LM    R2,R5,DORESAVE      RESTORES CALLERS REGISTERS           31900000
+         BR    RE                  RETURNS TO CALLER                    31950000
+         DROP  RF                                                       32000000
+.Y280100 ANOP                                                           32010022
+         SPACE 2                                                        32050000
+*************************************************************           32150000
+*                                                                       32200000
+*        SUBROUTINE DORESCLP                                            32250000
+*                                                                       32300000
+*        FUNCTION=    CHECKS WHETHER REIPL IS TO BE DELAYED.            32350000
+*                     THIS IS NECESSARY IN CASE OF A PENDING            32400000
+*                     SCLP TRANSFER.                                    32450000
+*                     INDICATION IS SPSGFLG2.SPSGDIPL SET               32500000
+*                                                                       32550000
+*        INPUT=       REGISTER 15 - ADDRESS OF DORESCLP                 32600000
+*                     REGISTER 14 - RETURN ADDRESS                      32650000
+*                                                                       32700000
+*        OUTPUT=      NONE                                              32750000
+*                                                                       32800000
+*        CALLED BY=   INTERNAL - DOREIPL                                32850000
+*                     EXTERNAL - NONE                                   32900000
+*                                                                       32950000
+*        RETURN=      TO CALLER VIA REGISTER 14                         33000000
+*                                                                       33050000
+*************************************************************           33100000
+         SPACE 1                                                        33150000
+         USING DORESCLP,RF                                              33200000
+DORESCLP DS    0H                                              @D31EMMZ 33250000
+         L     R5,ASPDTTAB         IS SCLP SUPPORT ...         @D31EMMZ 33300000
+         USING SPDTTAB,R5          ADDRESS SGSPDT RTN AND DATA @D31EMMZ 33350000
+         TM    SPSGFLG2,SPSGDIPL   DELAYED REIPL REQUESTED     @D31EMMZ 33419900
+         BZR   RE                  NO, CONTINUE WITH REIPL     @D31EMMZ 33450000
+         MVC   XTNPSW(SCNPSW-XTNPSW),UNAENPSW EXTERNAL NEW PSW @D61NDAP 33569900
+DORSCLP0 LPSW  UNAWEPSW            WAIT FOR EXTERNAL INTERRUPT @D61NDAP 33639900
+DORSCLP1 CLC   EXTINTC,UNASSEI     SERVICE SIGNAL INTERRUPT    @D31EMMZ 33709900
+         BNE   DORSCLP0            NO, KEEP WAITING            @D61NDAP 33779900
+         DROP  R5                  RELEASE SGSPDT                       33850000
+         MVC   XTNPSW(SCNPSW-XTNPSW),UNATNPSW  LOAD EXT.NEW PSW@D31EMMZ 34000000
+         LA    R5,A$Y$COM          GET ADDRESS OF SYSCOM       @D31EMMZ 34050000
+         ST    R5,ASYSCOM          RESTORE SYSCOM, DESTROYED BY SERVICE*34100000
+                                   SIGNAL PROCESSOR            @D31EMMZ 34150000
+         BR    RE                  RETURN  TO CALLER           @D31EMMZ 34219900
+         DROP  RF                  RELEASE DORESCLP            @D61BDAP 34250000
+         SPACE 3                                                        34300000
+*************************************************************           34350000
+*                                                                       34400000
+*        ENTRY DOREOPS                                                  34450000
+*                                                                       34500000
+*        FUNCTION     PREPARES THE ENVIRONMENT FOR RE-IPL               34550000
+*                     IN CASE OF OPERATION-MODE = SELFACT               34600000
+*                     OR IN CASE OF REIPL THE SA-ENVIRONMENT            34650000
+*                                                                       34800000
+*        INPUT=       RC  BASE OF DOREIPL ROUTINE                       34850000
+*                                                                       34900000
+*        OUTPUT=      NONE                                              34950000
+*                                                                       35000000
+*        CALLED BY=   HARD WAIT OR SVC-31 FROM SA-SYSTEM                35050000
+*                                                                       35100000
+*        RETURN=      NONE                                              35150000
+*                                                                       35200000
+*************************************************************           35250000
+         SPACE 1                                                        35300000
+         USING DOREIPL,RC                                               35350000
+DOREOPS  STNSM UNATPMSK,DISABLE-PERMASK-DATMASK DISABLE                 35400000
+         OI    UNATREQ,UNATHARD   INDICATE HARD WAIT                    35474800
+         MVC   UNATDPSW,DUMMYPSW  COPY HARDWAIT PSW TO OWN STORAGE      35500000
+         LCTL  RE,RE,UNATCTLE     DISABLE CRW REPORT           @DY44069 35520000
+         MVC   XTNPSW(ASYSCOM-XTNPSW),UNATNPSW  REPLACE NPSWS           35550000
+         STIDP UNACPUID           GET CPUID                             35600000
+         MVC   UNAIDEV,IJBRESDV   CUU OF CURRENT IPL DEVICE             35650000
+         NI    UNAIDEV,X'0F'      RESET HIGH ORDER BITS        @D61BDAP 35675000
+         B     DOREC300           GOTO LOADING OF IPL RECORDS           35700000
+         DROP  RC                 RELEASE DOREIPL BASE                  35750000
+         SPACE 2                                                        35800000
+*************************************************************           35850000
+*                                                                       35875000
+*    LOCAL DATA OF DOREIPL - PART 1.                                    35900000
+*                                                                       36050000
+*************************************************************           36100000
+         UNATTCB                                                        36150000
+         SPACE 2                                                        36200000
+UNACPUID DC    D'0'               THE CPU ID OF THE VSE MACHINE         36250000
+UNATDPSW DC    D'0'               LOCAL COPY OF DUMMYPSW                36300000
+UNATNPSW DC    X'000C0000'        EXTERNAL NEW PSW                      36350000
+         DC    A(DOREER20)        ENTRY ADDRESS                         36400000
+         DC    X'000C0000'        SVC NEW PSW                           36450000
+         DC    A(DOREER20)        ENTRY ADDRESS                         36500000
+         DC    X'000C0000'        PROGRAM CHECK NEW PSW                 36550000
+         DC    A(DOREER30)        ENTRY ADDRESS                         36600000
+         DC    X'00080000'        MACHINE CHECK NEW PSW                 36650000
+         DC    A(DOREER10)        ENTRY ADDRESS                         36700000
+         DC    X'000C0000'        I/O NEW PSW                           36750000
+         DC    A(DOREER20)        ENTRY ADDRESS                         36800000
+UNAENPSW DC    X'000C0000'        EXTERNAL NEW PSW IF WAIT FOR SERVICE *36850000
+                                  SIGNAL INTERRUPT             @D31EMMZ 36900000
+         DC    A(DORSCLP1)        ENTRY ADDRESS                @D31EMMZ 37000000
+UNAWEPSW DC    X'010F0000'        WAIT PSW TO WAIT FOR ...     @D31EMMZ 37250000
+         DC    X'0000FFFF'        ... EXTERNAL INTERRUPTS      @D31EMMZ 37300000
+UNAOFPSW DC    X'00080000'        DISABLE MC AND INTERRUPT     @D61NDAP 37311100
+         DC    A(DOREI010)        ENTRY ADDRESS                @D61NDAP 37322200
+         SPACE 3                                                        37333300
+UNATCTLR DC    X'000000E0'        XR 0                         @D61BDAP 37366600
+         DC    X'00000000'        XR 1                                  37400000
+         DC    X'00000000'        XR 2                         @DA41879 37420000
+         DC    X'00000000'        XR 3                                  37500000
+         DC    X'00000000'        XR 4                                  37550000
+         DC    X'00000000'        XR 5                                  37600000
+UNATCTL6 DC    X'80000000'        XR 6                         @D61BDAP 37650000
+         DC    X'00000000'        XR 7                                  37950000
+UNATCTL8 DC    X'00000000'        XR 8                                  38000000
+         DC    X'00000000'        XR 9                                  38050000
+         DC    X'00000000'        XR 10                                 38100000
+         DC    X'00000000'        XR 11                                 38150000
+         DC    X'00000000'        XR 12                                 38200000
+         DC    X'00000000'        XR 13                                 38250000
+UNATCTLE DC    X'C2000000'        XR 14                        @DY44069 38309900
+         DC    X'00000000'        XR 15                        @DA41879 38320000
+ARASUPR  DC    A(MACHSRDA)        RAS SUBROUTINES / DATA AREAS @MCRASHH 38400000
+ADOREBEG DC    A(DOREIPL)                                               38500000
+DOREAL3  DC    A((DOREEND-DOREIPL)/L3)                                  38550000
+UNATF2H  DC    F'6864'            ABOUT 2 HOURS                         38600000
+UNATCMAX DC    H'7'               MAXIMUM COUNTER TOTAL                 38650000
+UNATREQ  DC    X'00'              CURRENT REQUESTORS FLAGS              38700000
+UNATPRI  EQU   X'01'              B'1' IF DEVICE PRIMARY                38750000
+UNATALT  EQU   X'02'              B'1' IF DEVICE ALTERNATE              38800000
+UNATACTR EQU   X'04'              B'1' IF ACTION RESET                  38850000
+UNATHARD EQU   X'10'              B'1' IF CALLER HARD WAIT              38900000
+UNATIMLS EQU   X'20'              INITIATE SERV.PROC.IML       @DXXXXMZ 38969900
+UNATPMSK DC    X'00'              USED BY STNSM, STOSM                  39000000
+UNATRETC DC    X'00'              RETURN CODE FROM DOREIO               39050000
+UNATCODE DC    X'00000FFD00'      CODE: ERROR DURING RE-IPL             39100000
+UNASSEI  DC    X'2401'            SERVICE SIGNAL INTERRUPT     @D31EMMZ 39150000
+UNATRTAB EQU   *-240              TRANSLATION TABLE FOR HEX             39200000
+         DC    C'0123456789ABCDEF'                                      39250000
+         SPACE 1                                                        39300000
+*------------------------------------------------------------*          39350000
+*        CCW'S FOR DISK READ / WRITE ROUTINES.               *          39400000
+*------------------------------------------------------------*          39450000
+         SPACE 1                                                        39500000
+UNTSCCW1 CCW   FBAEXT,UNADEFEX,CC,L16  DEFINE EXTENT                    39550000
+UNTSCCW2 CCW   FBALOC,UNALOCR,CC,L8  LOCATE                             39600000
+UNTSCCW3 CCW   FBAREAD,UNTSBUF,0,L'UNTSBUF  READ BLK 0                  39650000
+         SPACE 1                                                        39700000
+UNTSCCW4 CCW   FBAEXT,UNADEFEX,CC,L16  DEFINE EXTENT                    39750000
+UNTSCCW5 CCW   FBALOC,UNALOCW,CC,L8  LOCATE                             39800000
+UNTSCCW6 CCW   FBAWRITE,UNTSBUF,0,L'UNTSBUF  WRITE BLK 0                39850000
+         SPACE 1                                                        39900000
+UNTSCCW7 CCW   SEEK,UNASEEKA,CC,L6  SEEK                                39950000
+UNTSCCW8 CCW   SEARCH,UNASEEKA+D2,CC,L5  SEARCH ID EQUAL                40000000
+         CCW   TIC,UNTSCCW8,0,L0  TRANSFER IN CHANNEL                   40050000
+UNTSCCW9 CCW   RDDATA,UNTSBUF,0,UNATRLG  READ REC 1                     40100000
+         SPACE 1                                                        40150000
+UNTSCCWA CCW   SEEK,UNASEEKA,CC,L6  SEEK                                40200000
+UNTSCCWB CCW   SEARCH,UNASEEKA+D2,CC,L5  SEARCH ID EQUAL                40250000
+         CCW   TIC,UNTSCCWB,0,L0  TRANSFER IN CHANNEL                   40300000
+UNTSCCWC CCW   WDATA,UNTSBUF,0,UNATRLG  WRITE REC 1                     40350000
+         SPACE 1                                                        40400000
+UNTSCCWI CCW   RDCOM,0,CC+SLI,24  READ IPL FIRST RECORD                 40437500
+UNTSCCWT CCW   TIC,8,0,0          TIC TO LOC 8 IPL CCW 1                40475000
+UNTSTEST CCW   RDDATA,24,SLI,40   READ IPL SECOND RECORD                40512500
+         SPACE 1                                                        40550000
+DOREL3F  DC    (L3-1)X'FF'        FILLER OF 2 BYTES                     40600000
+UNPRE0   DC    F'0'               PREFIX PAGE ZERO             @DY43606 40620000
+DOREEND  EQU   *                  END OF HASHING RANGE                  40650000
+         SPACE 2                                                        40700000
+         AIF   (&VSE280).Y280120                                        40710022
+*************************************************************           40750000
+*    LOCAL DATA OF DOREIPL - PART 2. NOTE THAT THESE                    40800000
+*    HAVE TO BE OUTSIDE OF THE RANGE COVERED BY DOREHASH                40850000
+*    SINCE THEY ARE MODIFIED BEFORE DOREIPL GETS CONTROL.               40900000
+*                                                                       40950000
+*************************************************************           41000000
+         SPACE 1                                                        41050000
+DORESUM  DC    F'0'               HASH SUM                              41100000
+.Y280120 ANOP                                                           41110023
+         SPACE 2                                                        41200000
+UNATSY1  DC    CL(L'UNASYMP1)'NONE'  REIPL PARAM IDUMPNO       @D31QDMZ 41250000
+UNATSY2  DC    CL(L'UNASYMP2)' '  REIPL SYMPTOM STRING                  41300000
+UNATSY3  DC    XL(L'UNASYMP3)'00' REGISTER SAVE AREA                    41350000
+UNATSY4  DC    XL(L'UNASYMP4)'00' OLD PSW SAVE AREA                     41400000
+UNATSY5  DC    XL(L'UNASYMP5)'00' INTERUPTION CODES                     41450000
+UNATSY6  DC    XL(L'UNASYMP6)'00' I/O ADDRESS                           41500000
+UNATSY7  DC    XL(L'UNASYMP7+L'UNASYMP8)'00' CSW, CAW                   41550000
+UNATSY9  DC    XL(L'UNASYMP9)'00' LIM. CHANNEL LOGOUT                   41600000
+         AIF   (&VSE280).Y280140                                        41610023
+         SPACE 1                                                        41650000
+* STRUCTURE OF THE SYMPTOM STRING: IJBXSCT6 SECT3=YES                   41700000
+         IJBXSCT6 SECT3=YES                                             41750000
+.Y280140 ANOP                                                           41760023
+         SPACE 2                                                        41800000
+DORESAVE DC    16F'0'             USED BY DOREHASH, DOREIO     @D61BDAP 41820022
+UNTSBUF  DS    XL512                                                    41850000
+.*                                                                      41900000
+         AIF  (NOT &SGUNATT).UNOPR90                                    41950000
+         PRINT NOGEN                                                    42000000
+.UNOPR90 ANOP                                                           42050000
+         MEND                                                           42100000

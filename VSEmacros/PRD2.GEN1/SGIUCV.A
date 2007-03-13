@@ -1,0 +1,1544 @@
+         MACRO                                                          00050000
+         SGIUCV                                                         00100000
+         GBLB  &BGDEBUG           DEBUG OPTION                          00150000
+         GBLB  &SGIUCV            PRINT OPTION FOR SGIUCV               00200000
+         LCLA  &AIDCTR            COUNTER TO GENERATE APPL. ID TABLE    00250000
+***************************************************************         00500000
+.*       IBM DISK OPERATING SYSTEM                            *         00550002
+*        SUPERVISOR - SGIUCV - 5686-066-06                    *         00560002
+*                                                             *         00591002
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00600000
+*        "RESTRICTED MATERIALS OF IBM"                        *         00650002
+*        5686-066                                             *         00700002
+*        (C) COPYRIGHT IBM CORP. 1982, 2001                   *         00710002
+*                                                             *         00800000
+***************************************************************         00850000
+&AIDCTR  SETA  10                 PROVIDE TEN APPL. ID TABLE ENTRIES    00860001
+         AIF   (NOT &BGDEBUG OR NOT &SGIUCV).NOPRINT                    00870001
+         PRINT GEN                PRINT MODULE                          00880001
+.NOPRINT ANOP                                                           00890001
+.*                                                            *         00900000
+.* A000000-999999                                             *@D37CDJB 00950000
+.*                                                            *         01000000
+.* 01 NOTES       = CHANGE ACTIVITY                            @DA33365 01050000
+.*                                                            *         01100000
+.* WRONG USERID TAKEN FROM VSIUCVU COTROL BLOCK                @DA33365 01150000
+.* WAITFFF WHEN OP=CLOS WAS SPECIFIED IN VSIUCV MACRO          @DA33370 01200000
+.* MAXCONN ERRORS WHILE LOGGING ON WHEN MAXCONN NOT REACHED    @DA34992 01250000
+.* IUCV SEVER ALL DONE FOR CONNECT REQUEST UNINTENTIONALLY     @DA37732 01300000
+.* LAST PATH-ID NOT HANDLED DUE TO INCORRECT BRANCH            @DA37815 01350000
+.* WAITFFF IF UING IUCV AND APPC TOGETHER                      @DA39605 01400000
+.* ADAPTION FOR ESA-ONLY SUPERVISOR                            @D61BDFG 01450001
+.* MORE THAN 255 TASKS                                         @D66ODOW 01460002
+*                                                             *         01500000
+*    MACRO NAME  : SGIUCV                                     *         01550000
+*                                                             *         01600000
+*    DESCRIPTION : SUPPORT OF SVC 141 AND                     *         01650000
+*                  SUPPORT OF EXTERNAL INTERRUPT EXTENSION    *         01700000
+*                      FOR IUCV EXTERNAL INTERRUPTS           *         01750000
+*                                                             *         01800000
+*    DEPENDENCIES : SEE CORRESPONDING MODULE DESCRIPTIONS     *         01850000
+*                                                             *         01900000
+*    RESTRICTIONS : NONE                                      *         01950000
+*                                                             *         02000000
+*    REGISTER CONVENTIONS :                                   *         02050000
+*                   SEE CORRESPONDING MODULE DESCRIPTIONS     *         02100000
+*                                                             *         02150000
+*    MODULE TYPE : INNER SUPERVISOR MACRO                     *         02200000
+*                                                             *         02250000
+*    PROCESSOR   : ASSEMBLER                                  *         02300000
+*                                                             *         02350000
+*    ATTRIBUTES  : SERIALLY REUSABLE                          *         02400000
+*                                                             *         02450000
+*    LINKAGE     : A) VIA SVC INTERRUPT HANDLER IF A          *         02500000
+*                     PROGRAM ISSUED SVC 141.                 *         02550000
+*                  B) VIA EXTERNAL INTERRUPT HANDLER IF A     *         02600000
+*                     IUCV EXTERNAL INTERRUPT OCCURRED.       *         02650000
+*                                                             *         02700000
+*    MESSAGES    : NONE                                       *         02750000
+*                                                             *         02800000
+*    SUPERVISOR HOOKS (GENERATED WITH VM=YES AND MODE=E) :    *         02850000
+*                                                             *         02900000
+*        IOTAB  : INVOCATION OF MACRO SGIUCV.                 *         02950000
+*                 ADDRESS OF EIB ADDRESS TABLE IN SVIPL.      *         03000000
+*        SGINF  : ADDITIONAL SUBSYSTEM VCNA                   *         03050000
+*                 IF AN ABENDING PARTITION IS VCNA,           *         03100000
+*                   THEN ISSUE CLOSE FOR THIS PARTITION.      *         03150000
+*        SGEND  : SUBSYSTEM FLAG BYTE IN PCB                  *         03200000
+*                 IUCV RID (X'20')                            @D61BDFG  03250001
+*        SGLOWC : ADD IUCV ROUTINE AS RESOURCE FOR GATING.    *         03300000
+*                 ADDRESS CONSTANTS OF VSASVC AND IUCVEXIN    *         03350000
+*        SGNUC  : RECOGNIZE SVC 141 FOR IUCV SERVICE AND      *         03400000
+*                 GOTO SGIUCV GENERAL SVC ENTRY.              *         03450000
+*        SGPCK  : IF A PROGRAM CHECK OCCURED IN THE EXIT      *         03500000
+*                 ROUTINE (RID=20) CANCEL PART. WITH ERROR 0D.@D61BDFG  03550001
+*        SMICR  : RECOGNIZE IUCV EXTERNAL INTERRUPT AND GO    *         03600000
+*                 TO SGIUCV EXTERNAL INTERRUPT HANDLER.       *         03650000
+*                                                             *         03700000
+*    NON SUPERVISOR HOOKS :                                   *         03750000
+*                                                             *         03800000
+*        $IPLRT4 :  FOR VM ENVIRONMENT AND MODE=E GET         *         03850000
+*                   LENGTH OF EIB AND PATH ID TABLE,          *         03900000
+*                   ALLOCATE SPACE FOR THEM AND UPDATE EIB    *         03950000
+*                   ADDRESS TABLE IN SGIUCV.                  *         04000000
+*                                                             *         04050000
+***************************************************************         04100000
+         EJECT                                                          04150000
+***************************************************************         04200000
+*                                                             *         04250000
+*   SVC 141 HANDLER :                                         *         04300000
+*                                                             *         04350000
+*      DEPENDENCIES : FORMAT OF VSIUCVU CONTROL BLOCK         *         04400000
+*                     FORMAT OF VSIUCVPL CONTROL BLOCK        *         04450000
+*                     CONTENTS OF APPLICATION ID TABLE ENTRY  *         04500000
+*                     CONTENTS OF PATH ID TABLE ENTRY         *         04550000
+*                     VM/IUCV OPERATIONAL MACRO FORMAT        *         04600000
+*                     VS1/VSIUCV OPERATIONAL MACRO FORMAT     *         04650000
+*                                                             *         04700000
+*      FIXED REGISTERS : R6     DISPATCHER ADDRESS            *         04750000
+*                        R9     USER SAVE AREA POINTER        *         04800000
+*                        RA     ADDRESS OF REQUESTORS TCB     *         04850000
+*                        RD     MODULE BASE REGISTER          *         04900000
+*                                                             *         04950000
+*      SVC 141 INTER MODULE LINKAGE :                         *         05000000
+*                                                             *         05050000
+*                VSASVC (GENERAL ENTRY FOR SVC 141)           *         05100000
+*                  |                                          *         05150000
+*                  |  RC                                      *         05200000
+*                  V                                          *         05250000
+*                ROUTINES TO HANDLE SPECIFIED OPERATION       *         05300000
+*                  |                                          *         05350000
+*                  |  RB                                      *         05400000
+*                  V                                          *         05450000
+*                SCAIDTAB,SCPIDTAB,VSAVALID                   *         05500000
+*                                                             *         05550000
+*      A REQUESTOR OF SVC 141 WILL BE CANCELLED WITH 'ILLEGAL *         05600000
+*      SVC' (ERROR 21) UNDER THE FOLLOWING CONDITIONS:        *         05650000
+*                                                             *         05700000
+*         1) THE REQUESTOR IS NOT AUTHORIZED (NOT VCNA)       *         05750000
+*         2) THE REQUESTOR FOR SUPERVISOR STATE IS NOT        *         05800000
+*            A MAIN TASK.                                     *         05850000
+*         3) IUCV IS NOT PRESENT IN THE VM SYSTEM             *         05900000
+*         4) IUCV IS PRESENT IN THE VM SYSTEM, BUT IUCV       *         05950000
+*            QUERY FAILED DURING IPL OF VSE/AF.               *         06000000
+*         5) VSE IS NOT EXECUTING UNDER VM                    *         06025001
+*                                                             *         06050000
+*      A REQUESTOR OF SVC 141 WILL BE CANCELLED WITH 'INVALID *         06100000
+*      ADDRESS' (ERROR 25) WHEN EITHER THE VSIUCVU OR         *         06150000
+*      THE VSIUCVPL ARE NOT IN THE CORRESPONDING PARTITION.   *         06200000
+*                                                             *         06250000
+***************************************************************         06300000
+         EJECT                                                          06350000
+***************************************************************         06400000
+*                                                             *         06450000
+*   SVC 141 GENERAL ENTRY AND EXIT ROUTINE .                  *         06500000
+*                                                             *         06550000
+*   MODULE VSASVC                                             *         06600000
+*     INPUT (USER REGISTER) :                                 *         06650000
+*             R0 : CONTAINS OPERATION TYPE                    *         06700000
+*             R1 : PTR TO THE APPROPRIATE CONTROL BLOCK OF    *         06750000
+*                                                 THE ISSUER  *         06800000
+*     IF VSE IS NOT RUNNING UNDER VM OR                       *         06833301
+*     IUCV SUPPORT DOES NOT EXIST                             *         06866601
+*       THEN CANCEL ISSUER WITH ILLEGAL SVC                   *         06900000
+*       ELSE SELECT DEPENDING ON OPERATION TYPE               *         06950000
+*               WHEN INVALID :                                *         07000000
+*                  SET RC = 8                                 *         07050000
+*               WHEN SUPERVISOR STATE REQUESTED :             *         07100000
+*                  EXECUTE VSASUPST                           *         07150000
+*               WHEN OPEN REQUESTED :                         *         07200000
+*                  EXECUTE VSAOPEN                            *         07250000
+*               WHEN CONNECT REQUESTED :                      *         07300000
+*                  EXECUTE VSACONCT                           *         07350000
+*               WHEN ACCEPT REQUESTED :                       *         07400000
+*                  EXECUTE VSAACCPT                           *         07450000
+*               WHEN SEVER REQUESTED :                        *         07500000
+*                  EXECUTE VSASEVER                           *         07550000
+*               WHEN CLOSE REQUESTED :                        *         07600000
+*                  EXECUTE VSACLOSE                           *         07650000
+*            ENDSELECT                                        *         07700000
+*     ENDIF                                                   *         07750000
+*     EXIT VSASVC                                             *         07800000
+*     OUTPUT : RC = 00   : EVERYTHING IS OK                   *         07850000
+*              RC = 04   : REQUESTOR NOT IN SV STATE (EXCEPT  *         07900000
+*                                       FOR SV STATE REQUEST) *         07950000
+*              RC = 08   : INVALID OPERATION TYPE GIVEN       *         08000000
+*              OTHER RETURN CODES : SEE MODULE DESCRIPTIONS   *         08050000
+*   ENDMODULE VSASVC                                          *         08100000
+*                                                             *         08150000
+*   REGISTER USAGE : R0-R4 : NOT USED                         *         08200000
+*                    R5    : WORK                             *         08250000
+*                    R6    : DISPATCHER ADDRESS               *         08300000
+*                    R7    : OPCODE                           *         08350000
+*                    R8    : INPUT CONTROL BLOCK              *         08400000
+*                    R9    : PTR TO USER SAVE AREA            *         08450000
+*                    RA    : PTR TO REQUESTORS TCB            *         08500000
+*                    RB    : NOT USED                         *         08550000
+*                    RC    : LINKAGE                          *         08600000
+*                    RD    : MODULE BASE REGISTER             *         08650000
+*                    RE    : NOT USED                         *         08700000
+*                    RF    : RETURN CODE REGISTER             *         08750000
+*                                                             *         08800000
+***************************************************************         08850000
+         SPACE 2                                                        08900000
+         AIF   (NOT &BGDEBUG).NODBG01  SKIP FOR DEBUG=NO                08950000
+         DC    CL8'SGIUCV'            MODULE NAME                       09000000
+         DC    CL8'AF6.1-12'          LAST APAR FIX            @DA39605 09050001
+         DC    CL8'11/18/94'          LAST DEVELOPMENT CHANGE  @D61BDFG 09100001
+         SPACE                                                          09150000
+.NODBG01 ANOP                                                           09200000
+         SPACE                                                          09250000
+         ENTRY VSASVC                                                   09300000
+         SPACE                                                          09350000
+         USING VSASVC,RD          MODULE ADDRESSABILITY                 09400000
+         USING DISP,R6            DISPATCHER ADDRESSABILITY             09450000
+         USING TCBADR,RA          TCB ADDRESSABILITY                    09500000
+VSASVC   DS    0H                                                       09550000
+         L     RD,AVSASVC         MODULE BASE                           09600000
+         L     R9,TCBSAVE         GET SAVE AREA ADDRESS                 09650000
+         USING SVEARA,R9          SAVE AREA ADDRESSABILITY              09700000
+***************************************************************         09750000
+*   CHECK IF VSE IS RUNNING UNDER VM                          *         09758301
+***************************************************************         09766601
+         TM    SUPFLAG,VMSYS      RUNNING UNDER VM ?           @D61BDFG 09774901
+         BNO   VSAERR21           ==> NO, CANCEL OR IGNORE     @D61BDFG 09783201
+***************************************************************         09791501
+*   CHECK IF IUCV EXISTS                                      *         09800000
+***************************************************************         09850000
+         LH    R5,PIDENUM         GET ADDRESS OF EIB                    09900000
+         LTR   R5,R5              DOES IUCV EXIST ?                     09950000
+         BZ    VSAERR21           ==> NO, CANCEL OR IGNORE     @D61BDFG 10000001
+***************************************************************         10050000
+*   CHECK OPERATION TYPE AND SUPERVISOR STATE                 *         10100000
+***************************************************************         10150000
+         LA    RC,VSASVCEX        GET MAIN ROUTINE EXIT ADDRESS         10200000
+         LM    R7,R8,SVER00       GET PARAMETER REGISTERS               10250000
+         LA    R5,SSTATEOP        GET SUPERVISOR STATE OPCODE           10300000
+         SR    R5,R7              IS IT SV STATE REQUEST ?              10350000
+         BZ    VSASSTOK           YES ==>                               10400000
+         BM    VSAOPERR           ==> WRONG OPERATION CODE              10450000
+         LTR   R7,R7              IS OPCODE = 0 ?                       10500000
+         BZ    VSAOPERR           YES ==>                               10550000
+         L     R5,TIBPTR          CURRENT TIB                  @D61BDFG 10558301
+         USING TIBADR,R5                                       @D61BDFG 10566601
+         TM    TIBFLAG1,EOTACT    END OF TASK ACTIVE ?         @D61BDFG 10574901
+         BO    VSASSTOK           YES ==>                      @D61BDFG 10583201
+         DROP  R5                                              @D61BDFG 10591501
+         TM    SVEPSWKY,SUPSTATE  REQESTOR IN SV STATE ?                10600000
+         BNO   VSASSTOK           YES ==>                               10650000
+         LA    RF,VSAERR04        GET RETURN CODE                       10700000
+         BR    RC                 ==> GO TO EXIT CODE                   10750000
+*                                                                       10800001
+*   ENTRY FROM SUBSID DELETED                                  @D61BDFG 10850001
+*                                                                       10900001
+***************************************************************         11150000
+*   GATE ROUTINE                                              *         11200000
+***************************************************************         11250000
+VSASSTOK EQU   *                                                        11300000
+         L     R5,ASRQTAB         ADDRESS OF RES.QUEUE TABLE   @D61RDFG 11330001
+         LA    R5,SRQIUCV-SRQTAB(R5)  POINT TO WAIT QUEUE      @D61RDFG 11360001
+         USING RQADR,R5                                        @D61RDFG 11390001
+         TM    RSCDESC,FREEBIT    IS GATE OPEN ?               @D66ODOW 11420002
+         BNO   RESVCX             NO ==>                       @D66ODOW 11450002
+         MVI   RID+D1,IUCVBND     IDENTIFY ROUTINE BY RID               11500000
+         DROP  R5                                              @D61RDFG 11525001
+***************************************************************         11550000
+*   PROCESS REQUESTED SERVICE                                 *         11600000
+***************************************************************         11650000
+         SR    RF,RF              CLEAR RETURN CODE REGISTER            11700000
+         SLL   R7,L2              SHIFT OP-CODE FOR BRANCH TABLE        11750000
+         B     *+4(R7)                                                  11800000
+         B     VSAOPERR           00 WRONG OPERATION CODE               11850000
+         B     VSACLOSE           01 PROCESS CLOSE REQUEST              11900000
+         B     VSAOPEN            02 PROCESS OPEN REQUEST               11950000
+         B     VSASEVER           03 PROCESS SEVER REQUEST              12000000
+         B     VSAACCPT           04 PROCESS ACCEPT REQUEST             12050000
+         B     VSACONCT           05 PROCESS CONNECT REQUEST            12100000
+         B     VSASUPST           06 PROCESS SUPERVISOR STATE REQ.      12150000
+VSAOPERR EQU   *                                                        12200000
+         LA    RF,VSAERR08        GET RETURN CODE FOR WRONG OP CODE     12250000
+         AIF   (NOT &BGDEBUG).NODBG05  SKIP FOR DEBUG=NO                12300000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               12350000
+         USING DIUSVCTR,RB                                              12400000
+         MVC   DIUSVCOP(L2),INVOPCDE  INSERT SVC FUNCTION CODE          12450000
+         DROP  RB                                                       12500000
+.NODBG05 ANOP                                                           12550000
+***************************************************************         12600000
+*   SCV 141 EXIT CODE                                         *         12650000
+***************************************************************         12700000
+VSASVCEX EQU   *                                                        12750000
+         AIF   (NOT &BGDEBUG).NODBG06  SKIP FOR DEBUG=NO                12800000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               12850000
+         USING DIUSVCTR,RB                                              12900000
+         STH   RF,DIUSVCRC        STORE RETURN CODE                     12950000
+         L     R7,SVEPSW2         GET NEXT INSTR. ADDRESS               13000000
+         ST    R7,DIUSVCAD        STORE IT                              13050000
+         DROP  RB                                                       13100000
+         LA    RB,DIUSVCEL(RB)    GET NEXT FREE ENTRY                   13150000
+         C     RB,AIUSVCTE        IS IT END ADDRESS                     13200000
+         BNE   VSATRNLE           NO  ===>                              13250000
+         LA    RB,IUSVCTRB        GET START ADDRESS                     13300000
+VSATRNLE EQU   *                                                        13350000
+         ST    RB,AIUSVCTA        STORE NEW CURRENT TRACE ENTRY         13400000
+.NODBG06 ANOP                                                           13450000
+         ST    RF,SVER0F          SET RETURN CODE                       13500000
+         L     R6,DISPAD          GET DISPATCHER ADDRESS                13550000
+         BR    R6                 EXIT TO DISPATCHER                    13600000
+***************************************************************         13605001
+*   EXIT CODE FOR ILLEGAL REQUEST                             *@D61BDFG 13610001
+***************************************************************         13615001
+         USING TIBADR,R8                                       @D61BDFG 13620001
+VSAERR21 EQU   *                                               @D61BDFG 13625001
+         TM    TIBFLAG1,EOTACT                                 @D61BDFG 13630001
+         BOR   R6                                              @D61BDFG 13635001
+*        SGCOV SGIUCV,MC=0                                     @D61BDFG 13637501
+         B     ERR21                                           @D61BDFG 13640001
+         DROP  R8                                              @D61BDFG 13645001
+         DROP  R6,R9                                                    13650000
+         EJECT                                                          13700000
+***************************************************************         13750000
+*                                                             *         13800000
+*   ROUTINE TO HANDLE VSA SUPERVISOR STATE REQUEST .          *         13850000
+*                                                             *         13900000
+*   MODULE VSASUPST                                           *         13950000
+*     INPUT : R8 --> VSIUCVU BLOCK (SEE DSECT FOR DESCR.)     *         14000000
+*     IF SOURCEID = NAME OF AUTHORIZED APPLICATION            *         14050000
+*       THEN IF REQUESTOR IS MAIN TASK                        *         14100000
+*              THEN SET REQUESTOR'S PSW TO SUPERVISOR STATE   *         14150000
+*              ELSE CANCEL USER WITH ILLEGAL SVC              *         14200000
+*            ENDIF                                            *         14250000
+*       ELSE CANCEL USER WITH ILLEGAL SVC                     *         14300000
+*     ENDIF                                                   *         14350000
+*     EXIT VSASUPST                                           *         14400000
+*     OUTPUT : RC=00 : SUPERVISOR STATE GIVEN TO REQUESTOR    *         14450000
+*              RC=04 : REQUESTOR NOT AUTHORIZED               *         14500000
+*   ENDMODULE VSASUPST                                        *         14550000
+*                                                             *         14600000
+*   REGISTER USAGE : R8    : INPUT CONTROL BLOCK              *         14650000
+*                    RC    : LINKAGE                          *         14700000
+*                                                             *         14750000
+***************************************************************         14800000
+         SPACE                                                          14850000
+         USING DISP,R6            DISPATCHER ADDRESSABILITY             14900000
+         USING VSIUCVU,R8         VSIUCVU CONTROL BLOCK ADDR.           14950000
+         USING SVEARA,R9          SAVE AREA ADDRESSABILITY              15000000
+VSASUPST DS    0H                                                       15050000
+*        SGCOV SGIUCV,MC=1                                     @D61BDFG 15058301
+         SR    R2,R2              INDICATE VSIUCVU VALIDATION  @D61BDFG 15066601
+         BAL   RB,VSAVALID        VALIDATE CONTROL BLOCK       @D61BDFG 15083201
+         CLC   VIUNAME(L8),VCNAAUTN  IS REQUSTOR AUTHORIZED ?           15100000
+         BNE   ERR21              ==> NO, CANCEL USER                   15150000
+         L     R5,PCBPTR          PCB OF CURRENT PARTITION     @D61BDFG 15158301
+         USING PCBADR,R5                                       @D61BDFG 15166601
+* TEMP   TM    PCBSSFLG,VCNA      ALSO IDENTIFIED BY SUBSID ?  @D61BDFG 15174901
+* TEMP   BNO   ERR21              NO, CANCEL                   @D61BDFG 15183201
+         DROP  R5                                              @D61BDFG 15191501
+         CLC   TID,IJBHMTID       IS REQUESTOR MAIN TASK ?     @D51IDOW 15200000
+         BH    ERR21              ==> NO, CANCEL USER                   15250000
+         NI    SVEPSWKY,X'FF'-SUPSTATE   SET PSW TO SV STATE            15300000
+         AIF   (NOT &BGDEBUG).NODBG08  SKIP FOR DEBUG=NO                15350000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               15400000
+         USING DIUSVCTR,RB                                              15450000
+         MVC   DIUSVCOP(L2),SSTATEMN  INSERT SSTATE FUNCTION CODE       15500000
+         DROP  RB                                                       15550000
+.NODBG08 ANOP                                                           15600000
+         BR    RC                 ==> RETURN TO CALLER                  15650000
+         DROP  R6,R8,R9                                                 15700000
+         EJECT                                                          15750000
+***************************************************************         15800000
+*                                                             *         15850000
+*   ROUTINE TO HANDLE VSA OPEN REQUEST .                      *         15900000
+*                                                             *         15950000
+*   MODULE VSAOPEN                                            *         16000000
+*     INPUT : R8 --> VSIUCVU BLOCK (SEE DSECT FOR DESCR.)     *         16050000
+*     EXECUTE VSAVALID(R2,R8)                                 *         16100000
+*     R2 --> SOURCEID                                         *         16150000
+*     EXECUTE SCAIDTAB(R2)                                    *         16200000
+*     IF RC = 0 (ENTRY FOUND)                                 *         16250000
+*       THEN RC = 12                                          *         16300000
+*       ELSE R2 = 0 (LOOK FOR FREE ENTRY)                     *         16350000
+*            EXECUTE SCAIDTAB(R2)                             *         16400000
+*            IF RC = 0 (FREE ENTRY FOUND)                     *         16450000
+*              THEN IF FIRST OPEN REQUEST                     *         16500000
+*                     THEN ISSUE IUCV DCLBFR                  *         16550000
+*                          IF IUCV DCLBFR NOT SUCCESSFUL      *         16600000
+*                            THEN RC = 24 (IUCV ERROR)        *         16650000
+*                                 EXIT VSAOPEN                *         16700000
+*                          ENDIF                              *         16750000
+*                          SET CONTROL REGISTER 0             *         16800000
+*                   ENDIF                                     *         16850000
+*                   INSERT APPLICATION ID AND                 *         16900000
+*                          EXIT ADDRESS AND                   *         16950000
+*                          TIB POINTER AND                    *         17000000
+*                          PARTITION ID INTO APPLID TABLE     *         17050000
+*              ELSE RC = 16 (NO FREE ENTRY)                   *         17100000
+*            ENDIF                                            *         17150000
+*     ENDIF                                                   *         17200000
+*     EXIT VSAOPEN                                            *         17250000
+*     OUTPUT : RC=00 : APPLICATION ID, EXIT ADDRESS AND       *         17300000
+*                      PARTITION ID INSERTED                  *         17350000
+*              RC=12 : ENTRY ALREADY IN APPLICATION ID TABLE  *         17400000
+*              RC=16 : APPLICATION ID TABLE EXHAUSTED         *         17450000
+*              RC=24 : IUCV DETECTED ERROR                    *         17500000
+*   ENDMODULE VSAOPEN                                         *         17550000
+*                                                             *         17600000
+*   REGISTER USAGE : R2-R5 : WORK                             *         17650000
+*                    R8    : INPUT CONTROL BLOCK              *         17700000
+*                    RB,RC : LINKAGE                          *         17750000
+*                    RF    : OUTPUT                           *         17800000
+*                                                             *         17850000
+***************************************************************         17900000
+         SPACE                                                          17950000
+***************************************************************         18000000
+*   CHECK FOR SOURCEID                                        *         18050000
+***************************************************************         18100000
+VSAOPEN  DS    0H                                                       18150000
+*        SGCOV SGIUCV,MC=2                                     @D61BDFG 18175001
+         SR    R2,R2              INDICATE VSIUCVU VALIDATION           18200000
+         BAL   RB,VSAVALID        VALIDATE BLOCK                        18250000
+*   RETURNS IN AMODE OF SVC 141 CALLER                         @D61BDFG 18275001
+         USING VSIUCVU,R8         VSIUCVU CONTROL BLOCK ADDR.           18300000
+         LA    R2,VIUNAME         GET PTR. TO NAME IN VSIUCVU           18350000
+         AIF   (NOT &BGDEBUG).NODBG10  SKIP FOR DEBUG=NO                18400000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               18450000
+         USING DIUSVCTR,RB                                              18500000
+         MVC   DIUSVCOP(L2),OPENMN  INSERT OPEN FUNCTION CODE           18550000
+         MVC   DIUSVCNM(L8),D0(R2)  INSERT NAME                         18600000
+         DROP  RB                                                       18650000
+.NODBG10 ANOP                                                           18700000
+         BAL   RB,SCAIDTAB        CHECK FOR NAME                        18750000
+         LTR   RF,RF              ENTRY FOUND ?                         18800000
+         BNZ   VSAOPANF           NO  ==>                               18850000
+         LA    RF,VSAERR12        GET RETURN CODE                       18900000
+         BR    RC                 ==> RETURN TO CALLER                  18950000
+***************************************************************         19000000
+*   SCAN FOR FREE ENTRY                                       *         19050000
+***************************************************************         19100000
+VSAOPANF EQU   *                                                        19150000
+         SR    R2,R2              ZERO INPUT REGISTER                   19200000
+         BAL   RB,SCAIDTAB        LOOK FOR FREE ENTRY                   19250000
+         LTR   RF,RF              FREE ENTRY FOUND ?                    19300000
+         BZ    VSAOPFOP           NO  ==>                               19350000
+         LA    RF,VSAERR16        GET RETURN CODE                       19400000
+         BR    RC                 ==> RETURN TO CALLER                  19450000
+***************************************************************         19500000
+*   HANDLE FIRST OPEN REQUEST                                 *         19550000
+***************************************************************         19600000
+VSAOPFOP EQU   *                                                        19650000
+         TM    OPENSW,NOFSTOPN    IS IT FIRST OPEN ?                    19700000
+         BO    VSAOPUPA           NO  ==>                               19750000
+         L     R2,ASVCX           LOAD SGSVCX BASE             @D31BDUL 19800000
+         USING SGSVCX,R2          USE SGSVCX BASE              @D31BDUL 19850000
+         TM    XPYAPCVC,XPYAPCAC  IS APPCVM ACTIVE ?           @D31BDUL 19900000
+         DROP  R2                 DROP SGSVCX BASE             @D31BDUL 19950000
+         BZ    VSANOR24           --> NO, RETURN CODE          @D61NDOW 20000000
+         MVI   OPENSW,NOFSTOPN    SET OPEN INDICATOR           @D31BDUL 20100000
+         B     VSAOPUPA           --> SKIP INITIALIZATION      @D31BDUL 20150000
+VSANOAPC DS    0H                                              @D31BDUL 20200000
+         L     R2,AEXIBUF         GET ADDRESS OF EIB                    20250000
+         LA    R1,IUCVPARM        GET PTR TO IUCV PARAMETER LIST        20300000
+         USING IPARML,R1          IPARML ADDRESSABILITY                 20350000
+         IUCV  DCLBFR,                                                 *20400000
+               PRMLIST=(1),                                            *20450000
+               BUFFER=(R2)                                              20500000
+         BZ    VSAOPSTM           ==> SUCCESSFUL                        20550000
+VSANOR24 DS    0H                                              @D61NDOW 20575000
+         LA    RF,VSAERR24        GET RETURN CODE                       20600000
+         BR    RC                 ==> RETURN TO CALLER                  20650000
+VSAOPSTM EQU   *                                                        20700000
+         STCTL R0,R0,CREG0SAV     STORE CONTROL REGISTER 0              20750000
+         OI    CREG0SAV+D3,EXTINMSK  SET ON MASK BIT                    20800000
+         LCTL  R0,R0,CREG0SAV     LOAD CONTROL REGISTER 0               20850000
+         MVI   OPENSW,NOFSTOPN    INDICATE 1ST OPEN PROCESSED           20900000
+         DROP  R1                                                       20950000
+         L     R2,APIDTAB         GET PATH ID TABLE ADDRESS             21000000
+         USING VMDSPID,R2         PATH ID TABLE ENTRY ADDR.    @D31BDUL 21050000
+         SR    R4,R4              CLEAR PATH ID REGISTER                21100000
+         SR    R5,R5              CLEAR COUNT REGISTER                  21150000
+         ICM   R5,M3,PIDENUM      GET NUMBER OF PATHS                   21200000
+VSAOPINT EQU   *                                                        21250000
+         STH   R4,DSPIDID         STORE PATH ID                         21300000
+         LA    R4,D1(R4)          INCREMENT BY ONE                      21350000
+         LA    R2,DSPIDELN(R2)    GET LENGTH OF ENTRY                   21400000
+         BCT   R5,VSAOPINT        REPEAT INSERT                         21450000
+***************************************************************         21500000
+*   UPDATE APPLID TABLE ENTRY                                 *         21550000
+***************************************************************         21600000
+VSAOPUPA EQU   *                                                        21650000
+         USING DSAIDENT,R3        APPL. ID ENTRY ADDR.                  21700000
+         MVC   DSAIDNME,VIUNAME   MOVE NAME FIELD                       21750000
+         LH    R2,PIK             GET PIK                               21800000
+         STH   R2,DSAIDPIK        AND STORE IT                          21850000
+         L     R2,VIUEXIT         GET EXIT ADDRESS                      21900000
+         LA    R2,0(R2)           CLEAR HIGH ORDER BYTE/BIT    @D61BDFG 21908301
+         TM    TCBEXFLG,TCBEXAM   AMODE 31 CALLER ?            @D61BDFG 21916601
+         BNO   VSAOPUPB           NO                           @D61BDFG 21924901
+*        SGCOV SGIUCV,MC=3                                     @D61BDFG 21929001
+         O     R2,BIT0OMSK        YES, SET HIGH ORDER BIT      @D61BDFG 21933201
+VSAOPUPB EQU   *                                               @D61BDFG 21941501
+         ST    R2,DSAIDEXT        AND STORE IT                          21950000
+         L     R2,TIBPTR          GET TIB POINTER                       22000000
+         ST    R2,DSAIDTIB        AND STORE IT                          22050000
+         BR    RC                 ==> RETURN TO CALLER                  22100000
+         DROP  R3,R8                                                    22150000
+         EJECT                                                          22200000
+***************************************************************         22250000
+*                                                             *         22300000
+*   ROUTINE TO HANDLE VSA ACCEPT REQUEST .                    *         22350000
+*                                                             *         22400000
+*   MODULE VSAACCPT                                           *         22450000
+*                                                             *         22500000
+*     INPUT : R8 --> VSIUCVPL BLOCK (SEE DSECT FOR DESCR.)    *         22550000
+*     EXECUTE VSAVALID(R2,R8)                                 *         22600000
+*     R2 --> SOURCEID                                         *         22650000
+*     EXECUTE SCAIDTAB(R2)                                    *         22700000
+*     IF RC = 0 (SOURCEID FOUND)                              *         22750000
+*       THEN IF PATH ID OUTSIDE TABLE                         *         22800000
+*              THEN RC = 32                                   *         22850000
+*                   EXIT VSAACCPT                             *         22900000
+*            ENDIF                                            *         22950000
+*            IF PATH NOT MARKED AS CONNECT PENDING            *         23000000
+*              THEN RC = 28                                   *         23050000
+*                   EXIT VSAACCPT                             *         23100000
+*            ENDIF                                            *         23150000
+*            IF ISSUER IS NOT PATH OWNER (COMPARE SOURCEID) : *         23200000
+*              THEN RC = 36                                   *         23250000
+*              ELSE ISSUE IUCV ACCEPT                         *         23300000
+*                   IF IUCV ACCEPT SUCCESSFUL                 *         23350000
+*                     THEN MARK PATH ID TABLE ENTRY AS ACTIVE *         23400000
+*                          INSERT DATA INTO THE PATH ID TABLE *         23450000
+*                     ELSE RC = 24                            *         23500000
+*                   ENDIF                                     *         23550000
+*            ENDIF                                            *         23600000
+*       ELSE RC = 20                                          *         23650000
+*     ENDIF                                                   *         23700000
+*     EXIT VSAACCPT                                           *         23750000
+*     OUTPUT : RC=00 : IUCV ACCEPT STARTED AND PATH ID TABLE  *         23800000
+*                      ENTRY MARKED AS ACTIVE                 *         23850000
+*              RC=20 : SOURCEID NOT FOUND IN APPLICATION ID   *         23900000
+*                      TABLE (NO OPEN ISSUED)                 *         23950000
+*              RC=24 : IUCV DETECTED ERROR                    *         24000000
+*              RC=28 : NO CONNECT PENDING FOR THIS PATH       *         24050000
+*              RC=32 : INVALID PATH ID                        *         24100000
+*              RC=36 : ISSUER IS NOT PATH OWNER               *         24150000
+*              RC=44 : APPC/VM OR CONTROL PATH SPECIFIED      *         24175001
+*   ENDMODULE VSAACCPT                                        *         24200000
+*                                                             *         24250000
+*   REGISTER USAGE : R2    : WORK                             *         24300000
+*                    R3    : OUTPUT FROM SCAIDTAB             *         24350000
+*                    R4,R5 : WORK                             *         24400000
+*                    R8    : INPUT CONTROL BLOCK              *         24450000
+*                    RB,RC : LINKAGE                          *         24500000
+*                    RF    : RETURN CODE                      *         24550000
+*                                                             *         24600000
+***************************************************************         24650000
+         SPACE                                                          24700000
+***************************************************************         24750000
+*   CHECK FOR SOURCEID                                        *         24800000
+***************************************************************         24850000
+VSAACCPT DS    0H                                                       24900000
+*        SGCOV SGIUCV,MC=4                                     @D61BDFG 24925001
+         LA    R2,D4              INDICATE VSIUCVPL VALIDATION          24950000
+         BAL   RB,VSAVALID        VALIDATE BLOCK                        25000000
+*   RETURNS IN AMODE OF SVC 141 CALLER                         @D61BDFG 25025001
+         USING VSIUCVPL,R8        VSIUCVPL CONTROL BLOCK ADDR.          25050000
+         L     R5,VILVIU          GET PTR. TO VSIUCVU CONTR. BLOCK      25100000
+         USING VSIUCVU,R5         VSIUCVU CONTROL BLOCK ADDR.           25150000
+         LA    R2,VIUNAME         GET PTR. TO NAME IN VSIUCVU           25200000
+         AIF   (NOT &BGDEBUG).NODBG14  SKIP FOR DEBUG=NO                25250000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               25300000
+         USING DIUSVCTR,RB                                              25350000
+         MVC   DIUSVCOP(L2),ACCEPTMN  INSERT ACCEPT FUNCTION CODE       25400000
+         MVC   DIUSVCNM(L8),D0(R2)  INSERT NAME                         25450000
+         DROP  RB                                                       25500000
+.NODBG14 ANOP                                                           25550000
+         BAL   RB,SCAIDTAB        CHECK FOR NAME                        25600000
+         LTR   RF,RF              ENTRY FOUND ?                         25650000
+         BZ    VSAACNOK           YES ==>                               25700000
+         LA    RF,VSAERR20        GET RETURN CODE                       25750000
+         BR    RC                 ==> RETURN TO CALLER                  25800000
+         DROP  R5                                                       25850000
+***************************************************************         25900000
+*   CHECK IF PATHID OUTSIDE TABLE                             *         25950000
+***************************************************************         26000000
+VSAACNOK EQU   *                                                        26050000
+         SR    R4,R4              CLEAR PATH ID REGISTER                26100000
+         ICM   R4,M3,VILPATH      GET PATH ID                           26150000
+         LA    R5,DSPIDELN        GET LENGTH OF ONE ENTRY               26200000
+         MR    R4,R4              GET OFFSET IN TABLE                   26250000
+         A     R5,APIDTAB         GET PTR TO ENTRY                      26300000
+         C     R5,EPIDTAB         IS IT WITHIN RANGE ?                  26350000
+         BNH   VSAACPOK           YES ==>                               26400000
+         LA    RF,VSAERR32        GET RETURN CODE                       26450000
+         BR    RC                 ==> RETURN TO CALLER                  26500000
+***************************************************************         26550000
+*   CHECK IF PATH IS MARKED CONNECT PENDING                   *         26600000
+***************************************************************         26650000
+VSAACPOK EQU   *                                                        26700000
+         USING VMDSPID,R5         PATH ID TABLE ENTRY ADDR.    @D31BDUL 26750000
+         CLI   DSPIDSW,PTHCCTRV   CONNECT RECEIVED ?                    26800000
+         BE    VSAACCOK           YES ==>                               26850000
+         LA    RF,VSAERR28        GET RETURN CODE                       26900000
+         BR    RC                 ==> RETURN TO CALLER                  26950000
+***************************************************************         27000000
+*   CHECK IF ISSUER IS PATH OWNER                             *         27050000
+***************************************************************         27100000
+VSAACCOK EQU   *                                                        27150000
+         CL    R3,DSPIDAIP        PTR TO RIGHT APPLICATION              27200000
+         BE    VSAACSOK           YES ==>                               27250000
+         LA    RF,VSAERR36        GET RETURN CODE                       27300000
+         BR    RC                 ==> RETURN TO CALLER                  27350000
+***************************************************************         27400000
+*   ISSUE IUCV ACCEPT                                         *         27450000
+***************************************************************         27500000
+VSAACSOK EQU   *                                                        27550000
+         LA    R1,VILPATH         GET PTR TO IUCV PARAMETER LIST        27600000
+         USING IPARML,R1                                       @D61BDFG 27606201
+         TM    IPFLAGS1,IPAPPC+IPCNTRL   UNSUPPORTED OPTIONS ? @D61BDFG 27612401
+         BZ    VSAACFOK           NO, OK                       @D61BDFG 27618601
+*        SGCOV SGIUCV,MC=5                                     @D61BDFG 27621701
+         DROP  R1                                              @D61BDFG 27624801
+         LA    RF,VSAERR44        YES, GET RETURN CODE         @D61BDFG 27631001
+         BR    RC                 ==> RETURN TO CALLER         @D61BDFG 27637201
+VSAACFOK EQU   *                                               @D61BDFG 27643401
+         MVC   VILSRCE(L'VILSRCE),0(R2)  MOVE SOURCE NAME      @DA33365*27650000
+                                         INTO PARAMETER LIST   @DA33365 27700000
+         MVC   IUCVPARM(IPSIZE*L8),VILPATH     COPY PARM.LIST  @D61BDFG 27716601
+         LA    R1,IUCVPARM        USE LOCAL PARAMETER LIST     @D61BDFG 27733201
+         IUCV  ACCEPT,                                                 *27750000
+               PRMLIST=(1)                                              27800000
+         MVC   VILPATH(IPSIZE*L8),IUCVPARM COPY PARM.LIST BACK @D61BDFG 27825001
+         BZ    VSAACOK            ==> REQUEST SUCCESSFUL                27850000
+         LA    RF,VSAERR24        GET RETURN CODE                       27900000
+         BR    RC                 ==> RETURN TO CALLER                  27950000
+VSAACOK  EQU   *                                                        28000000
+         MVI   DSPIDSW,PTHACTVE   MARK PATH AS ACTIVE                   28050000
+         L     R3,VILUDATA        GET USER DATA FOR PATH                28100000
+         ST    R3,DSPIDDAT        STORE USER DATA                       28150000
+         BR    RC                 ==> RETURN TO CALLER                  28200000
+         DROP  R5,R8                                                    28250000
+         EJECT                                                          28300000
+***************************************************************         28350000
+*                                                             *         28400000
+*   ROUTINE TO HANDLE VSA CONNECT REQUEST .                   *         28450000
+*                                                             *         28500000
+*   MODULE VSACONCT                                           *         28550000
+*     INPUT : R8 --> VSIUCVPL BLOCK (SEE DSECT FOR DESCR.)    *         28600000
+*     EXECUTE VSAVALID(R2,R8)                                 *         28650000
+*     R2 --> SOURCEID                                         *         28700000
+*     EXECUTE SCAIDTAB(R2)                                    *         28750000
+*     IF RC = 0 (SOURCEID FOUND)                              *         28800000
+*       THEN ISSUE IUCV CONNECT                               *         28850000
+*            IF IUCV CONNECT RETURNS SUCCESSFUL               *         28900000
+*              THEN INSERT A(APPLICATION ID TABLE ENTRY) AND  *         28950000
+*                          APPLDATA INTO THE PATHID TABLE     *         29000000
+*                   MARK PATH AS CONNECT ISSUED               *         29050000
+*              ELSE RC = 24                                   *         29100000
+*            ENDIF                                            *         29150000
+*       ELSE RC = 20 (SOURCEID NOT FOUND)                     *         29200000
+*     ENDIF                                                   *         29250000
+*     EXIT VSACONCT                                           *         29300000
+*     OUTPUT : RC=00 : IUCV CONNECT STARTED AND PATHID TABLE  *         29350000
+*                      UPDATED                                *         29400000
+*              RC=20 : SOURCEID NOT FOUND IN APPLICATION ID   *         29450000
+*                      TABLE (NO OPEN ISSUED)                 *         29500000
+*              RC=24 : IUCV DETECTED ERROR                    *         29550000
+*              RC=44 : INVALID OPTIONS SPECIFIED              *         29575001
+*   ENDMODULE VSACONCT                                        *         29600000
+*                                                             *         29650000
+*   REGISTER USAGE : R2    : WORK                             *         29700000
+*                    R3    : OUTPUT FROM SCAIDTAB             *         29750000
+*                    R4,R5 : WORK                             *         29800000
+*                    R8    : INPUT CONTROL BLOCK              *         29850000
+*                    RB,RC : LINKAGE                          *         29900000
+*                    RF    : RETURN CODE                      *         29950000
+*                                                             *         30000000
+***************************************************************         30050000
+         SPACE                                                          30100000
+***************************************************************         30150000
+*   CHECK FOR SOURCEID                                        *         30200000
+***************************************************************         30250000
+VSACONCT DS    0H                                                       30300000
+*        SGCOV SGIUCV,MC=6                                     @D61BDFG 30325001
+         LA    R2,D4              INDICATE VSIUCVPL VALIDATION          30350000
+         BAL   RB,VSAVALID        VALIDATE BLOCK                        30400000
+*   RETURNS IN AMODE OF SVC 141 CALLER                         @D61BDFG 30425001
+         USING VSIUCVPL,R8        VSIUCVPL CONTROL BLOCK ADDR.          30450000
+         L     R5,VILVIU          GET PTR. TO VSIUCVU CONTR. BLOCK      30500000
+         USING VSIUCVU,R5         VSIUCVU CONTROL BLOCK ADDR.           30550000
+         LA    R2,VIUNAME         GET PTR. TO NAME IN VSIUCVU           30600000
+         AIF   (NOT &BGDEBUG).NODBG18  SKIP FOR DEBUG=NO                30650000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               30700000
+         USING DIUSVCTR,RB                                              30750000
+         MVC   DIUSVCOP(L2),CONNCTMN  INSERT CONNECT FUNCTION CODE      30800000
+         MVC   DIUSVCNM(L8),D0(R2)  INSERT NAME                         30850000
+         DROP  RB                                                       30900000
+.NODBG18 ANOP                                                           30950000
+         BAL   RB,SCAIDTAB        CHECK FOR NAME                        31000000
+         LTR   RF,RF              ENTRY FOUND ?                         31050000
+         BZ    VSACCNOK           YES ==>                               31100000
+         LA    RF,VSAERR20        GET RETURN CODE                       31150000
+         BR    RC                 ==> RETURN TO CALLER                  31200000
+***************************************************************         31250000
+*   ISSUE IUCV CONNECT                                        *         31300000
+***************************************************************         31350000
+VSACCNOK EQU   *                                                        31400000
+         LA    R1,VILPATH         GET PTR TO IUCV PARAMETER LIST        31450000
+         USING IPARML,R1                                       @D61BDFG 31456201
+         TM    IPFLAGS1,IPAPPC+IPCNTRL   UNSUPPORTED OPTIONS ? @D61BDFG 31462401
+         BZ    VSACCFOK           NO, OK                       @D61BDFG 31468601
+*        SGCOV SGIUCV,MC=7                                     @D61BDFG 31471701
+         DROP  R1                                              @D61BDFG 31474801
+         LA    RF,VSAERR44        YES, GET RETURN CODE         @D61BDFG 31481001
+         BR    RC                 RETURN TO CALLER             @D61BDFG 31487201
+VSACCFOK EQU   *                                               @D61BDFG 31493401
+         MVC   VILSRCE(L'VILSRCE),VIUNAME  MOVE SOURCE NAME INTO       *31500000
+                                                  PARAMETER LIST        31550000
+         MVC   IUCVPARM(IPSIZE*L8),VILPATH    COPY PARM.LIST   @D61BDFG 31566601
+         LA    R1,IUCVPARM        USE LOCAL PARAMETER LIST     @D61BDFG 31583201
+         IUCV  CONNECT,                                                *31600000
+               PRMLIST=(1)                                              31650000
+         MVC   VILPATH(IPSIZE*L8),IUCVPARM COPY PARM.LIST BACK @D61BDFG 31675001
+         BZ    VSACCOK            ==> REQUEST SUCCESSFUL                31700000
+         LA    RF,VSAERR24        GET RETURN CODE                       31750000
+         BR    RC                 ==> RETURN TO CALLER                  31800000
+         DROP  R5                                                       31850000
+VSACCOK  EQU   *                                                        31900000
+         SR    R4,R4              CLEAR PATH ID REGISTER                31950000
+         ICM   R4,M3,VILPATH      GET PATH ID                           32000000
+         LA    R5,DSPIDELN        GET LENGTH OF ONE ENTRY               32050000
+         MR    R4,R4              GET OFFSET IN TABLE                   32100000
+         A     R5,APIDTAB         GET PTR TO ENTRY                      32150000
+         USING VMDSPID,R5         PATH ID TABLE ENTRY ADDR.    @D31BDUL 32200000
+         MVI   DSPIDSW,PTHCCTIS   MARK PATH AS CONNECT ISSUED           32250000
+         ST    R3,DSPIDAIP        STORE APPLID ADDRESS                  32300000
+         L     R3,VILUDATA        GET USER DATA FOR PATH                32350000
+         ST    R3,DSPIDDAT        STORE USER DATA                       32400000
+         BR    RC                 ==> RETURN TO CALLER                  32450000
+         DROP  R5,R8                                                    32500000
+         EJECT                                                          32550000
+***************************************************************         32600000
+*                                                             *         32650000
+*   ROUTINE TO HANDLE VSA SEVER REQUEST .                     *         32700000
+*                                                             *         32750000
+*   MODULE VSASEVER                                           *         32800000
+*     INPUT : R8 --> VSIUCVPL BLOCK (SEE DSECT FOR DESCR.)    *         32850000
+*     EXECUTE VSAVALID(R2,R8)                                 *         32900000
+*     R2 --> SOURCEID                                         *         32950000
+*     EXECUTE SCAIDTAB(R2)                                    *         33000000
+*     IF RC = 0 (SOURCEID FOUND)                              *         33050000
+*       THEN IF PATH ID OUTSIDE TABLE                         *         33100000
+*              THEN RC = 32                                   *         33150000
+*                   EXIT VSASEVER                             *         33200000
+*            ENDIF                                            *         33250000
+*            IF PATH INACTIVE                                 *         33300000
+*              THEN RC = 40                                   *         33350000
+*                   EXIT VSASEVER                             *         33400000
+*            ENDIF                                            *         33450000
+*            IF ISSUER IS NOT PATH OWNER (COMPARE SOURCEID) : *         33500000
+*              THEN RC = 36                                   *         33550000
+*              ELSE ISSUE IUCV SEVER                          *         33600000
+*                   IF IUCV SEVER SUCCESSFUL                  *         33650000
+*                     THEN MARK PATH ID TABLE ENTRY AS        *         33700000
+*                                                 INACTIVE    *         33750000
+*                     ELSE RC = 24                            *         33800000
+*                   ENDIF                                     *         33850000
+*            ENDIF                                            *         33900000
+*       ELSE RC = 20                                          *         33950000
+*     ENDIF                                                   *         34000000
+*     EXIT VSASEVER                                           *         34050000
+*     OUTPUT : RC=00 : IUCV SEVER STARTED AND PATH ID TABLE   *         34100000
+*                      ENTRY DELETED                          *         34150000
+*              RC=20 : SOURCEID NOT FOUND IN APPLICATION ID   *         34200000
+*                      TABLE (NO OPEN ISSUED)                 *         34250000
+*              RC=24 : IUCV DETECTED ERROR                    *         34300000
+*              RC=32 : INVALID PATH ID                        *         34350000
+*              RC=36 : ISSUER IS NOT PATH OWNER               *         34400000
+*              RC=40 : PATH IS INACTIVE                       *         34450000
+*   ENDMODULE VSASEVER                                        *         34500000
+*                                                             *         34550000
+*   REGISTER USAGE : R2    : WORK                             *         34600000
+*                    R3    : OUTPUT FROM SCAIDTAB             *         34650000
+*                    R4,R5 : WORK                             *         34700000
+*                    R8    : INPUT CONTROL BLOCK              *         34750000
+*                    RB,RC : LINKAGE                          *         34800000
+*                    RF    : RETURN CODE                      *         34850000
+*                                                             *         34900000
+***************************************************************         34950000
+         SPACE                                                          35000000
+***************************************************************         35050000
+*   CHECK FOR SOURCEID                                        *         35100000
+***************************************************************         35150000
+VSASEVER DS    0H                                                       35200000
+*        SGCOV SGIUCV,MC=8                                     @D61BDFG 35225001
+         LA    R2,D4              INDICATE VSIUCVPL VALIDATION          35250000
+         BAL   RB,VSAVALID        VALIDATE BLOCK                        35300000
+*   RETURNS IN AMODE OF SVC 141 CALLER                         @D61BDFG 35325001
+         USING VSIUCVPL,R8        VSIUCVPL CONTROL BLOCK ADDR.          35350000
+         L     R5,VILVIU          GET PTR. TO VSIUCVU CONTR. BLOCK      35400000
+         USING VSIUCVU,R5         VSIUCVU CONTROL BLOCK ADDR.           35450000
+         LA    R2,VIUNAME         GET PTR. TO NAME IN VSIUCVU           35500000
+         AIF   (NOT &BGDEBUG).NODBG22  SKIP FOR DEBUG=NO                35550000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               35600000
+         USING DIUSVCTR,RB                                              35650000
+         MVC   DIUSVCOP(L2),SEVERMN  INSERT SEVER FUNCTION CODE         35700000
+         MVC   DIUSVCNM(L8),D0(R2)  INSERT NAME                         35750000
+         DROP  RB                                                       35800000
+.NODBG22 ANOP                                                           35850000
+         BAL   RB,SCAIDTAB        CHECK FOR NAME                        35900000
+         LTR   RF,RF              ENTRY FOUND ?                         35950000
+         BZ    VSASVNOK           YES ==>                               36000000
+         LA    RF,VSAERR20        GET RETURN CODE                       36050000
+         BR    RC                 ==> RETURN TO CALLER                  36100000
+         DROP  R5                                                       36150000
+***************************************************************         36200000
+*   CHECK IF PATHID OUTSIDE TABLE                             *         36250000
+***************************************************************         36300000
+VSASVNOK EQU   *                                                        36350000
+         SR    R4,R4              CLEAR PATH ID REGISTER                36400000
+         ICM   R4,M3,VILPATH      GET PATH ID                           36450000
+         LA    R5,DSPIDELN        GET LENGTH OF ONE ENTRY               36500000
+         MR    R4,R4              GET OFFSET IN TABLE                   36550000
+         A     R5,APIDTAB         GET PTR TO ENTRY                      36600000
+         C     R5,EPIDTAB         IS IT WITHIN RANGE ?                  36650000
+         BNH   VSASVPOK           YES ==>                      @DA37815 36700000
+         LA    RF,VSAERR32        GET RETURN CODE                       36750000
+         BR    RC                 ==> RETURN TO CALLER                  36800000
+***************************************************************         36850000
+*   CHECK IF PATH IS MARKED ACTIVE                            *         36900000
+***************************************************************         36950000
+VSASVPOK EQU   *                                                        37000000
+         USING VMDSPID,R5         PATH ID TABLE ENTRY ADDR.    @D31BDUL 37050000
+         CLI   DSPIDSW,PTHINACT   IS PATH INACTIVE ?           @DA34992 37100000
+         BNE   VSASVACT           NO  ==>                      @DA34992 37150000
+         LA    RF,VSAERR40        GET RETURN CODE                       37200000
+         BR    RC                 ==> RETURN TO CALLER                  37250000
+***************************************************************         37300000
+*   CHECK IF ISSUER IS PATH OWNER                             *         37350000
+***************************************************************         37400000
+VSASVACT EQU   *                                                        37450000
+         CL    R3,DSPIDAIP        PTR TO RIGHT APPLICATION              37500000
+         BE    VSASVSOK           YES ==>                               37550000
+         LA    RF,VSAERR36        GET RETURN CODE                       37600000
+         BR    RC                 ==> RETURN TO CALLER                  37650000
+***************************************************************         37700000
+*   ISSUE IUCV SEVER                                          *         37750000
+***************************************************************         37800000
+VSASVSOK EQU   *                                                        37850000
+         LA    R1,VILPATH         GET PTR TO IUCV PARAMETER LIST        37900000
+         USING IPARML,R1                                       @D61BDFG 37905501
+         TM    IPFLAGS1,IPAPPC+IPALL     UNSUPPORTED OPTIONS ? @D61BDFG 37911001
+         BZ    VSASVFOK           NO, OK                       @D61BDFG 37916501
+*        SGCOV SGIUCV,MC=9                                     @D61BDFG 37922001
+         DROP  R1                                              @D61BDFG 37927501
+         LA    RF,VSAERR44        YES, GET RETURN CODE         @D61BDFG 37933001
+         BR    RC                 ==> RETURN TO CALLER         @D61BDFG 37938501
+VSASVFOK EQU   *                                               @D61BDFG 37944001
+         MVC   VILSRCE(L'VILSRCE),0(R2)  MOVE SOURCE NAME      @DA33365*37950000
+                                         INTO PARAMETER LIST   @DA33365 38000000
+         MVC   IUCVPARM(IPSIZE*L8),VILPATH  COPY PARM.LIST     @D61BDFG 38016601
+         LA    R1,IUCVPARM        USE LOCAL PARAMETER LIST     @D61BDFG 38033201
+         IUCV  SEVER,                                                  *38050000
+               PRMLIST=(1)                                              38100000
+         MVC   VILPATH(IPSIZE*L8),IUCVPARM COPY PARM.LIST BACK @D61BDFG 38125001
+         BZ    VSASVOK            ==> REQUEST SUCCESSFUL                38150000
+         LA    RF,VSAERR24        GET RETURN CODE                       38200000
+         BR    RC                 ==> RETURN TO CALLER                  38250000
+VSASVOK  EQU   *                                                        38300000
+         MVI   DSPIDSW,PTHINACT   MARK PATH AS INACTIVE                 38350000
+         ST    RF,DSPIDAIP        CLEAR APPLID TABLE POINTER            38400000
+         BR    RC                 ==> RETURN TO CALLER                  38450000
+         DROP  R5,R8                                                    38500000
+         EJECT                                                          38550000
+***************************************************************         38600000
+*                                                             *         38650000
+*   ROUTINE TO HANDLE VSA CLOSE REQUEST .                     *         38700000
+*                                                             *         38750000
+*   MODULE VSACLOSE                                           *         38800000
+*     INPUT : R8 --> VSIUCVU BLOCK (SEE DSECT FOR DESCR.)     *         38850000
+*     IF EOT ACTIVE (CLOSE ISSUED BECAUSE OF VCNA ABEND)      *         38900000
+*       THEN R2 = NEGATIVE                                    *         38950000
+*       ELSE EXECUTE VSAVALID(R2,R8)                          *         39000000
+*            R2 --> SOURCEID                                  *         39050000
+*     ENDIF                                                   *         39100000
+*     LABEL : VSACLCNT                                        *         39150000
+*     EXECUTE SCAIDTAB(R2)                                    *         39200000
+*     IF RC = 0 (SOURCEID OR PIK FOUND)                       *         39250000
+*       THEN DELETE SOURCEID IN APPLICATION ID TABLE          *         39300000
+*            DELETE PIK IN APPLICATION ID TABLE               *         39350000
+*            R3 --> SOURCEID IN APPLICATION ID TABLE          *         39400000
+*            R2 --> START OF PATH ID TABLE                    *         39450000
+*            DO WHILE RC = 0                                  *         39500000
+*              EXECUTE SCPIDTAB(R2,R3)                        *         39550000
+*              IF RC = 0 (PATH ID TABLE ENTRY FOUND)          *         39600000
+*                THEN IF THE PATH IS ACTIVE                   *         39650000
+*                       THEN ISSUE IUCV SEVER                 *         39700000
+*                     ENDIF                                   *         39750000
+*                     ZERO PATH ID TABLE ENTRY                *         39800000
+*              ENDIF                                          *         39850000
+*            ENDDO                                            *         39900000
+*            IF EOT ACTIVE (VCNA ABEND)                       *         39950000
+*              THEN R2 = NEGATIVE                             *         40000000
+*                   GOTO VSACLCNT                             *         40050000
+*            ENDIF                                            *         40100000
+*       ELSE IF EOT NOT ACTIVE (NO VCNA ABEND)                *         40150000
+*              THEN RC = 20                                   *         40200000
+*            ENDIF                                            *         40250000
+*     ENDIF                                                   *         40300000
+*     EXIT VSACLOSE                                           *         40350000
+*     OUTPUT : RC=00 : SOURCEID DELETED FROM APPLICATION ID   *         40400000
+*                      TABLE, ALL CORRESPONDING PATHID        *         40450000
+*                      ENTRIES DELETED AND IUCV SEVER ISSUED  *         40500000
+*              RC=20 : SOURCEID NOT FOUND IN APPLICATION ID   *         40550000
+*                      TABLE (NO OPEN ISSUED)                 *         40600000
+*   ENDMODULE VSACLOSE                                        *         40650000
+*                                                             *         40700000
+*   REGISTER USAGE : R2,R3 : WORK                             *         40750000
+*                    R7    : TIBPTR                           *         40800000
+*                    R8    : INPUT CONTROL BLOCK              *         40850000
+*                    RB,RC : LINKAGE                          *         40900000
+*                    RF    : RETURN CODE                      *         40950000
+*                                                             *         41000000
+***************************************************************         41050000
+         SPACE                                                          41100000
+***************************************************************         41150000
+*   INITIALIZE SEARCH FOR SOURCEID                            *         41200000
+***************************************************************         41250000
+VSACLOSE DS    0H                                                       41300000
+         L     R7,TIBPTR          GET TIB PTR.                          41350000
+         USING TIBADR,R7          TIB ADDRESSABILITY                    41400000
+         TM    TIBFLAG1,EOTACT    END OF TASK ACTIVE ?         @D61BDFG 41450001
+         BZ    VSACLNRM           NO  ==>                      @D61BDFG 41500001
+         LNR   R2,R7              GET NEGATIVE VALUE IN R2              41550000
+         B     VSACLCNT           ==>                                   41600000
+VSACLNRM EQU   *                                                        41650000
+*        SGCOV SGIUCV,MC=10                                    @D61BDFG 41675001
+         SR    R2,R2              INDICATE VSIUCVU VALIDATION           41700000
+         BAL   RB,VSAVALID        VALIDATE BLOCK                        41750000
+*   RETURNS IN AMODE OF SVC 141 CALLER                         @D61BDFG 41775001
+         USING VSIUCVU,R8         VSIUCVU CONTROL BLOCK ADDR.           41800000
+         LA    R2,VIUNAME         GET PTR. TO NAME IN VSIUCVU           41850000
+         DROP  R8                                                       41900000
+         AIF   (NOT &BGDEBUG).NODBG26  SKIP FOR DEBUG=NO                41950000
+         L     RB,AIUSVCTA        GET CURRENT TRACE ENTRY               42000000
+         USING DIUSVCTR,RB                                              42050000
+         MVC   DIUSVCOP(L2),CLOSEMN  INSERT CLOSE FUNCTION CODE         42100000
+         MVC   DIUSVCNM(L8),D0(R2)  INSERT NAME                         42150000
+         DROP  RB                                                       42200000
+.NODBG26 ANOP                                                           42250000
+***************************************************************         42300000
+*   START SEARCHING FOR SOURCEID                              *         42350000
+***************************************************************         42400000
+VSACLCNT EQU   *                                                        42450000
+         BAL   RB,SCAIDTAB        CHECK FOR NAME OR PIK                 42500000
+         LTR   RF,RF              ENTRY FOUND ?                         42550000
+         BZ    VSACLCON           YES ==>                               42600000
+         SR    RF,RF              RESET RETURN CODE                     42650000
+         TM    TIBFLAG1,EOTACT    END OF TASK ACTIVE ?         @D61BDFG 42700001
+         BOR   RC                 YES ==> RETURN TO CALLER     @D61BDFG 42750001
+         LA    RF,VSAERR20        GET RETURN CODE                       42800000
+         BR    RC                 ==> RETURN TO CALLER                  42850000
+VSACLCON EQU   *                                                        42900000
+         USING DSAIDENT,R3        APPLID ENTRY ADDRESSABILITY           42950000
+         LA    R1,IUCVPARM        GET IUCV PARAMETER LIST      @DA33370 43000000
+         USING IPARML,R1          PARAMETER LIST ADDRESSABILITY         43050000
+         MVC   IPUSER+D8(L'DSAIDNME),DSAIDNME  PROVIDE SOURCE NAME      43100000
+         MVI   DSAIDNME,BLANK     CLEAR NAME ENTRY                      43150000
+         OI    DSAIDPIK,X'80'     INVALIDATE PIK               @D61RDOW 43200001
+         L     R2,APIDTAB         GET PTR TO PATHID TABLE               43250000
+         DROP  R3                                                       43300000
+***************************************************************         43350000
+*   SCAN PATH ID TABLE FOR CORRESPONDING APPLICATION          *         43400000
+***************************************************************         43450000
+VSACLLOP EQU   *                                                        43500000
+         BAL   RB,SCPIDTAB        SCAN PATHID TAB FOR EXIT ADDR.        43550000
+         LTR   RF,RF              ENTRY FOUND ?                         43600000
+         BZ    VSACLSEV           YES ==>                               43650000
+         SR    RF,RF              RESET RETURN CODE                     43700000
+         TM    TIBFLAG1,EOTACT    END OF TASK ACTIVE ?         @D61BDFG 43750001
+         BZR   RC                 NO  ==> RETURN TO CALLER     @D61BDFG 43800001
+         LNR   R2,R7              GET NEGATIVE VALUE IN R2              43850000
+         B     VSACLCNT           ==> CONTINUE SEARCH FOR PIK           43900000
+VSACLSEV EQU   *                                                        43950000
+         USING VMDSPID,R2         PATHID ENTRY ADDRESSABILITY  @D31BDUL 44000000
+         CLI   DSPIDSW,PTHINACT   IS PATH INACTIVE ?                    44050000
+         BE    VSACLLOP           YES ==>                               44100000
+         MVC   IPUSER(L'DSPIDTGT),DSPIDTGT PROVIDE TARGET NAME          44150001
+         IUCV  SEVER,                                                  *44200000
+               PRMLIST=(1),                                            *44250000
+               ALL=NO,                                                 *44300000
+               PATHID=DSPIDID                                           44350000
+         MVI   DSPIDSW,PTHINACT   MARK PATH AS INACTIVE                 44400000
+         ST    RF,DSPIDAIP        CLEAR APPLID TABLE POINTER            44450000
+         B     VSACLLOP           ==> REPEAT SCAN                       44500000
+         DROP  R1,R2,R7                                                 44550000
+         EJECT                                                          44600000
+***************************************************************         44650000
+*                                                             *         44700000
+*   ROUTINE TO SCAN THE APPLICATION ID TABLE.                 *         44750000
+*                                                             *         44800000
+*   MODULE SCAIDTAB(R2)                                       *         44850000
+*     INPUT : R2 --> SOURCEID (SEARCH ARGUMENT)               *         44900000
+*     SELECT DEPENDING ON INPUT REGISTER (R2)                 *         44950000
+*       WHEN R2=0                                             *         45000000
+*          SCAN TABLE FOR NEXT EMPTY SLOT                     *         45050000
+*          IF EMPTY SLOT FOUND                                *         45100000
+*            THEN R3 --> CURRENT TABLE ADDRESS                *         45150000
+*            ELSE RC = 4 (TABLE EXHAUSTED)                    *         45200000
+*          ENDIF                                              *         45250000
+*       WHEN R2=NEGATIVE                                      *         45300000
+*          SCAN TABLE FOR PIK                                 *         45350000
+*          IF PIK FOUND                                       *         45400000
+*            THEN R3 --> CURRENT TABLE ADDRESS                *         45450000
+*            ELSE RC = 4 (PIK NOT FOUND)                      *         45500000
+*          ENDIF                                              *         45550000
+*       WHEN R2=OTHERWISE                                     *         45600000
+*          SCAN TABLE FOR SEARCH ID                           *         45650000
+*          IF ENTRY FOUND                                     *         45700000
+*            THEN R3 --> CURRENT TABLE ADDRESS                *         45750000
+*            ELSE RC = 4 (ENTRY NOY FOUND)                    *         45800000
+*          ENDIF                                              *         45850000
+*     EXIT SCAIDTAB                                           *         45900000
+*     OUTPUT : RF=0 : SEARCH ARGUMENT FOUND IN APPLICATION ID *         45950001
+*                     TABLE                                   *         46000000
+*              RF=4 : SEARCH ARGUMENT NOT FOUND IN APPLICATION*         46050001
+*                     ID TABLE OR TABLE EXHAUSTED             *         46100000
+*              R3 --> FOUND APPLICATION ID TABLE ENTRY        *         46150000
+*   ENDMODULE SCAIDTAB                                        *         46200000
+*                                                             *         46250000
+*   REGISTER USAGE : R2    : INPUT                            *         46300000
+*                    R3,RF : OUTPUT                           *         46350000
+*                    R4    : WORK                             *         46400000
+*                    RB    : LINKAGE                          *         46450000
+*                                                             *         46500000
+***************************************************************         46550000
+         SPACE                                                          46600000
+SCAIDTAB DS    0H                                                       46650000
+         SR    RF,RF              CLEAR RETURN CODE REGISTER            46700000
+         LA    R3,AIDTAB          GET PTR TO APPL. ID TABLE             46750000
+         USING DSAIDENT,R3                                              46800000
+         LH    R4,AIDTBNUM        GET NUMBER OF ENTRIES                 46850000
+         LTR   R2,R2              TEST PARAMETER REGISTER               46900000
+         BZ    SCAIDEMP           ==> SCAN FOR EMPTY SLOT               46950000
+         BM    SCAIDPIK           ==> SCAN FOR PIK                      47000000
+***************************************************************         47050000
+*   SCAN APPLICATION ID TABLE FOR GIVEN APPLICATION ID        *         47100000
+***************************************************************         47150000
+SCAIDARG EQU   *                                                        47200000
+         CLC   DSAIDNME,D0(R2)    NAME FOUND IN THIS ENTRY ?            47250000
+         BER   RB                 YES ==> RETURN TO CALLER              47300000
+         LA    R3,DSAIDELN(R3)    BUMP TO NEXT ENTRY                    47350000
+         BCT   R4,SCAIDARG        ==> REPEAT SCAN                       47400000
+         LA    RF,D4              INDICATE SOURCE ID NOT FOUND          47450000
+         BR    RB                 ==> RETURN TO CALLER                  47500000
+***************************************************************         47550000
+*   SCAN APPLICATION ID TABLE FOR EMPTY ENTRY                 *         47600000
+***************************************************************         47650000
+SCAIDEMP EQU   *                                                        47700000
+         CLI   DSAIDNME,BLANK     IS ENTRY EMPTY ?                      47750000
+         BER   RB                 YES ==> RETURN TO CALLER              47800000
+         LA    R3,DSAIDELN(R3)    BUMP TO NEXT ENTRY                    47850000
+         BCT   R4,SCAIDEMP        ==> REPEAT SCAN                       47900000
+         LA    RF,D4              INDICATE NO EMPTY SLOT FOUND          47950000
+         BR    RB                 ==> RETURN TO CALLER                  48000000
+***************************************************************         48050000
+*   SCAN APPLICATION ID TABLE FOR PIK                         *         48100000
+***************************************************************         48150000
+SCAIDPIK EQU   *                                                        48200000
+         CLI   DSAIDNME,BLANK     IS ENTRY EMPTY ?             @D61BDFG 48216601
+         BE    SCAIDNXT           YES, SKIP IT                 @D61BDFG 48233201
+         CLC   DSAIDPIK(L'PIK),PIK  BELONGS ENTRY TO THIS PARTITION     48250000
+         BER   RB                 YES ==> RETURN TO CALLER              48300000
+SCAIDNXT LA    R3,DSAIDELN(R3)    BUMP TO NEXT ENTRY           @D61BDFG 48350001
+         BCT   R4,SCAIDPIK        ==> REPEAT SCAN                       48400000
+         LA    RF,D4              INDICATE PIK NOT FOUND                48450000
+         BR    RB                 ==> RETURN TO CALLER                  48500000
+         DROP  R3                                                       48550000
+         EJECT                                                          48600000
+***************************************************************         48650000
+*                                                             *         48700000
+*   ROUTINE TO SCAN THE PATH ID TABLE .                       *         48750000
+*                                                             *         48800000
+*   MODULE SCPIDTAB(R2,R3)                                    *         48850000
+*     INPUT : R2 --> ENTRY IN PATH ID TABLE WHERE TO BEGIN    *         48900000
+*                    SEARCH                                   *         48950000
+*             R3 --> APPLICATION ID TABLE ENTRY               *         49000000
+*     LABEL : PATHLOOP                                        *         49050000
+*     IF END OF TABLE REACHED                                 *         49100000
+*       THEN RC = 4                                           *         49150000
+*       ELSE IF PATHID ENTRY ¬= SEARCH ARGUMENT               *         49200000
+*              THEN R2 --> NEXT PATH ID TABLE ENTRY           *         49250000
+*                   GOTO PATHLOOP                             *         49300000
+*            ENDIF                                            *         49350000
+*     ENDIF                                                   *         49400000
+*     EXIT SCPIDTAB                                           *         49450000
+*     OUTPUT : RC=0 : SEARCH ARGUMENT FOUND IN PATH ID TABLE  *         49500000
+*              RC=4 : SEARCH ARGUMENT NOT FOUND IN PATH ID    *         49550000
+*                     TABLE                                   *         49600000
+*              R2 --> FOUND PATH ID TABLE ENTRY               *         49650000
+*   ENDMODULE SCPIDTAB                                        *         49700000
+*                                                             *         49750000
+*   REGISTER USAGE : R2,R3 : INPUT                            *         49800000
+*                    R2,RF : OUTPUT                           *         49850000
+*                    R4,R5 : WORK                             *         49900000
+*                    RB    : LINKAGE                          *         49950000
+*                                                             *         50000000
+***************************************************************         50050000
+         SPACE                                                          50100000
+SCPIDTAB DS    0H                                                       50150000
+         USING VMDSPID,R2         PATH ID TABLE ENTRY ADDR.    @D31BDUL 50200000
+         LA    R4,DSPIDELN        GET LENGTH OF PATH ID ENTRY           50250000
+         L     R5,EPIDTAB         GET END OF PATH ID TABLE              50300000
+SCPIDLOP EQU   *                                                        50350000
+         CL    R3,DSPIDAIP        ENTRY FOUND ?                         50400000
+         BER   RB                 YES ==> RETURN TO CALLER              50450000
+         BXLE  R2,R4,SCPIDLOP     ==> REPEAT SCAN                       50500000
+         LA    RF,D4              INDICATE END OF TABLE REACHED         50550000
+         BR    RB                 ==> RETURN TO CALLER                  50600000
+         DROP  R2                                                       50650000
+         EJECT                                                          50700000
+***************************************************************         50750000
+*                                                             *         50800000
+*   ROUTINE TO VALIDATE THE VSIUCVU AND VSIUCVPL BLOCKS       *         50850000
+*                                                             *         50900000
+*   MODULE VSAVALID(R2,R8)                                    *         50950000
+*     INPUT : R2  :  INDICATES IF THE VSIUCVU BLOCK OR THE    *         51000000
+*                    VSIUCVU BLOCK AND THE VSIUCVPL BLOCK ARE *         51050000
+*                    TO BE VALIDATED.                         *         51100000
+*             R3 --> CORRESPONDING VSIUCV CONTROL BLOCK       *         51150000
+*     IF R2 ¬= 0                                              *         51200000
+*       THEN VALIDATE VSIUCVPL BLOCK                          *         51250000
+*     ENDIF                                                   *         51300000
+*     VALIDATE VSIUCVU BLOCK                                  *         51350000
+*     EXIT VSAVALID                                           *         51400000
+*     OUTPUT : NONE                                           *         51450000
+*   ENDMODULE VSAVALID                                        *         51500000
+*                                                             *         51550000
+*   REGISTER USAGE : R1    : WORK                             *         51600000
+*                    R2    : INPUT                            *         51650000
+*                    R4    : WORK                             *         51700000
+*                    R8    : INPUT/LINKAGE                    *         51750000
+*                    RB    : LINKAGE                          *         51800000
+*                                                             *         51850000
+*   THE VALIDATION ROUTINE EXPECTS THE FOLLOWING REGISTERS :  *         51900000
+*                                                             *         51950000
+*                    R1    : LOW ADDRESS TO BE VALIDATED      *         52000000
+*                    R2    : HIGH ADDRESS TO BE VALIDATED     *         52050000
+*                    R5    : DESTROYED                        *         52100000
+*                    RA    : TCB ADDRESS                      *         52150000
+*                                                             *         52200000
+*   ROUTINE RETURNS IN AMODE OF SVC 141 CALLER                *         52216601
+*                                                             *         52233201
+***************************************************************         52250000
+         SPACE                                                          52300000
+VSAVALID DS    0H                                                       52350000
+         USING DISP,R6            DISPATCHER ADDRESSABILITY             52400000
+         TM    TCBEXFLG,TCBEXAM   AMODE 31 CALLER              @D61BDFG 52410001
+         BNO   VSAVALM            NO, SKIP AMODE SWITCH        @D61BDFG 52420001
+*        SGCOV SGIUCV,MC=11                                    @D61BDFG 52425001
+         AMODESW SET,AMODE=31,WR=(R5) YES, SWITCH TO AMODE 31  @D61BDFG 52430001
+VSAVALM  EQU   *                                               @D61BDFG 52440001
+         LR    R4,R8              SAVE PTR TO CONTROL BLOCK             52450000
+         LR    R1,R8              GET LOW ADDR. TO BE VALIDATED         52500000
+         LTR   R2,R2              VSIUCVPL TO BE VALIDATED ?            52550000
+         BZ    VSAVALU            NO  ==>                               52600000
+         USING VSIUCVPL,R4        VSIUCVPL ADDRESSABILITY               52650000
+         LA    R2,VILBLEN(R4)     GET HIGH ADDR. TO BE VALIDATED        52700000
+         BAL   R8,VALIDSVA        VALIDATE VSIUCVPL BLOCK      @D61BDFG 52750001
+         L     R1,VILVIU          GET LOW ADDR. TO BE VALIDATED         52800000
+         DROP  R4                                                       52850000
+VSAVALU  EQU   *                                                        52900000
+         USING VSIUCVU,R1         VSIUCVU ADDRESSABILITY                52950000
+         LA    R2,VIUBLEN(R1)     GET HIGH ADDR. TO BE VALIDATED        53000000
+         BAL   R8,VALIDSVA        VALIDATE VSIUCVU BLOCK       @D61BDFG 53050001
+         LR    R8,R4              RESTORE PTR TO CONTROL BLOCK          53100000
+         BR    RB                 ==> RETURN TO CALLER                  53150000
+         DROP  R1,R6                                                    53200000
+         EJECT                                                          53250000
+***************************************************************         53300000
+*                                                             *         53350000
+*   ROUTINE TO PROCESS IUCV EXTERNAL INTERRUPTS               *         53400000
+*                                                             *         53450000
+*   MODULE IUCVEXIN                                           *         53500000
+*     INPUT : EXTERNAL INTERRUPT BUFFER                       *         53550000
+*     LABEL : EXINLOOP                                        *         53600000
+*     GET PATHID FROM EIB OR PARAMETER LIST                   *         53650000
+*     SELECT DEPENDING IUCV EXTERNAL INTERRUPT TYPE           *         53700000
+*        WHEN INCOMING CONNECT :                              *         53750000
+*           R2 --> TARGETID                                   *         53800000
+*           EXECUTE SCAIDTAB(R2)                              *         53850000
+*           IF RC = 0 (TARGETID FOUND)                        *         53900000
+*             THEN EXECUTE EXAPRT                             *         53950000
+*                  IF RC=0 (INTERRUPT ACCEPTED)               *         54000000
+*                    THEN SET PATH ID TABLE ENTRY             *         54050000
+*                                   AS 'CONNECT RECEIVED'     *         54100000
+*                         INSERT IN PATH ID TABLE POINTER     *         54150000
+*                            TO ENTRY IN APPLICATION ID TABLE *         54200000
+*                    ELSE ISSUE IUCV SEVER                    *         54250000
+*                  ENDIF                                      *         54300000
+*             ELSE ISSUE IUCV SEVER                           *         54350000
+*           ENDIF                                             *         54400000
+*        WHEN CONNECT COMPLETE :                              *         54450000
+*           IF CORRESPONDING PATH IS MARKED 'CONNECT ISSUED'  *         54500000
+*             THEN GET APPLDATA FROM PATH ID TABLE ENTRY      *         54550000
+*                  GET APPLICATION ID TABLE ADDR. FROM        *         54600000
+*                                        PATH ID TABLE ENTRY  *         54650000
+*                  EXECUTE EXAPRT                             *         54700000
+*                  IF RC=0 (INTERRUPT ACCEPTED)               *         54750000
+*                    THEN SET PATH ID TABLE ENTRY AS ACTIVE   *         54800000
+*                    ELSE ISSUE IUCV SEVER                    *         54850000
+*                  ENDIF                                      *         54900000
+*             ELSE                                            *         54950000
+*           ENDIF                                             *         55000000
+*        WHEN OTHER IUCV EXTERNAL INTERRUPT :                 *         55050000
+*           IF CORRESPONDING PATH IS MARKED 'ACTIVE'          *         55100000
+*             THEN GET APPLDATA FROM PATH ID TABLE ENTRY      *         55150000
+*                  GET APPLICATION ID TABLE ADDR. FROM        *         55200000
+*                                        PATH ID TABLE ENTRY  *         55250000
+*                  EXECUTE EXAPRT                             *         55300000
+*                  IF RC¬=0 (INTERRUPT NOT ACCEPTED)          *         55350000
+*                    THEN ISSUE IUCV SEVER                    *         55400000
+*                  ENDIF                                      *         55450000
+*           ENDIF                                             *         55500000
+*     ENDSELECT                                               *         55550000
+*     ISSUE IUCV TESTCOMPL                                    *         55600000
+*     IF SOME MESSAGE IS COMPLETE                             *         55650000
+*       THEN SET IN INTERRUPT CODE IN PARAMETER LIST          *         55700000
+*            GOTO EXINLOOP                                    *         55750000
+*     ENDIF                                                   *         55800000
+*     ISSUE IUCV DESCRIBE                                     *         55850000
+*     IF AN OUTSTANDING MESSAGE IS THERE                      *         55900000
+*       THEN SET IN INTERRUPT CODE IN PARAMETER LIST          *         55950000
+*            GOTO EXINLOOP                                    *         56000000
+*     ENDIF                                                   *         56050000
+*     RETURN TO DISPATCHER                                    *         56100000
+*   ENDMODULE IUCVEXIN                                        *         56150000
+*                                                             *         56200000
+*   DEPENDENCIES : FORMAT OF EXTERNAL INTERRUPT BUFFER        *         56250000
+*                  CONTENTS OF APPLICATION ID TABLE ENTRY     *         56300000
+*                  CONTENTS OF PATH ID TABLE ENTRY            *         56350000
+*                  VM/IUCV OPERATIONAL MACRO FORMAT           *         56400000
+*                                                             *         56450000
+*   REGISTER USAGE : R0-R5 : WORK                             *         56500000
+*                    R6    : DISPATCHER ADDRESS               *         56550000
+*                    R7-RA : NOT USED                         *         56600000
+*                    RB    : LINKAGE                          *         56650000
+*                    RC    : NOT USED                         *         56700000
+*                    RD    : BASE REGISTER                    *         56750000
+*                    RE,RF : LINKAGE                          *         56800000
+*                                                             *         56850000
+*   IF A PROGRAM CHECK OCCURS IN THE EXIT ROUTINE THE TASK    *         56900000
+*   WHICH HAS ISSUED THE CORRESPONDING OPEN REQUEST WILL BE   *         56950000
+*   CANCELLED WITH ERROR 0D.                                  *         57000000
+*                                                             *         57050000
+***************************************************************         57100000
+         EJECT                                                          57150000
+         AIF   (NOT &BGDEBUG).NODBG30  SKIP FOR DEBUG=NO                57200000
+         DC    CL16'SGIUCV 02/07/80'  MODULE NAME AND VERSION           57250000
+         SPACE                                                          57300000
+.NODBG30 ANOP                                                           57350000
+         SPACE                                                          57400000
+         ENTRY IUCVEXIN                                                 57450000
+         SPACE                                                          57500000
+IUCVEXIN DS    0H                                                       57550000
+*        SGCOV SGIUCV,MC=12                                    @D61BDFG 57575001
+         L     RD,AVSASVC         MODULE BASE                           57600000
+         L     R1,AEXIBUF         GET PTR TO EIB                        57650000
+         AIF   (NOT &BGDEBUG).NODBG35  SKIP FOR DEBUG=NO                57700000
+         L     RB,AIUEVTRA        GET CURRENT TRACE ENTRY               57750000
+         USING DIUEVTR,RB                                               57800000
+         MVC   DIUEVOP(L2),EXTINMN  INSERT EXT.INTERR. MNEMONIC         57850000
+         DROP  RB                                                       57900000
+.NODBG35 ANOP                                                           57950000
+***************************************************************         58000000
+*   SET UP PROCESSING OF EIB                                  *         58050000
+***************************************************************         58100000
+EXINLOOP EQU   *                                                        58150000
+         USING IPARML,R1          EIB ADDRESSABILITY                    58200000
+         SR    R4,R4              CLEAR PATH ID REGISTER                58250000
+         ICM   R4,M3,IPPATHID     GET PATH ID                           58300000
+         LA    R5,DSPIDELN        GET LENGTH OF PATH ID ENTRY           58350000
+         MR    R4,R4              GET OFFSET IN PATH ID TABLE           58400000
+         A     R5,APIDTAB         GET PTR TO PATH ID ENTRY              58450000
+         USING VMDSPID,R5         PATH ID ENTRY ADDRESSABILITY @D31BDUL 58500000
+         CLI   IPTYPE,IPTYPPC     PENDING CONNECTION ?                  58550000
+         BNE   EXCOCO             NO  ==>                               58600000
+***************************************************************         58650000
+*   PROCESS INCOMING CONNECT                                  *         58700000
+***************************************************************         58750000
+         LA    R2,IPUSER          GET PTR TO TARGET ID                  58800000
+         BAL   RB,SCAIDTAB        SCAN FOR TARGET NAME                  58850000
+         LTR   RF,RF              TARGET NAME FOUND ?                   58900000
+         BNZ   EXSEVR             NO  ===>                              58950000
+         BAL   RB,EXAPRT          ==> PROCESS EXIT ROUTINE              59000000
+         LTR   RF,RF              INTERRUPT ACCEPTED ?                  59050000
+         BNZ   EXSEVR             NO  ===>                              59100000
+         MVI   DSPIDSW,PTHCCTRV   MARK PATH AS CONNECT RECEIVED         59150000
+         ST    R3,DSPIDAIP        INSERT PTR TO APPLID ENTRY            59200000
+         B     EXEXIT             ===> GOTO DISPATCCHER        @DA39605 59250000
+***************************************************************         59300000
+*   PROCESS CONNECT COMPLETE                                  *         59350000
+***************************************************************         59400000
+EXCOCO   EQU   *                                                        59450000
+         CLI   IPTYPE,IPTYPCC     CONNECTION COMPLETE ?                 59500000
+         BNE   EXOTEI             NO  ==>                               59550000
+         CLI   DSPIDSW,PTHCCTIS   IS PATH MARKED AS CONNECT ISSUED ?    59600000
+         BNE   EXEXIT             NO ===> GO TO DISPATCHER     @DA39605 59650000
+         L     R0,DSPIDDAT        GET DATA FOR EXIT ROUTINE             59700000
+         L     R3,DSPIDAIP        GET PTR TO APPLID ENTRY               59750000
+         BAL   RB,EXAPRT          ==> PROCESS EXIT ROUTINE              59800000
+         LTR   RF,RF              INTERRUPT ACCEPTED ?                  59850000
+         BNZ   EXSEVR             NO  ===>                              59900000
+         MVI   DSPIDSW,PTHACTVE   MARK PATH AS ACTIVE                   59950000
+         B     EXEXIT             ===> GOTO DISPATCHER         @DA39605 60000000
+***************************************************************         60050000
+*   PROCESS OTHER EXTERNAL INTERRUPTS                         *         60100000
+***************************************************************         60150000
+EXOTEI   EQU   *                                                        60200000
+         CLI   DSPIDSW,PTHINACT   IS PATH INACTIVE ?           @DA27748 60250000
+         BE    EXEXIT             YES ==>                      @DA39605 60300000
+         L     R0,DSPIDDAT        GET DATA FOR EXIT ROUTINE             60350000
+         L     R3,DSPIDAIP        GET PTR TO APPLID ENTRY               60400000
+         BAL   RB,EXAPRT          ==> PROCESS EXIT ROUTINE              60450000
+         LTR   RF,RF              INTERRUPT ACCEPTED ?                  60500000
+         BZ    EXEXIT             YES ===> GOTO DISPATCHER     @DA39605 60550000
+***************************************************************         60600000
+*   PERFORM SEVER                                             *         60650000
+***************************************************************         60700000
+EXSEVR   EQU   *                                               @DA37732 60750000
+         IUCV  SEVER,                                                  *60800000
+               PRMLIST=(1),                                            *60850000
+               ALL=NO                                                   60900000
+         BNZ   EXEXIT             ===> EXIT TO DISPATCHER      @DA39605 60950000
+         MVI   DSPIDSW,PTHINACT   MARK PATH AS INACTIVE                 61000000
+         SR    RF,RF              CLEAR RF                              61050000
+         ST    RF,DSPIDAIP        CLEAR APPLID TABLE POINTER            61100000
+         DROP  R5                                                       61150000
+***************************************************************         61200000
+*   RETURN TO DISPATCHER                                      *         61250000
+***************************************************************         61300000
+EXEXIT   EQU   *                                                        61350000
+         L     RA,TCBPTR          RESTORE TCB POINTER                   61400000
+         L     R6,DISPAD          RESTORE DISPATCHER ADDRESS            61450000
+         BR    R6                 ==> RETURN TO DISPATCHER              61500000
+         DROP  R1                                                       61550000
+         EJECT                                                          61600000
+***************************************************************         61650000
+*                                                             *         61700000
+*   ROUTINE TO SET UP LINKAGE AND BRANCH TO EXIT ROUTINE      *         61750000
+*                                                             *         61800000
+***************************************************************         61850000
+         SPACE 2                                                        61900000
+EXAPRT   DS    0H                                                       61950000
+*        SGCOV SGIUCV,MC=13                                    @D61BDFG 61975001
+         ST    R3,EXSAVR3         SAVE APPLID PTR                       62000000
+         ST    R5,EXSAVR5         SAVE PATHID PTR                       62050000
+         ST    RB,EXSAVRB         SAVE LINK REGISTER                    62100000
+         USING DSAIDENT,R3        APPLID ENTRY ADDRESSABILITY           62150000
+         L     RF,DSAIDTIB        GET TIB OF EXIT OWNER                 62200000
+         ST    RF,ERTIBADR        AND STORE IT                          62250000
+         LH    RA,TIBRTID-TIBADR(RF)  TID FOR SETLCALL         @D61BDFG 62275001
+         L     RF,DSAIDEXT        GET EXIT ADDRESS                      62300000
+         AIF   (NOT &BGDEBUG).NODBG50  SKIP FOR DEBUG=NO                62350000
+         L     RB,AIUEVTRA        GET CURRENT TRACE ENTRY               62400000
+         USING DIUEVTR,RB                                               62450000
+         USING VMDSPID,R5                                      @D31BDUL 62500000
+         MVC   DIUEVPID(L2),DSPIDID  INSERT PATH ID                     62550000
+         DROP  R5                                                       62600000
+         ST    RF,DIUEVEX         INSERT EXIT ADDRESS                   62650000
+         DROP  RB                                                       62700000
+         LA    RB,DIUEVLEN(RB)    GET NEXT FREE ENTRY                   62750000
+         C     RB,AIUEVTRE        IS IT END ADDRESS                     62800000
+         BNE   EXTRNLE            NO  ===>                              62850000
+         LA    RB,IUEVTRB         GET START ADDRESS                     62900000
+EXTRNLE  EQU   *                                                        62950000
+         ST    RB,AIUEVTRA        STORE NEW CURRENT TRACE ENTRY         63000000
+.NODBG50 ANOP                                                           63050000
+         LR    R2,R0              SAVE EXIT ARGUMENT           @D61BDFG 63057101
+         L     R6,DISPAD          GET DISPATCHER ADDRESS       @D61BDFG 63064201
+         USING DISP,R6                                         @D61BDFG 63071301
+* SGLINK SETLCALL,INPUT=(R6,R7,RA),WORK=(R0),OUTPUT=(RA)       @D61BDFG 63074801
+         BAL   R7,SETLCALL        SET UP ENVIRONMENT           @D61BDFG 63078401
+         DROP  R6                                              @D61BDFG 63085501
+         LR    R0,R2              RESTORE EXIT ARGUMENT        @D61BDFG 63092601
+         MVI   RID+D1,IUCVRID     IDENTIFY ROUTINE BY RID               63100000
+         AMODESW CALL,REGS=(RE,RF)  CALL EXIT ROUTINE          @D61BDFG 63133301
+         MVI   RID+D1,SYSTEMID    RESET RID                             63200000
+         L     RD,AVSASVC         RESTORE MODULE BASE                   63250000
+         AMODESW SET,AMODE=24,WR=(R2) SWITCH BACK TO AMODE 24  @D61BDFG 63275001
+         L     R3,EXSAVR3         RESTORE APPLID PTR                    63300000
+         L     R5,EXSAVR5         RESTORE PATHID PTR                    63350000
+         L     RB,EXSAVRB         RESTORE LINK REGISTER                 63400000
+         L     R1,AEXIBUF         RESTORE POINTER TO EIB                63450000
+         BR    RB                 ===>                                  63500000
+         DROP  R3                                                       63550000
+         DROP  RA                 RELEASE TCB POINTER          @D61BDAP 63575001
+         EJECT                                                          63600000
+***************************************************************         63650000
+*                                                             *         63700000
+*   SGIUCV CONTROL BLOCK DEFINITIONS                          *         63750000
+*                                                             *         63800000
+***************************************************************         63850000
+         SPACE 2                                                        63900000
+VCNAAUTN DC    CL8'VCNA'          NAME OF AUTHORIZED APPLICATION        63950000
+         SPACE 2                                                        64000000
+         AIF   (NOT &BGDEBUG).NODBG60  SKIP FOR DEBUG=NO                64050000
+         DC    CL8'APPLIDTB'      START OF APPL. ID TABLE               64100000
+.NODBG60 ANOP                                                           64150000
+         SPACE 2                                                        64200000
+AIDTBNUM DC    H'&AIDCTR'         NUMBER OF APPL. ID TABLE ENTRIES      64250000
+         SPACE 2                                                        64300000
+AIDTAB   DS    0F                 APPLICATION ID TABLE                  64350000
+.AIDTBLP ANOP                                                           64400000
+         AIF   (&AIDCTR EQ 0).AIDTBEX                                   64450000
+&AIDCTR  SETA  &AIDCTR-1                                                64500000
+         DC    CL8' '             APPLICATION ID                        64550000
+         DC    F'0'               EXIT ADDRESS                          64600000
+         DC    F'0'               TIB POINTER OF EXIT OWNER             64650000
+         DC    H'0'               PARTITION ID                          64700000
+         DC    H'0'               RESERVED                              64750000
+         SPACE                                                          64800000
+         AGO   .AIDTBLP           CONTINUE TABLE BUILD                  64850000
+.AIDTBEX ANOP                                                           64900000
+AIDTEND  EQU   *                  END OF APPLICATION ID TABLE           64950000
+         SPACE 2                                                        65000000
+IUCVPARM DC    5D'0'              IUCV PARAMETER LIST                   65050000
+         SPACE 2                                                        65100000
+CREG0SAV DS    0F                 SAVE AREA CONTR. REG. 0               65150000
+EXSAVR3  DS    F                  SAVE AREA FOR REG. 3                  65200000
+EXSAVR5  DS    F                  SAVE AREA FOR REG. 5                  65250000
+EXSAVRB  DS    F                  SAVE AREA FOR REG. B                  65300000
+         SPACE 2                                                        65350000
+ERTIBADR DC    F'0'               SAVE AREA FOR TIB OF EXIT             65400000
+         SPACE 2                                                        65450000
+OPENSW   DC    X'0'               IND. FOR FIRST OPEN REQUEST           65500000
+         SPACE 2                                                        65550000
+***************************************************************         65600000
+*   WARNING !!!                                               *         65650000
+*     THE FOLLOWING FIVE CONSTANTS MUST ALWAYS BE IN THE SAME *         65700000
+*     ORDER AND CONTIGUOUS.                                   *         65750000
+***************************************************************         65800000
+         SPACE 2                                                        65850000
+AEXIBUF  DC    F'0'               PTR TO IUCV EXT. INT. BUFFER          65900000
+EEXIBUF  DC    F'0'               PTR TO LAST BYTE OF EIB               65950000
+APIDTAB  DC    F'0'               PTR TO PATH ID TABLE                  66000000
+EPIDTAB  DC    F'0'               PTR TO LAST ENTRY OF TABLE            66050000
+PIDENUM  DC    H'0'               NUMBER OF ENTRIES IN TABLE            66100000
+         DROP  RD                                                       66150000
+         EJECT                                                          66200000
+         AIF   (NOT &BGDEBUG).NODBG70  SKIP FOR DEBUG=NO                66250000
+***************************************************************         66300000
+*   START OF DEBUG FIELDS AND DEFINITIONS                     *         66350000
+***************************************************************         66400000
+         USING VSASVC,RD                                                66450000
+         DS    0F                                                       66500000
+VSAPATCH DC    CL8'PTCHAREA'      PATCH AREA START                      66550000
+         DC    S(VSAPATCH+8)      BASE-DISPL. FORM OF PATCH             66600000
+*                                                   AREA START          66650000
+         DC    CL78' '            PATCH AREA                            66700000
+         DC    CL8'PATCHEND'      PATCH AREA END                        66750000
+         DC    CL16'IUCV-SVC-TRACE'                                     66800000
+         DS    0F                                                       66850000
+AIUSVCTB DC    A(IUSVCTRB)        ADDR. OF START OF TRACE AREA          66900000
+AIUSVCTA DC    A(IUSVCTRB)        ADDR. OF CURRENT TRACE ENTRY          66950000
+AIUSVCTE DC    A(IUSVCTRE)        ADDR. OF END OF TRACE AREA            67000000
+IUSVCTRB DC    (20*4)F'0'         TRACE AREA FOR SVC EVENTS             67050000
+IUSVCTRE EQU   *                                                        67100000
+         DC    CL16'IUCV-EVENT-TRACE'                                   67150000
+         DS    0F                                                       67200000
+AIUEVTRB DC    A(IUEVTRB)         ADDR. OF START OF TRACE AREA          67250000
+AIUEVTRA DC    A(IUEVTRB)         ADDR. OF CURRENT TRACE ENTRY          67300000
+AIUEVTRE DC    A(IUEVTRE)         ADDR. OF END OF TRACE AREA            67350000
+IUEVTRB  DC    (50*2)F'0'         TRACE AREA FOR IUCV EVENTS            67400000
+IUEVTRE  EQU   *                                                        67450000
+         DS    0H                                                       67500000
+INVOPCDE DC    CL2'IN'            INVALID OPCODE MNEMONIC               67550000
+SSTATEMN DC    CL2'SS'            SUPERVISOR STATE MNEMONIC             67600000
+OPENMN   DC    CL2'OP'            OPEN MNEMONIC                         67650000
+CONNCTMN DC    CL2'CO'            CONNECT MNEMONIC                      67700000
+ACCEPTMN DC    CL2'AC'            ACCEPT MNEMONIC                       67750000
+SEVERMN  DC    CL2'SV'            SEVER MNEMONIC                        67800000
+CLOSEMN  DC    CL2'CL'            CLOSE MNEMONIC                        67850000
+EXTINMN  DC    CL2'EX'            MNEMONIC FOR EXTERNAL INTERRUPT       67900000
+TSTCMPMN DC    CL2'TC'            MNEMONIC FOR TESTCMPL                 67950000
+DESCBEMN DC    CL2'DS'            MNEMONIC FOR DESCRIBE                 68000000
+         DROP  RD                                                       68050000
+         SPACE 2                                                        68100000
+DIUSVCTR DSECT                                                          68150000
+DIUSVCOP DS    H                  FOR OPERATION MNEMONIC                68200000
+DIUSVCRC DS    H                  RETURN CODE                           68250000
+DIUSVCNM DS    CL8                NAME OF APPLICATION                   68300000
+DIUSVCAD DS    F                  ADDRESS OF REQUESTOR                  68350000
+DIUSVCEL EQU   *-DIUSVCOP         LENGTH OF ENTRY                       68400000
+         SPACE 2                                                        68450000
+DIUEVTR  DSECT                                                          68500000
+DIUEVOP  DS    H                  OPERATION MNEMONIC                    68550000
+DIUEVPID DS    H                  PATH ID                               68600000
+DIUEVEX  DS    F                  EXIT ROUTINE ADDRESS                  68650000
+DIUEVLEN EQU   *-DIUEVOP          LENGTH OF ENTRY                       68700000
+         SPACE 2                                                        68750000
+***************************************************************         68800000
+*   END OF DEBUG FIELDS AND DEFINITIONS                       *         68850000
+***************************************************************         68900000
+         EJECT                                                          68950000
+.NODBG70 ANOP                                                           69000000
+***************************************************************         69050000
+*                                                             *         69100000
+*   SGIUCV DSECTS AND CONSTANTS                               *         69150000
+*                                                             *         69200000
+***************************************************************         69250000
+         SPACE 2                                                        69300000
+***************************************************************         69350000
+*   DSECT FOR APPLICATION ID TABLE ENTRY                      *         69400000
+***************************************************************         69450000
+DSAIDENT DSECT                    APPLICATION ID TABLE ENTRY            69500000
+DSAIDNME DS    CL8                APPLICATION ID NAME                   69550000
+DSAIDEXT DS    F                  EXIT ADDRESS FOR APPLICATION          69600000
+DSAIDTIB DS    F                  TIB PTR OF EXIT OWNER                 69650000
+DSAIDPIK DS    H                  PARTITION ID FOR APPLICATION          69700000
+         DS    H                  RESERVED                              69750000
+DSAIDELN EQU   *-DSAIDENT         LENGTH OF APPL. ID TABLE ENTRY        69800000
+         SPACE 2                                                        69850000
+***************************************************************         69900000
+*   DSECT FOR VSIUCVU CONTROL BLOCK                           *         69950000
+***************************************************************         70000000
+VSIUCVU  VSIUCVU  DSECT=YES                                             70050000
+VIUBLEN  EQU   *-VSIUCVU          LENGTH OF VSIUCVU BLOCK               70100000
+         SPACE 2                                                        70150000
+***************************************************************         70200000
+*   DSECT FOR VSIUCVPL CONTROL BLOCK                          *         70250000
+***************************************************************         70300000
+VSIUCVPL VSIUCVPL DSECT=YES                                             70350000
+VILBLEN  EQU   *-VSIUCVPL         LENGTH OF VSIUCVPL BLOCK              70400000
+         SPACE 2                                                        70450000
+***************************************************************         70500000
+*   EQUATES FOR SGIUCV                                        *         70550000
+***************************************************************         70600000
+         SPACE 2                                                        70650000
+VSAERR04 EQU   X'04'              RETURN CODE 04                        70700000
+VSAERR08 EQU   X'08'              RETURN CODE 08                        70750000
+VSAERR12 EQU   X'0C'              RETURN CODE 12                        70800000
+VSAERR16 EQU   X'10'              RETURN CODE 16                        70850000
+VSAERR20 EQU   X'14'              RETURN CODE 20                        70900000
+VSAERR24 EQU   X'18'              RETURN CODE 24                        70950000
+VSAERR28 EQU   X'1C'              RETURN CODE 28                        71000000
+VSAERR32 EQU   X'20'              RETURN CODE 32                        71050000
+VSAERR36 EQU   X'24'              RETURN CODE 36                        71100000
+VSAERR40 EQU   X'28'              RETURN CODE 40                        71150000
+VSAERR44 EQU   X'2C'              RETURN CODE 44, INV.OPTIONS  @D61BDFG 71175001
+         SPACE 2                                                        71200000
+EXALLMSG EQU   X'F8'              MASK BYTE FOR IPFLAGS1                71250000
+IUCVEXT  EQU   X'40'              IUCV EXTERNAL INTERRUPT CODE          71300000
+SSTATEOP EQU   X'06'              SUPERVISOR STATE REQUEST OP-CODE      71350000
+EXTINMSK EQU   X'02'              MASK FOR CONTR. REG. 0                71400000
+NOFSTOPN EQU   X'01'              INDICATOR FOR FIRST OPEN              71450000
+SUPSTATE EQU   X'01'              SUPERVISOR STATE INDICATOR            71500000
+         SPACE 2                                                        71550000
+NOMSG    EQU   2                  BRANCH MASK FOR NO MESSAGES           71600000
+         SPACE                                                          71700000
+IJBSUP50 CSECT                                                          71750000
+         SPACE                                                          71800000
+         AIF   (NOT &BGDEBUG OR NOT &SGIUCV).PRINT                      71850000
+         PRINT NOGEN              RESET PRINT OPTION                    71900000
+.PRINT   ANOP                                                           71950000
+         MEND                                                           72000000

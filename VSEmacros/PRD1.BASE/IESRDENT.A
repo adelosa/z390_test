@@ -1,0 +1,207 @@
+***********************************************************************         
+*                                                                     *         
+*        LICENSED MATERIALS - PROPERTY OF IBM                         *         
+*        "RESTRICTED MATERIALS OF IBM"                                *         
+*        5686-066                                                     *         
+*        (C) COPYRIGHT IBM CORP. 2001.                                *         
+*                                                                     *         
+***********************************************************************         
+*                                                                               
+* *********************************************************************         
+* THIS MACRO IS USED TO GENERATE A VSAM REDIRECTOR CONFIG TABLE                 
+*                                                                               
+* SYNTAX:                                                                       
+*        IESRDENT CATALOG='VSAM.MASTER.CATALOG',                                
+*                 ÝCATDD='IJSYSCT',¨                                            
+*                 CLUSTER='MY.TEST.CLUSTER',                                    
+*                 ÝCLUDD='MYTEST',¨                                             
+*                 ÝPART='F2',¨                                                  
+*                 ÝNOTPART='F4',¨                                               
+*                 EXIT='EXITNAME',   (SPECIAL EXIT=IESREDIR)                    
+*                 OWNER=Ý VSAM | REDIRECTOR ¨,                                  
+*                 ÝIGNOREERROR=NO | YES¨,                                       
+*                 ÝPUTREQONLY=YES | NO¨,                                        
+*                 IP='9.164.155.2',                                             
+*                 ÝPORT='2387'¨,                                                
+*                 HANDLER='com.ibm.vse.db2handler.DB2Handler',                  
+*                 OPTIONS='url=jdbc:db2:redir;user=hugo;password=hugo;          
+*                          table=c1table'                                       
+*                                                                               
+* NOTE: -IF NOT EXIT='IESREDIR', THE FOLLOWING PARAMETERS ARE                   
+*        IGNORED:   OWNER,IP,PORT,HANDLER,OPTIONS                               
+*       -IGNOREERROR IS ONLY VALID WITH OWNER=VSAM.                             
+*        DEFAULT IS IGNOREERROR=NO                                              
+*       -PUTREQONLY IS ONLY VALID WITH OWNER=VSAM.                              
+*        DEFAULT IS PUTREQONLY=YES                                              
+*                                                                               
+* OR:                                                                           
+*       IESRDENT DSECT=YES TO GENERATE A DSECT MAPPING                          
+*                                                                               
+* THE MACRO GENERATES A DSECT THAT HAS THE FOLLOWING LAYOUT:                    
+*                                                                               
+* EYECATCH DS    CL8        'IESRDENT' OR 'IESRDEN2'                            
+* CATALOG  DS    CL44       FILE ID OF CATALOG                                  
+* CLUSTER  DS    CL44       FILE ID OF CLUSTER                                  
+* EXITNAME DS    CL8        PHASE NAME OF EXIT                                  
+* FLAGS1   DS    XL1        FLAGS1                                              
+* VENDOREX EQU   X'01'      THIS IS A VENDOR EXIT                               
+* FLAGS2   DS    XL1        FLAGS2                                              
+* OWNVSAM  EQU   X'01'      OWNER IS VSAM                                       
+* IGNERR   EQU   X'02'      IGNORE ERROR                                        
+* PUTONLY  EQU   X'04'      PUT REQUESTS ONLY                                   
+*          DS    XL2        ALIGNMENT                                           
+* IPADDR   DS    CL16       IP ADDRESS AS STRING                                
+* PORT     DS    CL8        PORT AS STRING                                      
+* HANDLER  DS    CL64       HANDLER NAME                                        
+* OPTIONS  DS    CL256      OPTION STRING                                       
+*          DS    XL10       ALIGNMENT                                           
+* PART     DS    CL2        PARTITION                                           
+* CATDD    DS    CL8        CATALOG DD NAME                                     
+* CLUDD    DS    CL8        CLUSTER DD NAME                                     
+* NOTPART  DS    CL2        NOT PARTITION                                       
+*          DS    CL30       RESERVED                                            
+* *******************************************************************           
+           MACRO                                                                
+&NAME      IESRDENT &DSECT=NO,&CATALOG=,&CLUSTER=,&EXIT=,&OWNER=,&IP=, X        
+               &PORT='2387',&HANDLER=,&OPTIONS='',&IGNOREERROR=NO,     X        
+               &PUTREQONLY=YES,&CATDD='*',&CLUDD='*',&PART='*',        X        
+               &NOTPART='*'                                                     
+*                                                                               
+           AIF ('&DSECT' EQ 'YES').DSECT                                        
+*                                                                               
+           AIF ('&CATALOG' EQ '').ERRCAT                                        
+           AIF ('&CLUSTER' EQ '').ERRCLU                                        
+           AIF ('&EXIT' EQ '').ERREXIT                                          
+*                                                                               
+           DC    CL8'IESRDEN2'                 EYECATCHER (LONG)                
+*                                                                               
+           DC    CL44&CATALOG                  CATALOG FILE ID                  
+           DC    CL44&CLUSTER                  CLUSTER FILE ID                  
+           DC    CL8&EXIT                      EXIT PHASE NAME                  
+*                                                                               
+           AIF ('&EXIT' EQ '''IESREDIR''').REDIR                                
+*                                                                               
+           AIF ('&OWNER' NE '').ERROWN2                                         
+           AIF ('&IP' NE '').ERRIP2                                             
+           AIF ('&HANDLER' NE '').ERRHDLR2                                      
+*                                                                               
+           DC    XL1'01'                       THIS IS A VENDOR EXIT            
+           DC    XL1'01'                       OWNER IS VSAM                    
+           DC    XL2'0000'                     ALIGNMENT                        
+*                                                                               
+           DC    CL16''                        IP ADDRESS                       
+           DC    CL8''                         PORT                             
+           DC    CL64''                        HANDLER NAME                     
+           DC    CL256''                       OPTION STRING                    
+*                                                                               
+           DC    XL10'00000000000000000000'                                     
+           DC    CL2&PART                      PARTITION                        
+           DC    CL8&CATDD                     CATALOG DD                       
+           DC    CL8&CLUDD                     CLUSTER DD                       
+           DC    CL2&NOTPART                   NOT PARTITION                    
+           DC    CL30''                                                         
+           MEXIT                                                                
+*                                                                               
+.REDIR     ANOP                                                                 
+           AIF ('&OWNER' EQ '').ERROWN                                          
+           AIF ('&IP' EQ '').ERRIP                                              
+           AIF ('&HANDLER' EQ '').ERRHDLR                                       
+*                                                                               
+           DC    XL1'00'                       NOT A VENDOR EXIT                
+*                                                                               
+           AIF ('&OWNER' EQ 'VSAM').OWNVSAM                                     
+           AIF ('&OWNER' EQ 'REDIRECTOR').OWNREDIR                              
+           AGO .ERROWN2                                                         
+.OWNVSAM   ANOP                                                                 
+           AIF ('&IGNOREERROR' EQ 'YES').IGNERR                                 
+           AIF ('&PUTREQONLY' EQ 'YES').PUTONLY1                                
+           DC    XL1'01'                       OWNER IS VSAM                    
+           AGO .OWNEND                                                          
+.PUTONLY1  DC    XL1'05'                       OWN=VSAM+PUTREQONLY              
+           AGO .OWNEND                                                          
+.IGNERR    AIF ('&PUTREQONLY' EQ 'YES').PUTONLY2                                
+           DC    XL1'03'                       OWN=VSAM+IGNOREERROR             
+           AGO .OWNEND                                                          
+.PUTONLY2  DC    XL1'07'                       OWN=VSAM+PUT+IGNERR              
+           AGO .OWNEND                                                          
+.OWNREDIR  ANOP                                                                 
+           AIF ('&IGNOREERROR' EQ 'YES').ERRIGN                                 
+           DC    XL1'00'                       OWNER IS REDIRECTOR              
+           AGO .OWNEND                                                          
+.OWNEND    ANOP                                                                 
+           DC    XL2'0000'                     ALIGNMENT                        
+*                                                                               
+           DC    CL16&IP                       IP ADDRESS                       
+           DC    CL8&PORT                      PORT                             
+           DC    CL64&HANDLER                  HANDLER NAME                     
+           DC    CL256&OPTIONS                 OPTION STRING                    
+*                                                                               
+           DC    XL10'00000000000000000000'                                     
+           DC    CL2&PART                      PARTITION                        
+           DC    CL8&CATDD                     CATALOG DD                       
+           DC    CL8&CLUDD                     CLUSTER DD                       
+           DC    CL2&NOTPART                   NOT PARTITION                    
+           DC    CL30''                                                         
+           MEXIT                                                                
+*                                                                               
+.DSECT     ANOP                                                                 
+IESRDENT   DSECT                                                                
+EYECATCH   DS    CL8        'IESRDENT' OR 'IESRDENT'                            
+CATALOG    DS    CL44       FILE ID OF CATALOG                                  
+CLUSTER    DS    CL44       FILE ID OF CLUSTER                                  
+EXITNAME   DS    CL8        PHASE NAME OF EXIT                                  
+FLAGS1     DS    XL1        FLAGS1                                              
+VENDOREX   EQU   X'01'      THIS IS A VENDOR EXIT                               
+FLAGS2     DS    XL1        FLAGS2                                              
+OWNVSAM    EQU   X'01'      OWNER IS VSAM                                       
+IGNERR     EQU   X'02'      IGNORE ERROR                                        
+PUTONLY    EQU   X'04'      PUT REQUESTS ONLY                                   
+           DS    XL2        ALIGNMENT                                           
+IPADDR     DS    CL16       IP ADDRESS AS STRING                                
+PORT       DS    CL8        PORT AS STRING                                      
+HANDLER    DS    CL64       HANDLER NAME                                        
+OPTIONS    DS    CL256      OPTION STRING                                       
+           DS    XL10       ALIGNMENT                                           
+PART       DS    CL2        PARTITION                                           
+RENTLEN    EQU   *          LENGTH OF SHORT ENTRY                               
+CATDD      DS    CL8        CATALOG DD NAME                                     
+CLUDD      DS    CL8        CLUSTER DD NAME                                     
+NOTPART    DS    CL2        NOTPARTITION                                        
+           DS    CL30       RESERVED                                            
+RENTLEN2   EQU   *          LENGTH OF LONG ENTRY                                
+*                                                                               
+           MEXIT                                                                
+*                                                                               
+.ERRCAT    ANOP                                                                 
+           MNOTE 8,'CATALOG PARAMETER MISSING.'                                 
+           MEXIT                                                                
+.ERRCLU    ANOP                                                                 
+           MNOTE 8,'CLUSTER PARAMETER MISSING.'                                 
+           MEXIT                                                                
+.ERREXIT   ANOP                                                                 
+           MNOTE 8,'EXIT PARAMETER MISSING.'                                    
+           MEXIT                                                                
+.ERROWN    ANOP                                                                 
+           MNOTE 8,'OWNER PARAMETER MISSING.'                                   
+           MEXIT                                                                
+.ERRIGN    ANOP                                                                 
+           MNOTE 8,'IGNOREERROR IS NOT VALID WITH OWNER=REDIRECTOR.'            
+           MEXIT                                                                
+.ERROWN2   ANOP                                                                 
+           MNOTE 8,'OWNER PARAMETER INVALID.'                                   
+           MEXIT                                                                
+.ERRIP     ANOP                                                                 
+           MNOTE 8,'IP PARAMETER MISSING.'                                      
+           MEXIT                                                                
+.ERRHDLR   ANOP                                                                 
+           MNOTE 8,'HANDLER PARAMETER MISSING.'                                 
+           MEXIT                                                                
+.ERRIP2    ANOP                                                                 
+           MNOTE 8,'IP PARAMETER INVALID:'                                      
+           MEXIT                                                                
+.ERRHDLR2  ANOP                                                                 
+           MNOTE 8,'HANDLER PARAMETER INVALID.'                                 
+           MEXIT                                                                
+*                                                                               
+.END       ANOP                                                                 
+           MEND                                                                 

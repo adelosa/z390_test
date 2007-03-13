@@ -1,0 +1,552 @@
+         MACRO                                                          00050000
+         SGECKD                                                         00100000
+         GBLB   &BG370    MODE=370                                      00116600
+         ACTR   50        LOOP CONTROL                                  00133200
+***************************************************************@D51EDAP 00150000
+*                                                              @D51EDAP 00200000
+*        LICENSED MATERIALS-PROPERTY OF IBM                    @D51EDAP 00250000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"           @D51EDAP 00300000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1992, 1999           @DY45290 00370000
+*        SEE COPYRIGHT INSTRUCTIONS                            @D51EDAP 00400000
+*                                                              @D51EDAP 00450000
+***************************************************************@D51EDAP 00500000
+.* /* START OF SPECIFICATIONS ****                             @D51EDAP 00550000
+.*01  MODULE TYPE = MACRO                                      @D51EDAP 00600000
+.*      PROCESSOR = ASSEMBLER                                  @D51EDAP 00650000
+.*01 NOTES        = CHANGE ACTIVITY                            @DA41012 00662500
+.* CACHE BYPASS FORCED INTERNALLY FOR ECKD DEVICES IF GA=C0    @DA41012 00675000
+.* LR RECORD COUNTER MUST COUNT RECORDS RATHER THAN CCW'S      @DA41738 00687500
+.* WAITFFB DUE TO IDAL BIT ON IN TIC CCW                       @DA42692 00689500
+.* ALLOW PARTIAL CHANNEL PROGRAM CONVERSION (SINGLE DOMAIN)    @D61ADAP 00691500
+.* PERFORMANCE IMPROVEMENT FOR RAMAC                           @DA43335 00693500
+.* PROVIDE CORRECT COUNT IN LR PARAMETER LIST                  @DA43487 00694500
+.* PREVENT PROT-CHECK ON SEEKS OUTSIDE THE LR DOMAIN           @DA43585 00695100
+.* ENSURE SECTOR VALUE OF 0 FOR CHAINS STARTING WITH REARCH R0 @DA43697 00695400
+.* ALLOW ANOTHER SEARCH OR SEARCH-HEAD IN CHANNEL PROGRAM      @DA43858 00695500
+.* PREVENT PROT.CHECK AND WRITE INHIBIT OUTSIDE LR DOMAIN      @DA44117 00695600
+.* CORRECT BRANCH MASK                                         @DA44364 00695700
+.* ALLOW I/O AREAS TO BE LOCATED IN 31-BIT AREA                @DY45290 00695800
+.*                                                                      00695900
+.**** END OF SPECIFICATIONS ***/                                        00700000
+.**************************************************************         00950000
+.*                                                                      01000000
+.*       CHECK WHETHER THE USER CHANNEL PGM CAN BE CONVERTED TO         01050000
+.*       ECKD. IF SO SET UP DEFINE EXTENT, LOCATE RECORD AND TIC        01100000
+.*       TO USER CHANNEL PGM CCWS AND THE PARAMETERS FOR DE AND         01150000
+.*       LRIN THE PUBX. THE RESULT OF ECKD ROUTINE IS INDICATED         01200000
+.*       IN REG 15. ALL OTHER REGISTERS ARE RESTORED BEFORE             01250000
+.*       RETURN TO CALLER.                                              01300000
+.*                                                                      01350000
+.**************************************************************         01400000
+         DC      CL8'SGECKD'                                   @DA41012 01466600
+         DC      CL8'DAOM   '         CHANGE ACTIVITY CODE     @DAOM    01499100
+*        USING   RETURN,RC            RETURN REGISTER                   01500000
+         USING   DISP,R6              ADDRESSABILITY FOR GETDADR        01550000
+         USING   PBXADR,RE            PUBX BASE POINTER                 01600000
+         USING   ECCCWADR,RF          ECKD CCW PREFIX BASE              01650000
+         USING   ECKDCONV,RD          SGECKD BASE POINTER               01700000
+         USING   CCWADR,R9            VIRTUAL CCW BASE                  01750000
+         TITLE   'VSE SUPERVISOR     SGECKD    INITIALIZATION ROUTINE ' 01800000
+ECKDCONV DS      0H'0'                ECKD CONVERSION ROUTINE           01950000
+         STM     R0,RF,ECRSAVE        STORE CALLER'S REGISTERS          02000000
+***************************************************************         02250000
+*                                                                       02300000
+* INITIALIZATION ROUTINE                                                02350000
+*                                                                       02400000
+***************************************************************         02450000
+         AMODESW SET,AMODE=31,WR=(R2) FORCE 31-BIT MODE        @DY45290 02460000
+         LA      R2,ECXDEXT           DEFINE EXTENT PARAMETER  @D51GDAP 02500000
+         LA      R3,ECXDLOC           LOCATE REC PARAMETER     @D51GDAP 02550000
+         L       R4,PBXVCTE           ADDRESS OF VCTE ENTRY    @D51GDAP 02600000
+         LR      R8,RE                COPY PUBX ADDRESS        @DAOM    02610000
+         USING   PBXADR,R8            PUBX BASE POINTER                 02611000
+         DROP    RE                   RLEASE OLD PBXADR BASE   @DAOM    02620000
+         LTR     R4,R4                CHARACTERISTICS EXISTS   @D51GDAP 02650000
+         BZ      ECRRET24             NO, ===================> @D51GDAP 02700000
+         USING   VCTEADR,R4           VCTE ENTRY BASE          @D51GDAP 02750000
+         MVC     ECRDVCAP,VCTCRDVF    GET REAL DEVICE FEATURES @DA43335 02766600
+         DROP    RF                   RELEASE ECCCWADR BASE    @DA43335 02783200
+         LA      RE,ECRPREP           ADDRESS OF PREPARATION   @D51EDAP 02800000
+         USING   ECCCWADR,RE          ECKD PREFIX AREA BASE    @DA43335 02825000
+         LH      R4,VCTCTRKC          TRACKS PER CYLINDER      @D51GDAP 02850000
+         DROP    R4                   RELEASE VCTE BASE        @D51GDAP 02900000
+         BCTR    R4,0                 LAST PHYSICAL TRACK      @D51GDAP 02950000
+         ST      R2,ECCCWDEF          PROVIDE PARAMETER ADDRESS         03100000
+         ST      R3,ECCCWLOC          PROVIDE PARAMETER ADDRESS         03150000
+         MVI     ECCCWDEF,DX          SET OPERATION CODE       @D52VDAP 03200000
+         MVI     ECCCWLOC,X'47'       SET OPERATION CODE                03250000
+         MVI     ECCCWTIC,TIC         SET OPERATION CODE                03300000
+         MVI     FIMAGLAT,X'40'       PROVIDE FOR READ ONLY    @DA41012 03325000
+         L       R5,ECRCNCW2          LOAD CONSTANT                     03350000
+         ST      R5,ECCCWDEF+4        SET FLAG AND LENGTH               03400000
+         ST      R5,ECCCWLOC+4        SET FLAG AND LENGTH               03450000
+         SR      R2,R2                SET TIC COUNT TO ZERO             03500000
+         SR      R3,R3                SET RETURN CODE REGISTER          03550000
+         SR      RB,RB                SET RECORD COUNT TO ZERO          03600000
+         STH     RB,BYTEMAX           RESET MAX. LENGTH COUNT           03650000
+         ST      RB,ECXDLOC           RESET FLAG BYTES                  03700000
+         ST      RB,ECXDMSK           RESET ATTRIBUTE BYTES    @D43335  03712500
+         ST      RB,ECXDMSK+4         RESET ATTRIBUTE EXTENDED @D43335  03725000
+         STH     RB,ECXLTLF           RESET TRANSFER LENGTH    @D43335  03737500
+         MVI     ECXLSEC,XFF          INIT SECTOR TO X 'FF'             03750000
+         MVC     CCWOP,CCWCODE        COPY OP CODE                      03800000
+         EJECT                                                          03850000
+***************************************************************         03900000
+*                                                                       03950000
+*        VALIDATE FIRST CCW  (SEEK COMMAND PROCESSING)                  04000000
+*                                                                       04050000
+***************************************************************         04100000
+         CLI     CCWOP,DX             IS THIS DEFINE EXTENT CCW@D52VDAP 04150000
+         BE      ECRTSTDV             YES,                     @DA43335 04200000
+         CLI     CCWOP,SEEK           IS THIS A SEEK COMMAND            04250000
+         BNE     ECRRET12             NO,  ==================>          04300000
+         TM      CCWCHAIN,CC          COMMAND CHAINING SPECIFIED        04350000
+         BZ      ECRRET12             NO,  ==================>          04400000
+         BAL     R5,ECRVIADR          CONVERT STARTADR TO VIRTUAL       04450000
+         ICM     R5,15,2(RF)          GET CCHH INFORMATION              04500000
+         STCM    R5,15,ECXDEXTB       SET UP DE BEG. OF EXTENT          04550000
+         STCM    R5,15,ECXDEXTE       SET UP DE END  OF EXTENT          04600000
+         STCM    R4,3,ECXDEXTE+2      SET TO LAST TRACK ADDRESS         04650000
+         STCM    R5,15,ECXLSEEK       SET UP LR SEEK ARGUMENT           04700000
+         B       ECRI010                                       @DA43335 04702700
+ECRTSTDV TM      PBXFLAG1,PBXRONLY    IS THIS READ ONLY DEVICE @DAOM    04705400
+         BZ      ECRTST10             NO,                      @DAOM    04705500
+         BAL     R5,ECRVIADR          GET DX VIRTUAL ADDRESS   @DAOM    04705600
+         MVC     ECXDEXT,0(RF)        SET DEF-EXTENT PARAMETER @DAOM    04705700
+         OI      ECXDEXT,X'40'        SET WRITE INHITIB        @DAOM    04705800
+         NI      ECXDEXT,XFF-X'80'    PREVENT ANY WRITE        @DAOM    04705900
+         DROP    R8                   RELEASE PBXADR BASE      @DAOM    04706000
+         BAL     RA,NEXTCCW           INCREASE CCW POINTER     @DAOM    04706100
+         MVI     ECCCWLOC,X'03'       MAKE LR A NOP COMMAND    @DY46139 04706202
+         B       ECRTST30             SET TIC AND EXIT         @DY46139 04706302
+ECRTST10 TM      ECRDVCAP,VCTCRAID    IS THIS A RAID DEVICE    @DA43335 04707000
+         BNO     ECRRET08             NO,  ==================> @DA43335 04708100
+         BAL     R5,ECRVIADR          GET VIRTUAL ADDRESS      @DA43335 04710800
+         TM      0(RF),X'C0'          GENERAL WRITE PERMISSION @DA44052 04714500
+         BM      ECRRET08             NO,  ==================> @DA44364 04715500
+         MVC     ECXDEXT,0(RF)        SET DEF-EXTENT PARAMETER @DA43335 04718900
+         OI      ECXDGBLE,X'04'       REGULAR R0 DATA RECORD   @DA43335 04721600
+         BAL     RA,NEXTCCW           INCREASE CCW POINTER     @DA43335 04724300
+         CLI     CCWOP,X'47'          IS THIS A LOCATE RECORD  @DA43335 04727000
+         BNE     ECRRET08             NO,  ==================> @DA43335 04729700
+         BAL     R5,ECRVIADR          GET ARGUMENT ADDRESS     @DA43335 04732400
+         TM      0(RF),X'03'          IS IT FORMATING WRITE    @DA44052 04733300
+         BNO     ECRRET08             NO, ===================> @DA44052 04734200
+ECRTST20 MVC     ECXDLOC,0(RF)        SET LOCATE PARAMETER     @DA43335 04735100
+         BAL     RA,NEXTCCW           TRY NEXT CCW             @DA43335 04737800
+ECRTST30 STCM    R7,7,ECCCWTIC+1      SAVE ADDRESS OF FIRST CCW@DY46139 04740502
+         SLR     RF,RF                SET RETURN CODE          @DA43335 04743200
+         B       ECRE040              EXIT                     @DA43335 04745900
+         SPACE   1                                                      04750000
+***************************************************************         04800000
+*                                                                       04850000
+*        ADVANCE TO FIRST DATA TRANSFER COMMAND                         04900000
+*                                                                       04950000
+***************************************************************         05000000
+ECRI010  BAL     RA,NEXTCCW           INCREASE CCW POINTER              05050000
+         CLI     CCWOP,NOP            OP CODE NO OPERATION              05100000
+         BE      ECRI010              TRY NEXT CCW                      05150000
+         CLI     CCWOP,SETSECT        OP CODE SET SECTOR                05200000
+         BNE     ECRI020              NO CHECK FOR SEARCH               05250000
+         BAL     R5,ECRVIADR          CONVERT STARTADR TO VIRTUAL       05300000
+         MVC     ECXLSEC,0(RF)        SET UP SECTOR VALUE               05350000
+         B       ECRI010                                       @D51EDAP 05400000
+         SPACE   1                                                      05450000
+***************************************************************         05500000
+*                                                                       05550000
+*        SEARCH-ID COMMAND PROCESSING                                   05600000
+*                                                                       05650000
+***************************************************************         05700000
+ECRI020  NI      CCWOP,XFF-MULTITRK   RESET MULTI-TRACK BIT             05750000
+         CLI     CCWOP,SEARCH         OP CODE SEARCH ID EQUAL           05800000
+         BNE     ECRRET12             NO,  ==================>          05850000
+         BAL     R5,ECRVIADR          CONVERT TO VIRTUAL       @DA43697 05919900
+         MVC     ECXLSRCH,0(RF)       SET UP SEARCH ARGUMENT            05950000
+         CLI     ECXLSEC,XFF          IS SECTOR VALUE GIVEN    @DA43697 06006900
+         BNE     ECRI030              YES,                     @DA43697 06013900
+         CLI     ECXLSRCH+4,ZERO      SEARCH RECORD 0          @DA43697 06020900
+         BNE     ECRI030              NO,                      @DA43697 06027900
+         MVI     ECXLSEC,ZERO         FORCE SECTOR VALUE OF 0  @DA43697 06034900
+ECRI030  BAL     RA,NEXTCCW           TRY NEXT CCW                      06041900
+         STCM    R7,7,ECCCWTIC+1      SAVE ADDRESS OF FIRST CCW         06050000
+         TM      CCWOP,RDCOM          IS THIS A READ COMMAND   @D51EDAP 06100000
+         BZ      ECRWDRTN             NO, CERTAINLY NOT        @D51EDAP 06150000
+         TM      CCWOP,WRITE          IS THIS A CONTROL COMMAND@D51EDAP 06200000
+         BO      ECRRET12             YES, ==================> @D51EDAP 06250000
+         TITLE   'VSE SUPERVISOR     SGECKD    READ COMMAND PROCESSING' 06300000
+***************************************************************         06350000
+*                                                                       06400000
+*        READ COMMAND PROCESSING ROUTINE                                06450000
+*                                                                       06500000
+***************************************************************         06550000
+ECRRDRTN LA      R5,ECRR060       SET CONTINUATION ADDRESS              06600000
+         NI      CCWOP,XFF-MULTITRK   RESET MULTI-TRACK BIT             06650000
+.*                                                             @D51EDAP 06700000
+.*   SUB-COMMAND READ                                          @D51EDAP 06750000
+.*                                                             @D51EDAP 06800000
+.*       COUNT ORIENTATION        (PROCESS SAME RECORD FIELDS) @D51EDAP 06850000
+.*                                                             @D51EDAP 06900000
+         MVI     ECXLOPB,OPERRD   ORIENT-COUNT     OPER-READ            06950000
+         CLI     CCWCODE,RDDATA+MULTITRK READ DATA M-TRK                07000000
+         BER     R5               YES,                                  07050000
+         CLI     CCWCODE,RDKYDATA+MULTITRK READ KEY-DATA M-TRK          07100000
+         BER     R5               YES,                                  07150000
+.*                                                             @D51EDAP 07200000
+.*       DATA  ORIENTATION        (PROCESS SAME RECORD DATA)   @D51EDAP 07250000
+.*                                                             @D51EDAP 07300000
+         MVI     ECXLOPB,OPERDARD ORIENT-DATA      OPER READ            07350000
+         CLI     CCWCODE,RDCKD+MULTITRK READ COUNT-KEY-DATA M-T         07400000
+         BER     R5               YES,                                  07450000
+         CLI     CCWCODE,READSCNT+MULTITRK READ COUNT M-TRK             07500000
+         BER     R5               YES,                                  07550000
+.*                                                             @D51EDAP 07600000
+.*       HOME ADDRESS ORIENTATION (PROCESS NEXT RECORD COUNT)  @D51EDAP 07650000
+.*                                                             @D51EDAP 07700000
+         MVI     ECXLOPB,OPERHARD ORIENT HA     OPER READ               07750000
+         CLI     CCWOP,READR0     READ RECORD ZERO                      07800000
+         BER     R5               YES,                                  07850000
+.*                                                             @D51EDAP 07900000
+.*   SUB-COMMAND READ DATA                                     @D51EDAP 07950000
+.*                                                             @D51EDAP 08000000
+.*       COUNT ORIENTATION        (PROCESS SAME RECORD FIELDS) @D51EDAP 08050000
+.*                                                             @D51EDAP 08100000
+ECRR010  MVI     ECXLOPB,OPERCRDA ORIENT-COUNT     OPER READ-DATA       08150000
+ECRR020  NI      CCWOP,XFF-MULTITRK RESET MULTI TRACK BIT               08200000
+         CLI     CCWOP,READSCNT   OP CODE READ COUNT                    08350000
+         BE      ECRR030          YES,                         @DA41738 08400000
+         CLI     CCWOP,RDCKD      OP CODE READ COUNT KEY DATA           08450000
+         BE      ECRR040          YES,                                  08500000
+         CLI     CCWOP,RDHOM      OP CODE READ HOME ADDRESS             08550000
+         BE      ECRR040          YES,                                  08600000
+         CLI     CCWOP,READR0     OP CODE READ RECORD ZERO              08650000
+         BE      ECRR040          YES,                                  08700000
+         CLI     CCWOP,RDDATA     OP CODE READ DATA                     08716600
+         BE      ECRR030          YES,                         @DA41738 08733200
+         CLI     CCWOP,RDKYDATA   OP CODE READ KEY DATA                 08750000
+         BNE     ECRCEMIX         NO,                                   08800000
+ECRR030  CLI     OLDOP,READSCNT   WAS PREV CCW READ COUNT(MT)  @DA41738 08816600
+         BE      ECRR050          YES, DONT COUNT SAME RECORD  @DA41738 08833200
+ECRR040  CH      RB,H256          IF RECORD COUNT = 255                 08850000
+         BE      ECRRET16         YES, ======================>          08900000
+         LA      RB,1(,RB)        ELSE INCREMENT REC COUNT              08950000
+ECRR050  BAL     RA,NEXTCCW       TRY NEXT CCW                          09000000
+         B       ECRR020          THE SAME PROCEDURE                    09050000
+         EJECT   ,                                             @D51EDAP 09100000
+ECRR060  LA      RB,1(RB)         ADVANCE RECORD COUNTER                09150000
+ECRR065  BAL     RA,NEXTCCW       ADVANCE TO NEXT CCW          @DA41738 09200000
+         CLI     CCWCODE,RDDATA+MULTITRK READ DATA MULTI TRACK          09250000
+         BE      ECRR090          YES, CHECK FRO READ COUNT    @DA41738 09300000
+         CLI     CCWCODE,RDKYDATA+MULTITRK READ KEY DATA MULTITRACK     09450000
+         BE      ECRR090          YES, CHECK FOR READ COUNT    @DA41738 09466600
+         CLI     CCWCODE,RDCKD+MULTITRK READ CKD MULTITRACK             09483200
+         BE      ECRR070          YES,                                  09500000
+         CLI     CCWCODE,READSCNT+MULTITRK READ COUNT MULTITRACK        09550000
+         BNE     ECRR010          SET OPER TO READ DATA                 09600000
+         TM      CCWCHAIN,CC+DC   ANY CHAINING                 @D51EDAP 09650000
+         BNZ     ECRR070          YES,                                  09700000
+         TM      ECXLOPB,OPERRD   SUFFIX ALLOWED                        09750000
+         BNO     ECRR070          NO, FORCE READ DATA FUNCTION @D51EDAP 09800000
+         TM      ECXLOPB,X'40'    ORIENT TO INDEX OR HOME ADDR.@D51GDAP 09850000
+         BO      ECRR070          NO, FORCE READ DATA FUNCTION @D51EDAP 09900000
+         OI      ECXLAUX,1        SET READ COUNT SUFFIX                 09950000
+         B       ECRR080                                       @D51EDAP 10000000
+ECRR070  MVI     ECXLOPB,OPERCRDA ORIENT-COUNT  OPER READ-DATA @D51EDAP 10050000
+ECRR080  CH      RB,H256          IF RECORD COUNT = 256        @D51EDAP 10100000
+         BL      ECRR060          CHECK NEXT COMMAND                    10150000
+         B       ECRRET16         ERR  ======================>          10181200
+ECRR090  CLI     OLDOP,READSCNT   WAS PREVIOUS A READ COUNT    @DA41738 10212500
+         BE      ECRR065          YES, DONT COUNT SAME RECORD  @DA41738 10225000
+         B       ECRR080          UPDATE RECORD COUNTER        @DA41738 10237500
+         TITLE   'VSE SUPERVISOR     SGECKD   WRITE COMMAND PROCESSING' 10250000
+***************************************************************         10300000
+*                                                                       10350000
+*  WRITE COMMAND PROCESSING ROUTINE                                     10400000
+*                                                                       10450000
+***************************************************************         10500000
+.*                                                             @D51EDAP 10550000
+.*   SUB-COMMAND WRITE DATA (SINGLE RECORD PROCESSING)         @D51EDAP 10600000
+.*                                                             @D51EDAP 10650000
+.*       COUNT ORIENTATION                                     @D51EDAP 10700000
+.*                                                             @D51EDAP 10750000
+ECRWDRTN MVI     ECXLOPB,OPERCWD  ORIENT-COUNT     OPER WRITE-DATA      10800000
+         MVI     FIMAGLAT,ZERO        PERMIT WRITE OPERATIONS  @DA41012 10825000
+         TM      CCWCHAIN,CC+DC       COMMAND CHAINING         @D51EDAP 10850000
+         BNZ     ECRWD020             YES,                     @D51GDAP 10900000
+         SPACE   3                                             @D51GDAP 10950000
+***************************************************************         11000000
+*                                                                       11050000
+*  WRITE DATA (05) WRITE KEY DATA (0D) SINGLE COMMAND                   11100000
+*                                                                       11150000
+***************************************************************         11200000
+         LA      RB,1                 SET COUNT                         11250000
+         CLI     CCWOP,WDATA          WRITE DATA                        11300000
+         BE      ECRRET00             YES, ==================>          11350000
+         CLI     CCWOP,WKYDATA        WRITE KEY-DATA                    11400000
+         BE      ECRRET00             YES, ==================>          11450000
+         SPACE   3                                             @D51GDAP 11500000
+***************************************************************         11550000
+*                                                                       11600000
+*  WRITE COUNT KEY DATA (1D) SINGLE COMMAND                             11650000
+*                                                                       11700000
+***************************************************************         11750000
+         CLI     CCWOP,WCKD           WRITE COUNT-KEY-DATA              11800000
+         BNE     ECRRET12             NO,  ==================>          11850000
+.*                                                             @D51EDAP 11900000
+.*   SUB-COMMAND FORMAT WRITE                                  @D51EDAP 11950000
+.*                                                             @D51EDAP 12000000
+.*       COUNT ORIENTATION                                     @D51EDAP 12050000
+.*                                                             @D51EDAP 12100000
+ECRWD010 MVI     ECXLOPB,OPERCFTW ORIENT-COUNT     OPER FORMAT-WRITE    12150000
+         B       ECRRET00             EXIT ==================>          12200000
+         SPACE   3                                             @D51GDAP 12250000
+***************************************************************         12300000
+*                                                                       12350000
+*  WRITE DATA (05) WRITE KEY DATA (0D) COMMAND CHAINING                 12400000
+*             (12) SINGLE READ COUNT SUFFIXED                           12450000
+*                                                                       12500000
+***************************************************************         12550000
+.*                                                             @D51EDAP 12600000
+.*   SUB-COMMAND WRITE DATA (MULTIPLE RECORDS TO PROCESS)      @D51EDAP 12650000
+.*                                                             @D51EDAP 12700000
+.*       COUNT ORIENTATION        (PROCESS SAME RECORD FIELDS) @D51EDAP 12750000
+.*                                                             @D51EDAP 12800000
+ECRWD020 CLI     CCWOP,WDATA          WRITE DATA                        12850000
+         BE      ECRWD030             YES,                     @D51GDAP 12900000
+         CLI     CCWOP,WKYDATA        WRITE KEY-DATA                    12950000
+         BNE     ECRWK010             NO,                               13000000
+ECRWD030 LA      RB,1(,RB)            INCREMENT RECORD COUNTER @DA43487 13059900
+         BAL     RA,NEXTCCW           TRY NEXT CCW                      13069900
+         CLI     CCWOP,READSCNT       OPCODE READ COUNT                 13100000
+         BNE     ECRCEMIX             NO,                      @DA43487 13169900
+         OI      ECXLAUX,1            SET READ COUNT SUFFIX    @D51EDAP 13200000
+         LA      RB,2                 SET COUNT                @D51GDAP 13250000
+         TM      CCWCHAIN,CC+DC       COMMAND OR DATA CHAINING @D51EDAP 13300000
+         BNZ     ECRCEMIX             YES,                              13350000
+         B       ECRRET00                  ==================> @D51GDAP 13400000
+         SPACE   3                                             @D51GDAP 14800000
+***************************************************************         14850000
+*                                                                       14900000
+*  WRITE COUNT KEY DATA (1D) PROCESSING WITH                            14950000
+*                       (1D) WRITE COUNT KEY DATA CHAINED               15000000
+*                                                                       15050000
+***************************************************************         15100000
+ECRWK010 CLI     CCWOP,WCKD           WRITE COUNT-KEY-DATA              15179900
+         BNE     ECRWS010             NO,                               15209900
+.*                                                             @D51EDAP 15250000
+.*   SUB-COMMAND FORMAT WRITE                                  @D51EDAP 15300000
+.*                                                             @D51EDAP 15350000
+.*       COUNT ORIENTATION                                     @D51EDAP 15400000
+.*                                                             @D51EDAP 15450000
+         MVI     ECXLOPB,OPERCFTW ORIENT-COUNT     OPER FORMAT-WRITE    15500000
+ECRWK020 LA      RB,1(RB)             INCREMENT RECORD COUNT            15550000
+         BAL     RA,NEXTCCW           TRY NEXT CCW                      15600000
+         NI      CCWOP,XFF-MULTITRK   RESET MULTI TRACK BIT             15650000
+         CLI     CCWOP,WCKD           OPCODE WRITE CKD                  15700000
+         BNE     ECRCEMIX             CKD-ECKD-MIX OR INVALID CCW       15750000
+ECRWK030 CH      RB,H256              DID WE REACH LIMIT                15800000
+         BNE     ECRWK020             NO                       @D51GDAP 15850000
+         B       ECRRET16             YES, ==================>          15900000
+         SPACE   3                                             @D51GDAP 15950000
+.**************************************************************         16000000
+.*                                                                      16050000
+.*       WRITE R0 X'15' / WRITE HOME ADDRESS X'19'                      16100000
+.*                                                                      16150000
+.**************************************************************         16200000
+ECRWS010 CLI     CCWOP,WHA            WRITE HOME ADDRESS                16269900
+         BNE     ECRWS020             NO,                               16289900
+         MVI     FIMAGLAT,X'C0'       PERMIT ALL WRITE         @DA41012 16325000
+         LA      RB,1(RB)             INCREMENT RECORD COUNT            16350000
+         BAL     RA,NEXTCCW           TRY NEXT CCW                      16400000
+ECRWS020 CLI     CCWOP,WRITER0        IS IT WRITE RECORD ZERO           16450000
+         BNE     ECRRET12             NO,  ==================>          16487500
+         MVI     FIMAGLAT,X'C0'       PERMIT ALL WRITE         @DA41012 16525000
+.*                                                             @D51EDAP 16550000
+.*   SUB-COMMAND FORMAT WRITE                                  @D51EDAP 16600000
+.*                                                             @D51EDAP 16650000
+.*       HOME ADDRESS ORIENTATION                              @D51EDAP 16700000
+.*                                                             @D51EDAP 16750000
+         MVI     ECXLOPB,OPERHAFW ORIENT-HA        OPER FORMAT WRITE    16800000
+ECRWS030 LA      RB,1(RB)             INCREMENT RECORD COUNT            16850000
+         BAL     RA,NEXTCCW           TRY NEXT CCW                      16900000
+         CLI     CCWOP,WCKD           OPCODE WRITE CKD                  16950000
+         BE      ECRWS040             YES,                              17000000
+         CLI     CCWOP,WCKD+MULTITRK  OPCODE WRITE CKD NEXT TRACK       17050000
+         BNE     ECRCEMIX             NO,                               17100000
+ECRWS040 CH      RB,H256              MORE THAN 256 CCW'S               17150000
+         BE      ECRRET16             YES, ===================>         17200000
+         B       ECRWS030                                               17250000
+         EJECT                                                          17300000
+***************************************************************         17350000
+*  NEXTCCW                                                              17400000
+***************************************************************         17450000
+*  - ADVANCE CCW TO NEXT NON DATA CHAINED COMMAND OTHER THAN            17500000
+*    A TIC                                                              17550000
+*  - SAVE THE ORIGINAL COMMAND CODE                                     17600000
+*  - SAVE MAX. RECORD LENGTH                                            17650000
+*  - RETURN TO CALLER (REG 10)                                          17700000
+***************************************************************         17750000
+NEXTCCW  TM      CCWCHAIN,CC+DC       ANY CHAINING             @D51EDAP 17800000
+         BZ      ECRN050              NO,                      @D51EDAP 17850000
+         SR      R8,R8                SET BYTE COUNTER TO ZERO          17900000
+         TM      CCWCHAIN,DC          DATA CHAINING                     17950000
+         BNO     ECRN010              NO                                18000000
+         ICM     R8,3,CCWLNG          GET BYTE COUNT                    18100000
+ECRN010  ST      R7,OLDPTR            SAVE POINTER TO OLD CCW (REAL)    18150000
+         MVC     OLDOP,CCWOP          SAVE COPY OF OLD OPCODE           18200000
+ECRNLOOP MVC     OLDFLAGS,CCWCHAIN    SAVE OLD FLAGS                    18250000
+         LA      R9,8(R9)             ADVANCE TO NEXT CCW     (VIRT)    18300000
+         LA      R7,8(R7)             ADVANCE TO NEXT CCW     (REAL)    18350000
+         TM      CCWCODE,X0F-TIC      OP CODE TIC                       18400000
+         BNZ     ECRN020              NO CHECK FOR DATA CHAIN.          18450000
+         TM      CCWCODE,TIC          OP CODE TIC                       18500000
+         BNO     ECRN020              NO CHECK FOR DATA CHAIN.          18550000
+         CH      R2,H256              MORE THAN 256 TICS                18600000
+         BH      ECRRET12             YES, ==================>          18650000
+         LA      R2,1(,R2)            INCREMENT TIC COUNT               18700000
+         CLC     CCWBUF+1(3),OLDPTR+1 STATUS MODIFIER ?                 18750000
+         BNE     ECRN015              NO GET VIRT. ADDRESS              18800000
+         LA      R9,8(,R9)            SKIP TIC CCW             (VIRT)   18850000
+         LA      R7,8(,R7)            SKIP TIC CCW             (REAL)   18900000
+         TM      CCWCODE,X0F-TIC      TIC FOLLOWED BY TIC ?             18950000
+         BNZ     ECRN020              NO CHECK FOR DATA CHAIN.          19000000
+         TM      CCWCODE,TIC          OP CODE TIC                       19050000
+         BNO     ECRN020              NO CHECK FOR DATA CHAIN.          19100000
+         CH      R2,H256              MORE THAN 256 TICS                19150000
+         BH      ECRRET12             YES, ==================>          19200000
+         LA      R2,1(R2)             INCREMENT TIC COUNT               19250000
+ECRN015  EQU     *                                                      19270000
+         ICM     R7,7,CCWBUF+1        ADDR. OF NEXT CCW (REAL) @DA42692 19290000
+         MVC     DUMMYTIC(4),0(R9)    COPY TO DUMMY AREA       @DA42692 19310000
+         LA      R9,DUMMYTIC          MAKE CCW ADDRESSABLE     @DA42692 19330000
+         BAL     R5,ECRVIADR          CONVERT ADDRESS TO VIRTUAL        19350000
+         LR      R9,RF                GET VIRTUAL CCW ADDRESS  @D51EDAP 19400000
+ECRN020  TM      OLDFLAGS,DC          DATA CHAINING IN PROGRESS         19450000
+         BO      ECRN040              YES                               19500000
+         SLR     R8,R8                CLEAR BYTE COUNTER                19550000
+         ICM     R8,3,CCWLNG          GET BYTE COUNT           @D51EDAP 19600000
+ECRN030  CLM     R8,3,BYTEMAX         IS THIS THE NEW MAXIMUM  @D51EDAP 19650000
+         BNH     ECRN035              NO                                19700000
+         STCM    R8,3,BYTEMAX         YES UPDATE BYTEMAX       @D51EDAP 19750000
+ECRN035  MVC     CCWOP,CCWCODE        COPY OPCODE                       19800000
+         TM      CCWCHAIN,PCIL        PGM CONTROLLED INTERRUP  @D51EDAP 19850000
+         BO      ECRRET20             YES, ==================> @D51EDAP 19880000
+         BR      RA                   RETURN=================> @DA41012 19910000
+.*                                                             @D52VDAP 19940000
+.*       PROCESS DATA CHAINED CCW'S                            @D52VDAP 19960000
+.*                                                             @D52VDAP 19980000
+ECRN040  SLR     RF,RF                CLEAR BYTE COUNTER                20000000
+         ICM     RF,3,CCWLNG          GET BYTE COUNT           @D51EDAP 20050000
+         AR      R8,RF                ADD BYTE COUNT TO TOTAL  @D51EDAP 20100000
+         TM      CCWCHAIN,DC          MORE DATA CHAINING                20150000
+         BO      ECRNLOOP             YES,                              20200000
+         CLM     R8,3,BYTEMAX         IS THIS THE NEW MAXIMUM  @D51EDAP 20225000
+         BNH     ECRN045              NO,                      @DA41012 20250000
+         STCM    R8,3,BYTEMAX         SAVE NEW MAXIMUM         @DA41012 20275000
+ECRN045  TM      CCWCHAIN,CC          COMMAND CHAINING         @DA41012 20300000
+         BO      ECRNLOOP             YES, KEEP GOING          @DA41012 20325000
+ECRN050  LTR     RB,RB                ANY RECORD COUNT                  20368700
+         BZ      ECRRET12             NO,  ==================>          20412400
+         B       ECRRET00             YES, ==================>          20456100
+**************************************                                  20500000
+* SERVICE TO GET VIRT. ADDRESS                                          20550000
+**************************************                                  20600000
+ECRVIADR EQU     *                    GET VIRTUAL ADR                   20650000
+         STM     R6,R9,GETDSAVE       SAVE REG 6 - 9           @DA42692 20700000
+         SR      R0,R0                SET DISPLACEMENT TO 0             20800000
+         LR      R8,R9                PREPARE R8                        20850000
+         AMODESW SET,AMODE=24,WR=(R7) FORCE 24-BIT MODE        @DY45290 20860000
+         BAL     R7,GETDADR           GET VIRTUAL ADDRESS               20900000
+         AMODESW SET,AMODE=31,WR=(R7) FORCE 31-BIT MODE        @DY45290 20910000
+         LM      R6,R9,GETDSAVE       RESTORE REG 6 - 9        @DA42692 20950000
+         LTR     RF,RF                CONVERSION SUCCESSFUL             21000000
+         BNZR    R5                   YES, ==================>          21050000
+         B       ECRRET24             NO,  ==================>          21100000
+**************************************                                  21450000
+* EITHER CKD-ECKD-MIX OR INVALID CCW EXIT                               21500000
+**************************************                                  21550000
+ECRCEMIX CLI     CCWOP,DX             OP CODE DEFINE EXTENT    @D52VDAP 21600000
+         BE      ECRRET04                  ==================> @DA43585 21750000
+         CLI     CCWOP,SEEKHEAD       OP CODE SEEK HEAD        @DA43858 21770000
+         BE      ECRRET04                  ==================> @DA43858 21790000
+         CLI     CCWOP,SEARCH         OP CODE SEARCH ID        @DA43858 21810000
+         BE      ECRRET04                  ==================> @DA43858 21830000
+         CLI     CCWOP,SETSECT        OP CODE SET SECT                  21900000
+         BE      ECRRET04                  ==================>          21925000
+         CLI     CCWOP,RDSECT         OP CODE READ SECTOR      @DA43312 21950000
+         BE      ECRCETST                                      @DA44117 21985000
+         CLI     CCWOP,NOP            OP CODE NO OPERATION              22000000
+         BE      ECRCETST                                      @DA44117 22070000
+         B       ECRRET12             INV  ==================>          22100000
+ECRCETST TM      CCWCHAIN,CC+DC       COMMAND OR DATA CHAINING @DA44117 22110000
+         BNZ     ECRRET04             YES, ==================> @DA44117 22120000
+         B       ECRRET00             NO,                      @D62NDAP 22130000
+**************************************                                  22150000
+*  SET CONVERSION INDICATOR ¬= 0                                        22200000
+**************************************                                  22250000
+ECRRET24 LA      R3,4(,R3)         24 SYSTEM ERROR                      22300000
+ECRRET20 LA      R3,4(,R3)         20 PCI FLAG SET                      22350000
+ECRRET16 LA      R3,4(,R3)         16 CHAN. PGM > 256 CCW'S             22400000
+ECRRET12 LA      R3,4(,R3)         12 INVALID OPCODE OR                 22450000
+ECRRET08 LA      R3,4(,R3)          8 CHAN. PGM WAS ALREADY             22500000
+ECRRET04 LA      R3,4(,R3)          4 FIRST DOMAIN CONVERTED            22550000
+ECRRET00 LTR     RF,R3              0 ANY ERRORS DETECTED               22600000
+         BNZ     ECRRETUR             YES,                     @DA44117 22635000
+ECRE010  CLI     FIMAGLAT,X'40'       READ ONLY ACCESS         @DAOM    22636000
+         BE      ECRE030              YES,                     @DAOM    22637000
+         TM      ECRDVCAP,VCTCRAID    IS THIS A RAID DEVICE    @DA43335 22660000
+         BZ      ECRE020              NO,                      @DA43335 22675000
+         OI      ECXDGBLE,X'04'       REGULAR R0 DATA RECORD   @DA43335 22720000
+*HERE                                                                   22730000
+ECRE020  L       R8,ECRSAVE+(4*RE)    GET ECCWADR BASE ADDRESS @DAOM    22730100
+         USING   PBXADR,R8            PUBX BASE ADDRESS        @DAOM    22730200
+         TM      PBXFLAG1,PBXRONLY    WRITE INHIBITED          @DAOM    22731000
+         BZ      ECRE030              NO,                      @DAOM    22732000
+         OI      FIMAGLAT,X'40'       INHIBIT WRITE ACCESS     @DAOM    22733000
+         NI      FIMAGLAT,XFF-X'80'   FOR THIS CCW CHAIN       @DAOM    22734000
+ECRE030  MVC     ECXDMSK(2),FIMAGLAT  FILE MASK & GLOB. ATTR.  @DAOM    22735000
+         MVC     ECXDBLK,BYTEMAX      SET UP DE BLOCKSIZE               22750000
+         STCM    RB,1,ECXLCNT         SET UP RECORD COUNTER             22800000
+ECRE040  L       RE,ECRSAVE+(4*RF)    GET ECCWADR BASE ADDRESS @DAOM    22850000
+         LA      R5,ECRPREP           PREPARATION AREA         @D51GDAP 22900000
+         MVC     ECCCWDEF(ECCCWLNG),0(R5) COPY INFORMATION              22950000
+ECRRETUR AMODESW SET,AMODE=24,WR=(R2) FORCE 24-BIT MODE        @DY45290 23000000
+         LM      R0,RE,ECRSAVE        RESTORE CALLER'S REGISTERS        23010000
+         BR      RC                   RETURN===============>>>          23050000
+         DROP    R9                   RELEASE VIRTUAL CCW BASE          23150000
+         DROP    R6                   RELEASE DISPATCHER BASE           23400000
+         DROP    R8                   RELEASE PUBX       BASE  @DAOM    23410000
+         DROP    RD                   RELEASE SGECKD BASE               23450000
+         DROP    RE                   RELEASE ECKD PREFIX AREA @D51EDAP 23500000
+*                                                                       23550000
+ECRSAVE  DS      16F            SAVE AREA                               23600000
+*                                                                       23650000
+GETDSAVE DS      4F             SAVE AREA FOR GETDADR          @DA42692 23700000
+*                                                                       23750000
+DUMMYTIC DC      XL8'0'         TIC CCW COPY BUFFER            @DA42692 23766600
+*                                                              @DA42692 23783200
+         EJECT                                                          23800000
+ECRPREP  DC      XL(ECCCWLNG)'00' PREPARATION AREA                      23850000
+         SPACE   3                                                      23900000
+BYTEMAX  DC      H'0'                                                   23950000
+         SPACE   1                                             @D51GDAP 24000000
+OPERCFTW EQU     X'03'            COUNT OR. FORMAT WRITE OPER.          24050000
+OPERHAFW EQU     X'43'            HA    OR. FORMAT WRITE OPER.          24100000
+OPERCWD  EQU     X'01'            COUNT OR. WRITE DATA   OPER.          24150000
+OPERCWTR EQU     X'0B'            COUNT OR. WRITE TRACKS OPER.          24200000
+OPERRD   EQU     X'16'            COUNT OR. READ         OPER.          24250000
+OPERDARD EQU     X'96'            DATA  OR. READ         OPER.          24300000
+OPERHARD EQU     X'56'            HA    OR. READ         OPER.          24350000
+OPERCRDA EQU     X'06'            COUNT OR. READ DATA    OPER.          24400000
+RDCNTSUF EQU     X'01'            READ COUNT SUFFIX                     24450000
+*                                                                       24500000
+         DS      0F                                                     24550000
+ECRCNCW2 DC      XL4'40000010'  SECOND PART OF CCW                      24600000
+*                                                                       24650000
+OLDPTR   DC      F'0'                                                   24700000
+ECRDVCAP DC      XL1'00'          REAL DEVICE FEATURES         @DA43335 24725000
+CCWOP    DC      XL1'00'                                                24750000
+OLDOP    DC      XL1'00'                                                24800000
+OLDFLAGS DC      XL1'00'                                                24850000
+FIMAGLAT DC      B'0000000011100000' FILE MASK & GLBL ATTR.    @DA41012 24900000
+         DS      0H'0'                                         @D51EDAP 24950000
+         MEND                                                           25000000

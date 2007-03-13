@@ -1,0 +1,236 @@
+         EJECT                                                          00001000
+*********************************************************************** 00002000
+*               CA-RAPS TERMINAL ERROR PROGRAM (TEP)                  * 00003000
+*********************************************************************** 00004000
+         SPACE ,                                                        00005000
+*********************************************************************** 00006000
+*        VERSION IDENTIFYING HEADER                                   * 00007000
+*********************************************************************** 00008000
+CAPRTEP0 DS    0H                                                       00009000
+         B     *+(CAPRTEP1-CAPRTEP0)   BRANCH AROUND HEADER             00010000
+         DC    CL8'CAPRTEP '           PROGRAM ID                       00011000
+         DC    CL7'VM=5.0 '            VERSION                          00012000
+         DC    CL11'CA-RAPS/VSE'       PRODUCT                          00013000
+CAPRTEP1 DS    0H                      ALIGNMENT                        00014000
+         SPACE ,                                                        00015000
+*********************************************************************** 00016000
+*        TEST IF IT IS A BTAM HARD COPY AND UNAVAILABLE PRINTER       * 00017000
+*        IF SO SEND HARDCOPY TO VSE/POWER LIST QUEUE                  * 00018000
+*********************************************************************** 00019000
+         TM    TCTLEPFL,TCEMCUP   UNAVAILABLE PRINTER ?                 00020000
+         BNO   CHKERR             ..NO, CHECK FOR ERROR CONDITION       00021000
+         EJECT                                                          00022000
+*********************************************************************** 00023000
+*        CA-RAPS TERMINAL ERROR PROGRAM HARDCOPY FEATURE ROUTINE      * 00024000
+*********************************************************************** 00025000
+         L     R3,TCTLEIOA        LOAD ADDR OF LIOA                     00026000
+         LH    R5,2(,R3)          LOAD LENGTH OF LIOA                   00027000
+         LA    R5,14(,R5)         BUMP LENGTH FOR LLBB/TCTTE ADDR       00028000
+         STH   R5,TCASCNB         STORE LENGTH FOR GETMAIN              00029000
+         SPACE                                                          00030000
+         DFHSC TYPE=GETMAIN,INITIMG=00,CLASS=USER                       00031000
+         L     R6,TCASCSA         LOAD ADDRESS OF STORAGE               00032000
+         LTR   R6,R6              ABLE TO GET ANY ?                     00033000
+         BZ    CAPRTEPX           NO, EXIT IMMEDIATELY                  00034000
+         LA    R6,8(,R6)          POINT TO USER STORAGE                 00035000
+         STH   R5,0(,R6)          STORE LENGTH OF IC DATA               00036000
+         SPACE                                                          00037000
+         MVI   4(R6),X'FF'        SET FLAG                              00038000
+         MVC   5(1,R6),TCTEDSCL   SET DEFAULT NUMBER OF LINES           00039000
+         MVC   6(1,R6),TCTEDSCC   SET DEFAULT NUMBER OF COLUMNS         00040000
+         TM    TCTE32SF,TCTEALW+TCTELEWA   IS ALT ON?                   00041000
+         BZ    CAPRHC10           ...NO-BRANCH,USE DEFAULTS             00042000
+         MVC   5(1,R6),TCTEASCL   SET ALT NUMBER OF LINES               00043000
+         MVC   6(1,R6),TCTEASCC   SET ALT NUMBER OF COLUMNS             00044000
+         SPACE                                                          00045000
+CAPRHC10 DS    0H                                                       00046000
+         MVC   7(4,R6),TCTTETI    SET TERM ID                           00047000
+         MVC   11(3,R6),TCTTEOI   SET OP ID                             00048000
+         SPACE                                                          00049000
+         LR    R4,R3              COPY LIOA ADDR FOR MVCL               00050000
+         LH    R5,2(R3)           LOAD LIOA LENGTH FOR MVCL             00051000
+         LA    R14,14(,R6)        LOAD TO ADDRESS FOR MVCL              00052000
+         LR    R15,R5             COPY LENGTH FOR MVCL                  00053000
+         MVCL  R14,R4             COPY LIOA TO IC DATA                  00054000
+         EJECT                                                          00055000
+         ST    R6,TCAICDA         STORE IC DATA ADDRESS                 00056000
+         DFHIC TYPE=PUT,TRANSID=RSCN,ICDADDR=YES                        00057000
+         SH    R6,=H'8'           POINT TO SAA                          00058000
+         ST    R6,TCASCSA         STORE ADDR FOR FREEMAIN               00059000
+         DFHSC TYPE=FREEMAIN      RELEASE STORAGE                       00060000
+         MVC   TCTLETLA-1(4),=F'-1' INDICATE DATA DISPOSED/RESTORE KBD  00061000
+         B     CAPRTEPX           EXIT THE TEP                          00062000
+         EJECT                                                          00063000
+*********************************************************************** 00064000
+*        CA-RAPS TERMINAL ERROR PROGRAM ERROR RECOVERY ROUTINE        * 00065000
+*                                                                     * 00066000
+*        TEST FOR ANY OF THE FOLLOWING CONDITIONS:                    * 00067000
+*        'TERMINAL OUT-OF-SERVICE' OR 'ABEND TASK' OR 'ABORT WRITE'   * 00068000
+*********************************************************************** 00069000
+CHKERR   DS    0H                                                       00070000
+         TM    TCTLEECB+1,TERMOS+ABENDT+ABORTWR ANY OF THE ABOVE SET ?  00071000
+         BZ    CAPRTEPX           NO... EXIT THE TEP                    00072000
+         SPACE                                                          00073000
+*********************************************************************** 00074000
+*        ACQUIRE WORKING STORAGE (BASE=R6)                            * 00075000
+*********************************************************************** 00076000
+         LA     R6,288                                                  00077000
+         STH    R6,TCASCNB             STORE LENGTH FOR GETMAIN         00078000
+         DFHSC TYPE=GETMAIN,INITIMG=00,CLASS=USER                       00079000
+         L     R6,TCASCSA              LOAD ADDRESS OF STORAGE          00080000
+         LTR   R6,R6                   ABLE TO GET ANY ?                00081000
+         BZ    CAPRTEPX                NO, EXIT IMMEDIATELY             00082000
+         LA    R6,8(,R6)               BUMP PAST SAA                    00083000
+         DFHPC TYPE=LOAD,PROGRAM=CAPRLOC8                               00084000
+         L     R15,TCAPCLA             CAPRLOC8 ENTRY POINT             00085000
+         EJECT                                                          00086000
+         DFHIC TYPE=STOPTIME,CLASS=RUNAWAY    AVOID AICA                00087000
+         LA    R1,TCTTETI              R1 => ADDR OF PRINTER ID         00088000
+         ST    R1,264(,R6)             ADR TCTTETI IN PARAMETER LIST    00089000
+         ST    R13,268(,R6)            ADR CSA IN PARAMETER LIST        00090000
+         ST    R13,256(,R6)            ADR CSA IN SAVE AREA             00091000
+         SPACE                                                          00092000
+         LA    R1,264(,R6)             R1 => PARAMETER LIST             00093000
+         LA    R13,0(,R6)              R13 => SAVEAREA FOR CAPRLOC8     00094000
+         BALR  R14,R15                 CHECK IF A RAPS PRINTER          00095000
+         B     CAPREXT1                +0 NOT A RAPS PRINTER            00096000
+         B     CAPRCVR                 +4 RAPS PRINTER                  00097000
+         SPACE                                                          00098000
+CAPREXT1 DS    0H                                                       00099000
+         L     R15,TWASAVE+4           RESTORE R15                      00100000
+         L     R13,256(,R6)            RESTORE CSA ADDR                 00101000
+         B     CAPRTPX2                NOT A RAPS PRINTER SO EXIT       00102000
+         EJECT                                                          00103000
+CAPRCVR  DS    0H                                                       00104000
+*********************************************************************** 00105000
+*  AN ERROR HAS OCCURED AT A RAPS PRINTER, NOW EXAMINE ERROR TYPE     * 00106000
+*                                                                     * 00107000
+*  IF WE HAVE AN INTERVENTION REQUIRED THEN WE DO NOT WANT TO SET THE * 00108000
+*  I/O ERROR BIT ON IN THE RPCB EXTENSTION BECAUSE:                   * 00109000
+*                                                                     * 00110000
+*       1) THE OPERATOR CAN HIT STOP ON THE PRINTER AND IF THIS       * 00111000
+*          IS THE CASE WE DO NOT WANT TO RESEND THE BUFFER.           * 00112000
+*       2) THE PRINTER HAS RUN OUT OF FORMS, WHEN FORMS BECOME        * 00113000
+*          AVAILABLE WE DO NOT WANT TO RESEND THE BUFFER.             * 00114000
+*********************************************************************** 00115000
+         ST    R15,260(,R6)            SAVE ADCON RPCB           (RPCB) 00116000
+         L     R13,256(,R6)            RESTORE CSA ADDR                 00117000
+         SPACE                                                          00118000
+         L     R1,TWASAVE+12           GET TACLE ADDRESS BACK           00119000
+         TM    08(R1),X'94'            IS THIS SOME KIND OF UNIT CK?    00120000
+         BZ    NOTUNIT                 NO...  LET RAPS RESEND BUFFER    00121000
+         TM    32(R1),X'40'            INTERVENTION REQUIRED?           00122000
+         BZ    NOTUNIT                 NO, BUFFER RESEND REQUIRED       00123000
+         SPACE                                                          00124000
+         NI    TCTLEECB+1,255-(TERMOS+DISCON+ABENDT) SET NO ABEND       00125000
+         L     R15,X'0C'(R15)          ADCON RPCB  EXTENSION            00126000
+         TM    X'48'(R15),X'80'        ANYTHING PRINT YET?      (RPCBE) 00127000
+         BZ    NOTUNIT                 ..NO                             00128000
+         SPACE                                                          00129000
+*********************************************************************** 00130000
+*        INTERVENTION REQUIRED                                        * 00131000
+*********************************************************************** 00132000
+INTRV020 DS    0H                                                       00133000
+         LH    R1,X'4A'(R15)           RETRY LIMIT                      00134000
+         LTR   R1,R1                   ANY SPECIFIC LIMIT?              00135000
+         BP    INTRV050                ..YES                            00136000
+         LH    R1,INTVRTRY             SET DEFAULT LIMIT                00137000
+         SPACE                                                          00138000
+INTRV050 DS    0H                                                       00139000
+         LH    R14,X'46'(R15)          # INTERVENTION RETRIES SO FAR    00140000
+         LA    R14,1(,R14)             UPDATE COUNTER                   00141000
+         CR    R14,R1                  LIMIT EXCEEDED?                  00142000
+         BH    NOTUNIT                 ..YES                            00143000
+         SPACE                                                          00144000
+         STH   R14,X'46'(R15)          STORE COUNTER                    00145000
+         SPACE                                                          00146000
+         DFHIC TYPE=WAIT,INTRVAL=000005 WAIT 5 SECONDS TO GIVE          00147000
+*                                       INTV REQD A CHANCE TO CLEAR     00148000
+         B     SENDMSG                                                  00149000
+         EJECT                                                          00150000
+*********************************************************************** 00151000
+*        ABORT THE WRITE                                              * 00152000
+*********************************************************************** 00153000
+NOTUNIT  EQU   *                                                        00154000
+         L     R1,TWASAVE+12           GET TACLE ADDRESS BACK           00155000
+         OI    TCTLEECB+1,(NONPRGT+TERMOS+ABORTWR)  ABORT THE WRITE     00156000
+         SPACE                                                          00157000
+         BAL   1,*+8                   AROUND                           00158000
+         DC    XL4'FF000000'           MASK TO SET PSW KEY TO ZERO      00159000
+         L     1,0(1)                  LOAD MASK                        00160000
+         SVC   13                      SET PSW KEY TO ZERO              00161000
+         SPACE                                                          00162000
+         L     R15,260(,R6)            LOAD ADCON RPCB           (RPCB) 00163000
+         OI    X'D3'(R15),X'04'        SET PRINTER PAUSED        (RPCB) 00164000
+         OI    X'D5'(R15),X'04'        SET WAIT ON TERMINAL ERR  (RPCB) 00165000
+         L     R15,X'0C'(R15)          ADCON RPCB EXTENSION             00166000
+         OI    X'38'(R15),X'01'        SET TEP FLAG             (RPCBE) 00167000
+         SPACE                                                          00168000
+         BAL   1,*+8                   AROUND                           00169000
+         DC    XL4'FF0000FF'           MASK TO RESET PSW KEY            00170000
+         L     1,0(1)                  LOAD MASK                        00171000
+         SVC   12                      RESET PSW KEY                    00172000
+         SPACE 4                                                        00173000
+*********************************************************************** 00174000
+*        SEND MESSAGE TO CONSOLE                                      * 00175000
+*                                                                     * 00176000
+*        (FOR INTERVENTION REQUIRED, SEND MESSAGE ONLY ONCE EVERY)    * 00177000
+*        (TWO MINUTES TO PREVENT FLOODING THE CONSOLE.           )    * 00178000
+*********************************************************************** 00179000
+SENDMSG  DS    0H                                                       00180000
+         L     R15,260(,R6)            LOAD ADCON RPCB           (RPCB) 00181000
+         L     R15,X'0C'(R15)          ADCON RPCB EXTENSION             00182000
+         LH    R14,X'46'(R15)          # INTERVENTION RETRIES SO FAR    00183000
+         LTR   R14,R14                 IS THIS INTERVENTION?            00184000
+         BNP   SENDMSG5                ..NO, CONTINUE                   00185000
+         SPACE                                                          00186000
+         BCTR  R14,0                   ENSURE FIRST TIME GIVES MESSAGE  00187000
+         SRDA  R14,32(0)               PREPARE FOR DIVIDE               00188000
+         D     R14,=F'24'              DIVIDE BY 24 (5 X 24 = 120 SEC.) 00189000
+         LTR   R14,R14                 ANY REMAINDER?                   00190000
+         BNZ   CAPRTPX2                ..YES                            00191000
+         SPACE                                                          00192000
+SENDMSG5 DS    0H                                                       00193000
+         LA    R14,152(,R6)            R14 => CCB/CCW ADDR IN WRKSTOR   00194000
+         MVC   0(24,R14),LOGMSG        MOVE CCB/CCW TO WRKSTG           00195000
+         MVC   72(80,R6),CAPRMSG1      MOVE ERR MSG TO WRKSTG           00196000
+         MVC   118(4,R6),TCTTETI       MOVE TERMID TO MSG               00197000
+         LA    R1,72(,R6)              POINT TO WHERE MSG IS            00198000
+         STCM  R1,7,17(R14)            STORE ADDR INTO THE CCW          00199000
+         LA    R1,16(,R14)             GET ADDR OF THE CCW              00200000
+         STCM  R1,7,9(R14)             STORE IT IN THE CCB              00201000
+         LA    R1,0(,R14)               POINT AT CCB                    00202000
+         EXCP  (1)                     ISSUE THE MESSAGE                00203000
+         WAIT  (1)                     WAIT FOR I/O TO COMPLETE         00204000
+CAPRTPX2 DS    0H                                                       00205000
+         L     R1,TWASAVE+12           GET TACLE ADDRESS BACK           00206000
+         SH    R6,=H'8'                POINT TO SAA                     00207000
+         ST    R6,TCASCSA              STORE ADDR FOR FREEMAIN          00208000
+         DFHSC TYPE=FREEMAIN           RELEASE STORAGE                  00209000
+         B     CAPRTEPX                                                 00210000
+         EJECT                                                          00211000
+*********************************************************************** 00212000
+*        MODEL CCB/CCW FOR WRITE TO CONSOLE                           * 00213000
+*********************************************************************** 00214000
+         DS    0D                                                       00215000
+LOGMSG   CCB   SYSLOG,LOGCCW1,X'9400'                                   00216000
+LOGCCW1  CCW   X'09',CAPRMSG1,X'00',80                                  00217000
+CAPRMSG1 DC    CL80'CA-RAPS NODE ERROR PROGRAM ACTIVE FOR PRINTER XXXX' 00218000
+         SPACE 5                                                        00219000
+*********************************************************************** 00220000
+*        TUNABLE CONSTANTS                                            * 00221000
+*                                                                     * 00222000
+*        'INTVRTRY' IS THE NUMBER OF 5 SECOND RETRY INTERVALS WE      * 00223000
+*        WILL WAIT FOR AN OPERATOR TO CLEAR AN INTERVENTION REQUIRED  * 00224000
+*        CONDITION ON A PRINTER, BEFORE THE ATTEMPTED PRINT OPERATION * 00225000
+*        IS STOPPED AND THE PRINTER IS ASSIGNED 'INTRVNTION'          * 00226000
+*        STATUS - PAUSED DUE TO INTERVENTION REQUIRED.                * 00227000
+*        NOTE:  DO NOT EXCEED 32767 MAXIMUM VALUE.                    * 00228000
+*********************************************************************** 00229000
+INTVRTRY DC    H'72'           72/12 = 6 MIN. OF INTERVENTION RETRY     00230000
+         EJECT                                                          00231000
+*********************************************************************** 00232000
+*        CA-RAPS TERMINAL ERROR PROGRAM ERROR COMMON EXIT POINT       * 00233000
+*********************************************************************** 00234000
+CAPRTEPX DS    0H                                                       00235000
+         SPACE 2                                                        00236000

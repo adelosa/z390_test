@@ -1,0 +1,525 @@
+*        %GOTO CSMX1;    /* BILINGUAL MAPPING                           00050001
+         MACRO                                                          00100001
+         IJBCSMX                                                        00150001
+*                                                                    */ 00200001
+*%CSMX1 : ;                                                             00250001
+*/***START OF SPECIFICATIONS******************************************/ 00300001
+*/*                                                                  */ 00350001
+*/* MACRO NAME= IJBCSMX                                              */ 00400001
+*/*                                                                  */ 00450001
+*/* DESCRIPTIVE NAME = DSECTs for external message processor         */ 00500001
+*/*                       1. CMXPARM     - message parm list         */ 00550001
+*/*                       2. CMXMSG      - message part              */ 00600001
+*/*                       3. CMXT        - single message text line  */ 00650001
+*/*                       4. CIXPARM     - console input parm list   */ 00700001
+*/*                                                                  */ 00750001
+*/* COPYRIGHT =                                                      */ 00800001
+*/*             This macro is "Restricted Materials of IBM"          */ 00850001
+*/*             5686-066 (C) Copyright IBM Corporation 1995"         */ 00900001
+*/*             Licensed Materials - Property of IBM                 */ 00950001
+*/*                                                                  */ 01000001
+*/* STATUS =    VSE/ESA 2.1.0                                        */ 01050001
+*/*                                                                  */ 01100001
+*/* FUNCTION =  Contains all DSECTS that are used to pass message    */ 01107101
+*/*             or console input information from the console router */ 01114201
+*/*             to an external message or console input processor    */ 01121301
+*/*             and to pass message or console input processing      */ 01128401
+*/*             from the external processor to the console router.   */ 01135501
+*/*                                                                  */ 01142601
+*/* METHOD OF ACCESS =                                               */ 01150001
+*/*      BAL  - Specify IJBCSMX                                      */ 01200001
+*/*                                                                  */ 01250001
+*/*      PL/X - %INCLUDE SYSLIB(IJBCSMX)                             */ 01300001
+*/*                                                                  */ 01350001
+*/* OPERATION =                                                      */ 01350401
+*/*                                                                  */ 01350801
+*/*   A. CMXPARM                                                     */ 01351201
+*/*      This parameter list holds the base information for message  */ 01351601
+*/*      processing which is passed from the console router to the   */ 01352001
+*/*      external message processor. This includes some information  */ 01352401
+*/*      about the originator of the message (like PIK,TID,JOBNAME), */ 01352801
+*/*      the address of the area that contains the message and the   */ 01353201
+*/*      address of the area where an automatic reply may be stored  */ 01353601
+*/*      by the external message processor.                          */ 01354001
+*/*      A flag is set (CMXNOPAG) if the current task does allow     */ 01354101
+*/*      page faults or not. If this flag is on, the external message*/ 01354201
+*/*      processor MUST ensure that no page faults occur when        */ 01354301
+*/*      processing this message.                                    */ 01354401
+*/*      Nothing whithin the CMXPARM area must be changed EXCEPT the */ 01354501
+*/*      message processing flag CMXFLAG which has to be set by the  */ 01354801
+*/*      external message processor to trigger special message       */ 01355201
+*/*      processing.                                                 */ 01355601
+*/*      Special message processing includes:                        */ 01356001
+*/*        - suppress a message : the external message processor     */ 01356401
+*/*            requests to suppress sending the msg to any console   */ 01357001
+*/*            (hardcopy file logging is not affected)               */ 01357601
+*/*            Note: This request is ignored for READ messages (if   */ 01357701
+*/*                  no auto reply is provided).                     */ 01357801
+*/*        - message altered (in control part): the external message */ 01358001
+*/*            processor has changed the control part of the message */ 01358401
+*/*            (that is: DSECT CMXMSG without fields CMXMLCNT and    */ 01358801
+*/*            CMXMMSG) and requests to use this for further message */ 01359201
+*/*            queueing.                                             */ 01359301
+*/*            Note: The routing information returned in     @DY44471*/ 01359401
+*/*                  CMXMCNNA and CMXMRC is ignored for      @DY44471*/ 01359501
+*/*                  -- WTO/R messages with MCSFLAG=HRDCPY   @DY44471*/ 01359601
+*/*                  -- command responses  (Exception:       @DY44471*/ 01359701
+*/*                     when flag bit CMXFCRR is set in      @DY44471*/ 01359801
+*/*                     addition to CMXFALTC, CMXMRC is used @DY44471*/ 01359901
+*/*                     for further msg routing)             @DY44471*/ 01360001
+*/*        - message altered (in message part): the external message */ 01360401
+*/*            processor has changed the message part of the message */ 01360501
+*/*            (that is: fields CMXMLCNT and CMXMMSG in DSECT CMXMSG)*/ 01360801
+*/*            and requests to use this for further message queueing.*/ 01361201
+*/*        - auto reply provided: the external message processor     */ 01361601
+*/*            has provided an automatic reply and requests to pass  */ 01362001
+*/*            this to the application issuing the console READ msg. */ 01362401
+*/*            Note: This request is ignored for WTOR messages with  */ 01362501
+*/*                  MCSFLAG=HRDCPY.                                 */ 01362601
+*/*        - msg to be automated: the external message processor     */ 01362801
+*/*            requests to sent the message to a NetView operator.   */ 01363201
+*/*            Note: This request is ignored for             @DY44471*/ 01363301
+*/*                  -- WTO/R messages with MCSFLAG=HRDCPY   @DY44471*/ 01363401
+*/*                  -- command responses (unless flag bit   @DY44471*/ 01363501
+*/*                     CMXFCRR has been set in addition to  @DY44471*/ 01363601
+*/*                     CMXFAUTO)                            @DY44471*/ 01363701
+*/*                                                                  */ 01364001
+*/*      Please note, that these flags may be used in a cumulative   */ 01364101
+*/*      way. Any exit will see the flags as set by the exit(s) that */ 01364401
+*/*      got control before and may reset them or set new flags.     */ 01364801
+*/*      The console router will finally interpret the cumulated     */ 01365201
+*/*      information.                                                */ 01365601
+*/*                                                                  */ 01366001
+*/*   B. CMXMSG                                                      */ 01366401
+*/*      These DSECTs describe the message. The msg lines are stored */ 01366801
+*/*      into area CMXMMSG where each msg line may be overlaid with  */ 01367201
+*/*      DSECT CMXT.                                                 */ 01367601
+*/*      The message prefix (eg. BG 0000) is separated into CMXMPREF */ 01368001
+*/*      and not shown in first msg line.                            */ 01368401
+*/*      If new message lines are appended, the line count CMXMLCNT  */ 01368801
+*/*      must be updated accordingly.                                */ 01369201
+*/*                                                                  */ 01369601
+*/*   C. CMXT                                                        */ 01370001
+*/*      The length of a msg text in CMXTMSGT is shown in CMXTLEN.   */ 01370401
+*/*      The max length of a single msg line depends on the line     */ 01370801
+*/*      type and the msg issuing method:                            */ 01371201
+*/*                                                                  */ 01371601
+*/*      LineType                                |  MaxLength        */ 01372001
+*/*      ----------------------------------------+-----------------  */ 01372401
+*/*      Control text                            |  34 chars         */ 01372801
+*/*      Label   text                            |  70 chars         */ 01373201
+*/*      Data    text (by WTO/R)                 |  70 chars         */ 01373601
+*/*      Data    text (by SVC0/15, in first line)|  70 chars         */ 01374001
+*/*      Data    text (by SVC0/15, add. lines   )|  78 chars         */ 01374401
+*/*      ----------------------------------------+-----------------  */ 01374801
+*/*                                                                  */ 01375201
+*/*      These max lengthes should not be exceeded when changing     */ 01375601
+*/*      a message text. Otherwise the console router will truncate  */ 01376001
+*/*      the message line at the allowed maximum length.             */ 01376401
+*/*                                                                  */ 01376801
+*/*   D. CIXPARM                                                     */ 01377201
+*/*      This parameter list holds the base information for console  */ 01377601
+*/*      input processing that is passed from the console router to a*/ 01378001
+*/*      external processor. This includes some information          */ 01378401
+*/*      about the originator of the console input (like PIK,TID,    */ 01378801
+*/*      input console name, input CART), a reply/command indicator, */ 01379201
+*/*      the message code of the related READ msg (if reply),        */ 01379601
+*/*      and the address of the area that contains the reply or the  */ 01380001
+*/*      command.                                                    */ 01380401
+*/*      Nothing whithin the CIXPARM area must be changed EXCEPT the */ 01380801
+*/*      processing flag CIXFLAG2 which has to be set by the         */ 01381201
+*/*      external message processor to trigger special console input */ 01381601
+*/*      processing.                                                 */ 01382001
+*/*      Special console input processing includes:                  */ 01382401
+*/*        - reject reply/command: the external processor requests   */ 01382801
+*/*            to reject the console input, that is not to process   */ 01383201
+*/*            the command / not to pass the reply to the application*/ 01383601
+*/*        - changed reply/command: the external processor has       */ 01384001
+*/*            changed the reply/command and requests to use the     */ 01384401
+*/*            changed reply/command for further processing.         */ 01384801
+*/*            (note: the reply-id must not be changed).             */ 01385201
+*/*                                                                  */ 01385601
+*/*      Please note, that these flags may be used in a cumulative   */ 01386001
+*/*      way. Any exit will see the flags as set by the exit(s) that */ 01386401
+*/*      got control before and may reset them or set new flags.     */ 01386801
+*/*      The console router will finally interpret the cumulated     */ 01387201
+*/*      flags.                                                      */ 01387601
+*/*                                                                  */ 01388001
+*/*      For a reply, the reply-id is separated from the reply and   */ 01388401
+*/*      stored into CIXREPID.                                       */ 01388801
+*/*                                                                  */ 01389201
+*/*      The reply/command text is stored in an area that is         */ 01389601
+*/*      addressed by CIXINPA. The first 2 bytes of this area hold   */ 01390001
+*/*      the actual length of the reply/command text. For a reply,   */ 01390401
+*/*      a length of 0 is set if only the reply-id was entered.      */ 01390801
+*/*      Any changes to the reply/command must be done within this   */ 01391201
+*/*      area (including updating of the length field).              */ 01391601
+*/*                                                                  */ 01400001
+*/*                                                                  */ 01450001
+*/* CHANGE ACTIVITY =                                                */ 01500001
+*/*                                                                  */ 01550001
+*/*  95/05/20: Add new flag CMXMHOLD to pass HOLD attribute  @DY43490*/ 01555000
+*/*            (Hold msg on console screen) to external msg  @DY43490*/ 01560000
+*/*            processor. This flag may be changed by the    @DY43490*/ 01565000
+*/*            external message processor.                   @DY43490*/ 01570000
+*/*            The changed flag becomes effective            @DY43490*/ 01575000
+*/*             - for non-READ messages only (CMXSVC0R and   @DY43490*/ 01580000
+*/*               CMXWTOR are both OFF)                      @DY43490*/ 01585000
+*/*             - if also CMXFALTC is set.                   @DY43490*/ 01590000
+*/*  97/05/06: Allow changing of routing parameters (Routing @DY44471*/ 01591001
+*/*            Codes, Msg automation flag) for command       @DY44471*/ 01592001
+*/*            responses                                     @DY44471*/ 01593001
+*/*                                                                  */ 01595000
+*/**END OF SPECIFICATIONS*********************************************/ 01600001
+*%GOTO CSMX2;  /*                                                       01650001
+         SPACE                                                          01700001
+* *******************************************************************   01750001
+* CMXPARM:  DSECT for parameter list                                    01800001
+*           for external message processors                             01850001
+* *******************************************************************   01900001
+CMXPARM  DSECT                Parameter list                            01950001
+CMXPLNG  DS    H              Length of this parm list                  01975001
+CMXPIK   DS    H              PIK of issuing task                       02000001
+CMXTID   DS    H              TID of issuing task                       02050001
+         DS    H              reserved                                  02075001
+CMXJBNM  DS    CL8            VSE/POWER JOBNAME of issuer               02112501
+CMXMSGA  DS    A              Addr of message area                      02150001
+*                              (layout see DSECT CMXMSG)                02200001
+CMXORIG  DS    X              Msg Origin                                02250001
+CMXSVC0  EQU   X'80'            Msg from SVC 0                          02300001
+CMXSVC0R EQU   X'40'            Msg from SVC 0 with READ                02350001
+CMXWTO   EQU   X'20'            Msg from WTO                            02400001
+CMXWTOR  EQU   X'10'            Msg from WTOR                           02437501
+CMXCMDR  EQU   X'08'            Msg is a Command Response               02475001
+*        EQU   X'04'            reserved                                02512501
+*        EQU   X'02'            reserved                                02525001
+CMXNOPAG EQU   X'01'            Msg from task not allowing page faults  02537501
+CMXFLAG  DS    X              Msg processing flag byte                  02550001
+*                               (to be set by ext. msg processor)       02600001
+CMXFSUP  EQU   X'80'            Suppress message                        02650001
+CMXFALTC EQU   X'40'            Msg altered (in control part)           02700001
+CMXFALTM EQU   X'20'            Msg altered (in message part)           02750001
+CMXFREPL EQU   X'10'            Auto Reply provided                     02800001
+CMXFAUTO EQU   X'08'            Msg to be automated                     02850001
+CMXFCRR  EQU   X'04'            Change route info for cmd resp @DY44471 02860001
+*                                 (flag in addition to         @DY44471 02870001
+*                                  CMXFALTC/CMXFAUTO)          @DY44471 02880001
+*        EQU   X'02'            reserved                       @DY44471 02890001
+*        EQU   X'01'            reserved                       @DY44471 02891001
+CMXMCODE DS    CL9            Message code (copy from msg text)         02900001
+         DS    CL1            reserved                                  02933301
+CMXREPA  DS    A              Addr of auto reply area (provid. by cons  02966601
+*                               router) with a length of 128 chars.     03000001
+*                               First 2 bytes hold length of reply.     03025001
+         DS    CL8            reserved                                  03037501
+CMXPLEN  EQU   *-CMXPARM      Length of CMXPARM DSECT                   03050001
+         SPACE                                                          03066601
+CMXMRLEN EQU   126            Max. Length of an auto reply              03083201
+         SPACE 5                                                        03100001
+* ***************************************************************       03150001
+* CMXT: DSECT for a single message text line                            03151701
+*       passed to an external message processor                         03153401
+*       (Overlay for CMXMMSG in CMXMSG)                                 03155101
+* ***************************************************************       03156801
+CMXT     DSECT                Message text line                         03158501
+CMXTLEN  DS    H              Actual length of msg text                 03160201
+CMXTLNTY DS    0CL2           Line type flags                           03161901
+CMXTLNT1 DS    CL1            Line type flags byte 1                    03163601
+CMXTCONT EQU   X'80'            Control text                            03165301
+CMXTLABT EQU   X'40'            Label text                              03167001
+CMXTDATT EQU   X'20'            Data text                               03168701
+CMXTENDT EQU   X'10'            End text                                03170401
+CMXTPROT EQU   X'08'            Prompt text                             03172101
+*        EQU   X'04'            Reserved                                03173801
+*        EQU   X'02'            Reserved                                03175501
+CMXTLNT2 DS    CL1            Line type flags byte 2                    03177201
+CMXTFPAF EQU   X'01'            Text object presentation attrib. field  03178901
+*                               overrides general object presentation   03180601
+*                               attribute field                         03182301
+CMXTMTPA DS    0XL4           Presentation attribute                    03184001
+CMXTPCON DS    XL1            Presentation control field                03185701
+CMXTPCOL DS    XL1            Presentation color field                  03187401
+CMXTPHIL DS    XL1            Presentation highlighting                 03189101
+CMXTPINT DS    XL1            Presentation intensity                    03190801
+CMXTMSGT DS    CL78           Message text field                        03191601
+CMXTLLEN EQU   *-CMXT         Length of the msg text line               03192401
+CMXTMLEN EQU   70             Max Length of a msg text                  03193201
+CMXTML78 EQU   78             Max Length of a msg text (lines 2 and     03194001
+*                               more for a SVC 0/15 msg)                03194801
+         SPACE 2                                                        03195901
+* ***************************************************************       03197601
+* CMXMSG: DSECT for message area                                        03200001
+*          passed to an external message processor                      03250001
+* ***************************************************************       03300001
+CMXMSG   DSECT      Message area                                        03350001
+CMXMFGPA DS    0CL4           Foreground presentation attributes        03400001
+CMXMFCON DS    C                Foreground control                      03450001
+CMXMFCOL DS    C                Foreground color                        03500001
+CMXMFHIL DS    C                Foreground highlighting                 03550001
+CMXMFINT DS    C                Foreground intensity                    03600001
+CMXMBGPA DS    0CL4           Background presentation attributes        03650001
+CMXMBCON DS    C                Background control                      03700001
+CMXMBCOL DS    C                Background color                        03750001
+CMXMBHIL DS    C                Background highlighting                 03800001
+CMXMBINT DS    C                Background intensity                    03850001
+CMXMCNNA DS    CL8            Console Name                              03900001
+CMXMRC   DS    CL16           Routing Codes                             03950001
+CMXMDES  DS    0CL2           Descriptor Codes                          04000001
+CMXMDES1 DS    C              Descriptor Codes Byte 1                   04050001
+CMXMDESA EQU   X'80'            System failure                          04100001
+CMXMDESB EQU   X'40'            Immediate action required               04150001
+CMXMDESC EQU   X'20'            Eventual action required                04200001
+CMXMDESD EQU   X'10'            System status                           04250001
+CMXMDESE EQU   X'08'            Immediate command response              04300001
+CMXMDESF EQU   X'04'            Job status                              04350001
+CMXMDESG EQU   X'02'            Application program/processor           04400001
+CMXMDESH EQU   X'01'            Out-of-line                             04450001
+CMXMDES2 DS    C              Descriptor Codes Byte 2                   04500001
+CMXMDESI EQU   X'80'            Operators  request                      04550001
+CMXMDESJ EQU   X'40'            Track command response                  04600001
+CMXMDESK EQU   X'20'            Critical eventual action                04650001
+CMXMDESL EQU   X'10'            Important Information                   04700001
+CMXMDESM EQU   X'08'            Previously automated                    04750001
+*        EQU   X'04'            Reserved                                04800001
+*        EQU   X'02'            Reserved                                04850001
+*        EQU   X'01'            Reserved                                04900001
+CMXMLCNT DS    XL2            Number of used lines in message           04950001
+CMXMPREF DS    CL8            Message Prefix (for 1st msg line)         05000001
+CMXMFLAG DS    C              Message flag byte               @DY43490  05004500
+CMXMHOLD EQU   X'80'            hold message on console screen@DY43490  05009000
+*        EQU   X'40'            reserved                      @DY43490  05013500
+*        EQU   X'20'            reserved                      @DY43490  05018000
+*        EQU   X'10'            reserved                      @DY43490  05022500
+*        EQU   X'08'            reserved                      @DY43490  05027000
+*        EQU   X'04'            reserved                      @DY43490  05031500
+*        EQU   X'02'            reserved                      @DY43490  05036000
+*        EQU   X'01'            reserved                      @DY43490  05040500
+         DS    CL7            reserved                        @DY43490  05045000
+CMXMMSG  DS    12CL(CMXTLLEN) 12 message line slots                     05050001
+CMXMLEN  EQU   *-CMXMSG       Length of the complete message area       05100001
+         SPACE 2                                                        06500001
+* *****************************************************************     06550001
+* Presentation attributes equates                                       06600001
+* *****************************************************************     06650001
+* control attributes                                                    06700001
+CMXSNALM EQU   X'80'          Sound note alarm ("beep")                 06750001
+* color attributes                                                      06800001
+CMXBLACK EQU   X'F0'          black on display, white on printer        06850001
+CMXBLUE  EQU   X'F1'          Color is blue                             06900001
+CMXRED   EQU   X'F2'          Color is red                              06950001
+CMXPINK  EQU   X'F3'          Color is pink (magenta)                   07000001
+CMXGREEN EQU   X'F4'          Color is green                            07050001
+CMXTURQ  EQU   X'F5'          Color is turquoise (cyan)                 07100001
+CMXYELOW EQU   X'F6'          Color is yellow                           07150001
+CMXWHITE EQU   X'F7'          white on display, black on printer        07200001
+* Highlighting attributes                                               07250001
+CMXHNONE EQU   X'00'          No highlighting is in effect              07300001
+CMXBLINK EQU   X'F1'          Blinking highlight                        07350001
+CMXRVIDO EQU   X'F2'          Reverse video highlight                   07400001
+CMXUNDER EQU   X'F4'          Underscore highlight                      07450001
+* INTENSITY ATTRIBUTES                                                  07500001
+CMXINORM       EQU   X'E4'           Normal intensity                   07550001
+CMXIHIGH       EQU   X'E8'           High (bright) intensity            07600001
+         SPACE 5                                                        07650001
+* ***************************************************************       07700001
+* CIXPARM: DSECT for a console input parameter list                     07750001
+*             passed to an external message processor                   07800001
+* ***************************************************************       07850001
+         SPACE 1                                                        07900001
+CIXPARM  DSECT                Parm List for ext. console input proc.    07950001
+CIXPLNG  DS    H              Length of this parm list                  07978501
+CIXPIK   DS    H              PIK of current task                       08007001
+CIXTID   DS    H              TID of current task                       08035501
+CIXFLAG1 DS    X              Reply/Command proc. flag byte 1           08150001
+CIXFREPL EQU   X'80'            REPLY Processing                        08200001
+CIXFLAG2 DS    X              Reply/Command proc. flag byte 2           08250001
+*                              (to be set by ext. processor)            08300001
+CIXFCHG  EQU   X'80'            Re/Co changed                           08350001
+CIXFREJ  EQU   X'40'            Re/Co rejected by ext. processor        08400001
+CIXREPID DS    CL4            Full replyid                              08408301
+CIXINPA  DS    A              Addr of console input text area           08416601
+*                                (first 2 bytes hold actual length)     08424901
+CIXCCNAM DS    CL8            Input console name                        08433301
+CIXCCART DS    CL8            Input CART                                08466601
+CIXMCODE DS    CL9            Message code of reply-related msg         08500001
+CIXPLEN  EQU   *-CIXPARM      Length of CIXPARM DSECT                   08550001
+         SPACE 2                                                        08566601
+CIXMLEN  EQU   126            Max Length of console input               08583201
+         MEND  ,              */                                        08600001
+*%CSMX2: ;                                                              08650001
+*       @SPACE(1);                                                      08700001
+* DCL 1 CMXPARM  BASED BDY(WORD), /* Parameter list for ext. msg proc*/ 08750001
+*       2  CMXPLNG FIXED(16),     /* Length of this parm list        */ 08775001
+*       2  CMXPIK  FIXED(16),     /* PIK of issuing task             */ 08800001
+*       2  CMXTID  FIXED(16),     /* TID of issuing task             */ 08850001
+*       2  *       FIXED(16),     /* reserved                        */ 08875001
+*       2  CMXJBNM CHAR(8),       /* VSE/POWER JOBNAME of issuer     */ 08912501
+*       2  CMXMSGA  PTR(31),      /* Addr of message area               08950001
+*                                     (layout see CMXMSG)            */ 09000001
+*       2  CMXORIG  BIT(8),       /* Msg Origin                      */ 09050001
+*         4 CMXSVC0   BIT(1),     /*   Msg from SVC 0/15             */ 09100001
+*         4 CMXSVC0R  BIT(1),     /*   Msg from SVC 0/15 with READ   */ 09150001
+*         4 CMXWTO    BIT(1),     /*   Msg from WTO                  */ 09200001
+*         4 CMXWTOR   BIT(1),     /*   Msg from WTOR                 */ 09300001
+*         4 CMXCMDR   BIT(1),     /*   Msg is Command Response       */ 09312501
+*         4 *         BIT(2),     /*   reserved                      */ 09325001
+*         4 CMXNOPAG  BIT(1),     /*   Msg from task not allowing    */ 09350001
+*                                 /*       .. page faults            */ 09375001
+*       2  CMXFLAG  BIT(8),       /* Msg processing flag byte        */ 09400001
+*         4 CMXFSUP   BIT(1),     /*   Suppress message              */ 09450001
+*         4 CMXFALTC  BIT(1),     /*   Msg altered (in control part) */ 09500001
+*         4 CMXFALTM  BIT(1),     /*   Msg altered (in msg part)     */ 09550001
+*         4 CMXFREPL  BIT(1),     /*   Auto reply provided           */ 09600001
+*         4 CMXFAUTO  BIT(1),     /*   Msg to be automated           */ 09650001
+*         4 CMXFCRR   BIT(1),     /*   Change route info ... @DY44471*/ 09660001
+*                                 /*     .. for cmd responses@DY44471*/ 09670001
+*                                 /*   (flag in addition to  @DY44471*/ 09680001
+*                                 /*    CMXFALTC/CMXFAUTO)   @DY44471*/ 09690001
+*         4 *         BIT(2),     /*   reserved              @DY44471*/ 09691001
+*       2  CMXMCODE  CHAR(9),     /* Message code (copy from msgtext)*/ 09750001
+*       2  *         CHAR(1),     /* Reserved                        */ 09800001
+*       2  CMXREPA   PTR(31),     /* Addr of auto reply area (provid.   09818001
+*                                      by cons. router) with a length   09836001
+*                                      of 128 chars. First 2 bytes      09854001
+*                                      hold length of reply.         */ 09872001
+*       2  *         CHAR(8);     /* Reserved                        */ 09890001
+*       @SPACE(5);                                                      09900001
+* /* ****************************************************************/  09950001
+* /* CMXMSG: DSECT for message passed                               */  10000001
+* /*           to an external message processor.                    */  10050001
+* /* ****************************************************************/  10100001
+* DCL 1 CMXMSG    BASED BDY(WORD),  /* CMXMSG  passed to ext.msg.proc*/ 10150001
+*       2 CMXMFGPA    CHAR(4),      /* Foreground presentation          10200001
+*                                      attributes                    */ 10250001
+*         3 CMXMFCON    BIT(8),     /*   Foreground control          */ 10300001
+*         3 CMXMFCOL    BIT(8),     /*   Foreground color            */ 10350001
+*         3 CMXMFHIL    BIT(8),     /*   Foreground highlighting     */ 10400001
+*         3 CMXMFINT    BIT(8),     /*   Foreground intensity        */ 10450001
+*       2 CMXMBGPA    CHAR(4),      /* Background presentation          10500001
+*                                      attributes                    */ 10550001
+*         3 CMXMBCON    BIT(8),     /*   Background control          */ 10600001
+*         3 CMXMBCOL    BIT(8),     /*   Background color            */ 10650001
+*         3 CMXMBHIL    BIT(8),     /*   Background highlighting     */ 10700001
+*         3 CMXMBINT    BIT(8),     /*   Background intensity        */ 10750001
+*       2 CMXMCNNA      CHAR(8),    /*  Console Name                 */ 10800001
+*       2 CMXMRC        CHAR(16),   /*  Routing codes                   10850001
+*                                       1st bit =Route Code 1           10900001
+*                                      2nd bit =Route Code 2            10950001
+*                                         .  .  .                       11000001
+*                                     128th bit =Route Code 128      */ 11050001
+*       2 CMXMDES       CHAR(2),    /*  Descriptor codes             */ 11100001
+*         4 CMXMDES1    BIT(8),     /*  Descriptor byte 1            */ 11150001
+*           6 CMXMDESA  BIT(1),     /*    System failure             */ 11200001
+*           6 CMXMDESB  BIT(1),     /*    Immediate action required     11250001
+*                                                                    */ 11300001
+*           6 CMXMDESC  BIT(1),     /*    Eventual action required   */ 11350001
+*           6 CMXMDESD  BIT(1),     /*    System status              */ 11400001
+*           6 CMXMDESE  BIT(1),     /*    Immediate command response    11450001
+*                                                                    */ 11500001
+*           6 CMXMDESF  BIT(1),     /*    Job status                 */ 11550001
+*           6 CMXMDESG  BIT(1),     /*    Application program/processor 11600001
+*                                                                    */ 11650001
+*           6 CMXMDESH  BIT(1),     /*    Out-of-line                */ 11700001
+*         4 CMXMDES2    BIT(8),     /*  Descriptor byte 2            */ 11750001
+*           6 CMXMDESI  BIT(1),     /*    Operators  request         */ 11800001
+*           6 CMXMDESJ  BIT(1),     /*    Track command response     */ 11850001
+*           6 CMXMDESK  BIT(1),     /*    Critical eventual action   */ 11900001
+*           6 CMXMDESL  BIT(1),     /*    Important information      */ 11950001
+*           6 CMXMDESM  BIT(1),     /*    Previously automated       */ 12000001
+*           6 *         BIT(3),     /*    Reserved                   */ 12050001
+*       2 CMXMLCNT      FIXED(16),  /*  Number of lines in message   */ 12100001
+*       2 CMXMPREF      CHAR(8),    /*  Message Prefix               */ 12150001
+*       2 CMXMFLAG      BIT(8),     /*  Message flag byte    @DY43490*/ 12160000
+*         4 CMXMHOLD    BIT(1),     /*  Hold msg on console  @DY43490*/ 12170000
+*         4 *           BIT(7),     /*  reserved             @DY43490*/ 12180000
+*       2 *             CHAR(7),    /*  reserved             @DY43490*/ 12190000
+*       2 CMXMMSG       CHAR(12*LENGTH(CMXT));  /* 12 msg lines      */ 12200001
+*  @SPACE(4);                                                           12250001
+* /* *****************************************************************/ 12300001
+* /* CMXT: DSECT for a message text line                             */ 12350001
+* /*         passed to an external message processor                 */ 12400001
+* /* *****************************************************************/ 12450001
+* DCL 1 CMXT      BASED,            /* MESSAGE Text line             */ 12500001
+*      2 CMXTLEN     FIXED(15),     /*  Actual length of msg text    */ 12550001
+*      2 CMXTLNTY    BIT(16),       /*  Line type flags - 2 bytes    */ 12600001
+*         4 CMXTLNT1 BIT(8),        /*  Line type flags, byte 1      */ 12650001
+*            6 CMXTCONT BIT(1),     /*    Control text               */ 12700001
+*            6 CMXTLABT BIT(1),     /*    Label text                 */ 12750001
+*            6 CMXTDATT BIT(1),     /*    Data text                  */ 12800001
+*            6 CMXTENDT BIT(1),     /*    End text                   */ 12850001
+*            6 CMXTPROT BIT(1),     /*    Prompt text                */ 12900001
+*            6 *        BIT(3),     /*    Reserved                   */ 12950001
+*         4 CMXTLNT2 BIT(8),        /*  Line type flags, byte 2      */ 13000001
+*            6 *        BIT(7),     /*  Reserved                     */ 13050001
+*            6 CMXTFPAF BIT(1),     /*  Text object presentation        13100001
+*                                       attribute field overrides       13150001
+*                                       general object presentation     13200001
+*                                       attribute field              */ 13250001
+*      2 CMXTMTPA    CHAR(4),       /*  Presentation attribute       */ 13300001
+*        4 CMXTPCON    BIT(8),      /*    Presentation control       */ 13350001
+*        4 CMXTPCOL    BIT(8),      /*    Presentation color         */ 13400001
+*        4 CMXTPHIL    BIT(8),      /*    Presentation highlighting  */ 13450001
+*        4 CMXTPINT    BIT(8),      /*    Presentation intensity     */ 13500001
+*     2 CMXTMSGT  CHAR(CMXTML78);   /*  Message text                 */ 13550001
+* @SPACE(4);                                                            13600001
+*/********************************************************************/ 13650001
+*/*                                                                  */ 13700001
+*/*             PRESENTATION ATTRIBUTE CONSTANTS                     */ 13750001
+*/*                                                                  */ 13800001
+*/********************************************************************/ 13850001
+* DECLARE                                                               13900001
+*               /* CONTROL ATTRIBUTES         */                        13950001
+*  CMXSNALM BIT(8) CONSTANT('80'X),   /*Sound note alarm (presentation  14000001
+*                                     device's "beep" alarm)         */ 14050001
+*               /* COLOR ATTRIBUTES           */                        14100001
+*  CMXBLACK BIT(8) CONSTANT('F0'X),   /*Presentation background-black   14150001
+*                                     on display, white on printer   */ 14200001
+*  CMXBLUE  BIT(8) CONSTANT('F1'X),   /*Color is blue                */ 14250001
+*  CMXRED   BIT(8) CONSTANT('F2'X),   /*Color is red                 */ 14300001
+*  CMXPINK  BIT(8) CONSTANT('F3'X),   /*Color is pink (magenta)      */ 14350001
+*  CMXGREEN BIT(8) CONSTANT('F4'X),   /*Color is green               */ 14400001
+*  CMXTURQ  BIT(8) CONSTANT('F5'X),   /*Color is turquoise (cyan)    */ 14450001
+*  CMXYELOW BIT(8) CONSTANT('F6'X),   /*Color is yellow              */ 14500001
+*  CMXWHITE BIT(8) CONSTANT('F7'X),   /*Presentation neutral-white on   14550001
+*                                     display, black on a printer    */ 14600001
+*               /* HIGHLIGHTING ATTRIBUTES    */                        14650001
+*  CMXHNONE BIT(8) CONSTANT('00'X),   /*No highlighting is in effect */ 14700001
+*  CMXBLINK BIT(8) CONSTANT('F1'X),   /*Blinking highlight           */ 14750001
+*  CMXRVIDO BIT(8) CONSTANT('F2'X),   /*Reverse video highlight      */ 14800001
+*  CMXUNDER BIT(8) CONSTANT('F4'X),   /*Underscore highlight         */ 14850001
+*               /* INTENSITY ATTRIBUTES       */                        14900001
+*  CMXINORM BIT(8) CONSTANT('E4'X),   /*Normal intensity             */ 14950001
+*  CMXIHIGH BIT(8) CONSTANT('E8'X);   /*High (bright) intensity      */ 15000001
+*       @SPACE(1);                                                      15016601
+* DCL CMXTMLEN  FIXED(16) CONSTANT(70); /* Length of a msg text field*/ 15033301
+* DCL CMXTML78  FIXED(16) CONSTANT(78); /* Length of a msg text field   15038801
+*                              for lines 2 and more of a SVC0/15 msg */ 15044301
+* DCL CMXMRLEN  FIXED(16) CONSTANT(126);/* Max.Length of an autoreply*/ 15047101
+*       @SPACE(4);                                                      15050001
+* /* *****************************************************************/ 15100001
+* /* CIXPARM: DSECT for a console input parameter list               */ 15150001
+* /*               passed to an external processor                   */ 15200001
+* /* *****************************************************************/ 15250001
+* DCL 1 CIXPARM  BASED BDY(WORD), /* Parm list for external console     15300001
+*                                      input processors              */ 15350001
+*       3  CIXPLNG  FIXED(16),    /* Length of this parm list        */ 15383301
+*       3  CIXPIK   FIXED(16),    /* PIK of current task             */ 15416601
+*       3  CIXTID   FIXED(16),    /* TID of current task             */ 15449901
+*       3  CIXFLAG1 BIT(8),       /* Reply/Command proc. flag byte 1 */ 15499901
+*         5 CIXFREPL  BIT(1),     /*   REPLY processing              */ 15649701
+*         5 *         BIT(7),     /*   reserved                      */ 15683001
+*       3  CIXFLAG2 BIT(8),       /* Reply/Command proc. flag byte 2    15716501
+*                                     (to be set by extern. process.)*/ 15750001
+*         5 CIXFCHG   BIT(1),     /*   Re/Co changed                 */ 15792801
+*         5 CIXFREJ   BIT(1),     /*   Re/Co rejected by ext. process*/ 15835601
+*         5 *         BIT(6),     /*   Reserved                      */ 15878401
+*       3  CIXREPID CHAR ( 4),    /* Full reply Id                   */ 15886901
+*       3  CIXINPA  PTR  (31),    /* Addr of console input text area    15895401
+*                                      (first 2 bytes hold actual       15903901
+*                                       length of input text)        */ 15912401
+*       3  CIXCCNAM CHAR( 8),     /* Input console name              */ 15921301
+*       3  CIXCCART CHAR( 8),     /* Input CART                      */ 15964201
+*       3  CIXMCODE CHAR( 9);     /* Message code of reply-relat. msg*/ 16007101
+*       @SPACE(1);                                                      16057101
+* DCL CIXMLEN  FIXED(16) CONSTANT(126); /* Max. Length of cons.input */ 16107101
+*  @SPACE(1);                                                           16157101

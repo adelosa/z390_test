@@ -1,0 +1,1055 @@
+*%GOTO   ALSPLS1; /* PLX COMMENT TO AVOID UNMATCHED QUOTE PROBLEMS      00050052
+         MACRO                                                          03800052
+&LABL    ALESERV &OPTION,    ADD/ADDPASN/DELETE/EXTRACT/SEARCH         X03850052
+               &STOKEN=,   1 ADD                EXTRACT SEARCH         X03900052
+               &ACCESS=,   2 ADD                                       X03950052
+               &AL=,       3 ADD                                 SEARCHX04000052
+               &ALET=,     4 ADD ADDPASN DELETE EXTRACT          SEARCHX04050052
+               &MF=,       5                                           X04100052
+               &CHKEAX=,   6 ADD DELETE                                X04150052
+               &RELATED=     OPTIONAL VALUE FOR DOCUMENTATION           04200052
+         AGO   .ZZZ                                                     04200952
+******************************************************                  04201852
+*                                                    *                  04202752
+*   LICENSED MATERIALS - PROPERTY OF IBM             *                  04203652
+*   THIS MACRO IS "RESTRICTED MATERIALS OF IBM"      *                  04204552
+*   5686-032 (C) COPYRIGHT IBM CORP. 1993            *                  04205452
+*   SEE COPYRIGHT INSTRUCTIONS                       *                  04206352
+*                                                    *                  04207252
+******************************************************                  04208152
+.ZZZ     ANOP                                                           04209052
+.**** START OF SPECIFICATIONS *************************                 04209952
+.*                                                                      04210852
+.*01*  MACRO NAME: ALESERV                                              04211752
+.*                                                                      04212652
+.*01*  FUNCTION:                                                        04213552
+.*        PROVIDE THE INTERFACE TO THE ACCESS LIST SERVICES ROUTINES    04214452
+.*                                                                      04215352
+.*01* SYNTAX:                                                           04216252
+.*        ALESERV ADD|DELETE|EXTRACT|SEARCH                             04217152
+.*                  <,STOKEN=RX-ADDRESS>                                04218052
+.*                  <,AL=WORKUNIT|PASN>                                 04218952
+.*                  <,ALET=RX-ADDRESS|(2)-(12)>                         04219852
+.*                  <,MF=L|(E,RX-ADDRESS)|(E,(2)-(12)>                  04220752
+.*                  <,RELATED=ANY-COMMENT>                              04221652
+.*                                                                      04222552
+.*        DEFAULTS FOR KEYWORDS:                                        04223452
+.*             AL=WORKUNIT                                              04224352
+.*                                                                      04225252
+.*   |          | S | A | A | M | R |                                   04226152
+.*   |          | T | L | L | F | E |                                   04227052
+.*   |          | O |   | E |   | L |                                   04227952
+.*   |          | K |   | T |   | A |                                   04228852
+.*   |          | E |   |   |   | T |                                   04229752
+.*   |          | N |   |   |   | E |                                   04230652
+.*   |          |   |   |   |   | D |                                   04231552
+.*   |__________|___|___|___|___|___|                                   04232452
+.*   |ADD       | R | O | R | O | O |                                   04233352
+.*   |__________|___|___|___|___|___|                                   04234252
+.*   |DELETE    | E | E | R | O | O |                                   04235152
+.*   |__________|___|___|___|___|___|                                   04236052
+.*   |EXTRACT   | R | E | R | O | O |                                   04236952
+.*   |__________|___|___|___|___|___|                                   04237852
+.*   |SEARCH    | R | O | R | O | O |                                   04238752
+.*   |__________|___|___|___|___|___|                                   04239652
+.*   |MF=L      | E | E | E |---| O |                                   04240552
+.*   |__________|___|___|___|___|___|                                   04241452
+.*                                                                      04242352
+.*              E = ERROR IF SPECIFIED                                  04243252
+.*              O = OPTIONAL                                            04244152
+.*              R = REQUIRED                                            04245052
+.*                                                                      04245952
+.**** END OF SPECIFICATIONS ***************************                 04246852
+.*                                                                      04250052
+.********************************************************************** 04300052
+.*       EACH KEYWORD HAS AN ASSOCIATED INDEX. THESE INDICES ARE      * 04350052
+.*       USED TO REFERENCE THE DESIRED KEYWORD VALUES IN ARRAYS       * 04400052
+.*       DECLARED BELOW. THE INDEX FOR EACH KEYWORD IS SHOWN IN THE   * 04450052
+.*       MACRO PROTOTYPE STATEMENT TO THE RIGHT OF THE ASSOCIATED     * 04500052
+.*       KEYWORD.                                                     * 04550052
+.********************************************************************** 04600052
+.*                                                                      04750052
+.********************************************************************** 04800052
+.*       DECLARE ARITHMETIC VARIABLES                                 * 04850052
+.********************************************************************** 04900052
+.*                                                                      04950052
+         LCLA  &A          GENERAL USAGE LOCAL ARITHMETIC VARIABLE      05000052
+.*                                                                      05050052
+         LCLA  &OPMVI      MASK FOR MVI OF OPTIONS BYTE                 05100052
+&OPMVI   SETA  0           INITIALIZE FOR NO OPTIONS                    05150052
+.*                                                                      05200052
+.********************************************************************** 05250052
+.*       DECLARE BIT VARIABLES                                        * 05300052
+.********************************************************************** 05350052
+.*                                                                      05400052
+         LCLB  &B(8)       OPTIONS BITS USED TO CONSTRUCT OPTION        05450052
+.*                         BYTE IN THE PARAMETER LIST                   05500052
+&B(1)    SETB  0           BITS 1-5 ARE RESERVED AND MUST BE ZERO       05550052
+&B(2)    SETB  0                                                        05600052
+&B(3)    SETB  0                                                        05650052
+&B(4)    SETB  0                                                        05700052
+&B(5)    SETB  0                                                        05750052
+&B(6)    SETB  0           CHKEAX=YES (IF 0) CHKEAX=NO (IF 1)      @L1C 05800052
+&B(7)    SETB  0           AL=WORKUNIT (IF 0) AL=PASN (IF 1)            05850052
+&B(8)    SETB  0           ACCESS=PUBLIC (IF 0) ACCESS=PRIVATE (IF 1)   05900052
+.*                                                                      05950052
+         LCLB  &S(8)       BITS USED TO INDICATE THE KEYWORDS THAT      06000052
+.*                         WERE SPECIFIED BY THE USER                   06050052
+&S(1)    SETB  0           INITIALIZE STOKEN NOT SPECIFIED              06100052
+&S(2)    SETB  0           INITIALIZE ACCESS NOT SPECIFIED              06150052
+&S(3)    SETB  0           INITIALIZE AL     NOT SPECIFIED              06200052
+&S(4)    SETB  0           INITIALIZE ALET   NOT SPECIFIED              06250052
+&S(5)    SETB  0           BIT UNUSED FOR MF KEYWORD                    06300052
+&S(6)    SETB  0           INITIALIZE CHKEAX NOT SPECIFIED         @L1C 06350052
+&S(7)    SETB  0           BITS 7-8 ARE RESERVED                   @L1C 06400052
+&S(8)    SETB  0                                                        06450052
+.*                                                                      06500052
+         LCLB  &KILL       ERROR BIT USED TO STOP MACRO GENERATION      06550052
+&KILL    SETB  0           INITIALIZE TO NO ERRORS                      06600052
+.*                                                                      06650052
+.********************************************************************** 06700052
+.*       DECLARE CHARACTER VARIABLES                                  * 06750052
+.********************************************************************** 06800052
+.*                                                                      06850052
+         LCLC  &ALETV      VALUE OF ALET    KEYWORD                     06900052
+         LCLC  &EPLV       VALUE OF THE PARAMETER ADDRESS IN THE        06950052
+.*                         MF=(E,PARMADDR) KEYWORD                      07000052
+.*                                                                      07050052
+         LCLC  &BOPTS      OPTIONS BYTE INITIALIZATION STRING FOR       07100052
+.*                         THE STANDARD FORM                            07150052
+.*                                                                      07200052
+         LCLC  &GNAME1     LABEL FOR STANDARD FORM PARAMETER LIST       07250052
+         LCLC  &GNAME2     BRANCH LABEL FOR THE STANDARD FORM           07300052
+.*                                                                      07350052
+         LCLC  &KW(6)      ARRAY USED TO HOLD THE KEYWORD NAMES    @L1C 07400052
+&KW(1)   SETC  'STOKEN'                                                 07450052
+&KW(2)   SETC  'ACCESS'                                                 07500052
+&KW(3)   SETC  'AL'                                                     07550052
+&KW(4)   SETC  'ALET'                                                   07600052
+&KW(5)   SETC  'MF'                                                     07650052
+&KW(6)   SETC  'CHKEAX'                                            @L1A 07700052
+.*                                                                      07750052
+         LCLC  &LT4        LOAD TYPE 4 (REGISTER OR ADDRESS) FOR        07800052
+.*                         ALET KEYWORD                                 07850052
+.*                              'R' =  REGISTER TYPE                    07900052
+.*                              'A' =  RX ADDRESS TYPE                  07950052
+.*                                                                      08000052
+         LCLC  &LTE        LOAD TYPE (REGISTER OR ADDRESS) FOR          08050052
+.*                         EXECUTE FORM PARAMETER LIST                  08100052
+.*                              'R' =  REGISTER TYPE                    08150052
+.*                              'A' =  RX ADDRESS TYPE                  08200052
+.*                                                                      08250052
+         LCLC  &M(10)      ARRAY OF CHARACTER STRINGS USED IN           08300052
+.*                         ERROR MESSAGES                               08350052
+&M(1)    SETC  'ADD'                                                    08400052
+&M(2)    SETC  'ADDPASN'                                                08450052
+&M(3)    SETC  'DELETE'                                                 08500052
+&M(4)    SETC  'EXTRACT'                                                08550052
+&M(5)    SETC  'SEARCH'                                                 08600052
+&M(6)    SETC  'MF=L'                                                   08650052
+&M(7)    SETC  'AL'                                                     08700052
+&M(8)    SETC  'WORKUNIT'                                               08750052
+&M(9)    SETC  'PASN'                                                   08800052
+&M(10)   SETC  'EXTRACTH'                                               08850052
+.*                                                                      08900052
+         LCLC  &OSFT       OFFSET INTO THE SFT                          08950052
+.*                                                                      09000052
+         LCLC  &OTYPE      ALESERV OPTION TYPE BYTE FOR PARM LIST       09050052
+&OTYPE   SETC  '0'         INITIALIZE ALS@TYPE = (INVALID)              09100052
+.*                                                                      09150052
+         LCLC  &MFTYPE     MF KEYWORD TYPE - S, L, OR E                 09200052
+.*                              'S' =  STANDARD FORM                    09250052
+.*                              'L' =  LIST FORM                        09300052
+.*                              'E' =  EXECUTE FORM                     09350052
+.*                                                                      09400052
+.*                                                                      09450052
+.*                                                                      09500052
+.*                                                                      09550052
+.********************************************************************** 09600052
+.*       PUT OUT BAL MACDATE COMMENT LINE REGARDLESS OF ERRORS.       * 09650052
+.********************************************************************** 09700052
+.*                                                                      09750052
+.*                                                                      09800052
+.*                                                                      09850052
+*              MACDATE = 02/01/88                                       09900052
+.*                                                                      09950052
+.*                                                                      10000052
+.*                                                                      10050052
+.********************************************************************** 10100052
+.*       VALIDATE STOKEN   KEYWORD IF PRESENT                         * 10150052
+.********************************************************************** 10200052
+.*                                                                      10250052
+.*                                                                      10300052
+         AIF   (T'&STOKEN EQ 'O').OK01X IF OMITTED, EXIT STOKEN         10350052
+.*                                      VALIDATION                      10400052
+&S(1)    SETB  1                        INDICATE STOKEN WAS SPECIFIED   10450052
+.*                                                                      10500052
+         AIF   (T'&STOKEN EQ 'N').BAD1  MAKE SURE STOKEN IS NOT A SELF  10550052
+.*                                      DEFINING TERM                   10600052
+.*                                                                      10650052
+         AIF   ('&STOKEN'(1,1) NE '(').OK01X  PUT OUT ERROR MESSAGE     10700052
+.*                                      IF STOKEN IS A REGISTER         10750052
+.*                                                                      10800052
+.BAD1    ANOP                                                           10850052
+         MNOTE 12,'IHB002 INVALID STOKEN OPERAND SPECIFIED-&STOKEN.'    10900052
+.*       IHBERMAC 1001,&KW(1),&STOKEN                                   10950052
+&KILL    SETB  1                        SET ERROR INDICATOR             11000052
+.*                                                                      11050052
+.OK01X   ANOP                                                           11100052
+.*                                                                      11150052
+.*                                                                      11200052
+.*                                                                      11250052
+.*                                                                      11300052
+.*                                                                      11350052
+.********************************************************************** 11400052
+.*       VALIDATE ACCESS   KEYWORD IF PRESENT                         * 11450052
+.********************************************************************** 11500052
+.*                                                                      11550052
+.*                                                                      11600052
+         AIF   (T'&ACCESS EQ 'O').OK02X IF ACCESS IS OMITTED, USE       11650052
+.*                                      DEFAULT. ACCESS=PUBLIC          11700052
+.*                                                                      11750052
+&S(2)    SETB  1                        INDICATE ACCESS WAS SPECIFIED   11800052
+.*                                                                      11850052
+         AIF   ('&ACCESS' EQ 'PUBLIC').OK02X  VALIDATE ACCESS KEYWORD   11900052
+         AIF   ('&ACCESS' EQ 'PRIVATE').OK02C                           11950052
+.*                                                                      12000052
+         MNOTE 12,'IHB002 INVALID ACCESS OPERAND SPECIFIED-&ACCESS.'    12050052
+.*       IHBERMAC 1001,&KW(2),&ACCESS                                   12100052
+&KILL    SETB  1                                                        12150052
+         AGO   .OK02X                                                   12200052
+.*                                                                      12250052
+.OK02C   ANOP                                                           12300052
+&B(8)    SETB  1                        INDICATE PRIVATE ACCESS         12350052
+.*                                      IN OPTIONS BYTE                 12400052
+.*                                                                      12450052
+.OK02X   ANOP                                                           12500052
+.*                                                                      12550052
+.*                                                                      12600052
+.*                                                                      12650052
+.*                                                                      12700052
+.*                                                                      12750052
+.********************************************************************** 12800052
+.*       VALIDATE AL        KEYWORD IF PRESENT                        * 12850052
+.********************************************************************** 12900052
+.*                                                                      12950052
+.*                                                                      13000052
+         AIF   (T'&AL EQ 'O').OK03X     IF AL IS OMITTED, USE DEFAULT   13050052
+.*                                      (AL=WORKUNIT)                   13100052
+&S(3)    SETB  1                        INDICATE AL WAS SPECIFIED       13150052
+.*                                                                      13200052
+         AIF   ('&AL' EQ 'WORKUNIT').OK03X  VALIDATE AL KEYWORD         13250052
+         AIF   ('&AL' EQ 'PASN').OK03C                                  13300052
+.*                                                                      13350052
+         MNOTE 12,'IHB002 INVALID AL OPERAND SPECIFIED-&AL.'            13400052
+.*       IHBERMAC 1001,&KW(3),&AL                                       13450052
+&KILL    SETB  1                        INDICATE ERROR OCCURED          13500052
+         AGO   .OK03X                   EXIT AL VALIDATION              13550052
+.*                                                                      13600052
+.OK03C   ANOP                                                           13650052
+&B(7)    SETB  1                        INDICATE PASN ACCESS LIST       13700052
+.*                                      IN OPTIONS BYTE                 13750052
+.*                                                                      13800052
+.OK03X   ANOP                                                           13850052
+.*                                                                      13900052
+.*                                                                      13950052
+.*                                                                      14000052
+.*                                                                      14050052
+.*                                                                      14100052
+.********************************************************************** 14150052
+.*       VALIDATE ALET     KEYWORD IF PRESENT                         * 14200052
+.********************************************************************** 14250052
+.*                                                                      14300052
+.*                                                                      14350052
+         AIF   (T'&ALET EQ 'O').OK04X   OMITTED, EXIT ALET VALIDATION   14400052
+.*                                                                      14450052
+&S(4)    SETB  1                        INDICATE ALET WAS SPECIFIED     14500052
+.*                                                                      14550052
+         AIF   ('&ALET'(1,1) EQ '(').OK04B   BRANCH TO PROCESS REGISTER 14600052
+.*                                      TYPE OF ALET                    14650052
+.*                                                                      14700052
+&LT4     SETC  'A'                      INDICATE ALET IS AN RX ADDRESS  14750052
+&ALETV   SETC  '&ALET'                  SET ALET VALUE FOR USE IN       14800052
+.*                                      LAE INSTRUCTION                 14850052
+.*                                                                      14900052
+         AIF   (T'&ALET EQ 'N').BAD4    MAKE SURE ALET IS NOT A SELF    14950052
+.*                                      DEFINING TERM                   15000052
+.*                                                                      15050052
+         AGO   .OK04X                   EXIT ALET VALIDATION            15100052
+.*                                                                      15150052
+.OK04B   ANOP                           PROCESS REGISTER ALET           15200052
+&LT4     SETC  'R'                      INDICATE ALET IS IN A REGISTER  15250052
+&ALETV   SETC  '&ALET(1)'               EXTRACT THE REGISTER NAME       15300052
+.*                                                                      15350052
+         AIF   (N'&ALET NE 1).BAD4      PUT OUT ERROR MESSAGE IF MORE   15400052
+.*                                      THAN ONE REGISTER WAS SPECIFIED 15450052
+.*                                                                      15500052
+         AIF   (T'&ALET NE 'N').OK04X   IF THE REGISTER NAME IS NOT     15550052
+.*                                      A SELF DEFINING NUMBER, EXIT    15600052
+.*                                      ALET VALIDATION. WE MUST HAVE   15650052
+.*                                      FAITH THAT A REGISTER 2-12      15700052
+.*                                      WAS SPECIFIED.                  15750052
+.*                                                                      15800052
+&A       SETA  &ALET(1)                 GET THE REGISTER NUMBER         15850052
+         AIF   (&A LT 2).BAD4           ERROR IF REGISTER NOT 2-12      15900052
+         AIF   (&A GT 12).BAD4          ERROR IF REGISTER NOT 2-12      15950052
+         AGO   .OK04X                   REGISTER IS OK, EXIT ALET       16000052
+.*                                      VALIDATION                      16050052
+.*                                                                      16100052
+.BAD4    ANOP                                                           16150052
+         MNOTE 12,'IHB002 INVALID ALET OPERAND SPECIFIED-&ALET.'        16200052
+.*       IHBERMAC 1001,&KW(4),&ALET                                     16250052
+&KILL    SETB  1                        SET ERROR INDICATION            16300052
+.*                                                                      16350052
+.OK04X   ANOP                                                           16400052
+.*                                                                      16450052
+.*                                                                      16500052
+.*                                                                      16550052
+.*                                                                      16600052
+.*                                                                      16650052
+.********************************************************************** 16700052
+.*       VALIDATE MF KEYWORD IF PRESENT                               * 16750052
+.********************************************************************** 16800052
+.*                                                                      16850052
+.*                                                                      16900052
+&MFTYPE  SETC  'S'                      SET MF TYPE TO STANDARD         16950052
+         AIF   (T'&MF EQ 'O').OK05X     IF MF OMITTED, EXIT MF          17000052
+.*                                      VALIDATION.                     17050052
+.*                                                                      17100052
+&MFTYPE  SETC  'L'                      SET MF TYPE TO LIST             17150052
+         AIF   ('&MF' EQ 'L').OK05X     MF=L, EXIT MF VALIDATION        17200052
+.*                                                                      17250052
+&MFTYPE  SETC  'E'                      SET MF TYPE TO EXECUTE FORM     17300052
+         AIF   (N'&MF EQ 2).OK05A       MAKE SURE 'E' AND A PARAMETER   17350052
+.*                                      LIST WAS SPECIFIED              17400052
+.*                                                                      17450052
+         MNOTE 12,'IHB002 INVALID MF OPERAND SPECIFIED-&MF.'            17500052
+.*       IHBERMAC 1001,&KW(5),&MF                                       17550052
+&KILL    SETB  1                        SET ERROR INDICATION            17600052
+         AGO   .OK05X                   EXIT MF VALIDATION              17650052
+.*                                                                      17700052
+.OK05A   ANOP                                                           17750052
+         AIF   ('&MF(1)' EQ 'E').OK05B  MAKE SURE 'E' WAS SPECIFIED     17800052
+.*                                                                      17850052
+         MNOTE 12,'IHB002 INVALID MF OPERAND SPECIFIED-&MF.'            17900052
+.*       IHBERMAC 1001,&KW(5),&MF                                       17950052
+&KILL    SETB  1                        SET ERROR INDICATION            18000052
+         AGO   .OK05X                   EXIT MF VALIDATION              18050052
+.*                                                                      18100052
+.OK05B   ANOP                                                           18150052
+         AIF   ('&MF(2)' NE '').OK05C   MAKE SURE A NON NULL PARAMETER  18200052
+.*                                      ADDRESS WAS SPECIFIED           18250052
+.*                                                                      18300052
+         MNOTE 12,'IHB002 INVALID MF OPERAND SPECIFIED-&MF.'            18350052
+.*       IHBERMAC 1001,&KW(5),&MF                                       18400052
+&KILL    SETB  1                        SET ERROR INDICATION            18450052
+         AGO   .OK05X                   EXIT MF VALIDATION              18500052
+.*                                                                      18550052
+.OK05C   ANOP                                                           18600052
+         AIF   ('&MF(2)'(1,1) EQ '(').OK05D  BRANCH TO PROCESS REGISTER 18650052
+.*                                      TYPE OF PARAMETER LIST ADDRESS  18700052
+.*                                                                      18750052
+&LTE     SETC  'A'                      INDICATE RX ADDRESS TYPE OF     18800052
+.*                                      PARM LIST                       18850052
+&EPLV    SETC  '&MF(2)'                 GET PARM LIST VALUE TO USE IN   18900052
+.*                                      THE LAE INSTRUCTION             18950052
+.*                                                                      19000052
+         AIF   (T'&MF(2) NE 'N').OK05X  MAKE SURE THE PARAMETER LIST    19050052
+.*                                      ADDRESS IS NOT A SELF DEFINING  19100052
+.*                                      TERM                            19150052
+.*                                                                      19200052
+         MNOTE 12,'IHB002 INVALID MF OPERAND SPECIFIED-&MF.'            19250052
+.*       IHBERMAC 1001,&KW(5),&MF                                       19300052
+&KILL    SETB  1                        SET ERROR INDICATION            19350052
+         AGO   .OK05X                   EXIT MF VALIDATION              19400052
+.*                                                                      19450052
+.OK05D   ANOP                           PROCESS REGISTER TYPE PARM LIST 19500052
+&LTE     SETC  'R'                      INDICATE REGISTER TYPE          19550052
+&EPLV    SETC  '&MF(2)'(2,K'&MF(2)-2)   EXTRACT THE REGISTER NAME FOR   19600052
+.*                                      USE IN THE LAE INSTRUCTION      19650052
+.*                                                                      19700052
+         AIF   (N'&MF(2) NE 1).BADE     PUT OUT ERROR MESSAGE IF MORE   19750052
+.*                                      THAN ONE REGISTER WAS SPECIFIED 19800052
+.*                                                                      19850052
+         AIF   (T'&MF(2) NE 'N').OK05X  IF THE REGISTER NAME IS NOT     19900052
+.*                                      A SELF DEFINING NUMBER, EXIT    19950052
+.*                                      MF VALIDATION. WE MUST HAVE     20000052
+.*                                      FAITH THAT A REGISTER 2-12      20050052
+.*                                      WAS SPECIFIED.                  20100052
+.*                                                                      20150052
+&A       SETA  &EPLV                    GET THE REGISTER NUMBER         20200052
+         AIF   (&A LT 2).BADE           ERROR IF REGISTER NOT 2-12      20250052
+         AIF   (&A GT 12).BADE          ERROR IF REGISTER NOT 2-12      20300052
+         AGO   .OK05X                   EXIT MF VALIDATION              20350052
+.*                                                                      20400052
+.BADE    ANOP                                                           20450052
+         MNOTE 12,'IHB002 INVALID MF OPERAND SPECIFIED-&MF.'            20500052
+.*       IHBERMAC 1001,&KW(5),&MF                                       20550052
+&KILL    SETB  1                        SET ERROR INDICATION            20600052
+.*                                                                      20650052
+.OK05X   ANOP                                                           20700052
+.*                                                                      20750052
+.*                                                                      20800052
+.*                                                                      20850052
+.*                                                                      20900052
+.*                                                                      20950052
+.********************************************************************** 21000052
+.*       VALIDATE CHKEAX KEYWORD IF PRESENT                     @L1A  * 21050052
+.********************************************************************** 21100052
+.*                                                                      21150052
+.*                                                                      21200052
+         AIF   (T'&CHKEAX EQ 'O').OK06X IF CHKEAX IS OMITTED, USE @L1A  21250052
+.*                                      DEFAULT (CHKEAX=YES)            21300052
+&S(6)    SETB  1                       INDICATE CHKEAX WAS         @L1A 21350052
+.*                                     SPECIFIED.                       21400052
+.*                                                                      21450052
+         AIF   ('&CHKEAX' EQ 'YES').OK06X VALIDATE CHKEAX KEYWORD  @L1A 21500052
+         AIF   ('&CHKEAX' EQ 'NO').OK06C                           @L1A 21550052
+.*                                                                      21600052
+         MNOTE 12,'IHB002 INVALID CHKEAX OPERAND SPECIFIED-&CHKEAX.'    21650052
+.*                                                                 @L1A 21700052
+.*       IHBERMAC 1001,&KW(6),&CHKEAX                              @L1A 21750052
+&KILL    SETB  1                        INDICATE ERROR OCCURRED    @L1A 21800052
+         AGO   .OK06X                   EXIT CHKEAX VALIDATION     @L1A 21850052
+.*                                                                      21900052
+.OK06C   ANOP                                                      @L1A 21950052
+&B(6)    SETB  1                        INDICATE CHKEAX=NO IN      @L1A 22000052
+.*                                      OPTIONS BYTE                    22050052
+.*                                                                      22100052
+.OK06X   ANOP                                                      @L1A 22150052
+.*                                                                      22200052
+.*                                                                      22250052
+.*                                                                      22300052
+.*                                                                      22350052
+.*                                                                      22400052
+.********************************************************************** 22450052
+.*       VALIDITY CHECK THE POSITIONAL KEYWORD                        * 22500052
+.********************************************************************** 22550052
+.*                                                                      22600052
+         AIF   ('&MFTYPE' EQ 'L').CKMFL1  IF MF=L, GO PROCESS LIST FORM 22650052
+.*                                                                      22700052
+         AIF   (N'&SYSLIST LT 2).OKPOSA MAKE SURE NO MORE THAN ONE      22750052
+.*                                      POSITIONAL PARAMETER WAS        22800052
+.*                                      SPECIFIED                       22850052
+.*                                                                      22900052
+         MNOTE 12,'IHB027 EXCESSIVE POSITIONAL PARAMETERS SPECIFIED.'   22950052
+.*       IHBERMAC 238                                                   23000052
+         MEXIT                                                          23050052
+.*                                                                      23100052
+.OKPOSA  ANOP                                                           23150052
+         AIF   (N'&SYSLIST EQ 1).OKPOSB MAKE SURE ONE OPTION WAS        23200052
+.*                                      SPECIFIED                       23250052
+.*                                                                      23300052
+         MNOTE 12,'IHB308 REQUIRED POSITIONAL PARAMETER NOT SPECIFIED'  23350052
+.*       IHBERMAC 1308                                                  23400052
+         MEXIT                                                          23450052
+.*                                                                      23500052
+.OKPOSB  ANOP                                                           23550052
+         AIF   ('&OPTION' EQ 'ADD').CHKPOS  VALIDATE THE OPTION         23600052
+         AIF   ('&OPTION' EQ 'ADDPASN').CHKPOS                          23650052
+         AIF   ('&OPTION' EQ 'DELETE').CHKPOS                           23700052
+         AIF   ('&OPTION' EQ 'EXTRACT').CHKPOS                          23750052
+         AIF   ('&OPTION' EQ 'EXTRACTH').CHKPOS                         23800052
+         AIF   ('&OPTION' EQ 'SEARCH').CHKPOS                           23850052
+.*                                                                      23900052
+         MNOTE 12,'IHB300 INVALID POSITIONAL PARAMETER -&OPTION'        23950052
+.*       IHBERMAC 1300,&OPTION                                          24000052
+         MEXIT                                                          24050052
+.*                                                                      24100052
+.*                                                                      24150052
+.*                                                                      24200052
+.*                                                                      24250052
+.*                                                                      24300052
+.********************************************************************** 24350052
+.*       MF=L REQUEST                                                 * 24400052
+.********************************************************************** 24450052
+.*                                                                      24500052
+.CKMFL1  ANOP                                                           24550052
+         AIF   (N'&SYSLIST EQ 0).OKMFL1 MAKE SURE NO POSITIONAL         24600052
+.*                                      PARAMETERS WERE SPECIFIED       24650052
+.*                                                                      24700052
+         MNOTE 12,'IHB301 - ''&OPTION'' INVALID WITH MF=L REQUEST.'     24750052
+.*       IHBERMAC 1301,&OPTION,&M(6)                                    24800052
+&KILL    SETB  1                        SET ERROR INDICATION            24850052
+.*                                                                      24900052
+.OKMFL1  ANOP                           MAKE SURE STOKEN, ALET, ACCESS, 24950052
+&A       SETA  1                        AND AL WERE NOT SPECIFIED       25000052
+.*                                                                      25050052
+.MFL1    ANOP                                                           25100052
+         AIF   (&S(&A) EQ 0).MFL2       BRANCH AROUND ERROR MESSAGE     25150052
+.*                                      IF KEYWORD WAS NOT SPECIFIED    25200052
+.*                                                                      25250052
+         MNOTE 12,'IHB301 - ''&KW(&A)'' INVALID WITH MF=L REQUEST.'     25300052
+.*       IHBERMAC 1301,&KW(&A),&M(6)                                    25350052
+&KILL    SETB  1                        SET ERROR INDICATION            25400052
+.*                                                                      25450052
+.MFL2    ANOP                                                           25500052
+&A       SETA  &A+1                     INCREMENT INDEX TO EXAMINE      25550052
+.*                                      THE NEXT KEYWORD                25600052
+         AIF   (&A LE 4).MFL1           BRANCH IF MORE KEYWORDS TO      25650052
+.*                                      EXAMINE                         25700052
+.*                                                                      25750052
+         AIF   (&S(6) EQ 0).MFL3        MAKE SURE CHKEAX WAS NOT   @L1A 25800052
+.*                                      SPECIFIED, BRANCH AROUND ERROR  25850052
+.*                                      MESSAGE IF KEYWORD WAS NOT      25900052
+.*                                      SPECIFIED                       25950052
+         MNOTE 12,'IHB301 - ''CHKEAX'' INVALID WITH MF=L REQUEST.' @L1A 26000052
+.*       IHBERMAC 1301,&KW(6),&M(6)                                @L1A 26050052
+&KILL    SETB  1                        SET ERROR INDICATION       @L1A 26100052
+.*                                                                      26150052
+.MFL3    ANOP                                                      @L1A 26200052
+         AIF   (&KILL EQ 0).GENLIST     IF NO ERRORS, GO GENERATE THE   26250052
+.*                                      PARAMETER LIST                  26300052
+         MEXIT                                                          26350052
+.*                                                                      26400052
+.GENLIST ANOP                                                           26450052
+&LABL    DS    0F                   .ALESERV PC PARAMETER LIST          26500052
+         DC    XL1'00'              .SERVICE TYPE CODE                  26550052
+         DC    XL1'00'              .OPTIONS FLAG BYTE                  26600052
+         DC    AL2(0)               .RESERVED                           26650052
+         DC    A(0)                 .ALET                               26700052
+         DC    XL8'0'               .STOKEN (SPACE TOKEN)               26750052
+         MEXIT                                                          26800052
+.*                                                                      26850052
+.*                                                                      26900052
+.*                                                                      26950052
+.*                                                                      27000052
+.*                                                                      27050052
+.*                                                                      27100052
+.*                                                                      27150052
+.********************************************************************** 27200052
+.*       DETERMINE WHICH POSITIONAL PARAMETER WAS SPECIFIED           * 27250052
+.********************************************************************** 27300052
+.*                                                                      27350052
+.CHKPOS  ANOP                                                           27400052
+         AIF   ('&OPTION' EQ 'ADD').ADD                                 27450052
+         AIF   ('&OPTION' EQ 'ADDPASN').ADDPASN                         27500052
+         AIF   ('&OPTION' EQ 'DELETE').DELETE                           27550052
+         AIF   ('&OPTION' EQ 'EXTRACT').EXTRACT                         27600052
+         AIF   ('&OPTION' EQ 'EXTRACTH').EXTRACTH                       27650052
+         AIF   ('&OPTION' EQ 'SEARCH').SEARCH                           27700052
+.*                                                                      27750052
+.*                                                                      27800052
+.*                                                                      27850052
+.********************************************************************** 27900052
+.*       (ADD) REQUEST                                                * 27950052
+.********************************************************************** 28000052
+.*                                                                      28050052
+.ADD     ANOP                                                           28100052
+         AIF   (&S(1) EQ 1).AD03        MAKE SURE STOKEN WAS SPECIFIED  28150052
+.*                                                                      28200052
+         MNOTE 12,'IHB309 - ''STOKEN'' IS REQUIRED WITH ADD OPTION.'    28250052
+.*       IHBERMAC 1309,&KW(1),&M(1)                                     28300052
+&KILL    SETB  1                        SET ERROR INDICATION            28350052
+.*                                                                      28400052
+.AD03    ANOP                                                           28450052
+         AIF   (&S(4) EQ 1).AD04        MAKE SURE ALET WAS SPECIFIED    28500052
+.*                                                                      28550052
+         MNOTE 12,'IHB309 - ''ALET'' IS REQUIRED WITH ADD OPTION.'      28600052
+.*       IHBERMAC 1309,&KW(4),&M(1)                                     28650052
+&KILL    SETB  1                        SET ERROR INDICATION            28700052
+.*                                                                      28750052
+.AD04    ANOP                                                           28800052
+&OTYPE   SETC  '01'                     INDICATE ADD REQUEST FOR        28850052
+.*                                      PARAMETER LIST                  28900052
+&OSFT    SETC  '188'                    SET UP SFT OFFSET FOR ADD       28950052
+         AGO   .COMMON                  GO GENERATE CODE                29000052
+.*                                                                      29050052
+.*                                                                      29100052
+.*                                                                      29150052
+.*                                                                      29200052
+.********************************************************************** 29250052
+.*       (ADDPASN) REQUEST                                            * 29300052
+.********************************************************************** 29350052
+.*                                                                      29400052
+.ADDPASN ANOP                                                           29450052
+&A       SETA  1                        MAKE SURE STOKEN, ACCESS, AND   29500052
+.*                                      AL WERE NOT SPECIFIED           29550052
+.*                                                                      29600052
+.ADP1    ANOP                                                           29650052
+         AIF   (&S(&A) EQ 0).ADP2       BRANCH AROUND ERROR MESSAGE     29700052
+.*                                      IF KEYWORD WAS NOT SPECIFIED    29750052
+.*                                                                      29800052
+         MNOTE 12,'IHB301 - ''&KW(&A)'' INVALID WITH ADDPASN REQUEST.'  29850052
+.*       IHBERMAC 1301,&KW(&A),&M(2)                                    29900052
+&KILL    SETB  1                        SET ERROR INDICATOR             29950052
+.*                                                                      30000052
+.ADP2    ANOP                                                           30050052
+&A       SETA  &A+1                     INCREMENT KEYWORD INDEX         30100052
+.*                                      TO EXAMINE NEXT KEYWORD         30150052
+         AIF   (&A LE 3).ADP1           BRANCH, MORE KEYWORDS TO CHECK  30200052
+.*                                                                      30250052
+.*                                                                      30300052
+         AIF   (&S(6) EQ 0).ADP3        MAKE SURE CHKEAX WAS NOT   @L1A 30350052
+.*                                      SPECIFIED, BRANCH AROUND ERROR  30400052
+.*                                      MESSAGE IF KEYWORD WAS NOT      30450052
+.*                                      SPECIFIED                       30500052
+         MNOTE 12,'IHB301 - ''CHKEAX'' INVALID WITH ADDPASN REQUEST.'   30550052
+.*                                                                 @L1A 30600052
+.*       IHBERMAC 1301,&KW(6),&M(2)                                @L1A 30650052
+&KILL    SETB  1                        SET ERROR INDICATOR        @L1A 30700052
+.*                                                                      30750052
+.ADP3    ANOP                                                      @L1A 30800052
+         AIF   (&S(4) EQ 1).ADP4        MAKE SURE ALET WAS SPECIFIED    30850052
+.*                                                                      30900052
+         MNOTE 12,'IHB309 - ''ALET'' IS REQUIRED WITH ADDPASN OPTION.'  30950052
+.*       IHBERMAC 1309,&KW(4),&M(2)                                     31000052
+&KILL    SETB  1                        SET ERROR INDICATOR             31050052
+.*                                                                      31100052
+.ADP4    ANOP                                                           31150052
+&OTYPE   SETC  '02'                     SET ADDPASN OPTION BYTE         31200052
+.*                                      FOR PARAMETER LIST              31250052
+&OSFT    SETC  '188'                    SET UP SFT OFFSET FOR ADDPASN   31300052
+         AGO   .COMMON                  GO GENERATE CODE                31350052
+.*                                                                      31400052
+.*                                                                      31450052
+.*                                                                      31500052
+.*                                                                      31550052
+.*                                                                      31600052
+.********************************************************************** 31650052
+.*       (DELETE) REQUEST                                             * 31700052
+.********************************************************************** 31750052
+.*                                                                      31800052
+.DELETE  ANOP                                                           31850052
+&A       SETA  1                        MAKE SURE STOKEN, ACCESS, AND   31900052
+.*                                      AL WERE NOT SPECIFIED           31950052
+.*                                                                      32000052
+.DE01    ANOP                                                           32050052
+         AIF   (&S(&A) EQ 0).DE02       BRANCH AROUND ERROR MESSAGE     32100052
+.*                                      IF KEYWORD WAS NOT SPECIFIED    32150052
+.*                                                                      32200052
+         MNOTE 12,'IHB301 - ''&KW(&A)'' INVALID WITH DELETE REQUEST.'   32250052
+.*       IHBERMAC 1301,&KW(&A),&M(3)                                    32300052
+&KILL    SETB  1                        SET ERROR INDICATOR             32350052
+.*                                                                      32400052
+.DE02    ANOP                                                           32450052
+&A       SETA  &A+1                     INCREMENT THE INDEX TO          32500052
+.*                                      EXAMINE THE NEXT KEYWORD        32550052
+         AIF   (&A LE 3).DE01           BRANCH IF MORE KEYWORDS         32600052
+.*                                      TO EXAMINE                      32650052
+.*                                                                      32700052
+.*                                                                      32750052
+         AIF   (&S(4) EQ 1).DE04        MAKE SURE ALET WAS SPECIFIED    32800052
+.*                                                                      32850052
+         MNOTE 12,'IHB309 - ''ALET'' IS REQUIRED WITH DELETE.'          32900052
+.*       IHBERMAC 1309,&KW(4),&M(3)                                     32950052
+&KILL    SETB  1                        SET ERROR INDICATOR             33000052
+.*                                                                      33050052
+.DE04    ANOP                                                           33100052
+&OTYPE   SETC  '03'                     INDICATE DELETE OPTION FOR      33150052
+.*                                      PARAMETER LIST                  33200052
+&OSFT    SETC  '192'                    SET UP SFT OFFSET FOR DELETE    33250052
+         AGO   .COMMON                  GO GENERATE CODE                33300052
+.*                                                                      33350052
+.*                                                                      33400052
+.*                                                                      33450052
+.*                                                                      33500052
+.*                                                                      33550052
+.********************************************************************** 33600052
+.*       (EXTRACT) REQUEST                                            * 33650052
+.********************************************************************** 33700052
+.*                                                                      33750052
+.EXTRACT ANOP                                                           33800052
+         AIF   (&S(2) EQ 0).EX01       MAKE SURE ACCESS WAS NOT         33850052
+.*                                     SPECIFIED                        33900052
+.*                                                                      33950052
+         MNOTE 12,'IHB301 - ''ACCESS'' INVALID WITH EXTRACT REQUEST.'   34000052
+.*       IHBERMAC 1301,&KW(2),&M(4)                                     34050052
+&KILL    SETB  1                       SET ERROR INDICATOR              34100052
+.*                                                                      34150052
+.EX01    ANOP                                                           34200052
+         AIF   (&S(3) EQ 0).EX02       MAKE SURE AL WAS NOT SPECIFIED   34250052
+.*                                                                      34300052
+         MNOTE 12,'IHB301 - ''AL'' INVALID WITH EXTRACT REQUEST.'       34350052
+.*       IHBERMAC 1301,&KW(3),&M(4)                                     34400052
+&KILL    SETB  1                       SET ERROR INDICATOR              34450052
+.*                                                                      34500052
+.EX02    ANOP                                                           34550052
+         AIF   (&S(6) EQ 0).EX03       MAKE SURE CHKEAX WAS NOT    @L1A 34600052
+.*                                     SPECIFIED                        34650052
+         MNOTE 12,'IHB301 - ''CHKEAX'' INVALID WITH EXTRACT REQUEST.'   34700052
+.*                                                                 @L1A 34750052
+.*       IHBERMAC 1301,&KW(6),&M(4)                                @L1A 34800052
+&KILL    SETB  1                       SET ERROR INDICATOR         @L1A 34850052
+.*                                                                      34900052
+.EX03    ANOP                                                           34950052
+         AIF   (&S(4) EQ 1).EX04       MAKE SURE ALET WAS SPECIFIED     35000052
+.*                                                                      35050052
+         MNOTE 12,'IHB309 - ''ALET'' IS REQUIRED WITH EXTRACT.'         35100052
+.*       IHBERMAC 1309,&KW(4),&M(4)                                     35150052
+&KILL    SETB  1                       SET ERROR INDICATOR              35200052
+.*                                                                      35250052
+.EX04    ANOP                                                           35300052
+         AIF   (&S(1) EQ 1).EX05       MAKE SURE STOKEN WAS SPECIFIED   35350052
+.*                                                                      35400052
+         MNOTE 12,'IHB309 - ''STOKEN'' IS REQUIRED WITH EXTRACT.'       35450052
+.*       IHBERMAC 1309,&KW(1),&M(4)                                     35500052
+&KILL    SETB  1                       SET ERROR INDICATOR              35550052
+.*                                                                      35600052
+.EX05    ANOP                                                           35650052
+&OTYPE   SETC  '04'                     INDICATE EXTRACT OPTION FOR     35700052
+.*                                      PARAMETER LIST                  35750052
+&OSFT    SETC  '196'                    SET UP SFT OFFSET FOR EXTRACT   35800052
+         AGO   .COMMON                  GO GENERATE CODE                35850052
+.*                                                                      35900052
+.*                                                                      35950052
+.*                                                                      36000052
+.*                                                                      36050052
+.*                                                                      36100052
+.********************************************************************** 36150052
+.*       (EXTRACTH) REQUEST                                           * 36200052
+.********************************************************************** 36250052
+.*                                                                      36300052
+.EXTRACTH ANOP                                                          36350052
+&A       SETA  2                        MAKE SURE ALET, ACCESS, AND     36400052
+.*                                      AL WERE NOT SPECIFIED           36450052
+.*                                                                      36500052
+.EH01    ANOP                                                           36550052
+         AIF   (&S(&A) EQ 0).EH02       BRANCH AROUND ERROR MESSAGE     36600052
+.*                                      IF KEYWORD WAS NOT SPECIFIED    36650052
+.*                                                                      36700052
+         MNOTE 12,'IHB301 - ''&KW(&A)'' INVALID WITH EXTRACTH REQUEST.' 36750052
+.*       IHBERMAC 1301,&KW(&A),&M(10)                                   36800052
+&KILL    SETB  1                        SET ERROR INDICATOR             36850052
+.*                                                                      36900052
+.EH02    ANOP                                                           36950052
+&A       SETA  &A+1                     INCREMENT THE INDEX TO          37000052
+.*                                      EXAMINE THE NEXT KEYWORD        37050052
+         AIF   (&A LE 4).EH01           BRANCH IF MORE KEYWORDS         37100052
+.*                                      TO EXAMINE                      37150052
+.*                                                                      37200052
+         AIF   (&S(6) EQ 0).EH03        MAKE SURE CHKEAX WAS NOT   @L1A 37250052
+.*                                      SPECIFIED, BRANCH AROUND ERROR  37300052
+.*                                      MESSAGE IF KEYWORD WAS NOT      37350052
+.*                                      SPECIFIED                       37400052
+         MNOTE 12,'IHB301 - ''&KW(6)'' INVALID WITH EXTRACTH REQUEST.'  37450052
+.*                                                                 @L1A 37500052
+.*       IHBERMAC 1301,&KW(6),&M(10)                               @L1A 37550052
+&KILL    SETB  1                        SET ERROR INDICATOR        @L1A 37600052
+.*                                                                      37650052
+.EH03    ANOP                                                           37700052
+         AIF   (&S(1) EQ 1).EH04        MAKE SURE STOKEN WAS SPECIFIED  37750052
+.*                                                                      37800052
+         MNOTE 12,'IHB309 - ''STOKEN'' IS REQUIRED WITH EXTRACTH.'      37850052
+.*       IHBERMAC 1309,&KW(1),&M(10)                                    37900052
+&KILL    SETB  1                        SET ERROR INDICATOR             37950052
+.*                                                                      38000052
+.EH04    ANOP                                                           38050052
+&OTYPE   SETC  '06'                     INDICATE EXTRACTH OPTION FOR    38100052
+.*                                      PARAMETER LIST                  38150052
+&OSFT    SETC  '196'                    SET UP SFT OFFSET FOR EXTRACTH  38200052
+         AGO   .COMMON                  GO GENERATE CODE                38250052
+.*                                                                      38300052
+.*                                                                      38350052
+.*                                                                      38400052
+.*                                                                      38450052
+.*                                                                      38500052
+.********************************************************************** 38550052
+.*       (SEARCH) REQUEST                                             * 38600052
+.********************************************************************** 38650052
+.*                                                                      38700052
+.SEARCH  ANOP                                                           38750052
+         AIF   (&S(2) EQ 0).SR02       MAKE SURE ACCESS WAS NOT         38800052
+.*                                     SPECIFIED                        38850052
+.*                                                                      38900052
+         MNOTE 12,'IHB301 - ''ACCESS'' INVALID WITH SEARCH REQUEST.'    38950052
+.*       IHBERMAC 1301,&KW(2),&M(5)                                     39000052
+&KILL    SETB  1                       SET ERROR INDICATOR              39050052
+.*                                                                      39100052
+.SR02    ANOP                                                           39150052
+         AIF   (&S(6) EQ 0).SR03       MAKE SURE CHKEAX WAS NOT    @L1A 39200052
+.*                                     SPECIFIED                        39250052
+         MNOTE 12,'IHB301 - ''CHKEAX'' INVALID WITH SEARCH REQUEST.'    39300052
+.*                                                                 @L1A 39350052
+.*       IHBERMAC 1301,&KW(6),&M(5)                                @L1A 39400052
+&KILL    SETB  1                       SET ERROR INDICATOR         @L1A 39450052
+.*                                                                      39500052
+.SR03    ANOP                                                           39550052
+         AIF   (&S(1) EQ 1).SR04       MAKE SURE STOKEN WAS SPECIFIED   39600052
+.*                                                                      39650052
+         MNOTE 12,'IHB309 - ''STOKEN'' IS REQUIRED WITH SEARCH OPTION.' 39700052
+.*       IHBERMAC 1309,&KW(1),&M(5)                                     39750052
+&KILL    SETB  1                       SET ERROR INDICATOR              39800052
+.*                                                                      39850052
+.SR04    ANOP                                                           39900052
+         AIF   (&S(4) EQ 1).SR05       MAKE SURE ALET WAS SPECIFIED     39950052
+.*                                                                      40000052
+         MNOTE 12,'IHB309 - ''ALET'' IS REQUIRED WITH SEARCH OPTION.'   40050052
+.*       IHBERMAC 1309,&KW(4),&M(5)                                     40100052
+&KILL    SETB  1                       SET ERROR INDICATOR              40150052
+.*                                                                      40200052
+.SR05    ANOP                                                           40250052
+&OTYPE   SETC  '05'                     INDICATE SEARCH OPTION FOR      40300052
+.*                                      PARAMETER LIST                  40350052
+&OSFT    SETC  '200'                    SET UP SFT OFFSET FOR SEARCH    40400052
+         AGO   .COMMON                  GO GENERATE CODE                40450052
+.*                                                                      40500052
+.*                                                                      40550052
+.*                                                                      40600052
+.********************************************************************** 40650052
+.*       COMMON CODE GENERATION SEQUENCE                              * 40700052
+.********************************************************************** 40750052
+.*                                                                      40800052
+.*                                                                      40850052
+.COMMON  ANOP                                                           40900052
+         AIF   (&KILL EQ 0).GENIT       GENERATE CODE ONLY IF NO ERRORS 40950052
+         MEXIT                                                          41000052
+.*                                                                      41050052
+.*                                                                      41100052
+.*                                                                      41150052
+.GENIT   ANOP                                                           41200052
+.*                                                                      41250052
+.********************************************************************** 41300052
+.*       DETERMINE TYPE OF REQUEST                                    * 41350052
+.********************************************************************** 41400052
+.*                                                                      41450052
+         AIF   ('&MFTYPE' EQ 'E').GENMFE  GO GENERATE EXECUTE FORM      41500052
+.*                                      IF MF TYPE IS 'E'               41550052
+.*                                                                      41600052
+.*                                                                      41650052
+.********************************************************************** 41700052
+.*       STANDARD FORM SPECIFIED                                      * 41750052
+.********************************************************************** 41800052
+.*                                                                      41850052
+&BOPTS   SETC  '&B(1)&B(2)&B(3)&B(4)&B(5)&B(6)&B(7)&B(8)'  SET UP       41900052
+.*                                      OPTIONS BYTE FOR INLINE         41950052
+.*                                      PARAMETER LIST                  42000052
+&GNAME1  SETC  'IHB'.'&SYSNDX'.'J'      SET UP LABEL NAMES FOR INLINE   42050052
+.*                                      PARAMETER LIST                  42100052
+&GNAME2  SETC  'IHB'.'&SYSNDX'.'F'                                      42150052
+.*                                                                      42200052
+.*                                                                      42250052
+&LABL    DS    0H                   .ALESERV SERVICE ROUTINE CALL       42300052
+         LAE   1,0(0,0)             .ZERO ACCESS REGISTER 1             42350052
+         LA    1,&GNAME1            .POINT REG1 TO PARM LIST            42400052
+.*                                                                      42450052
+.********************************************************************** 42500052
+.*       MOVE THE STOKEN TO THE INLINE PARAMETER LIST IF THE ADD      * 42550052
+.*       OR SEARCH OPTIONS WERE SPECIFIED.                            * 42600052
+.********************************************************************** 42650052
+.*                                                                      42700052
+         AIF   ('&OPTION' EQ 'ADDPASN').CM1   BRANCH IF ADDPASN OPTION  42750052
+         AIF   ('&OPTION' EQ 'DELETE').CM1 BRANCH IF DELETE OPTION      42800052
+         AIF   ('&OPTION' EQ 'EXTRACTH').CM1 BRANCH IF EXTRACTH OPTION  42850052
+         AIF   ('&OPTION' EQ 'EXTRACT').CM1 BRANCH IF EXTRACT OPTION    42900052
+.*                                                                      42950052
+         LAE   14,&STOKEN           .GET AR MODE S-TYPE STOKEN ADDRESS  43000052
+         MVC   8(8,1),0(14)         .STORE STOKEN INTO THE PARM LIST    43050052
+.*                                                                      43100052
+.********************************************************************** 43150052
+.*       MOVE THE ALET VALUE TO THE INLINE PARAMETER LIST IF DELETE,  * 43200052
+.*       EXTRACT, OR SEARCH OPTIONS WERE SPECIFIED.                   * 43250052
+.********************************************************************** 43300052
+.*                                                                      43350052
+.CM1     ANOP                                                           43400052
+         AIF   ('&OPTION' EQ 'ADD').CM3      BRANCH IF ADD OPTION       43450052
+         AIF   ('&OPTION' EQ 'ADDPASN').CM3   BRANCH IF ADDPASN OPTION  43500052
+         AIF   ('&OPTION' EQ 'EXTRACTH').CM3 BRANCH IF EXTRACTH OPTION  43550052
+.*                                                                      43600052
+         AIF   ('&LT4' EQ 'R').CM2      BRANCH IF ALET IS IN REGISTER   43650052
+.*                                                                      43700052
+         LAE   14,&ALETV            .GET AR MODE S-TYPE ALET ADDRESS    43750052
+         MVC   4(4,1),0(14)         .STORE ALET INTO THE PARM LIST      43800052
+         AGO   .CM3                                                     43850052
+.*                                                                      43900052
+.CM2     ANOP                           ALET IS IN A REGISTER           43950052
+         ST    &ALETV,4(0,1)        .STORE ALET INTO THE PARM LIST      44000052
+.*                                                                      44050052
+.********************************************************************** 44100052
+.*       GENERATE COMMON CODE                                         * 44150052
+.********************************************************************** 44200052
+.*                                                                      44250052
+.CM3     ANOP                                                           44300052
+         B     &GNAME2              .BRANCH AROUND PARM LIST            44350052
+         CNOP  0,4                  .FORCE PARM LIST TO WORD BOUNDARY   44400052
+&GNAME1  DC    XL1'&OTYPE'          .SERVICE TYPE CODE                  44450052
+         DC    BL1'&BOPTS'          .OPTIONS BYTE                       44500052
+         DC    AL2(0)               .RESERVED BYTES                     44550052
+         DC    A(0)                 .ALET                               44600052
+         DC    XL8'0'               .STOKEN (SPACE TOKEN)               44650052
+.*                                                                      44700052
+.********************************************************************** 44750052
+.*       GENERATE PC LINKAGE TO ALESERV SERVICE ROUTINE               * 44800052
+.*       NOTE - R14 IS USED AS AN INDEX REGISTER TO AVOID             * 44850052
+.*              SETTING AR14 TO ZERO                                  * 44900052
+.********************************************************************** 44950052
+.*                                                                      45000052
+.CM7     ANOP                                                           45050052
+&GNAME2  L     14,16(0,0)           .GET ADDR OF CVT                    45100052
+         L     14,772(14,0)         .GET ADDR OF SYSTEM FUNCTION TABLE  45150052
+         L     14,&OSFT.(14,0)      .GET LX/EX FOR SERVICE ROUTINE      45200052
+         PC    0(14)                .PC TO ALESERV SERVICE              45250052
+.*                                                                      45300052
+.********************************************************************** 45350052
+.*       EXIT IF DELETE OPTION WAS SPECIFIED. DELETE HAS NO           * 45400052
+.*       OUTPUT PARAMETERS.                                           * 45450052
+.********************************************************************** 45500052
+.*                                                                      45550052
+         AIF   ('&OPTION' EQ 'DELETE').CM10  BRANCH IF DELETE OPTION    45600052
+.*                                                                      45650052
+.********************************************************************** 45662552
+.*       STORE THE STOKEN INTO USER'S AREA IF EXTRACT OR              * 45675052
+.*       EXTRACTH OPTIONS WERE SPECIFIED.                             * 45687552
+.********************************************************************** 45700052
+.*                                                                      45900052
+         AIF   ('&OPTION' EQ 'ADD').CM8     BRANCH IF ADD OPTION        45950052
+         AIF   ('&OPTION' EQ 'ADDPASN').CM8 BRANCH IF ADDPASN OPTION    46000052
+         AIF   ('&OPTION' EQ 'SEARCH').CM8  BRANCH IF SEARCH OPTION     46050052
+.*                                                                      46100052
+         LAE   14,&STOKEN           .GET AR MODE S-TYPE STOKEN ADDRESS  46150052
+         MVC   0(8,14),8(1)         .STORE STOKEN FROM THE PARM LIST    46200052
+.*                                                                      46250052
+.********************************************************************** 46300052
+.*       STORE THE ALET IN THE USER'S AREA IF ADD, ADDPASN, OR        * 46350052
+.*       SEARCH OPTIONS WERE SPECIFIED.                               * 46400052
+.********************************************************************** 46450052
+.*                                                                      46500052
+         AGO   .CM10                                                    46550052
+.*                                                                      46600052
+.CM8     ANOP                                                           46650052
+         AIF   ('&LT4' EQ 'R').CM9      BRANCH IF ALET SHOULD BE        46700052
+.*                                      PLACED IN A REGISTER            46750052
+.*                                                                      46800052
+         LAE   14,&ALETV            .GET AR MODE S-TYPE ALET ADDRESS    46850052
+         MVC   0(4,14),4(1)         .STORE ALET FROM THE PARM LIST      46900052
+         AGO   .CM10                                                    46950052
+.*                                                                      47000052
+.CM9     ANOP                           LOAD USER SPECIFIED REGISTER    47050052
+.*                                      WITH THE ALET                   47100052
+         L     &ALETV,4(0,1)        .LOAD ALET FROM THE PARM LIST       47150052
+.*                                                                      47200052
+.CM10    ANOP                                                           47250052
+         MEXIT                                                          47300052
+.*                                                                      47350052
+.*                                                                      47400052
+.*                                                                      47450052
+.*                                                                      47500052
+.*                                                                      47550052
+.*                                                                      47600052
+.********************************************************************** 47650052
+.*       EXECUTE FORM SPECIFIED                                       * 47700052
+.*                                                                    * 47750052
+.*       NOTE THAT ALL OPTIONS REQUIRED ON THE STANDARD FORM OF THE   * 47800052
+.*       MACRO ARE ALSO REQUIRED ON THE EXECUTE FORM!                 * 47850052
+.*                                                                    * 47900052
+.********************************************************************** 47950052
+.*                                                                      48000052
+.GENMFE  ANOP                                                           48050052
+&OPMVI   SETA  128*&B(1)+64*&B(2)+32*&B(3)+16*&B(4)+8*&B(5)+4*&B(6)+2*&X48100052
+               B(7)+&B(8)               SET UP FLAG BYTE FOR MVI        48150052
+.*                                                                      48200052
+&LABL    DS    0H                   .ALESERV SERVICE ROUTINE CALL       48250052
+.*                                                                      48300052
+.********************************************************************** 48350052
+.*       PLACE PARAMETER LIST ADDRESS IN AR/GPR 1                     * 48400052
+.********************************************************************** 48450052
+.*                                                                      48500052
+         AIF   ('&LTE' EQ 'R').CMX1     BRANCH IF ADDRESS IS IN         48550052
+.*                                      A REGISTER                      48600052
+.*                                                                      48650052
+         LAE   1,&EPLV              .ALESERV PARAMETER LIST ADDRESS     48700052
+         AGO   .CMX2                    GO CONTINUE EXECUTE FORM        48750052
+.*                                                                      48800052
+.CMX1    ANOP                                                           48850052
+         LAE   1,0(0,&EPLV)         .ALESERV PARAMETER LIST ADDRESS     48900052
+.*                                                                      48950052
+.*                                                                      49000052
+.********************************************************************** 49050052
+.*       PLACE TYPE CODE AND FLAGS BYTE IN THE PARAMETER LIST         * 49100052
+.********************************************************************** 49150052
+.*                                                                      49200052
+.CMX2    ANOP                                                           49250052
+         MVI   0(1),X'&OTYPE'       .SET SERVICE TYPE CODE BYTE         49300052
+         MVI   1(1),&OPMVI          .SET OPTIONS IN OPTIONS BYTE        49350052
+.*                                                                      49400052
+.********************************************************************** 49450052
+.*       MOVE THE STOKEN TO THE PARAMETER LIST IF THE ADD             * 49500052
+.*       OR SEARCH OPTIONS WERE SPECIFIED.                            * 49550052
+.********************************************************************** 49600052
+.*                                                                      49650052
+         AIF   ('&OPTION' EQ 'ADDPASN').CMX3 BRANCH IF ADDPASN OPTION   49700052
+         AIF   ('&OPTION' EQ 'DELETE').CMX3 BRANCH IF DELETE OPTION     49750052
+         AIF   ('&OPTION' EQ 'EXTRACTH').CMX3 BRANCH IF EXTRACTH OPTION 49800052
+         AIF   ('&OPTION' EQ 'EXTRACT').CMX3 BRANCH IF EXTRACT OPTION   49850052
+.*                                                                      49900052
+         LAE   14,&STOKEN           .GET AR MODE S-TYPE STOKEN ADDRESS  49950052
+         MVC   8(8,1),0(14)         .STORE STOKEN INTO THE PARM LIST    50000052
+.*                                                                      50050052
+.*                                                                      50100052
+.********************************************************************** 50150052
+.*       MOVE THE ALET VALUE TO THE PARAMETER LIST IF DELETE,         * 50200052
+.*       EXTRACT, OR SEARCH OPTIONS WERE SPECIFIED.                   * 50250052
+.********************************************************************** 50300052
+.*                                                                      50350052
+.CMX3    ANOP                                                           50400052
+         AIF   ('&OPTION' EQ 'ADD').CMX5      BRANCH IF ADD OPTION      50450052
+         AIF   ('&OPTION' EQ 'ADDPASN').CMX5 BRANCH IF ADDPASN OPTION   50500052
+         AIF   ('&OPTION' EQ 'EXTRACTH').CMX5 BRANCH IF EXTRACTH OPTION 50550052
+.*                                                                      50600052
+         AIF   ('&LT4' EQ 'R').CMX4     BRANCH IF ALET IS IN A REGISTER 50650052
+.*                                                                      50700052
+         LAE   14,&ALETV            .GET AR MODE S-TYPE ALET ADDRESS    50750052
+         MVC   4(4,1),0(14)         .STORE ALET INTO THE PARM LIST      50800052
+         AGO   .CMX5                                                    50850052
+.*                                                                      50900052
+.CMX4    ANOP                                                           50950052
+         ST    &ALETV,4(0,1)        .STORE ALET INTO THE PARM LIST      51000052
+.*                                                                      51050052
+.********************************************************************** 51100052
+.*       GENERATE PC LINKAGE TO ALESERV SERVICE ROUTINE               * 51150052
+.*       NOTE - R14 IS USED AS AN INDEX REGISTER TO AVOID             * 51200052
+.*              SETTING AR14 TO ZERO                                  * 51250052
+.********************************************************************** 51300052
+.*                                                                      51350052
+.CMX5    ANOP                                                           51400052
+         L     14,16(0,0)           .GET ADDR OF CVT                    51450052
+         L     14,772(14,0)         .GET ADDR OF SYSTEM FUNCTION TABLE  51500052
+         L     14,&OSFT.(14,0)      .GET LX/EX FOR SERVICE ROUTINE      51550052
+         PC    0(14)                .PC TO ALESERV SERVICE              51600052
+.*                                                                      51650052
+.********************************************************************** 51700052
+.*       EXIT IF DELETE OPTION WAS SPECIFIED. DELETE HAS NO           * 51750052
+.*       OUTPUT PARAMETERS.                                           * 51800052
+.********************************************************************** 51850052
+.*                                                                      51900052
+         AIF   ('&OPTION' EQ 'DELETE').CMX8                             51950052
+.*                                                                      52000052
+.********************************************************************** 52050052
+.*       STORE THE STOKEN INTO USER'S AREA IF EXTRACT OR              * 52100052
+.*       EXTRACTH OPTIONS WERE SPECIFIED.                             * 52150052
+.********************************************************************** 52200052
+.*                                                                      52250052
+         AIF   ('&OPTION' EQ 'ADD').CMX6     BRANCH IF ADD OPTION       52300052
+         AIF   ('&OPTION' EQ 'ADDPASN').CMX6 BRANCH IF ADDPASN OPTION   52350052
+         AIF   ('&OPTION' EQ 'SEARCH').CMX6  BRANCH IF SEARCH OPTION    52400052
+.*                                                                      52450052
+         LAE   14,&STOKEN           .GET AR MODE S-TYPE STOKEN ADDRESS  52500052
+         MVC   0(8,14),8(1)         .STORE STOKEN FROM THE PARM LIST    52550052
+.*                                                                      52600052
+.********************************************************************** 52650052
+.*       STORE THE ALET IN THE USER'S AREA IF ADD, ADDPASN, OR        * 52700052
+.*       SEARCH OPTIONS WERE SPECIFIED.                               * 52750052
+.********************************************************************** 52800052
+.*                                                                      52850052
+         AGO   .CMX8                                                    52900052
+.*                                                                      52950052
+.CMX6    ANOP                                                           53000052
+         AIF   ('&LT4' EQ 'R').CMX7     BRANCH IF ALET SHOULD BE        53050052
+.*                                      PLACED IN A REGISTER            53100052
+.*                                                                      53150052
+         LAE   14,&ALETV            .GET AR MODE S-TYPE ALET ADDRESS    53200052
+         MVC   0(4,14),4(1)         .STORE ALET FROM THE PARM LIST      53250052
+         AGO   .CMX8                                                    53300052
+.*                                                                      53350052
+.CMX7    ANOP                           PLACE THE ALET IN THE USER      53400052
+.*                                      SPECIFIED REGISTER              53450052
+         L     &ALETV,4(0,1)        .LOAD ALET FROM THE PARM LIST       53500052
+.*                                                                      53550052
+.CMX8    ANOP                                                           53600052
+         MEXIT                                                          53650052
+         MEND                                                           53700052
+* END OF PLX COMMENT */ %ALSPLS1 : ;                                    53750052
+*%ALESERV:                                                              53800052
+* MACRO KEYS(ACCESS,AL,ALET,STOKEN,MF,CHKEAX,RELATED);                  53850052
+* ANS ('?'||MACLABEL||'ALESERVP '||MACLIST||MACKEYS||';');              53900052
+*%END ALESERV;                                                          53950052

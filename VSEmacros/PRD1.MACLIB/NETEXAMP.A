@@ -1,0 +1,587 @@
+         TITLE ' NETEXAMP'                                              00001000
+         PUNCH ' PHASE NETEXAMP,*'                                      00002000
+*********************************************************************** 00003000
+*********************************************************************** 00004000
+*                                                                     * 00005000
+*    N E T W O R K    R E C E I V E R    E X I T    R O U T I N E     * 00006000
+*                                                                     * 00007000
+*********************************************************************** 00008000
+*********************************************************************** 00009000
+         SPACE 2                                                        00010000
+* INPUT:     VARIOUS REGISTERS WITH CONTENTS AS DEFINED FOR THE       * 00011000
+*            NETEXIT INTERFACE; SEE 'REGISTER USAGE' BELOW.           * 00012000
+*            IN PARTICULAR REGISTER 3 ADDRESSES A WORKAREA            * 00013000
+*            OF 50 BYTES, SINCE THE EXIT IS ASSUMED TO HAVE           * 00014000
+*            BEEN LOADED WITH A WORKAREA SIZE OF 50 BYTES.            * 00015000
+         SPACE 2                                                        00016000
+* FUNCTION:  THIS EXIT ROUTINE CHECKS RECEIVED NETWORK INPUT FOR ANY  * 00017000
+*            NETWORK ACCOUNT NUMBER AND FLUSHES THE ENTRY, IF NONE    * 00018000
+*            IS PROVIDED.                                             * 00019000
+*            IF THE ENTRY HAS TO BE PROCESSED ON OUR OWN NODE,        * 00020000
+*               (AND NOT JUST BE STORED FOR FORWARDING TO OTHER NODES)* 00021000
+*               - A JOB ENTRY IS ONLY ACCEPTED, WHEN IT COMES FROM    * 00022000
+*                 A CERTAIN GROUP OF ORIGIN NODES                     * 00023000
+*               - AN OUTPUT ENTRY MAY ENTER THE OWN NODE ONLY,        * 00024000
+*                 AFTER ITS PRINTING/PUNCHING PRIORITY HAS BEEN       * 00025000
+*                 ADJUSTED ACCORDING TO A LOCAL RATIO OF OUTPUT       * 00026000
+*                 AMOUNT TO PROCESSING PRIORITY.                      * 00027000
+         SPACE 2                                                        00028000
+* OUTPUT:   RETURN TO VSE/POWER WITH BELOW RETURN CODES PROVIDED      * 00029000
+*           IN REGISTER 15:                                           * 00030000
+*           X'00' -  NORMAL RETURN, PROCESS NON MODIFIED RECORD       * 00031000
+*                 -  NORMAL RETURN, PROCESS UPDATED RECORD            * 00032000
+*           X'10' -  FLUSH NETWORKING INPUT                           * 00033000
+         SPACE 2                                                        00034000
+* LOCATION: THIS RECEIVER EXIT PHASE IS LOCATED WITHIN THE            * 00035000
+*               - PAGEABLE AREA OF THE VSE/POWER PARTITION WHEN       * 00036000
+*                 LOADED AT VSE/POWER INITIALIZATION TIME, OR IN THE  * 00037000
+*               - GETVIS AREA OF THE VSE/POWER PARTITION WHEN         * 00038000
+*                 LOADED AFTER INITIALIZATION BY THE 'PLOAD' COMMAND. * 00039000
+*           FOR DEBUGGING PURPOSES LOCATE THE PNET RECEIVER EXIT      * 00040000
+*           IN STORAGE BY ITS STORAGE DESCRIPTOR 'PNET-EXIT' AND BY   * 00041000
+*           THE POINTER 'PNCBAUE' IN THE PNET MASTER CONTROL BLOCK.   * 00042000
+*           THE LATTER IS ANCHORED VIA THE                            * 00043000
+*           FIELD 'CAPN' OF THE COMMON ADDRESS TABLE OF VSE/POWER.    * 00044000
+         SPACE 2                                                        00045000
+* REMARKS:  FUNCTIONALLY THIS CODE IS A FANCY EXAMPLE!                * 00046000
+*           YET IT PROVIDES A CODING SKELETON THAT SHOWS, HOW THE     * 00047000
+*           INFORMATION PASSED TO THE EXIT MAY BE USED TO ACCESS      * 00048000
+*           CONTROL DATA BOTH IN VSE/POWER CONTROL BLOCKS AND IN      * 00049000
+*           RECORDS BEING RECEIVED.                                   * 00050000
+*           FIND DSECTS OF OTHER VSE/POWER CONTROL BLOCKS ON THE      * 00051000
+*           OPTIONAL MATERIALS TAPE. REFER TO THEIR DESCRIPTION       * 00052000
+*           IN THE OPTIONAL DOCUMENTATION.                            * 00053000
+*           FOR DETAILED CONTENTS OF THE NETWORK CONTROL RECORDS AND  * 00054000
+*           THE USAGE BY DIFFERENT NETWORKING COMPONENTS SEE:         * 00055000
+*                 'NETWORK JOB ENTRY FORMATS AND PROTOCOLS'           * 00056000
+*                  SC23-0070                                          * 00057000
+         EJECT                                                          00058000
+* REGISTER USAGE:                                                     * 00059000
+*           R0     RECORD ADDRESS PASSED BY VSE/POWER                 * 00060000
+*           R1     RECORD LENGTH PASSED BY VSE/POWER                  * 00061000
+*           R2     RECORD CONTROL BYTE (RCB) AND SUB-RCB (SRCB)       * 00062000
+*                  IN THE TWO LOW ORDER BYTES, PASSED BY VSE/POWER    * 00063000
+*           R3     ADDRESS OF THE WORKAREA PASSED BY VSE/POWER        * 00064000
+*           R4-R8  WORK REGISTERS                                     * 00065000
+*           R9     ADDRESS OF THE WORKAREA IN PNET EXIT               * 00066000
+*           RA     ADDRESS OF COMMON ADDRESS TABLE (CAT) AS PASSED    * 00067000
+*           RB     ADDRESS OF TASK CONTROL BLOCK (TCB) AS PASSED      * 00068000
+*           RC     USED FOR VSE/POWER PURPOSES                        * 00069000
+*           RD     UNUSED                                             * 00070000
+*           RE     RETURN ADDRESS TO VSE/POWER                        * 00071000
+*           RF     EXIT BASE REGISTER AND RETURN CODE TO VSE/POWER    * 00072000
+         SPACE 2                                                        00073000
+NETEXAMP CSECT ,                   ESTABLISH MAIN CONTROL SECTION       00074000
+         SPACE 1                                                        00075000
+*        FOLLOWING ADDRESSABILITY IS ASSUMED AT ENTRY:                  00076000
+         SPACE 1                                                        00077000
+         USING *,RF                BASE REG ESTABLISHED BY VSE/POWER    00078000
+         USING PADS,RA             ESTABLISH ADDRESSABILITY OF CAT      00079000
+         USING TCDS,RB             ESTABLISH ADDRESSABILITY OF TCB      00080000
+         B     REX000              BUMP OVER STORAGE DESCRIPTOR         00081000
+         SPACE 1                                                        00082000
+         DC    CL12'PNET-EXIT'     DEFINE STORAGE DESCRIPTOR PNET-EXIT  00083000
+         SPACE 1                                                        00084000
+*********************************************************************** 00085000
+*        INITIAL HOUSE-KEEPING, SAVE INFORMATION IN THE WORKAREA      * 00086000
+*                        ABOUT ENTRY BEING RECEIVED                   * 00087000
+*********************************************************************** 00088000
+         SPACE 1                                                        00089000
+*        THIS PNET EXIT IS CALLED BY VSE/POWER FOR ALL RECEIVERS        00090000
+*        CURRENTLY ACTIVE. REENTRANCY IS ENSURED BY USING THE WORKAREA  00091000
+*        OF 50 BYTES, WITH WHICH EVERY RECEIVER IS EQUIPPED.            00092000
+*        THIS EXAMPLE TRIES TO SHOW, HOW THE WORKAREA MAY BE USED TO    00093000
+*        HOLD INFORMATION ABOUT THE RECORDS BELONGING TO ONE JOB OR     00094000
+*        OUTPUT ENTRY BEING RECEIVED.                                   00095000
+*        ALSO THE EXAMPLE CHECKS, WHETHER THE REQUIRED WORK AREA SIZE   00096000
+*        OF 50 BYTES HAS BEEN SPECIFIED FOR THIS EXIT. IF NOT, WE DO    00097000
+*        NOT TRUST THE PASSED WORKAREA; INSTEAD WE INFORM THE CENTRAL   00098000
+*        OPERATOR BY A WARNING MESSAGE.                                 00099000
+         SPACE 1                                                        00100000
+REX000   DS    0H                  START OF PROGRAM                     00101000
+         SPACE 2                                                        00102290
+*        WHENEVER A WORK AREA IS USED, THE LENGTH OF THIS AREA MUST BE  00102580
+*        VERIFIED EACH TIME THE EXIT GAINS CONTROL, BECAUSE             00102870
+*        - THE EXIT MIGHT HAVE BEEN LOADED BY OPERATOR WITH A WRONG     00103160
+*          LENGTH OF ITS WORK AREA                                      00103450
+*        - A NEW VERSION OF THE EXIT MIGHT HAVE BEEN LOADED AND THE     00103740
+*          PREVIOUSLY DEFINED WORK AREA IS STILL USED UNTIL THE NEXT    00104030
+*          QUEUE ENTRY BOUNDARY IS REACHED.                             00104320
+         SPACE 2                                                        00104610
+         LTR   R9,R3                   WORK AREA SPECIFIED ?            00104900
+         BZ    REX010                  ..NO, WARN OPER. AND FLUSH ENTRY 00105190
+         USING WORKAREA,R9             MAKE WORK AREA ADDRESSABLE       00105480
+         SPACE 1                                                        00105770
+         L     R4,WORKLEN              GET SPECIFIED WORK AREA SIZE     00106060
+         LA    R5,WORKLN               GET REQU. SIZE OF WORK AREA      00106350
+         CR    R4,R5                   WORK AREA TOO SHORT ?            00106640
+         BNL   REX020                  ..NO, CONTINUE EXIT              00106930
+         SPACE 1                                                        00108000
+REX010   DS    0H                                                       00108300
+         SPACE 1                                                        00108600
+*        RESPECT THAT MACRO IPW$WTO DESTROYS REGISTER R0-R3             00109000
+         SPACE 1                                                        00110000
+         LA    R7,REXMSG2          GET ADDRESS OF REXMSG2               00111000
+         BAL   R6,SUBWTO           ISSUE REXMSG2                        00112000
+         SPACE 1                                                        00113000
+         LA    R7,REXMSG3          GET ADDRESS OF REXMSG3               00114000
+         BAL   R6,SUBWTO           ISSUE REXMSG3                        00115000
+         SPACE 1                                                        00116000
+         B     REX180              GO AND FLUSH THE CURRENT ENTRY       00117000
+         SPACE 2                                                        00118000
+REX020   DS    0H                                                       00119000
+         LR    R9,R3               COPY ADDRESS OF WORKAREA             00120000
+         USING WORKAREA,R9         MAKE WORKAREA ADDRESSABLE            00121000
+         STM   R0,R1,WORKRADR      SAVE RECORD ADDRESS AND ITS LENGTH   00122000
+         STCM  R2,3,WORKRCB        SAVE RCB AND SRCB                    00123000
+         CLI   WORKTID,0           BEGIN OF ENTRY ?                     00124000
+         BNE   REX050              ..NO, BRANCH TO CONTINUE             00125000
+         MVC   WORKTID,TCSD        SAVE TASK-ID IN WORKAREA             00126000
+         L     R4,TCENCB           GET POINTER TO NODE CONTROL BLOCK    00127000
+         USING NCBDS,R4            ESTABLISH ADDRESSABILITY TO NCB      00128000
+         MVC   WORKNODE,NCBNAME    MAKE NODE NAME PART OF WORK AREA ID  00129000
+         DROP  R4                  RELEASE ADDRESSABILITY               00130000
+         SPACE 2                                                        00131000
+*        THE FOLLOWING CODE SHOWS, HOW THE CENTRAL OPERATOR CAN         00132000
+*        BE INFORMED EASILY BY MESSAGE SERVICES:                        00133000
+*              WRITE A MESSAGE TO CONSOLE, WHEN CALLED FOR VERY         00134000
+*              FIRST ENTRY AT ALL. RESPECT PARALLEL USAGE OF            00135000
+*              CODE BY MANY RECEIVERS!                                  00136000
+*        NOTE: MESSAGE SERVICES DESTROYS REGISTERS 0 - 3                00137000
+         SPACE 1                                                        00138000
+         TS    REXFLG1             DID WE ALREADY ISSUE MESSAGE ?       00139000
+         BC    4,REX050            ..YES, DO NOT DO IT AGAIN            00140000
+         SPACE 1                                                        00141000
+         LA    R7,REXMSG1          GET ADDRESS OF REXMSG1               00142000
+         BAL   R6,SUBWTO           ISSUE REXMSG1                        00143000
+         SPACE 2                                                        00144000
+*********************************************************************** 00145000
+*               ANALYZE SUB-RECORD CONTROL BYTE (SRCB)                * 00146000
+*               FOR RECORD TYPE BEING PASSED CURRENTLY                * 00147000
+*********************************************************************** 00148000
+         SPACE 1                                                        00149000
+REX050   DS    0H                                                       00150000
+         CLI   WORKSRCB,X'C0'      IS THIS A JOB HEADER RECORD ?        00151000
+         BE    REX100              ..YES, BRANCH TO HANDLE IT           00152000
+         CLI   WORKSRCB,X'D0'      IS THIS A JOB TRAILER RECORD ?       00153000
+         BE    REX200              ..YES, BRANCH TO HANDLE IT           00154000
+         CLI   WORKSRCB,X'E0'      IS THIS A DATASET HEADER RECORD ?    00155000
+         BE    REX300              ..YES, BRANCH TO HANDLE IT           00156000
+         SPACE 1                                                        00157000
+         B     REX400              ..NO, PROCESS JOB TYPE RECORD        00158000
+         EJECT                                                          00159000
+*********************************************************************** 00160000
+*               PROCESS JOB HEADER RECORD                             * 00161000
+*********************************************************************** 00162000
+         SPACE 2                                                        00163000
+*        BOTH JOB AND OUTPUT ENTRIES ARE PRECEDED BY A JOB HEADER     * 00164000
+*        CONTROL RECORD AND ARE TERMINATED BY A JOB TRAILER CONTROL   * 00165000
+*        RECORD.                                                      * 00166000
+*        FOR JOB TYPE ENTRIES A DATA SET HEADER CONTROL RECORD MIGHT  * 00167000
+*        APPEAR BETWEEN NORMAL DATA RECORDS, TO INDICATE BY A         * 00168000
+*        'RECORD CHARACTERISTICS CHANGE SECTION', THAT A DATA LENGTH  * 00169000
+*        OTHER THAN 80 BYTES IS TRANSMITTED.                          * 00170000
+*        FOR OUTPUT ENTRIES AT LEAST ONE DATA SET HEADER CONTROL      * 00171000
+*        RECORD FOLLOWS THE JOB HEADER RECORD TO CONTAIN THE          * 00172000
+*        OUTPUT ATTRIBUTES.                                           * 00173000
+         SPACE 2                                                        00174000
+*        THE JOB HEADER RECORD IS EXAMINED FOR A VALID ACCOUNT NUMBER.  00175000
+*        SINCE VSE/POWER 4.1 THIS ACCOUNT NUMBER MAY BE SPECIFIED       00176000
+*        USING THE 'NETACCT=' OPERAND OF THE * $$ JOB STATEMENT.        00177000
+*          IF NO ACCOUNT NUMBER IS SPECIFIED, THIS CODE ASSUMES, THAT   00178000
+*        THE 'USER=' VSE/POWER JECL OPERAND MIGHT HAVE BEEN             00179000
+*        SPECIFIED TO PROVIDE AN E.G. ACCOUNT NUMBER THEREIN. THE       00180000
+*        JOB HEADER RECORD IS THEN CHECKED FOR THE PRESENCE             00181000
+*        OF THE OPTIONAL VSE/POWER SECTION.                             00182000
+*          IF THE VSE/POWER SECTION EXISTS, THE FIRST 8 BYTES OF THE    00183000
+*        USER FIELD CONTAIN THE ACCOUNT NUMBER IN CHARACTER FORMAT.     00184000
+*        IF HOWEVER THE FIELD CONTAINS BLANK OR NO VSE/POWER            00185000
+*        SECTION EXISTS IN THE JOB HEADER RECORD, THE JOB OR            00186000
+*        OUTPUT ENTRY IS FLUSHED.                                       00187000
+         SPACE 1                                                        00188000
+REX100   DS    0H                                                       00189000
+         L     R4,WORKRADR         GET ADDRESS OF RECORD PASSED         00190000
+         USING NJHDSECT,R4         ESTABLISH ADDRESSABILITY             00191000
+         CLI   NJHGACCT,C' '       ANY ACCOUNT NUMBER PRESENT ?         00192000
+         BH    REX140              ..YES, CONTINUE                      00193000
+         SPACE 2                                                        00194000
+*        TRY TO LOCATE A VSE/POWER SUBSYSTEM SECTION                    00195000
+         SPACE 1                                                        00196000
+         LR    R0,R4               COPY JOB HEADER RECORD ADDRESS       00197000
+         AH    R0,NJHLEN           POINT BEHIND RECORD                  00198000
+         LA    R1,NJHG             POINT TO GENERAL SECTION             00199000
+         SPACE 1                                                        00200000
+REX120   DS    0H                                                       00201000
+         CLI   NJHGTYPE-NJHG(R1),NTYPPOWR  VSE/POWER SECTION FOUND ?    00202000
+         BE    REX130              ..YES, BRANCH                        00203000
+         AH    R1,NJHGLEN-NJHG(R1) POINT TO NEXT SECTION                00204000
+         CR    R1,R0               DID WE REACH END OF RECORD ?         00205000
+         BL    REX120              ..NO, TRY THIS SECTION               00206000
+         B     REX180              ..YES, NO VSE/POWER SECTION PRESENT, 00207000
+*                                  GO AND FLUSH THE ENTRY               00208000
+         SPACE 1                                                        00209000
+REX130   DS    0H                                                       00210000
+         CLI   NJHPUSER-NJHP(R1),C' '  ACC. NO IN POWER SECTION ?       00211000
+         BNH   REX180              ..NO, GO AND FLUSH ENTRY             00212000
+         MVC   NJHGACCT,NJHPUSER-NJHP(R1)  COPY ACCOUNT NUMBER          00213000
+         SPACE 1                                                        00214000
+REX140   DS    0H                                                       00215000
+         MVC   WORKACCT,NJHGACCT   SAVE ACCOUNT NO IN WORK AREA         00216000
+         SPACE 2                                                        00217000
+*        ACCEPT ANY OUTPUT TYPE ENTRY BEING RECEIVED.                   00218000
+*        IDENTIFY OUTPUT RECEIVER FROM                                  00219000
+*              - EITHER RECORD CONTROL BYTE (AS BELOW)                  00220000
+*              - OR FROM FIELD 'TCRM' OF TASK-ID, WHICH CONTAINS        00221000
+*                   C'JOB' IN CASE OF JOB RECEIVER OR                   00222000
+*                   C'OUT' IN CASE OF OUTPUT RECEIVER                   00223000
+         SPACE 1                                                        00224000
+         TM    WORKRCB,X'09'       IS OUTPUT BEING RECEIVED ?           00225000
+         BO    REXDONE             ..YES, BRANCH AND ACCEPT ENTRY       00226000
+         SPACE 2                                                        00227000
+*        IF A JOB IS BEING RECEIVED WHICH IS DESTINED FOR THE LOCAL     00228000
+*        NODE FOR EXECUTION, THE ORIGINATING NODE IS CHECKED            00229000
+*        WHETHER THE JOB IS ACCEPTED FROM THIS NODE OR NOT.             00230000
+*        FOR ALLOWED NODES SEE TABLE 'REXTAB2'; THE OWN NODE            00231000
+*        NAME IS OBTAINED FROM THE 'MRNN' FIELD OF THE DMB.             00232000
+         SPACE 1                                                        00233000
+         L     R1,CAQC             POINT TO DISK MANAGEMENT BLOCK       00234000
+         USING QCDS,R1             ESTABLISH DMB ADDRESSABILITY         00235000
+         CLC   MRNN,NJHGXEQN       IS JOB DESTINED FOR LOCAL SYSTEM     00236000
+         BNE   REXDONE             ..NO, DON'T CHECK ORG NODE NAME,     00237000
+*                                  ACCEPT JOB AS STORE/FORWARD NODE;    00238000
+*                                  SUCH JOBS MIGHT NOW BE FLAGGED IN    00239000
+*                                  THE WORK AREA FOR OTHER ACTIONS.     00240000
+         DROP  R1                  RELEASE ADDRESSABILITY               00241000
+         LA    R1,REXTAB2          ADDR TABLE OF VALID NODE NAMES       00242000
+         SPACE 1                                                        00243000
+REX150   DS    0H                                                       00244000
+         CLC   NJHGORGN,0(R1)      MATCHING NODE NAME ?                 00245000
+         BE    REXDONE             ..YES, BRANCH AND ACCEPT JOB         00246000
+*                                  FOR PROCESSING ON OWN NODE           00247000
+         LA    R1,L'NJHGORGN(R1)   BUMP TO NEXT NODE ENTRY              00248000
+         CLI   0(R1),STOP          END OF TABLE REACHED ?               00249000
+         BNE   REX150              ..NO, CONTINUE LOOPING THROUGH       00250000
+         SPACE 1                                                        00251000
+REX180   DS    0H                                                       00252000
+         LA    RF,X'10'            SET FLUSH RETURN CODE                00253000
+         BR    RE                  RETURN TO VSE/POWER                  00254000
+         DROP  R4                  RELEASE ADDRESSAB. OF JOB HDR        00255000
+         EJECT                                                          00256000
+*********************************************************************** 00257000
+*               PROCESS JOB TRAILER RECORD                            * 00258000
+*********************************************************************** 00259000
+         SPACE 1                                                        00260000
+*        NO ACTION CODE IS PROVIDED HERE. BUT AS THE PRESENT CODE HAS * 00261000
+*        ACCEPTED ONLY ENTRIES FROM THE NETWORK WITH A NON BLANK      * 00262000
+*        NETWORK ACCOUNT NUMBER WHICH HAS BEEN SAVED IN THE EXIT      * 00263000
+*        WORK AREA, ONE COULD DO ACCOUNTING EVALUATIONS ON ENTRY      * 00264000
+*        LEVEL - ACCORDING TO STORE AND FORWARD ENTRIES OR ENTRIES    * 00265000
+*        HAVING BEEN PROCESSED ON OUR OWN NODE, WHEN THE JOB TRAILER  * 00266000
+*        RECORD IS PASSED.                                            * 00267000
+REX200   DS    0H                                                       00268000
+         B     REXDONE             AND BRANCH TO EXIT ROUTINE           00269000
+         EJECT                                                          00270000
+*********************************************************************** 00271000
+*               PROCESS DATASET HEADER RECORD                         * 00272000
+*********************************************************************** 00273000
+         SPACE 1                                                        00274000
+*        NOTE: SEE DESCRIPTION OF JOB HEADER TO FIND OUT, WHERE A       00275000
+*              DATASET HEADER RECORD MAY APPEAR IN AN ENTRY BEING       00276000
+*              RECEIVED.                                                00277000
+*                                                                       00278000
+*        ACTIONS TAKEN:                                                 00279000
+*     1) BYPASS A 'RECORD CHARACTERSTICS CHANGE SECTION' OF JOBS.       00280000
+*     2) SELECT ONLY OUTPUT ENTRY DESTINED TO OUR LOCAL SYSTEM.         00281000
+*     3) DEMONSTRATE HOW TO FIND THE 'OUTPUT PROCESSING SECTION' AND    00282000
+*        HOW TO LOCATE THEREIN A CERTAIN 'OUTPUT PROCESSING TEXT UNIT'. 00283000
+*     4) DEPENDING ON THE ACTUAL LINE COUNT THE OUTPUT PRIORITY,        00284000
+*        STORED IN THE VSE/POWER SECTION OF THE DATA SET HEADER RECORD, 00285000
+*        IS REDUCED IF THE SPECIFIED PRIORITY IS HIGHER THAN THE        00286000
+*        MAXIMUM ALLOWED PRIORITY.                                      00287000
+*                                                                       00288000
+*        NOTE: THE GENERAL SECTION OF THE DATASET HEADER RECORD IS      00289000
+*              ALWAYS THE FIRST SECTION IN THE RECORD AND CAN THEREFORE 00290000
+*              BE ADDRESSED IMMEDIATELY. ALL OTHER SECTIONS MUST BE     00291000
+*              SEARCHED AND CAN BE IN ANY SEQUENCE.                     00292000
+         SPACE 1                                                        00293000
+*  1)    BYPASS A RECORD CHARACTERISTICS CHANGE SECTION                 00294000
+REX300   DS    0H                                                       00295000
+         L     R4,WORKRADR         GET ADDRESS OF RECORD PASSED         00296000
+         USING NDHDSECT,R4         ESTABLISH ADDRESSABILITY             00297000
+         TM    NDHGMOD,NDHC$MOD    IS THIS JUST A CHAR CHANGE SECTION ? 00298000
+         BO    REXDONE             ..YES, BRANCH TO ACCEPT RECORD,      00299000
+*                                  WHEN DSHR FOUND IN JOB TYPE ENTRY    00300000
+*  2)    SELECT OUTPUT DESTINED TO OWN NODE                             00301000
+         L     R1,CAQC             POINT TO DISK MANAGEMENT BLOCK       00302000
+         USING QCDS,R1             ESTABLISH ADDRESSABILITY             00303000
+         CLC   MRNN,NDHGNODE       IS OUTPUT DESTINED FOR LOCAL SYSTEM  00304000
+         BNE   REXDONE             ..NO, GO AND ACCEPT OUTPUT AS        00305000
+*                                  AS STORE AND FORWARD NODE;           00306000
+*                                  SUCH OUTPUT MIGHT NOW BE FLAGGED     00307000
+*                                  IN THE WORK AREA FOR OTHER ACTIONS.  00308000
+         DROP  R1                  RELEASE ADDRESSABILITY OF DMB        00309000
+         SPACE 3                                                        00310000
+*  3)    THE FOLLOWING CODE LOCATES THE 'OUTPUT PROCESSING SECTION' AND 00311000
+*        THEREIN A CERTAIN 'OUTPUT PROCESSING TEXT UNIT' (OPTU), FOR    00312000
+*        EXAMPLE OPTU WITH KEY X'0026', WHICH STANDS FOR 'ROOM' ACC.    00313000
+*        TO NJE 'FORMATS AND PROTOCOLS' SC23-0070-03.                   00314000
+*                                                                       00315000
+*   FIND A DESIRED SECTION WITHIN DSHR AS IDENTIFIED BY SECTION TYPE    00316000
+*   FIELD, NAMELY THE OUTPUT PROCESSING SECTION - TYPE = X'89'. FOR     00317000
+*   THAT PURPOSE SYMBOLS ARE REFERRED AS GENERATED BY THE DSECT MACRO:  00318000
+*        IPW$DNR JHR=YES,JTR=YES,DHR=YES,OUT=YES ...                    00319000
+         SPACE 1                                                        00320000
+         LR    R0,R4              COPY ADDR(DSHR) TO R0                 00321000
+         AH    R0,NDHLEN          POINT R0 BEHIND DSHR                  00322000
+         LA    R1,NDHG            POINT R1 TO BEGIN OF DSHR SECTIONS,   00323000
+*                                 WHERE GENERAL SECTION IS THE FIRST    00324000
+         SPACE 1                                                        00325000
+*   RESPECTING THAT ALL SECTIONS OF THE DATASET HEADER START WITH       00326000
+*        2 BYTES - SECTION LENGTH                                       00327000
+*        1 BYTE  - SECTION TYPE                                         00328000
+*   WE USE SYMBOLS OF THE OUTPUT PROCESSING SECTION (NDHS) TO           00329000
+*   ADDRESS THE 'LENGTH' AND 'TYPE' PER LOCATED SECTION.                00330000
+NEXTSECT DS    0H                                                       00331000
+         CLI   NDHSTYPE-NDHS(R1),NTYPGDS  OUTPUT PROCESSING SECTION ?   00332000
+         BE    OUTSECT            ..YES, GO FOR OPTB AND OPTU'S         00333000
+         AH    R1,NDHSLEN-NDHS(R1)  POINT TO NEXT SECTION IN DSHR       00334000
+         CR    R1,R0              DID WE REACH END OF DSHR ?            00335000
+         BL    NEXTSECT           ..NO, GO AND CHECK NEXT SECTION       00336000
+         B     NOTFOUND           ELSE GO AND STOP ALL SEARCHING        00337000
+         SPACE 2                                                        00338000
+*   BYPASS STANDARD HEADER (OPTB) OF OUTPUT PROCESSING SECTION AND      00339000
+*   SEARCH THROUGH THE REST OF THIS SECTION FOR THE OPTU WITH THE       00340000
+*   DESIRED KEY - ASSUME X'0026'.                                       00341000
+*   IN GENERAL AN OPTU STEMS FROM A KEYWORD SPECIFICATION,              00342000
+*   E.G. 'ROOM=XYZ', WHICH IS CODED AS FOLLOWS:                         00343000
+*        2 BYTES - KEY             (E.G. X'0026')                       00344000
+*        2 BYTES - VALUECOUNT      (E.G. X'0001')                       00345000
+*        2 BYTES - VALUELENGTH     (E.G. X'0003')                       00346000
+*        N BYTES - VALUE           (E.G. C'XYZ')                        00347000
+*   BUT AN OPTU MAY ALSO STEM FROM 'KEYWORD=(VALUE1,VALUE2)'. THEN THE  00348000
+*   2-BYTE VALUECOUNT CONTAINS X'0002' (OR MORE), FOLLOWED BY REPEATED  00349000
+*   VALUELENGTH AND VALUE FIELDS.                                       00350000
+*                                                                       00351000
+*   NOTE THE FOLLOWING EXCEPTIONS:                                      00352000
+*   1) 'VALUECOUNT'  MAY CONTAIN X'0000', THEN NO DATA ELEMENTS         00353000
+*                    FOLLOW (NO VALUELENGTH AND VALUE FIELDS), BUT      00354000
+*                    THE NEXT OPTU STARTS RIGHT AFTER 'VALUECOUNT'.     00355000
+*   2) 'VALUELENGTH' MAY CONTAIN X'0000', THEN A NULL VALUE FOLLOWS     00356000
+*                    THAT MEANS THERE IS NO VALUE FIELD AT ALL.         00357000
+*                    THEN EITHER THE NEXT DATA ELEMENT OR THE NEXT      00358000
+*                    OPTU STARTS RIGHT AFTER 'VALUELENGTH'.             00359000
+         SPACE 1                                                        00360000
+OUTSECT  DS    0H                                                       00361000
+         USING NDHS,R1            MAKE OUTP. PROC. SECT. ADDRESSABLE    00362000
+         LR    R0,R1              COPY SECTION ADDRESS TO R0            00363000
+         AH    R0,NDHSLEN         POINT R0 BEYOND THIS SECTION          00364000
+         LA    R1,NDHSTEXT        POINT R1 TO BEGIN OF OPTU'S           00365000
+         DROP  R1                 RELEASE SECTION ADDRESSABILITY        00366000
+         SPACE 2                                                        00367000
+MOREOPTU DS    0H                                                       00368000
+         CLC   0(2,R1),=X'0026'   OPTU FOUND WITH DESIRED KEY ?         00369000
+         BE    KEYFOUND           ..YES, GO AND PROCESS KEY-OPTU        00370000
+         SPACE 1                                                        00371000
+*   BUMP OVER CURRENT NON-MATCHING OPTU WITH ONE OR MORE VALUES         00372000
+         LH    R2,2(R1)           PICK UP VALUECOUNT                    00373000
+         LA    R1,4(R1)           POINT R1 TO VALUELENGTH               00374000
+         LTR   R2,R2              VALUECOUNT ALL ZERO ?                 00375000
+         BZ    LASTOPTU           ..YES, GO AND CHECK MORE OPTU'S       00376000
+         SPACE 1                                                        00377000
+MOREVAL  DS    0H                                                       00378000
+         LH    R3,0(R1)           PICK UP VALUE LENGTH IN R3            00379000
+         LA    R1,2(R1)           POINT R1 TO VALUE                     00380000
+         AR    R1,R3              POINT R1 BEHIND VALUE, EVEN           00381000
+*                                 WHEN IT IS A 'NULL' VALUE             00382000
+         BCT   R2,MOREVAL         GO AND REPEAT IF MORE VALUES          00383000
+         SPACE 1                                                        00384000
+*   CHECK IF THERE ARE MORE OPTU'S IN THE OUTPUT PROCESSING SECTION     00385000
+LASTOPTU DS    0H                                                       00386000
+         CR    R1,R0              REACHED END OF OUTP. PROC. SECT.?     00387000
+         BL    MOREOPTU           ..NO, GO FOR NEXT OPTU                00388000
+         B     NOTFOUND           ELSE STOP SEARCHING                   00389000
+         SPACE 2                                                        00390000
+*   PICK UP AND PROCESS THE DESIRED VALUE FROM THE OPTU ADDRESSED BY R1 00391000
+         SPACE 1                                                        00392000
+KEYFOUND DS    0H                                                       00393000
+*        WRITE YOUR OWN CODE ACCORDING TO 'BUMP OVER CURRENT OPTU'      00394000
+*        TO ADDRESS THE FIRST (OR SUBSEQUENT) VALUE(S) OF THE OPTU      00395000
+*        ADDRESSED BY REGISTER 1.                                       00396000
+*        THEN DECIDE IF STEP 4) SHOULD BE DONE OR IF IMMEDIATE RETURN   00397000
+*        TO VSE/POWER VIA LABEL 'REXDONE' IS DESIRED.                   00398000
+         SPACE 2                                                        00399000
+*   HANDLE 'NOT FOUND' CONDITION                                        00400000
+         SPACE 1                                                        00401000
+NOTFOUND DS    0H                                                       00402000
+*        WRITE YOUR OWN CODE TO DECIDE IF STEP 4) SHOULD BE DONE OR IF  00403000
+*        IMMEDIATE RETURN TO VSE/POWER VIA LABEL 'REXDONE' IS DESIRED.  00404000
+         SPACE 3                                                        00405000
+*  4)    NOW ADJUST OUTPUT PRIORITY ACCORDING TO LOCAL RATIO            00406000
+*        OF OUTPUT AMOUNT TO PRINTING/PUNCHING PRIORITY                 00407000
+         SPACE 1                                                        00408000
+         L     R5,NDHGNREC         GET TOTAL RECORD COUNT               00409000
+         LA    R1,REXTAB1          ADDRESS PRIORITY TABLE               00410000
+         SPACE 1                                                        00411000
+REX310   DS    0H                                                       00412000
+         C     R5,0(R1)            IS RECORD COUNT IN THIS RANGE ?      00413000
+         BNH   REX320              ..YES, CONTINUE                      00414000
+         LA    R1,8(R1)            ADVANCE TO NEXT ENTRY IN TABLE       00415000
+         B     REX310              AND LOOP THROUGH                     00416000
+         SPACE 1                                                        00417000
+REX320   DS    0H                                                       00418000
+         SR    R5,R5               CLEAR WORK REGISTER                  00419000
+         IC    R5,4(R1)            PICK UP MAX PRIORITY                 00420000
+         LR    R0,R4               COPY ADDR OF DATASET HEADER RECORD   00421000
+         AH    R0,NDHLEN           POINT BEHIND RECORD                  00422000
+         LA    R1,NDHG             POINT TO GENERAL SECTION             00423000
+         SPACE 1                                                        00424000
+REX330   DS    0H                                                       00425000
+         CLI   NDHGTYPE-NDHG(R1),NTYPPOWR  VSE/POWER SECTION ?          00426000
+         BE    REX340              ..YES, BRANCH                        00427000
+         AH    R1,NDHGLEN-NDHG(R1) POINT TO NEXT SECTION                00428000
+         CR    R1,R0               DID WE REACH END OF RECORD ?         00429000
+         BL    REX330              ..NO, TRY THIS SECTION               00430000
+         B     REXDONE             ..YES, NO VSE/POWER SECTION PRESENT  00431000
+*                                  DON'T INFLUENCE PRIORITY OF ENTRY    00432000
+         SPACE 1                                                        00433000
+REX340   DS    0H                                                       00434000
+         CLM   R5,1,NDHPPRIO-NDHP(R1) PRIORITY WITHIN VALID RANGE ?     00435000
+         BH    REXDONE             ..YES, BRANCH AND LEAVE PRIORITY     00436000
+         STC   R5,NDHPPRIO-NDHP(R1)  STORE NEW (REDUCED) PRIORITY       00437000
+*                                  BY UPDATING DSHR CONTROL RECORD      00438000
+         B     REXDONE             RETURN TO VSE/POWER                  00439000
+         DROP  R4                  RELEASE ADDRESSABILTY OF DSHR        00440000
+         EJECT                                                          00441000
+*********************************************************************** 00442000
+*               PROCESS JOB DATA RECORD                               * 00443000
+*********************************************************************** 00444000
+         SPACE 2                                                        00445000
+*        THE RECORD STARTS WITH ONE OF THE FOLLOWING:                   00446000
+*               '//'  - VSE OR MVS JECL STATEMENT                       00447000
+*               '/*'  - END OF INPUT OR JES2/JES3 CONTROL STATEMENT     00448000
+*               '/&'  - END OF JOB                                      00449000
+*               '* '  - COMMENT OR VSE/POWER JECL STATEMENT             00450000
+*        THIS EXAMPLE DOES NOT TAKE ANY ACTION AND RETURNS TO           00451000
+*        VSE/POWER WITH THE 'PROCESS RECORD' RETURN CODE.               00452000
+         SPACE 1                                                        00453000
+REX400   DS    0H                                                       00454000
+         SPACE 1                                                        00455000
+*        MORE TO COME HERE ACCORDING TO SPECIFIC NEEDS                  00456000
+         SPACE 2                                                        00457000
+*********************************************************************** 00458000
+*               RETURN TO VSE/POWER                                   * 00459000
+*********************************************************************** 00460000
+         SPACE 1                                                        00461000
+REXDONE  DS    0H                  COMMON EXIT                          00462000
+         SR    RF,RF               SET UP RETURN CODE                   00463000
+         BR    RE                  RETURN TO CALLER                     00464000
+         EJECT                                                          00465000
+*********************************************************************** 00466000
+*        SUBROUTINE TO ISSUE MESSAGE ON OPERATOR CONSOLE              * 00467000
+*                                                                     * 00468000
+* USAGE OF VSE/POWER MACRO IPW$WTO:                                   * 00469000
+*       THIS MACRO, TOGETHER WITH SOME INDICATIONS SET IN THE TCB,    * 00470000
+*       CAN BE USED TO DISPLAY A MESSAGE ON THE CENTRAL OPERATOR      * 00471000
+*       CONSOLE.                                                      * 00472000
+*       THE USAGE OF THIS MACRO DESTROYS THE REGISTER R0 - R3.        * 00473000
+*       THE MESSAGE TO BE DISPLAYED SHOULD CONTAIN ALPHAMERIC         * 00474000
+*       CHARACTERS ONLY.                                              * 00475000
+*                                                                     * 00476000
+*********************************************************************** 00477000
+         SPACE 2                                                        00478000
+SUBWTO   DS    0H                                                       00479000
+         STCM  R7,7,TCMW+1             PASS MESSAGE ADDRESS             00480000
+         MVI   TCMW,X'00'              CLEAR OPTION BYTE                00481000
+         OI    TCMW,TCPCOP             FORCE MESSAGE TO CONSOLE         00482000
+         OI    TCMW,TCDNMM             SUPPRESS MESSAGE MODIFICATION    00483000
+         SPACE                                                          00484000
+         IPW$WTO TCMW                  ISSUE MESSAGE                    00485000
+         SPACE                                                          00486000
+         MVI   TCMW,X'00'              CLEAR OPTION BYTE                00487000
+         BR    R6                      RETURN TO CALLER                 00488000
+         SPACE 5                                                        00489000
+         DROP  R9,RA,RB            RELEASE ADDRESSABILTY                00490000
+         EJECT                                                          00491000
+*********************************************************************** 00492000
+*                                                                     * 00493000
+*               D E F I N I T I O N S                                 * 00494000
+*                                                                     * 00495000
+*********************************************************************** 00496000
+         SPACE 1                                                        00497000
+REXFLG1  DC    X'00'               PNET EXIT FLAG BYTE 1                00498000
+         SPACE 1                                                        00499000
+REXTAB1  DC    F'100',C'9',AL3(0)     PRIORITY TABLE BASED ON CARD/     00500000
+         DC    F'200',C'8',AL3(0)      LINE COUNT, OFFERING MAXIMUM     00501000
+         DC    F'400',C'7',AL3(0)      PRINTING/PUNCHING PRIORITY       00502000
+         DC    F'600',C'6',AL3(0)      WHICH OUTPUT ENTRY IS            00503000
+         DC    F'800',C'5',AL3(0)      ALLOWED TO HAVE AND OFFERING     00504000
+         DC    F'1200',C'4',AL3(0)     DUMMY ADDRESS, THAT MIGHT BE     00505000
+         DC    F'2000',C'3',AL3(0)     USED TO ADDRESS A SPECIFIC       00506000
+         DC    F'4000',C'2',AL3(0)     PROCESSING ROUTINE.              00507000
+         DC    X'7FFFFFFF',C'1',AL3(0)                                  00508000
+         SPACE 1                                                        00509000
+REXTAB2  DC    CL8'DENVER'         TABLE OF NODE NAMES, FROM            00510000
+         DC    CL8'LONDON'         WHICH WE ARE WILLING TO              00511000
+         DC    CL8'NEWYORK'        ACCEPT A JOB, THAT SHOULD BE         00512000
+         DC    CL8'HOUSTON'        PROCESSED ON OUR OWN NODE            00513000
+         DC    CL8'RALEIGH'                                             00514000
+         DC    AL1(STOP)           LOGICAL TABLE END OF X'FF'           00515000
+         SPACE 2                                                        00516000
+*********************************************************************** 00517000
+*               MESSAGES                                              * 00518000
+*********************************************************************** 00519000
+         SPACE 1                                                        00520000
+REXMSG1  DC    AL1(REXMSG1L-REXMSG1-1)   LENGTH OF MESSAGE              00521000
+         DC    C'CONTROL PASSED TO NETEXIT FOR THE VERY FIRST ENTRY'    00522000
+REXMSG1L EQU   *                                                        00523000
+         SPACE 1                                                        00524000
+REXMSG2  DC    AL1(REXMSG2L-REXMSG2-1)   LENGTH OF MESSAGE              00525000
+         DC    C'INCORRECT SIZE OF WORKAREA GIVEN, 50 BYTES NEEDED'     00526000
+REXMSG2L EQU   *                                                        00527000
+         SPACE 1                                                        00528000
+REXMSG3  DC    AL1(REXMSG3L-REXMSG3-1)   LENGTH OF MESSAGE              00529000
+         DC    C'DISABLE NETEXIT USING PVARY, RE-LOAD IT BY PLOAD'      00530000
+REXMSG3L EQU   *                                                        00531000
+         SPACE 2                                                        00532000
+*********************************************************************** 00533000
+*               LAYOUT OF WORK AREA                                   * 00534000
+*********************************************************************** 00535000
+         SPACE 1                                                        00536000
+WORKAREA DSECT ,                   LAYOUT OF WORK AREA                  00537000
+WORKLEN  DS    F                   LENGTH OF WORKAREA AS REQUESTED      00538000
+*                                  AND PASSED BY VSE/POWER              00539000
+WORKTID  DS    CL16                TASK IDENTIFIER                      00540000
+WORKNODE DS    CL8                 NODE NAME OF SERVING TASK            00541000
+WORKRADR DS    F                   ADDRESS OF RECORD                    00542000
+WORKRLN  DS    F                   LENGTH OF RECORD                     00543000
+WORKRCB  DS    X                   RCB OF RECORD JUST PASSED            00544000
+WORKSRCB DS    X                   SRCB OF RECORD JUST PASSED           00545000
+WORKACCT DS    CL8                 ACCOUNT NUMBER OF JOB                00546000
+WORKFILL DS    CL4                 UNUSED BYTES                         00546500
+WORKLN   EQU   *-WORKAREA          LENGTH OF WORK AREA                  00547000
+         SPACE 2                                                        00548000
+*********************************************************************** 00549000
+*               LAYOUT OF VSE/POWER CONTROL BLOCKS                    * 00550000
+*                 AND NETWORK CONTROL RECORDS                         * 00551000
+*********************************************************************** 00552000
+         SPACE 1                                                        00553000
+         IPW$EQU ,                 DEFINE REGISTER EQUATES AS           00554000
+*                                  USED IN VSE/POWER CODING             00555000
+         SPACE 2                                                        00556000
+         IPW$DPA ,                 LAYOUT OF COMMON ADDRESS TABLE       00557000
+*                                  (CAT) ALSO CALLED PERMANENT AREA     00558000
+*                                  OF VSE/POWER.                        00559000
+         SPACE 2                                                        00560000
+         IPW$DTC NET=YES           LAYOUT OF TASK CONTROL BLOCK         00561000
+         SPACE 2                                                        00562000
+         IPW$DQC ,                 LAYOUT OF DISK MANAGEMENT BLOCK      00563000
+         SPACE 2                                                        00564000
+         IPW$DQR ,                 LAYOUT OF INTERNAL QUEUE RECORD      00565000
+         SPACE 2                   ADDRESSED BY TCQV OF TCB             00566000
+         IPW$DPN ,                 LAYOUT OF PNET MASTER CTL. BLOCK     00567000
+         SPACE 2                                                        00568000
+         IPW$DNR JHR=YES,JTR=YES,DHR=YES,OUT=YES NETWORK CONTROL RECS   00569000
+         SPACE 2                                                        00570000
+         IPW$DNC ,                 LAYOUT OF NODE CONTROL BLOCK         00571000
+         SPACE 3                                                        00572000
+*        END                       NOT REQUIRED FOR '.A' COPY BOOK      00573000

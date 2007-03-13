@@ -1,0 +1,1220 @@
+         MACRO                                                          00001000
+         SGERP                                                          00002000
+***************************************************************@D348DEM 00003000
+*                                                             *@D348DEM 00004000
+.*       IBM DISK OPERATING SYSTEM                            *@D348DEM 00005000
+*        SUPERVISOR - SGERP - 5686-066-06-15C                 *@D61ADJK 00006000
+.*                                                            *@D348DEM 00007000
+*        LICENSED MATERIALS-PROPERTY OF IBM                   *@D348DEM 00008000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *@D31UDMZ 00009000
+*        5686-066 (C) COPYRIGHT IBM CORP. 1977, 2001          *@D66CDAP 00010000
+*        SEE COPYRIGHT INSTRUCTIONS                           *@D31UDMZ 00011000
+*                                                             *@D348DEM 00012000
+***************************************************************@D348DEM 00013000
+         GBLB  &SGERP             SGERP PRINT CONTROL SWITCH   @D37DDAP 00014000
+         GBLA  &AG1               NUMBER OF PUBS               @D51ODGL 00015000
+         GBLB  &VSE260            NUMBER OF PUBS               @D51ODGL 00016000
+         GBLB  &VTAM31            VTAM-31 SWITCH               @DY46396 00016500
+         ACTR  200                LOOP COUNTER                 @D37DDAP 00017000
+.* /* START OF SPECIFICATIONS ***************************************** 00018000
+.*                                                                      00019000
+.*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                         00020000
+.*                                                                      00021000
+.*01* DESCRIPTIVE NAME = RESIDENT INTERFACE TO A-TRANSIENTS             00022000
+.*                                                                      00023000
+.*01* NOTES = DEVELOPMENT ACTIVITY                                      00024000
+.*    NEW MODULE - FIRST RELEASE 34                                     00025000
+.*    CHANGES FOR RELEASE-36                                   @D36IDAP 00026000
+.*    NEW DEVICE SUPPORT                                       @D21KDAP 00027000
+.*    3800-03 / 3800-08 PAGE PRINTER SUPPORT                   @D21WDAP 00028000
+.*    PROVIDE REIPL HARD-WAIT INDICATOR                        @D31QDAP 00029000
+.*    XA-SUPPORT 5.1.0                                         @D51GDAP 00030000
+.*    MORE DEVICES SUPPORT                                     @D51ODGL 00031000
+.*    NEW DEVICE SUPPORT                                       @D61ADJK 00032000
+.*    IMPROVED CONSOLE SUPPORT                                 @D61CDJK 00033000
+.*    INCLUDE SVC 44 (FROM SGSVCX)                             @D61NDOW 00034000
+.*    RESIDENT TAPE ERP                                        @D61NDJK 00035000
+.*    INTEGRATION OF SA FUNCTION                               @D61SAAP 00036000
+.*    TPA DEVICE SUPPORT                                       @D61SDAP 00037000
+.*                                                                      00038000
+.*01* NOTES = APAR CHANGES                                              00039000
+.*    SOFTWAIT AFTER DASD I/O ERROR                            @DA33781 00040000
+.*    PREVENT HARD WAIT IN CASE OF ERR29                       @DA34504 00041000
+.*    EOT ROUTINE DOES NOT COMPLETE WHEN TASK OWNS ERP SERVICE @DA34804 00042000
+.*    PREVENT QEDERR TO BE RESET IN CASE ANOTHER ERROR QUEUED  @DA37770 00043000
+.*    RESET PUB FLAGS ON EXIT FROM ERP                         @DA38698 00044000
+.*    ERP FOR D/T3540 LEADS ALWAYS TO MSG0P20D                 @DA40756 00045000
+.*    0P24 MSG LOOP DUE TO ERRQCHQA BEING ZERO                 @DA41114 00046000
+.*    ENSURE OPERATION TO BE RETRIED IF CONVERSION CCW FAILED  @DA41879 00047000
+.*    MSG0P36 NO REC FOUND FOR LABEL AREA DEVICE, SYSTEM HANGS @DA41973 00048000
+.*    UNIQUELY IDENTIFY DOM REQUEST                            @DA43585 00049000
+.*    ENSURE ERROR ENTRIES TO BE DEQUEUED WHILE DISBLED        @DA43684 00050000
+.*    PREVENT INTERMITTENT COMMAND REJECT                      @DA43824 00051000
+.*    RESET QUEUED IN ERROR IN PUB WHEN RETRY REQUESTED        @DA44172 00052000
+.*    9348 IS NOT A CARTRIDGE DEVICE                           @DA44241 00053000
+.*    PREVENT CHQCAW TO BE MODIFIED WITH INCORRECT ADDRESS     @DA44277 00054000
+.*    MAINTAIN QEDERR BIT PROPERLY                             @DA44311 00055000
+.*    PREVENT DEVBSY TO BE RESET WHILE I/O ONGOING             @DA44407 00056000
+.*    ENSURE QEDERR TO BE RESET FOR DOM REQUEST BEING QUEUED   @DA44442 00057000
+.*    OSA DEVICE RECOVERY SUPPORT                              @DA44442 00058000
+.*    PREVENT DEVICES (MAINLY TAPES) TO REMAIN QUEUED IN ERROR @DA44738 00059000
+.*    ALLOW SVC-5 TO BE EXECUTED IN 31-BIT MODE                @DY45385 00060000
+.*    MORE TASKS SUPPORT                                       @D66CDAP 00061000
+.*                                                                      00062000
+.**** END OF SPECIFICATIONS ***************************************** / 00063000
+         SPACE 3                                                        00064000
+         AIF   (NOT &SGERP).NPRT010                                     00065000
+         PRINT GEN                                             @D37DDAP 00066000
+.NPRT010 ANOP                                                  @D37DDAP 00067000
+         DC    CL8'SGERP   '                                   @D369DAP 00068000
+         DC    CL8'DY46396 '      CHANGE ACTIVITY              @DY46396 00069490
+         USING DISP,R6            DISPATCHER BASE POINTER      @D35EDWK 00070000
+         USING SGERP,RD           SGERP BASE POINTER           @D34RDFG 00071000
+         USING TIBADR,R8          TIB BASE POINTER             @D34RDFG 00072000
+         USING TCBADR,RA          TCB BASE POINTER             @D36IDAP 00073000
+         USING SVEARA,RB          SAVE AREA BASE POINTER       @D369DAP 00074000
+         ENTRY SGERP              ENTRY POINT OF SGERP         @D369DAP 00075000
+SGERP    BR    RC                 BRANCH TO SVC 5              @D34RDFG 00076000
+         TITLE 'VSE SUPERVISOR SGERP       UPDATE USER DATA IN COMREG ' 00077000
+*********************************************************************** 00078000
+*                                                                     * 00079000
+* SVC 5:     ERP REQUEST:   LOAD AND/OR EXECUTE A PHYSICAL TRANSIENT  * 00080000
+*        NON ERP REQUEST:   UPDATE FIELDS IN COMREG     (MVCCOM)      * 00081000
+*                                                                     * 00082000
+*********************************************************************** 00083000
+         SPACE 3                                                        00084000
+SVC05    DS    0H'0'                                           @D66CDAP 00085000
+         LA    R2,ERPTID          ERP TASK-ID                  @D66CDAP 00086000
+         CH    R2,TID             REQUEST FROM ERP             @D66CDAP 00087000
+         BE    ERPSVC             YES, ======================>          00088000
+.*                                                             @DY45385 00089000
+.*       MOVE COMMUNIATION BYTES TO COMREG                     @DY45385 00090000
+.*                                                             @DY45385 00091000
+         TM    TCBEXFLG,TCBEXAM   31 BIT MODE                  @DY45385 00092000
+         BZ    SVC05010           NO,                          @DY45385 00093000
+         AMODESW SET,AMODE=31,WR=(R2) GO INTO 31-BIT MODE      @DY45385 00094000
+SVC05010 LA    R2,3(R1)           GET LAST BYTE OF PARM LIST            00095000
+         DROP  R8                 RELEASE TIB BASE             @D369DAP 00096000
+         BAL   R8,VALIDSVA        VALIDATE ADDRESSES                    00097000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)             @D369DAP 00098000
+         SR    R3,R3              CLEAR REGISTER                        00099000
+         IC    R3,1(R1)           INSERT LENGTH FIELD                   00100000
+         SR    R4,R4              CLEAR REGISTER                        00101000
+         IC    R4,3(R1)           COPY OFFSET 11<OFF<24                 00102000
+         CH    R4,H12             DISP. LOWER THAN 12          @D35EDEM 00103000
+         BL    ERR25              YES, ====================>>>          00104000
+         LA    R2,0(R3,R4)        POINT TO UPPERMOST BYTE               00105000
+         CH    R2,H24             DISP. HIGHER THAN 23                  00106000
+         BNL   ERR25              YES, ====================>>>          00107000
+         LR    R1,R0              COPY SOURCE ADDRESS                   00108000
+         LA    R2,0(R1,R3)        LAST BYTE OF SOURCE INFO              00109000
+         BAL   R8,VALIDSVA        VALIDATE SOURCE LIMITS       @DM06083 00110000
+*SGLINK  VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)             @D369DAP 00111000
+         A     R4,CRADDR          TARGET ADDRESS                        00112000
+         EX    R3,SVC05MVC        MOVE INFORMATION INTO COMREG          00113000
+         BR    R6                 EXIT ====================>>>          00114000
+SVC05MVC MVC   0(0,R4),0(R1)      MOVE COMMUNICATION BYTES              00115000
+         DROP  RA                 RELEASE TCB BASE             @D36IDAP 00116000
+         DROP  RB                 RELEASE SAVE AREA BASE       @D369DAP 00117000
+         DROP  R6                 RELEASE DISPATCHER BASE      @D36IDAP 00118000
+         DROP  RD                 RELEASE SGERP BASE           @D369DAP 00119000
+         TITLE 'VSE SUPERVISOR     SGERP   RECOVERY INITIATION ROUTINE' 00120000
+*********************************************************************** 00121000
+*                                                                     * 00122000
+*        INITIAL SELECTION OF ERROR RECOVERY PROCEDURES               * 00123000
+*                                                                     * 00124000
+*********************************************************************** 00125000
+         SPACE 3                                                        00126000
+         USING SGERP,RD           SGERP BASE POINTER           @D369DAP 00127000
+         USING DISP,R6            DISP BASE POINTER            @D369DAP 00128000
+         USING ERBLOC,R5          ERROR BLOCK BASE             @D37BDFG 00129000
+         USING PTA,RB             PTA BASE POINTER             @D369DAP 00130000
+ERPINSEL MVI   SGERPECB+2,ZERO    RESET MASTER ECB             @D61NDAP 00131000
+         MVI   ERPPRFLG,ZERO      CLEAR PROCESSING FLAGS       @D61NDAP 00132000
+         BAL   R8,ERPTAPCH        CHECK FOR TAPE      =====>>> @D61NDAP 00133000
+         USING TER0000,RC         SGTAP BASE POINTER           @D61NDAP 00134000
+*        USING WORKAREA,RF        SGTAP WORK ELEMENT POINTER   @D61NDAP 00135000
+         L     RE,ASRQTAB         RESOURCE DESCRIPTOR TABLE    @D61MPAP 00136000
+         LA    RE,SRQERQ-SRQTAB(,RE) RESOURCE QUEUE            @D61MPAP 00137000
+         USING RQADR,RE           RESOURCE DESCRIPTOR BASE     @D61MPAP 00138000
+         MVC   RSCDESC,TID        SET ERBLOC IN USE            @D66ADAP 00139000
+         DROP  RE                 RELEASE RESOURCE DESCRIPTOR  @D61MPAP 00140000
+         XC    ERQPRIN1(ERQRFRL1-ERQPRIN1),ERQPRIN1 CLR FOR NOW@D52VDAP 00141000
+         TM    ERQFLG1,OCCUP      DID SVC44 OCCUPY ENTRY       @D37BDFG 00142000
+         BNZ   ERPINS40           YES,                         @D37BDAP 00143000
+         LA    R4,ERPERCHN        POINTER TO ACTUAL ERROR ENTRY@D61NDJK 00144000
+ERPINS10 L     R2,0(R4)           NEXT ENTRY IN ERP CHAIN      @D61NDJK 00145000
+         USING ERBLKADR,R2                                     @D61SDAP 00146000
+         LTR   R2,R2              ERP REQUEST ENQUEUED         @D37BDAP 00147000
+         BNZ   ERPDOMPR           YES,                         @D37BDAP 00148000
+.*       POST ALL WAITERS FOR ERQ RESOURCE                     @D61MPAP 00149000
+         L     R5,ASRQTAB         RESOURCE DESCRIPTOR BASE     @D61MPAP 00150000
+         LA    R5,SRQERQ-SRQTAB(,R5) ERBLOC BOUND              @D61MPAP 00151000
+         BAL   RF,RPOST           POST TASK WAITING FOR ERQ    @D37BDFG 00152000
+         L     R5,AERBLOC         RESTORE ERBLOC POINTER       @D61NDAP 00153000
+         TM    ERPPRFLG,ERPINPRC  ANY RECOVERY ACTION ONGOING  @D61NDAP 00154000
+         BZ    ERPUNPST           NO,                          @D61NDAP 00155000
+         DEBUG ALLREGS,XXDBGMC    GET DATA PRINTED             @D61NDAP 00156000
+*        SGSETUP SWOWNER,STASK=ERP,OPTION=SYSOWNER,WR1=R8,WR2=RB 61NDAP 00157000
+         SGSETUP SWOWNER,STASK=ERP,OPTION=SYSOWNER,WR1=R8,WR2=RB 61NDAP 00158000
+         LA    R1,ERPECBLS        ADDRESS OF ERP-ECB LIST      @D61NDAP 00159000
+         WAITM (1)                WAIT FOR COMPLETION OF I/O   @D61NDAP 00160000
+         B     ERPINSEL           COMPLETE ERROR PROCESSING    @D61NDAP 00161000
+ERPUNPST DEBUG ALLREGS,XXDBGMC    GET DATA PRINTED             @D61NDAP 00162000
+*        SGSETUP UNPOST,STASK=ERP,WR1=RB   DEACTIVATE ERP      @D61NDAP 00163000
+         SGSETUP UNPOST,STASK=ERP,WR1=RB   DEACTIVATE ERP      @D37BDFG 00164000
+         BR    R6                      ====================>>> @D37BDAP 00165000
+.*                                                                      00166000
+.*       DONT INSERT ANYTHING BETWEEN ERPECBLS AND SGERPECB             00167000
+.*       UNLESS IT IS AN ADDITIONAL ECB TO POST ERP-TASK                00168000
+.*                                                                      00169000
+ERPECBLS DC    A(TERCCB1)         SGTAP ECB                    @D61NDAP 00170000
+         DC    A(TERCCB2)         SGTAP ECB                    @D61NDAP 00171000
+         DC    A(TERCCB3)         SGTAP ECB                    @D61NDAP 00172000
+         DC    A(TERCCB4)         SGTAP ECB                    @D61NDAP 00173000
+         DC    A(TERCCB5)         SGTAP ECB                    @D61NDAP 00174000
+         DC    A(SGERPECB)        SGERP MASTER ECB ADDRESS     @D61NDAP 00175000
+SGERPECB DC    AL1(128),AL3(0)    SGERP MASTER ECB             @D61NDAP 00176000
+.*                                                                      00177000
+.*       DONT INSERT ANYTHING BETWEEN ERPECBLS AND SGERPECB             00178000
+.*       UNLESS IT IS AN ADDITIONAL ECB TO POST ERP-TASK                00179000
+.*                                                                      00180000
+         SPACE 1                                                        00181000
+ERPPRFLG DC    XL1'00'            PROCESSING FLAG              @D61NDAP 00182000
+ERPINPRC EQU   X'80'              ASYNCHRONEOUS ERP IN PROCESS @D61NDAP 00183000
+ERPPRFL1 DC    XL1'00'            PROCESSING FLAG-1            @D61NDAP 00184000
+         TITLE 'VSE SUPERVISOR     SGERP   SET UP ERROR ENTRY         ' 00185000
+         USING PUBADR,R3          PUB BASE POINTER             @D61SDAP 00186000
+         USING PBXADR,RA          PBXADR BASE POINTER          @D61SDAP 00187000
+ERPINS20 TM    PBXFLAG,PBXTAPE    TAPE DEVICE                  @D61SDAP 00188000
+         BZ    ERPINS30           NO                           @D61SDAP 00189000
+         TM    PBXFLAG3,PBXTERP1  9348/3480/3490/TPA?          @DA44241 00190000
+         BZ    ERPINS30           NO                           @D61SDAP 00191000
+         TM    ERRQERPF,ERRQPOBR+ERRQPMDR+ERRQPSIR  RECORDING  @D61SDJK 00192000
+         BNZ   ERPINS30           YES, NEED TRANSIENT PROCESS  @D61NDJK 00193000
+         L     R9,ASVASVDL        GET $IJBTAP LOAD ADDRESS     @D61SDJK 00194000
+         L     R9,AIJBTAP-SVASVDL(,R9)                         @D61SDJK 00195000
+         LTR   R9,R9              IJBTAP CODE ALREADY LOADED   @D61SDJK 00196000
+         BZ    ERPINS30           NO, USE RESIDENT SA TAPE ERP @D61SDJK 00197000
+         LA    R4,ERBLKPTR        POINT TO NEXT ENTRY IN CHAIN @D61NDJK 00198000
+         LTR   RF,RF              IS FREE WORK AREA AVAILABLE  @D61NDJK 00199000
+         BZ    ERPINS10           NO, DELAY ITS PROCESSING     @D61NDJK 00200000
+         L     RE,ASRQTAB         RESOURCE DESCRIPTOR TABLE    @D61MPAP 00201000
+         LA    RE,SRQERQ-SRQTAB(,RE) RESOURCE QUEUE            @D61MPAP 00202000
+         USING RQADR,RE           RESOURCE DESCRIPTOR BASE     @D61MPAP 00203000
+         MVC   RSCDESC,FREEVAL    FREE THE ERQ RESOURCE        @D66ADAP 00204000
+         DROP  RE                 RELEASE RESOURCE DESCRIPTOR  @D61MPAP 00205000
+         B     TER0000                 ====================>>> @D61NDJK 00206000
+         DROP  RA                 RELEASE PUBX BASE            @D61SDAP 00207000
+         DROP  RC                 RELEASE TER0000 BASE POINTER @D61NDJK 00208000
+*        DROP  RF                 RELEASE WORK ELEMENT POINTER @D61NDAP 00209000
+         SPACE 2                                                        00210000
+ERPINS30 MVC   0(4,R4),ERBLKPTR   DEQUEUE ERROR ENTRY          @D61NDJK 00211000
+         NI    ERBLKFLG,XFF-ERACTIVE-ERQUEUED                  @D14BDAP 00212000
+         NI    ERBLKFL1,XFF-NEEDERP RESET ERP ACTIVE BIT       @D14BDAP 00213000
+         XC    ERQCSW1(ERQRFRL1-ERQCSW1),ERQCSW1 CLEAR TOTAL   @DA41973 00214000
+         IC    RE,ERRQLSNS        ALLOCATED NO. OF SENSE BYTES @D21IDAP 00215000
+         LA    RE,ERRQSNS-ERRQCSW(RE) ADD FIRST FIXED PART     @D21IDAP 00216000
+         BCTR  RE,0               MINUS ONE FOR EXECUTE        @D37BDFG 00217000
+         EX    RE,ERPMVCER        MOVE TO ERBLOC               @D37BDFG 00218000
+         MVC   ERQPRIN1,ERRQLSNS  APPEND PROCESSING INFO       @D21IDAP 00219000
+         MVC   ERQE4ID,ERRQE4ID   APPEND SENSE ID INFORMATION  @D51GDAP 00220000
+         OI    ERQPRFL1,X'10'     INDICATE EXTENDED ERBLOC     @D51GDAP 00221000
+         CLI   ERQMSG1,RMSAE      IS THIS AN ALTERNATE ENTRY   @D61NDAP 00222000
+         BE    ERPINS40           YES                          @D61NDAP 00223000
+         TM    ERBLKFL1,NEEDRAS   WAS THIS A RAS REQUEST       @D61NDAP 00224000
+         BZ    ERPINS40           NO,                          @D61NDAP 00225000
+         MVC   ERQACPU1(1),ERRQPATH SET UP THE PROCESSOR INFO  @D51GDAP 00226000
+         MVI   ERQPATH1,ZERO      CLEAR TEMPORARY STORAGE      @D51GDAP 00227000
+         B     ERPINS40           COMPLETE ERBLOC ENTRY        @D61NDAP 00228000
+         SPACE 2                                                        00229000
+ERPMVCER MVC   ERQ1(0),ERRQCSW    EXECUTED MOVE (LENGTH IN RE) @D21IDAP 00230000
+         DROP  R2                 RELEASE ERROR ENTRY BASE     @D61NDAP 00231000
+         DROP  R3                 RELEASE PUBADR BASE          @D61SDAP 00232000
+         SPACE 2                                               @D52VDAP 00233000
+.*                                                                      00234000
+.*       ENTRY POINT IF SVC-44 DID FILL ERBLOC                 @D52VDAP 00235000
+.*                                                                      00236000
+         TITLE 'VSE SUPERVISOR     SGERP   SVC-44 ERROR PROCESSING    ' 00237000
+ERPINS40 L     RF,RFTABAD         RFTABLE ADDRESS              @D61NDAP 00238000
+         USING RFTABLE,RF         RFTABLE BASE                 @D61NDAP 00239000
+         XC    RFEXIT,RFEXIT      CLEAR RFEXIT FIELD           @D21LDAP 00240000
+         LH    R3,ERQPUB1         GET PUB POINTER              @D14CDAP 00241000
+         USING PUBADR,R3          PUB BASE POINTER             @D14CDAP 00242000
+         LTR   R3,R3              IS A PUB ADDRESS PRESENT     @D14CDAP 00243000
+         BNM   ERPINS60           YES,                         @D61SDAP 00244000
+         TM    IJBFLG08,IJBDEBUG  IS DEBUG ACTIVE              @D21IDAP 00245000
+         BZ    ERPINS50           NO                           @D51GDAP 00246000
+         MVI   IJBHWORG,HWORG128  UNIQUE HARD WAIT ORIGINATOR  @D31QDAP 00247000
+         BAL   R5,SYSERROR        NEGATIVE VALUE NOT EXPECTED  @D21IDAP 00248000
+ERPINS50 SLR   R8,R8              CLEAR PUB2 POINTER           @D51GDAP 00249000
+         SLR   RA,RA              CLEAR PUBX POINTER           @D51GDAP 00250000
+         SLR   R4,R4              CLEAR PUB INDEX              @D21IDAP 00251000
+         BCTR  R4,0               SET PUB INDEX TO FFFFFFFF    @D51GDAP 00252000
+         B     ERPINS70                                        @D21IDAP 00253000
+ERPINS60 MVC   ERQFJOB1(8),ERPDEFNM DEFAULT TO NO-NAME         @D51GDAP 00254000
+         LTR   R4,R3              COPY PUB POINTER             @D51GDAP 00255000
+         BZ    ERPINS50                                        @D61SDAP 00256000
+         SH    R4,YPUBTAB         OFFSET IN PUB TABLE          @D51GDAP 00257000
+         SRL   R4,3               PUB INDEX                    @D51GDAP 00258000
+         BAL   RE,ERPGPBX         ADDRESS OF PUBX              @D21IDAP 00259000
+         USING PBXADR,RA          PUBX BASE POINTER            @D41XXAP 00260000
+         LR    R8,R4              COPY PUB INDEX               @D61NDAP 00261000
+         SLL   R8,2               OFFSET IN PUB2-ADDRESS TABLE @D61NDAP 00262000
+         A     R8,APB2AREA        ADDRESS OF PUB2 ADDRESS      @D61NDAP 00263000
+         L     R8,0(,R8)          PUB2 ADDRESS                 @D61NDAP 00264000
+         USING PUB2ADR,R8         PUB2 BASE POINTER            @D61NDAP 00265000
+ERPINS70 ST    R8,ERQPUB21        SAVE PUB2 ADDRESS IN ERBLOC  @D14CDAP 00266000
+         ST    R4,ERQPUBN1        SAVE PUB INDEX IN ERBLOC     @D51GDAP 00267000
+         ST    RA,ERQPUBX1        SAVE PUBX ADDRESS IN ERBLOC  @D41XXAP 00268000
+         CLI   ERQMSG1,RMSAE      IS THIS AN ALTERNATE ENTRY   @D21IDAP 00269000
+         BE    ERPAEPRC           YES, ======================> @D61NDAP 00270000
+         B     ERPINSRJ           NO,  ======================>          00271000
+         SPACE 1                                               @D149DWK 00272000
+ERPDEFNM DC    CL8'NO NAME '      DEFAULT JOB NAME             @D51GDAP 00273000
+         SPACE 1                                               @D149DWK 00274000
+         DROP  R8                 RELEASE PUB2ADR BASE         @D61NDAP 00275000
+         DROP  RA                 RELEASE PBXADR BASE          @D61NDAP 00276000
+         DROP  RF                 RELEASE RFTABLE BASE         @D61NDAP 00277000
+         TITLE 'VSE SUPERVISOR     SGERP      DOM PROCESSING          ' 00278000
+*        USING WORKAREA,RF        SGTAP WORK ELEMENT POINTER   @D61NDAP 00279000
+ERPDOMID DC    CL4'DOM'           ID OF DOM ERROR ENTRY        @D61CDAP 00280000
+         USING ERBLKADR,R2        ERROR ENTRY BASE             @D61SDAP 00281000
+ERPDOMPR LH    R3,ERRQPUB         SET UP PUB POINTER           @D61CDJK 00282000
+         USING PUBADR,R3          PUB BASE POINTER             @D61CDJK 00283000
+         LTR   R3,R3              IS A PUB ADDRESS PRESENT     @D61CDJK 00284000
+         BNP   ERPINS30           NO, =======================> @D61CDJK 00285000
+         BAL   RE,ERPGPBX         ADDRESS OF PUBX              @D61CDJK 00286000
+         USING PBXADR,RA          PUBX BASE POINTER            @D61CDJK 00287000
+         CLI   ERRQMSG,RMSAE      IS THIS AN ALTERNATE ENTRY   @D61CDJK 00288000
+         BE    ERPINS30           YES, ======================> @D61CDJK 00289000
+         OC    PBXDOMID,PBXDOMID  DOM REQUEST OUTSTANDING      @D61CDJK 00290000
+         BNZ   ERPDOM10           YES                          @D61CDJK 00291000
+ERPDOM00 CLC   ERRQCSW+1(3),ERPDOMID  IS IT A PURE DOM REQUEST @D61CDJK 00292000
+         BNE   ERPINS20           NO                           @D61SDAP 00293000
+         MVC   0(4,R4),ERBLKPTR   DEQUEUE DUMMY ERROR ENTRY    @DA43684 00294000
+         NI    ERBLKFLG,XFF-ERACTIVE-ERQUEUED FREE DEVICE ENTRY@DA43684 00295000
+         NI    ERBLKFL1,XFF-NEEDERP RESET ERP ACTIVE BIT       @DA43684 00296000
+         B     ERPDOM30           DO NORMAL PROCESSING         @D61CDJK 00297000
+ERPDOM10 TM    PUBCSFLG,OPINTV    INTERVENTION STILL REQUIRED  @D61CDJK 00298000
+         BO    ERPDOM00           YES,                         @DA43585 00299000
+         CLC   ERRQCSW+1(3),ERPDOMID  IS IT A PURE DOM REQUEST @DA43684 00300000
+         BNE   ERPDOM20           NO                           @DA43684 00301000
+.*                                                                      00302000
+.*       N O T E                                                        00303000
+.*       DEQUEUING OF ERROR ENTRY MUST BE DONE PRIOR TO DOM             00304000
+.*       BECAUSE IN THE DOM WINDOW ANOTHER ERROR ENTRY COULD            00305000
+.*       HAVE BEEN ENQUEUED                                             00306000
+.*                                                                      00307000
+         MVC   0(4,R4),ERBLKPTR   DEQUEUE DUMMY ERROR ENTRY    @DA43684 00308000
+         NI    ERBLKFLG,XFF-ERACTIVE-ERQUEUED FREE DEVICE ENTRY@DA43684 00309000
+         NI    ERBLKFL1,XFF-NEEDERP RESET ERP ACTIVE BIT       @DA43684 00310000
+ERPDOM20 LR    R7,RF              SAVE WORK AREA POINTER       @D61CDAP 00311000
+         DOM   MSG=PBXDOMID       ISSUE DOM REQUEST            @D61CDJK 00312000
+         LR    RF,R7              RESTORE WORKAREA POINTER     @D61CDAP 00313000
+         XC    PBXDOMID,PBXDOMID  RESET DOM ID IN PUBX         @D61CDJK 00314000
+         BAL   RE,RMSGETP2        GET PUB2 ADDRESS             @D61CDJK 00315000
+         USING PUB2ADR,R8         PUB2 BASE POINTER            @D61CDJK 00316000
+         CLC   ERRQCSW+1(3),ERPDOMID WAS JUST A DOM REQUESTED  @DA43585 00317000
+         BNE   ERPINSEL           NO, START IT ALL OVER        @DA43585 00318000
+ERPDOM30 SLR   R4,R4              NO CHANNEL QUEUE ENTRY AVAIL.@D61CDJK 00319000
+         SLR   R1,R1              NO CCB AVAILABLE             @D61CDJK 00320000
+         LH    R7,PUBCHANN        LOAD PUBCHANNEL              @D61CDJK 00321000
+         STH   R7,CHNADR          STORE CHANNEL ADDRESS        @D61CDJK 00322000
+         MVC   CSW(8),ERRQCSW     SET UP LOW CORE CSW          @D61CDJK 00323000
+         L     RF,ARETRY          LOAD RETRY EXIT ADDRESS      @D61CDJK 00324000
+         B     ERPEXT20                ======================> @DA44407 00325000
+         DROP  R2                 RELEASE ERROR ENTRY BASE     @D61SDAP 00326000
+         DROP  R3                 RELEASE PUB  BASE POINTER    @D61NDAP 00327000
+         DROP  R8                 RELEASE PUB2 BASE POINTER    @D61NDAP 00328000
+         DROP  RA                 RELEASE PUBX BASE POINTER    @D61NDAP 00329000
+*        DROP  RF                 RELEASE WORKAREA BASE        @D61NDAP 00330000
+         TITLE 'VSE SUPERVISOR     SGERP    FIND POSTED RETRY REQUESTS' 00331000
+ERPTAPCH L     RC,ATAPBASE        LOAD SGTAP BASE POINTER      @D61NDJK 00332000
+         USING TER0000,RC         SGTAP BASE POINTER           @D61NDJK 00333000
+         LA    R9,TERGLOB1        POINT TO 1ST SGTAP WORK AREA @D61NDJK 00334000
+         LA    R7,TERGLOBN        LOAD NUMBER OF WORK AREAS    @D61NDJK 00335000
+         SLR   RF,RF              POINTER TO A FREE WORK AREA  @D61NDJK 00336000
+ERPTAP10 TM    TERFLG-TERGLOB(R9),TERCVGAU   WORK AREA IN USE  @D61NDJK 00337000
+         BO    ERPTAP20           YES                          @D61NDJK 00338000
+         LR    RF,R9              SAVE POINTER TO FREE WRK AREA@D61NDJK 00339000
+         B     ERPTAP40           THERE IS NO I/O ONGOING      @D61NDJK 00340000
+ERPTAP20 LA    R1,TERCCB-TERGLOB(R9) POINT TO SGTAP CCB        @D61NDJK 00341000
+         USING CCBADR,R1          CCB   BASE POINTER           @D61NDJK 00342000
+         TM    CCBCOM1,TRABIT     SGTAP I/O HAS BEEN POSTED    @D61NDJK 00343000
+         BZ    ERPTAP30           NO                           @D61NDJK 00344000
+         L     RE,TERAIO00        GET 2ND ENTRY POINT OF SGTAP @D61NDJK 00345000
+.*                                                             @D61NDAP 00346000
+.*       RETURN TO MACRO SGTAP TO COMPLETE RECOVERY PROCESSING @D61NDAP 00347000
+.*       SGERP WILL BE RE-ENTERED IF SGTAP COMPLETED RECOVERY  @D61NDAP 00348000
+.*                                                             @D61NDAP 00349000
+         AMODESW RETURN,AMODE=31,REG=(RE) =================>>> @D61NDJK 00350000
+ERPTAP30 OI    ERPPRFLG,ERPINPRC  RECOVERY STILL ONGOING       @D61NDAP 00351000
+ERPTAP40 LA    R9,TERGWAL(R9)     POINT TO NEXT WORK AREA      @D61NDJK 00352000
+         BCT   R7,ERPTAP10        CHECK NEXT SGTAP CCB         @D61NDJK 00353000
+         BR    R8                      ======================> @D61NDAP 00354000
+         DROP  R1                 RELEASE CCB POINTER          @D61NDJK 00355000
+         DROP  RC                 RELEASE TER0000 BASE         @D61NDAP 00356000
+ATAPBASE DC    A(TER0000)         SGTAP ENTRY POINT            @D61NDJK 00357000
+         TITLE 'VSE SUPERVISOR     SGERP    INITIATE SYSREC PROCESSING' 00358000
+         USING PUBADR,R3          PUB BASE POINTER             @D61NDAP 00359000
+         USING RFTABLE,RF         RFTABLE BASE                 @D61NDAP 00360000
+ERPAEPRC LA    R2,ERQ1            ERBLOC ERROR ENTRY BASE      @D21IDAP 00361000
+         USING ERQAEADR,R2        ALTERNATE ERROR ENTRY BASE   @D21IDAP 00362000
+         CLI   ERQAETYP,X'FF'     RECORD BUILDER REQUEST       @D14ZDWK 00363000
+         BNE   ERPAEP10           NO                           @D21ZDAP 00364000
+         MVC   FTCHNM-1(2),ERQAESW1 COMPLET PHASE NAME $$ABER..@D14ZDWK 00365000
+         L     R4,ERQAEADR        GET RECORD ADDRESS           @D14ZDWK 00366000
+         LA    R4,4(,R4)          POINT TO RECORD DATA         @D14ZDWK 00367000
+         ST    R4,RFRECADR        SAVE RECORD ADDRESS IN RFTAB @D14ZDWK 00368000
+         SR    R4,R4              CLEAR REGISTER               @D14ZDWK 00369000
+         IC    R4,ERQAELEN        RETRIEVE RECORD LENGTH       @D14ZDWK 00370000
+         STH   R4,RFRECLEN        AND SAVE IN RF TABLE         @D14ZDWK 00371000
+         B     ERPAEP20           GO FETCH RECORD BUILDER      @D21ZDAP 00372000
+ERPAEP10 MVI   FTCHNM-1,C'A'      PROVIDE TO FETCH $$ABERA.    @D21ZDAP 00373000
+         MVI   FTCHNM,C'6'        PROVIDE TO FETCH $$ABERA6    @D3CADAP 00374000
+         CLI   ERQAETYP,X'34'     IS THIS A BTAM RECORD TYPE   @D37DDAP 00375000
+         BNE   ERPAEP20           NO                           @DA28589 00376000
+         LTR   R3,R3              IS THIS AN SVC44 REQUEST     @D21IDAP 00377000
+         BZ    ERPAEP20           YES        FETCH $$ABERA6    @D21ZDAP 00378000
+         MVI   FTCHNM,C'5'        PROVIDE TO FETCH $$ABERA5    @D3CADAP 00379000
+ERPAEP20 L     RA,ERQAETIB        TIB ADDRESS OF SERVICE OWNER @D21ZDAP 00380000
+         USING TIBADR,RA                                       @D36IDAP 00381000
+         LH    RA,TIBRTID         TID OF SERVICED TASK         @D36IDAP 00382000
+         DROP  RA                 RELEASE TIB BASE POINTER     @D36IDAP 00383000
+         B     ERPGETIT                ======================> @DA05988 00384000
+         DROP  R2                 RELEASE ERBLOC ERROR ENTRY   @D37BDFG 00385000
+         SPACE 2                                               @D149DWK 00386000
+         TITLE 'VSE SUPERVISOR     SGERP      INITIATE ERP PROCESSING ' 00387000
+         USING ERBLKADR,R2        DEVICE ERROR ENTRY PTR       @D61NDAP 00388000
+         USING PUB2ADR,R8         PUB2    BASE POINTER         @D61NDAP 00389000
+         USING PBXADR,RA          PUBX BASE POINTER            @D41XXAP 00390000
+ERPINSRJ EQU   *                                                        00391000
+         MVI   FTCHNM-1,C'R'      INITIALIZE FETCH NAME        @D21IDAP 00392000
+         MVI   FTCHNM,C'J'        FETCH $$ABERRJ               @D21IDAP 00393000
+         DROP  RA                 RELEASE PUBX   BASE          @D61NDAP 00394000
+         LA    RA,ERPTID          SET TID TO ERP               @D51GDAP 00395000
+         STH   RA,ERQTID1         DEFAULT TO ERP FOR NOW       @D61NDAP 00396000
+         L     R4,ERRQCHQA        GET CHANQ POINTER IF ANY     @DA41114 00397000
+         TM    ERQFLG1,RECONLY    PURE RECORDING REQUEST       @D61NDAP 00398000
+         BO    ERPIRJ10           YES, SERVICE OWNER IS ERP    @D61NDAP 00399000
+         OC    ERQCCB1+1(3),ERQCCB1+1 IS USER ALREADY POSTED   @D61NDAP 00400000
+         BZ    ERPIRJ10           YES, DONT USE CHANQ INFO     @D51GDAP 00401000
+         USING CHQADR,R4          CHANQ BASE POINTER           @D36IDAP 00402000
+         IC    RA,CHQERRCT        GET ERROR COUNT              @D51GDAP 00403000
+         STC   RA,ERQERR1         AND SAVE IT IN ERROR BLOCK   @D51GDAP 00404000
+         SLR   RA,RA              CLEAR REGISTER               @D66CDAP 00405000
+         ICM   RA,3,CHQTID        GET TASK-ID                  @D66CDAP 00406000
+         AIF   (&VSE260).Y260020                               @D66CDAP 00407000
+         SRL   RA,8               TASK-ID IS A SINGLE BYTE     @D66CDAP 00408000
+.Y260020 ANOP                                                           00409000
+         STH   RA,ERQTID1         SAVE FAILING TASK ID         @D51GDAP 00410000
+ERPIRJ10 ST    R4,ERQCHQA1        SAVE CHANQ ADDRESS IN ERBLOC @D51GDAP 00411000
+         TM    ERQPRFL1,ERQPMSG   DO WE HAVE TO CALL $$ABERRL  @D51GDAP 00412000
+         BO    ERPIRL             YES                          @D21ZDAP 00413000
+         CLI   PUBDEVTY,TCKD      IS DEVICE A DASD             @D61DDAP 00414000
+         BL    ERPIRJ30           NO,                          @D51TDAP 00415000
+         CLI   PUBDEVTY,TECKD     SURE ITS A DASD              @D51TDAP 00416000
+         BNH   ERPIRJ20           YES, IT IS A DASD            @D51TDAP 00417000
+         CLI   PUBDEVTY,TFBA      IS DEVICE AN FBA DEVICE      @D51TDAP 00418000
+         BNE   ERPIRJ30           NO,                          @D61NDAP 00419000
+ERPIRJ20 MVI   FTCHNM-1,C'D'      INITIALIZE FETCH NAME        @D51TDAP 00420000
+         MVI   FTCHNM,C'1'        FETCH $$ABERD1               @D51TDAP 00421000
+         AGO   .SKIP020                                                 00422000
+         TM    ERRQPRFL,ERRQBDPM  SGDSK MESSAGING REQUEST      DELETE   00423000
+         BZ    ERPGETIT           NO, TAKE NORMAL PATH         DELETE   00424000
+         BAL   R9,ERPSETUP        SET SERVICE OWNER            DELETE   00425000
+         L     RC,ERPIRJA1        LOAD ADDRESS OF ROUTINE      DELETE   00426000
+         BALR  RE,RC              GO AND WRITE MESSAGE         DELETE   00427000
+         L     RD,ERPBASE         RESTORE BASE REGISTER        DELETE   00428000
+         NI    ERRQPRFL,XFF-ERRQBDPM SGDSK MESSAGING IS DONE   DELETE   00429000
+.SKIP020 ANOP                                                           00430000
+         B     ERPGETIT                                        @D61NDAP 00431000
+ERPIRJ30 LTR   R4,R4              CHANQ ENTRY PRESENT          @D51GDAP 00432000
+         BZ    ERPNOVTM           NO,                          @D51GDAP 00433000
+         TM    CHQGRP,CHQGRVTM    IS THIS VTAM REQUEST         @D51GDAP 00434000
+         BZ    ERPNOVTM           NO,                          @D61NDAP 00435000
+         TM    IJBTCAVT,IJBTCACT  VTAM ACTIVE                  @D61NDAP 00436000
+         BZ    ERPNOVTM           NO                           @D61NDAP 00437000
+         L     RA,IJBTCAVT        GET VTAM ADDRESS VECTOR      @D61NDAP 00438000
+         LH    RA,ISTTSKID-ISTAVT(,RA) VTAM MAINTASK ID        @D61NDAP 00439000
+         MVI   FTCHNM-1,C'V'      INITIALIZE FETCH NAME        @D21IDAP 00440000
+         MVI   FTCHNM,C'1'        FETCH $$ABERV1               @D21IDAP 00441000
+         B     ERPGETIT                ======================> @DL28101 00442000
+         SPACE 1                                               @D61ADJK 00443000
+ERPIRJA1 DC    A(DERERPMS)        SPECIAL PRINT ROUTINE        DELETE   00444000
+         SPACE 1                                                        00445000
+ERPIRL   MVI   FTCHNM,C'L'        SET PHASE NAME TO $$ABERRL   @D21ZDAP 00446000
+         B     ERPGETIT                ======================> @D21ZDAP 00447000
+         TITLE 'VSE SUPERVISOR     SGERP    INITIATE TAPE  PROCESSING ' 00448000
+ERPNOVTM TM    PUBDEVTY,TAPES     IS DEVICE TAPE               @D37BDAP 00449000
+         BNO   ERPTSTOS           NO, TEST FOR OSA DEVICE      @DA44442 00450000
+         TM    PUBDEVTY,X'F0'-TAPES SURE IT IS A TAPE          @D37BDAP 00451000
+         BNZ   ERPTSTOS           NO, TEST FOR OSA DEVICE      @DA44442 00452000
+         TM    IJBFLG08,IJBSAENV  SA ENVIRONMENT               @D61DDAP 00453000
+         BZ    ERPNOSA            NO,                          @D61DDAP 00454000
+         TM    IJBFLG08,IJBSVALC  IS SVA LOAD COMPLETE         @D61DDAP 00455000
+         BZ    ERPNOGET           NO, USE RESIDENT ERP         @D61DDAP 00456000
+ERPNOSA  MVI   FTCHNM-1,C'A'      INITIALIZE 1ST TAPE TRANSIENT@D21IDAP 00457000
+         MVI   FTCHNM,C'A'        FETCH $$ABERAA               @D21IDAP 00458000
+         LTR   R8,R8              IS PUB2 POINTER PRESENT      @D61NDAP 00459000
+         BZ    ERPGETIT           NO, SHOULD NEVER OCCUR       @D61NDAP 00460000
+         CLI   PUBDEVTY,TTPA      IS IT TPA DEVICE             @D61SDAP 00461000
+         BE    ERPTLG00           YES, RECORDING REQUEST       @D61SDAP 00462000
+         CLI   PUBDEVTY,T3480     IS IT 3480,3490, 3424, 9348  @D21FDAP 00463000
+         BE    ERPTLG00           YES, RECORDING REQUEST       @D61NDAP 00464000
+         BNL   ERPMOVPH           IT IS A 9346, 9347           @D61NDAP 00465000
+.*                                                                      00466000
+.*  THE PURPOSE OF THIS ROUTINE IS TO ELIMINATE THE FETCHING            00467000
+.*  OF TAPE TRANSIENTS, WHEN THAT TRANSIENT IS ALREADY IN THE PTA       00468000
+.*                                                                      00469000
+         TM    P2TFLG1,P2TERP     IS ERP IN CONTROL                     00470000
+         BNO   ERPGETIT           NO,  ======================> @D36IDAP 00471000
+ERPMOVPH MVC   FTCHNM-1(2),P2TNAME GET PHASE NAME              @D21CDOW 00472000
+         CLC   P2TNAME(L'P2TNAME),PTA+6 PHASE ALREADY IN PTA   @D36IDAP 00473000
+         BNE   ERPGETIT           NO, PHASE SHOULD BE FETCHED  @DA28763 00474000
+ERPNOGET BAL   R9,ERPSETUP        SET SERVICE OWNER            @DA28763 00475000
+         B     ERPGOPTA                ======================> @DA28763 00476000
+         SPACE 3                                                        00477000
+ERPTSTOS CLI   PUBDEVTY,TOSA      IS THIS THE OSA DEVICE       @DA44442 00478000
+         BNE   ERPGETIT           NO,                          @DA44442 00479000
+         CLI   PUBOPTN,PUBOPOFE   SURE IT IS AN OSA FE PORT    @DA44442 00480000
+         BNE   ERPGETIT           NO,  ======================> @DA44442 00481000
+         MVI   FTCHNM-1,C'O'      INITIALIZE FETCH NAME        @DA44442 00482000
+         MVI   FTCHNM,C'S'        FETCH $$ABERROS              @DA44442 00483000
+         SPACE 3                                                        00484000
+ERPGETIT BAL   R9,ERPSETUP        SET SERVICE OWNER            @DA28763 00485000
+         SVC   5                  ALLOW FETCH TO SET RESVC     @D369DAP 00486000
+         TITLE 'VSE SUPERVISOR     SGERP      3480 SYSREC PROCESSING  ' 00487000
+ERPTLG00 MVI   RFRDSW1,X'00'      SET UP STANDARD HEADER       @D61NDJK 00488000
+         MVI   RFRDSW2,X'00'      ALL SWITCHES..               @D61NDJK 00489000
+         MVI   RFRDSW3,X'00'        ARE SET TO ZERO            @D61NDJK 00490000
+         TM    ERRQERPF,ERRQPMDR  MDR RECORD TYPE              @D61NDJK 00491000
+         BZ    ERPTLG20           NO, IT IS AN OBR OR A3 RECORD@D61SDJK 00492000
+         LA    R0,TERMDWAL        SET UP MDR WORK AREA LENGTH  @D61NDJK 00493000
+         MVI   RFRECTYP,X'90'     ASSUME TYPE 90 MDR           @D61NDJK 00494000
+         TM    ERRQERPF,ERRQPT91  TYPE 91 MDR                  @D61NDJK 00495000
+         BZ    ERPTLG10           NO                           @D61NDJK 00496000
+         MVI   RFRECTYP,X'91'     IT IS A TYPE 91 MDR          @D61NDJK 00497000
+ERPTLG10 L     R8,ERQPUBX1        PUBX POINTER                 @D61NDJK 00498000
+         USING PBXADR,R8          PUBX BASE ADDRESS            @D61NDJK 00499000
+         MVC   RFRDSW2,PBXMDR     SET MDR DEVICE TYPE CODE     @D61NDJK 00500000
+         MVI   RFRDSW3,TERMDIDL   SET LENGTH OF SUBID FIELD    @D61NDJK 00501000
+         OI    RFRDSW3,X'80'      INDICATE VARIABLE LENGTH     @D61NDJK 00502000
+         B     ERPTLG30                                        @D61NDJK 00503000
+         SPACE 3                                                        00504000
+ERPTLG20 TM    ERRQERPF,ERRQPOBR  OBR RECORD TYPE              @D61SDJK 00505000
+         BZ    ERPTLG25           NO, IT IS AN A3 RECORD       @D61SDJK 00506000
+         MVI   RFRECTYP,X'30'     IT IS AN OBR RECORD          @D61SDJK 00507000
+         LA    R0,TEROBWAL        SET UP OBR WORK AREA LENGTH  @D61NDJK 00508000
+         TM    ERRQERPF,ERRQPTEM  IT IS A PERMANENT ERROR      @D61NDJK 00509000
+         BZ    ERPTLG30           YES                          @D61NDJK 00510000
+         OI    RFRDSW1,X'40'      INDICATE TEMPORARY ERROR     @D61NDJK 00511000
+         B     ERPTLG30                                        @D61SDJK 00512000
+         SPACE 3                                                        00513000
+ERPTLG25 MVI   RFRECTYP,X'A3'     A3 RECORD TYPE               @D61SDJK 00514000
+         LA    R0,TERA3WAL        SET UP A3 WORK AREA LENGTH   @D61SDJK 00515000
+         MVI   RFRDSW1,X'40'      SET TEMPORARY ERROR BIT      @D61SDJK 00516000
+ERPTLG30 L     R7,ERRQCOMM        POINT TO RECORD WORK AREA    @D61NDJK 00517000
+         USING TERMDWA,R7         MDR/OBR WORK AREA HEADER     @D61NDAP 00518000
+         SLR   R9,R9              CLEAR WORK REGISTER          @D61NDJK 00519000
+         ICM   R9,3,TERMDLEN      GET LENGTH OF RECORD         @D61SDJK 00520000
+         BNZ   ERPTLG50                                        @D61NDAP 00521000
+ERPTLG40 BAL   R5,SYSERROR        GETVIS AREA WAS CLOBBERED    @D61NDAP 00522000
+ERPTLG50 STCM  R9,3,RFRECLEN      SET RECORD LENGTH IN SYSREC  @D61NDJK 00523000
+         CH    R9,ERQRFRL1        LENGTH EXEEDS ERBLOC AREA    @D61NDAP 00524000
+         BH    ERPTLG40           YES,                         @D61NDAP 00525000
+         L     R1,TERMDPTR        GET GETVIS ADDRESS           @D61NDJK 00526000
+         CH    R9,H256            LENGTH IS GREATER THAN 256?  @D61SDJK 00527000
+         BNH   ERPTLG60           NO                           @D61SDJK 00528000
+         MVC   ERQRFRC1(256),TERMDREC  COPY 1ST PART OF RECORD @D61SDJK 00529000
+         SH    R9,H256            SET UP LENGTH OF 2ND PART    @D61SDJK 00530000
+         BCTR  R9,0               ADJUST FOR EXECUTE           @D61SDJK 00531000
+         EX    R9,ERPTLGM1        COPY RECORD INTO ERBLOC      @D61SDJK 00532000
+         B     ERPTLG70           CONTINUE                     @D61SDJK 00533000
+ERPTLG60 BCTR  R9,0               ADJUST FOR EXECUTE           @D61NDAP 00534000
+         EX    R9,ERPTLGM0        COPY RECORD INTO ERBLOC      @D61NDJK 00535000
+ERPTLG70 MVC   RFRECADR,ERQRFRA1  SET RECORD ADDRESS IN SYSREC @D61NDJK 00536000
+         MVI   RFNOFN,X'11'       ONE OF ONE RECORD            @D61NDJK 00537000
+         ST    R6,RFEXIT          FORCE DISP EXIT AFTER RECORD.@D61NDJK 00538000
+         MVI   FTCHNM,C'1'        FETCH $$ABERA1 FOR RECORDING @D61NDJK 00539000
+         LR    R9,RA              SAVE SERVICE OWNERS TASK ID  @D61NDJK 00540000
+         L     RA,TCBPTR          PROVIDE SFREEVIS SAVE AREA   @D61NDJK 00541000
+         DROP  RF                 RELEASE RFTABLE BASE         @D61NDAP 00542000
+         SFREEVIS ADDRESS=(1),LENGTH=(0)                       @D61NDAP 00543000
+         LR    RA,R9              RESTORE TASK ID              @D61NDJK 00544000
+         B     ERPGETIT                                        @D61NDJK 00545000
+         SPACE 1                                               @D61NDJK 00546000
+ERPTLGM0 MVC   ERQRFRC1(0),TERMDREC  SAVE A3/OBR/MDR RECORD..  @D61SDJK 00547000
+ERPTLGM1 MVC   ERQRFRC1+256(0),TERMDREC+256          IN ERBLOC @D61SDJK 00548000
+         DROP  R8                 RELEASE PUBX BASE            @D61NDJK 00549000
+         DROP  R4                 RELEASE CHANQ   BASE         @D36IDAP 00550000
+         DROP  R7                 RELEASE TERMDWA BASE         @D61NDAP 00551000
+         DROP  RB                 RELEASE PTA     BASE         @D369DAP 00552000
+         TITLE 'VSE SUPERVISOR     SGERP           COMMON SUBROUTINES ' 00553000
+ERPSETUP LR    R0,RA              SAVE ERP SERVICE OWNER       @D51GDAP 00554000
+         SGSETUP SWOWNER,STASK=ERP,WR1=RA,WR2=R8,OPTION=SETOWNER        00555000
+         CH    R0,IJBHSTID        SYSTEM TASK OWNS SERVICE     @D51GDAP 00556000
+         BNHR  R9                 YES, LEAVE DEFAULT NAME      @D51GDAP 00557000
+         L     RA,CRADDR          GET COMREG ADDRESS           @D51GDAP 00558000
+         USING COMREG,RA          COMREG BASE POINTER          @D51GDAP 00559000
+         MVC   ERQFJOB1(8),COMNAME SET FAILING JOB NAME        @D51GDAP 00560000
+         DROP  RA                 RELEASE COMREG BASE POINTER  @D51GDAP 00561000
+         BR    R9                 RETURN                       @DA28763 00562000
+         SPACE 3                                               @D41XXAP 00563000
+ERPGPBX  LTR   RA,R3              COPY PUB POINTER             @D41XXAP 00564000
+         BNPR  RE                 RETURN IF NO VALID ADDRESS   @D41XXAP 00565000
+         SH    RA,YPUBTAB         OFFSET IN PUB TABLE          @D41XXAP 00566000
+         SRL   RA,1               ENTRY ADDRESS OFFSET IN PUBX @D41XXAP 00567000
+         A     RA,APBXAREA        ADDRESS OF PUBX ENTRY ADDRESS@D41XXAP 00568000
+         L     RA,0(,RA)          ADDRESS OF PUBX ENTRY        @D41XXAP 00569000
+         BR    RE                 RETURN                       @D41XXAP 00570000
+         SPACE 1                                               @D37BDFG 00571000
+         DROP  R2                 RELEASE ERBLKADR BASE        @D369DAP 00572000
+         DROP  R3                 RELEASE PUB      BASE        @D369DAP 00573000
+         DROP  R5                 RELEASE ERBLOC   BASE        @D37BDFG 00574000
+         DROP  R6                 RELEASE DISP     BASE        @D369DAP 00575000
+         DROP  RD                 RELEASE SGERP    BASE        @D369DAP 00576000
+         TITLE 'VSE SUPERVISOR     SGERP     FETCH AN A-TRANSIENT     ' 00577000
+         USING DISP,R6            DISPATCHER BASE POINTER      @D35EDWK 00578000
+         USING SGERP,RD           SGERP BASE POINTER           @D34RDFG 00579000
+         USING TIBADR,R8          TIB BASE POINTER             @D34RDFG 00580000
+         USING TCBADR,RA          TCB BASE POINTER             @D36IDAP 00581000
+         USING SVEARA,RB          SAVE AREA BASE POINTER       @D369DAP 00582000
+ERPSVC   L     R5,AERBLOC         SET ERBLOC BASE              @D37BDFG 00583000
+         USING ERBLOC,R5          ERROR BLOCK BASE             @D37BDFG 00584000
+         CLI   FTCHNM-1,C'R'      IS IT $$ABERR. PHASE         @D61CDJK 00585000
+         BNE   ERPSVC10           NO,                          @D61CDJK 00586000
+         CLI   FTCHNM,C'L'        IS IT $$ABERRL PHASE         @D61CDJK 00587000
+         BNE   ERPSVC10           NO,                          @D61CDJK 00588000
+         MVI   RID+1,USERTID      SET RID TO NORMAL PROCESSING @D61CDAP 00589000
+         L     RB,AEMSGERB        LOAD SGEMSG ENTRY POINT      @D61CDJK 00590000
+         USING EMSGERBL,RB        SGEMSG BASE POINTER          @D61CDJK 00591000
+         BR    RB                      ====================>>> @D61CDJK 00592000
+         DROP  RB                 RELEASE SGEMSG BASE          @D61CDAP 00593000
+ERPSVC10 LA    R1,SVC5NM          POINT R1 TO PHYS.TRANS.NAME  @DM01378 00594000
+         DROP  R5                 RELEASE ERBLOC POINTER       @D37BDFG 00595000
+         L     R0,APTA            GET LOAD ADDRESS IN R0                00596000
+         L     RB,AFETCH          GET FETCH ROUTINE ADDRESS    @D36IDAP 00597000
+         LA    R9,4               SET BOUND INDICATOR          @D35EDEM 00598000
+         BALR  RB,RB              READ IN THE PHASE            @D36IDAP 00599000
+*SGLINK  FETCH,INPUT=(R0,R1,R6,R9,RA,RB),OUTPUT=(R0,R1,R2),            *00600000
+               WORK=(R3,R4,R5,R7,RF)                           @D37DDAP 00601000
+         MVI   RID+1,USERTID      SET RID TO NORMAL PROCESSING @D36IDAP 00602000
+         LR    RB,R0              SET UP PTA BASE ADDRESS      @D36IDAP 00603000
+ERPGOPTA B     10(RB)             BRANCH TO PHYSICAL TRANSIENT @D36IDAP 00604000
+         DROP  R8                 RELEASE TIB POINTER          @D369DAP 00605000
+         DROP  RA                 RELEASE TCB POINTER          @D369DAP 00606000
+         DROP  R6                 RELEASE DISPATCHER BASE      @D36IDAP 00607000
+         DROP  RD                 RELEASE SGERP BASE           @D36IDAP 00608000
+         TITLE 'VSE SUPERVISOR     SGERP     ERP-TASK ERROR EXIT      ' 00609000
+         USING DISP,R6            DISPATCHER BASE POINTER      @DA27551 00610000
+         USING TIBADR,R8          TIB BASE POINTER             @DA27551 00611000
+         USING TCBADR,RA          TCB BASE POINTER             @DA27551 00612000
+ERPERRAD L     RD,ERPBASE         LOAD BASE REGISTER           @DA27551 00613000
+         USING SGERP,RD           SGERP BASE POINTER           @DA27551 00614000
+         LA    R1,ERPCCWNF        CCW TO BE USED               @DA27551 00615000
+         LA    R2,ERPNFNAM        PLACE FOR TRANSIENT NAME     @DA27551 00616000
+         CLI   TIBCNCL,CANCX22    PHASE NOT FOUND              @DA27551 00617000
+         BE    ERPERR20           YES                          @DA27551 00618000
+         CLI   TIBCNCL,CANCX29    INVALID LIBRARY STRUCTURE    @DA34504 00619000
+         BE    ERPERR20           YES                          @DA34504 00620000
+         LA    R1,ERPCCWIE        CCW TO BE USED               @DA27551 00621000
+         LA    R2,ERPIENAM        PLACE FOR TRANSIENT NAME     @DA27551 00622000
+         CLI   TIBCNCL,CANCX2B    I/O ERROR ON FETCH           @DA27551 00623000
+         BE    ERPERR20           YES                          @DA27551 00624000
+         MVI   IJBHWORG,HWORG132  UNIQUE HARD WAIT ORIGINATOR  @D31QDAP 00625000
+         BAL   R5,SYSERROR        ANY OTHER ERROR -> HARDWAIT  @DA27551 00626000
+ERPERR20 MVI   RID+1,USERTID      ERP TASK RUNNING AGAIN       @DA27551 00627000
+         L     R5,AERBLOC         ERBLOC BASE REGISTER         @DA27551 00628000
+         USING ERBLOC,R5          ERROR BLOCK BASE             @DA27551 00629000
+         MVC   0(8,R2),SVC5NM     PUT NAME OF TRANSIENT IN MSG @DA27551 00630000
+         STCM  R1,7,ERPERCCB+9    ADDRESS OF CCW IN CCB        @DA27551 00631000
+         LA    R1,ERPERCCB        ADDRESS THE CCB              @D61CDAP 00632000
+         SYSIO (1)                                             @DA27551 00633000
+         CLI   ERQMSG1,RMSAE      ALTERNATE ENTRY              @DA27551 00634000
+         BE    ERPEXIT            YES, RECORDING LOST          @DA27551 00635000
+         LH    R3,ERQPUB1         PUB HAVING THE I/O ERROR     @DA27551 00636000
+         L     RF,ACANCEL         CANCEL DUE TO I/O ERROR      @DA27551 00637000
+         B     ERPEXIT                 =====================>> @DA27551 00638000
+         DS    0D                                              @DA27551 00639000
+ERPERCCB CCB   SYSLOG,ERPCCWIE,X'1500'                         @DA27551 00640000
+         ORG   ERPERCCB+12                                     @DA27551 00641000
+         DC    AL1(ERRTIN)        ERP OPERATING                @DA27551 00642000
+         ORG   ,                                               @DA27551 00643000
+ERPCCWIE CCW   WRACR,ERPMSGIE,SLI,L'ERPMSGIE                   @D21CDOW 00644000
+ERPCCWNF CCW   WRACR,ERPMSGNF,SLI,L'ERPMSGNF                   @DA27551 00645000
+ERPMSGIE DC    C'0P61I I/O ERROR DURING FETCH OF $$ABERXX'     @DA27551 00646000
+ERPIENAM EQU   ERPMSGIE+32                                     @DA27551 00647000
+ERPMSGNF DC    C'0P62I PHASE $$ABERXX NOT FOUND'               @DA27551 00648000
+ERPNFNAM EQU   ERPMSGNF+12                                     @DA27551 00649000
+         SPACE 1                                                        00650000
+         DROP  R5                 RELEASE ERBLOC BASE          @DA27551 00651000
+         DROP  R8                 RELEASE TIB BASE             @DA27551 00652000
+         DROP  RA                 RELEASE TCB BASE             @DA27551 00653000
+         DROP  R6                 RELEASE DISPATCHER BASE      @DA27551 00654000
+         DROP  RD                 RELEASE SGERP BASE           @DA27551 00655000
+         TITLE 'VSE SUPERVISOR     SGERP         ERROR EXIT PROCESSING' 00656000
+*********************************************************************** 00657000
+*                                                                     * 00658000
+*        DEACTIVATION OF ERP PROCESSING                               * 00659000
+*                                                                     * 00660000
+*********************************************************************** 00661000
+         SPACE 3                                                        00662000
+         USING PUBADR,R3          INPUT TO ROUTINE             @D35IDEP 00663000
+*        USING EXITADR,RF         EXIT ADDRESS                 @D61NDAP 00664000
+DSKEXIT  BALR  RD,0               TEMPORARY BASE ADDRESS       @D61NDAP 00665000
+         USING *,RD               TEMPORARY BASE POINTER       @D61NDAP 00666000
+         LA    RC,ERPDSKRE        INDICATE ENTERED FROM SGDSK  @D61NDAP 00667000
+         B     ERPGENRE           JOIN MAIN PATH               @D61NDAP 00668000
+TAPEXIT  BALR  RD,0               TEMPORARY BASE ADDRESS       @D61NDAP 00669000
+         USING *,RD               TEMPORARY BASE POINTER       @D61NDAP 00670000
+         LA    RC,ERPTEXRE        INDICATE ENTERED FROM SGTAP  @D61NDAP 00671000
+         B     ERPGENRE           JOIN MAIN PATH               @D61NDAP 00672000
+ERPEXIT  BALR  RD,0               TEMPORARY BASE ADDRESS       @D61NDAP 00673000
+         USING *,RD               TEMPORARY BASE POINTER       @D61NDAP 00674000
+         LA    RC,ERP$$ARE        INDICATE ENTERED FROM SUPRET @D61NDAP 00675000
+ERPGENRE L     RD,ERPBASE         LOAD BASE REGISTER           @D35EDWK 00676000
+         USING SGERP,RD           SGERP     BASE POINTER                00677000
+         MVI   RID+1,SYSTEMID     INDICATE SYTEM IS RUNNING    @D14BDAP 00678000
+         L     R6,DISPAD          DISPATCHER BASE POINTER               00679000
+         USING DISP,R6            DISP BASE POINTER                     00680000
+         L     R5,AERBLOC         SET UP ERROR BLOCK POINTER   @D37BDFG 00681000
+         USING ERBLOC,R5          ERBLOC    BASE POINTER       @D37BDFG 00682000
+         L     R9,AINTER          SET BASE FOR I/O INTERRUPT   @D61NDAP 00683000
+         USING INTRTN,R9          IOINTER BASE POINTER         @D61NDAP 00684000
+         SLR   R1,R1              CLEAR CCB  POINTER           @D61NDAP 00685000
+         SLR   R4,R4              CLEAR CHANNEL QUEUE POINTER  @D37BDAP 00686000
+         SLR   RA,RA              CLEAR PUBX POINTER           @D41XXAP 00687000
+         LA    RE,ERP$$ARE        ADDRESS OF $$A-RETURN        @D61NDAP 00688000
+         CLR   RE,RC              RETURN FROM TRANSIENT        @D61NDAP 00689000
+         BER   RC                 YES,                                  00690000
+*                                 ERP$$ARE IS ENTER FROM ERP   @D61NDAP 00691000
+         USING ERBLKADR,R2        DEVICE ERROR ENTRY BASE      @D37BDAP 00692000
+         BAL   RE,ERPGPBX         CALCULATE PUBX ADDRESS       @D41XXAP 00693000
+         USING PBXADR,RA          PUBX BASE POINTER            @D41XXAP 00694000
+         MVC   CHNADR(2),PUBCHANN SET CHNADR                   @D61NDAP 00695000
+         L     R4,ERRQCHQA        CHANQ PTR FROM DEV.ERROR ENT.@D51ODGL 00696000
+         BR    RC                 ERPDSKRE IF ENTER FROM SGDSK @D61NDAP 00697000
+*                                 ERPTEXRE IF ENTER FROM SGTAP @D61NDAP 00698000
+         TITLE 'VSE SUPERVISOR     SGERP     DSK ERROR EXIT PROCESSING' 00699000
+         USING CHQADR,R4          CHANQ BASE POINTER           @D61NDAP 00700000
+ERPDSKRE L     RD,AINTEQS         SUBROUTINE BASE ADDRESS      @D3CADAP 00701000
+         USING INTEQSET,RD        SUBROUTINE BASE POINTER      @D3CADAP 00702000
+         BAL   R7,INTEQPST        ACTIVATE ERP TASK            @D37BDFG 00703000
+*SGLINK  INTEQPST,INPUT=(R2,R6,R7,RD),WORK=(R5,R8,RE)          @D3CADAP 00704000
+         L     RD,ERPBASE         RESTORE ERP BASE ADDRESS     @D3CADAP 00705000
+         USING SGERP,RD           SGERP BASE POINTER           AD3CADAP 00706000
+         L     R5,AERBLOC         RESTORE ERROR BLOCK POINTER  @D51GDAP 00707000
+         L     R8,TCBPTR          ADDRESS OF DSK TCB           @D61NDAP 00708000
+         USING TCBADR,R8          DSK TCB BASE POINTER         @D61NDAP 00709000
+         L     R8,TCBSAVE         ADDRESS OF ERP SAVE AREA     @D61NDAP 00710000
+         USING SVEARA,R8          DSK SAVE AREA BASE           @D61NDAP 00711000
+         L     R0,ADISKERR        ENTRY POINT OF DISK ERP      @D61NDAP 00712000
+         ST    R0,SVEPSW2         RESTORE DSK ENTRY POINT      @D61NDAP 00713000
+         TM    ERRQFLG,RECONLY    IS THIS A RECORDING REQUEST  @D14ADOW 00714000
+         BZ    ERPDSK20           NO,                          @D61NDAP 00715000
+         CLR   RF,R6              ASYNCHRONEOUS RECORDING      @D14ADOW 00716000
+         BER   R6                 YES, ======================> @D61NDAP 00717000
+.*                                                                      00718000
+.*       ASSUMPTION IS THAT RECONLY WAS TURNED ON BY SGDSK              00719000
+.*       TO ALLOW FOR ASYNCHRONEOUS RECORDING                           00720000
+.*       USER TASK STILL NEEDS TO BE POSTED                             00721000
+.*                                                                      00722000
+ERPDSK20 LTR   R4,R4              WAS CHANQ ENTRY AVAILABLE    @D61NDAP 00723000
+         BZ    ERPDSK40           NO, CANT SAVE CSW            @D14BDAP 00724000
+ERPDSK30 OC    CSW+1(3),CSW+1     DID DSK PASS PRIMARY STATUS  @D52VDAP 00725000
+         BZ    ERPDSK40           NO, CHQCSW IS CORRECT        @D52VDAP 00726000
+         MVC   CHQCSW+1(7),CSW+1  YES, TAKE THE WHOLE CSW      @D14BDAP 00727000
+ERPDSK40 TM    ERRQFLG,RECONLY    IS THIS RECORDING ONLY REQ   @D61NDAP 00728000
+         BO    ERPDSKX1           YES, ASSUME SYSTEM TASK I/O  @D61NDAP 00729000
+         TM    ERBLKFL1,NEEDERP   DID DSK-TASK REQUEST ERP     @D14BDAP 00730000
+         BO    ERPDSKX2           YES, ERP DOES FINAL POSTING  @D61NDAP 00731000
+         TM    DEVSTA,CHANEND     IS THIS ENDING STATUS        @D61NDAP 00732000
+         BZ    ERPDSK60           YES,                         @D61NDAP 00733000
+         OI    DEVSTA,DEVEND      FORCE ENDING STATUS          @D61NDAP 00734000
+ERPDSK60 LTR   R4,R4              CHANQ ENTRY AVAILABLE        @D61NDAP 00735000
+         BNZ   ERPDSK70           YES,                         @D61NDAP 00736000
+         L     RF,ARETRY          ENSURE DEVICE RESCHEDULING   @D61NDAP 00737000
+         B     ERPDSKX1                                        @D61NDAP 00738000
+ERPDSK70 ICM   R1,7,ERRQCCB+1     GET CCB ADDRESS IF ANY       @D61NDAP 00739000
+         BZ    ERPDSKX1           NO CCB AVAILABLE             @D35IDAP 00740000
+         BAL   RE,ERPTSTPW        POST POWER ECB IF POWER I/O  @D36IDAP 00741000
+ERPDSKX1 LA    R2,ERRQ-ERBLKADR(R2) ADJUST TO ERBLOC ERR.ENTRY @DA33781 00742000
+         B     ERPCHK                  ======================> @D61NDAP 00743000
+ERPDSKX2 LA    R2,ERRQ-ERBLKADR(R2) ADJUST TO ERBLOC ERR.ENTRY @DA33781 00744000
+         CLR   RF,R6              DSK PASSED PROPER EXIT       @DA44311 00745000
+         BE    ERPEXT60           YES, ======================> @DA44311 00746000
+         TM    IJBFLG08,IJBDEBUG  IS DEBUG ACTIVE              @DA44311 00747000
+         LR    RF,R6              FORCE EXIT TO DISP           @DA44311 00748000
+         BZ    ERPEXT60           DEBUG IS NOT ACTIVE          @DA44311 00749000
+         BAL   R5,SYSERROR        H/W  ====================>>> @D61NDAP 00750000
+         DROP  R2                 RELEASE ERROR ENTRY BASE     @D61NDJK 00751000
+         TITLE 'VSE SUPERVISOR     SGERP   SGTAP ERROR EXIT PROCESSING' 00752000
+         USING ERBLKADR,R2        DEVICE ERROR ENTRY BASE      @D37BDAP 00753000
+         USING CHQADR,R4          MAKE CHANQ ADDRESSABLE       @D61NDJK 00754000
+ERPTEXRE TM    ERRQFLG,RECONLY    WAS THIS RECORDING ONLY REQ  @D61NDAP 00755000
+         BO    ERPTEXX2           YES,                         @D61NDJK 00756000
+         LTR   R4,R4              CHANQ ENTRY AVAILABLE        @D61NDAP 00757000
+         BZ    ERPTEX10           NO,                          @D61NDJK 00758000
+         OC    CSW+1(3),CSW+1     SGTAP PROVIDED PRIMARY STATUS@D61NDJK 00759000
+         BZ    ERPTEX10           NO, CHQCSW IS CORRECT        @D61NDJK 00760000
+         MVC   CHQCSW+1(7),CSW+1  YES, USE WHAT SGTAP PROVIDED @D61NDJK 00761000
+ERPTEX10 TM    DEVSTA,CHANEND     IS THIS ENDING STATUS        @D61NDAP 00762000
+         BZ    ERPTEX20           YES                          @D61NDAP 00763000
+         OI    DEVSTA,DEVEND      FORCE ENDING STATUS          @D61NDAP 00764000
+ERPTEX20 LTR   R4,R4              CHANQ ENTRY AVAILABLE        @D61NDAP 00765000
+         BNZ   ERPTEX30           YES,                         @D61NDAP 00766000
+         L     RF,ARETRY          ENSURE DEVICE RESCHEDULING   @D61NDAP 00767000
+         B     ERPTEXX1           NO,                          @D61NDAP 00768000
+ERPTEX30 ICM   R1,7,ERRQCCB+1     GET CCB ADDRESS IF ANY       @D61NDAP 00769000
+         BZ    ERPTEXX1           NO CCB PRESENT               @D61NDAP 00770000
+         BAL   RE,ERPTSTPW        CHECK IF POWER I/O           @D61NDAP 00771000
+ERPTEXX1 LA    R2,ERRQ-ERBLKADR(R2) ADJUST TO ERBLOC ERR.ENTRY @D61NDJK 00772000
+         B     ERPCHK                  ======================> @D61NDJK 00773000
+ERPTEXX2 LA    R2,ERRQ-ERBLKADR(R2) ADJUST TO ERBLOC ERR.ENTRY @D61NDJK 00774000
+         B     ERPEXT20                ======================> @D61NDJK 00775000
+         DROP  R4                 RELEASE CHANNEL QUEUE POINTER@D61NDJK 00776000
+         DROP  R2                 RELEASE ERROR ENTRY BASE     @D61NDJK 00777000
+         DROP  RA                 RELEASE PUBX POINTER         @D61NDJK 00778000
+         TITLE 'VSE SUPERVISOR     SGERP      AE ERROR EXIT PROCESSING' 00779000
+ERP$$ARE NI    ERQFLG1,XFF-OCCUP  RESET 'IN USE' INDICATOR     @D21IDAP 00780000
+         CLI   ERQMSG1,RMSAE      ALTERNATE ENTRY              @D21ZDAP 00781000
+         BNE   ERPNORM            NO,  ======================>          00782000
+         LR    RF,R6              SET RETURN TO DISPATCHER     @DM05356 00783000
+         LA    R2,ERQ1            ADDR.OF AE-ENTRY IN ERR-BLOCK@D21IDAP 00784000
+         USING ERQAEADR,R2        ALTERNATE ERROR ENTRY BASE   @D21ZDAP 00785000
+         TM    ERQAEFLG,X'80'     IS THIS A TFIXED RECORD      @D37DDAP 00786000
+         BZ    ERPAE020           NO                           @D35EDAP 00787000
+         NI    ERQAEFLG,X'7F'     YES, RESET INDICATOR         @D37BDFG 00788000
+         LA    R0,2               NO. OF ENTRIES IN FIXLIST    @D35EDAZ 00789000
+         LA    R1,ERQAECOM        POINT R1 TO FIXLIST ENTRIES  @D37DDAP 00790000
+         L     R8,APMGMDAT        PMGMDATA BASE ADDRESS        @D35EDAZ 00791000
+         USING PMGMDATA,R8        PMGMDATA BASE POINTER        @D35EDAZ 00792000
+         DROP  R2                 RELEASE ALTERNATE ENTRY BASE @D369DAP 00793000
+         L     R2,ATFREE          FREE THE TFIXED RECORDS      @D35EDAZ 00794000
+         AMODESW CALL,REGS=(R7,R2)   TFREE THE TFIXED PAGES    @D52VDRP 00795000
+*SGLINK  TFREE,INPUT=(R0,R1,R7,R8)                             @D369DAP 00796000
+         DROP  R8                 RELEASE PMGMDATA BASE        @D35EDAZ 00797000
+         LA    R2,ERQ1            RESTORE AE-ENTRY BASE        @D21IDAP 00798000
+         USING ERQAEADR,R2        ALTERNATE ERROR ENTRY BASE   @D21ZDAP 00799000
+         LH    R8,TFIXIDEN        DECREASE COUNTER OF          @D36IDAP 00800000
+         BCTR  R8,0               NON-CCWT                     @D36IDAP 00801000
+         STH   R8,TFIXIDEN        TFIX USERS                   @D36IDAP 00802000
+ERPAE020 L     R8,ERQAETIB        TIB POINTER OF SERVICED TASK @D37DDAP 00803000
+         USING TIBADR,R8          TIB BASE POINTER             @D36IDAP 00804000
+         BAL   R7,ERPIOCMP        POST I/O COMPLETE            @D36IDAP 00805000
+         TM    TIBFLAG2,PWRMTASK  IS THIS THE POWER MAIN TASK  @D36IDAP 00806000
+         BNO   ERPEXT10           NO,  ======================> @D35IDAP 00807000
+         ICM   R7,M15,APOWTB      ADDRESS POWER TABLE          @D36IDAP 00808000
+         BZ    ERPEXT10                ======================> @D35IDAP 00809000
+         USING PADS,R7            ADDRESSABILITY POWER TABLE   @D36IDAP 00810000
+         OI    PAEB+2,TRABIT      TURN ON POWER/VS MASTER ECB  @D30EUJH 00811000
+         B     ERPEXT10                ======================> @D35IDAP 00812000
+         DROP  R7                 RELEASE PADS BASE            @D36IDAP 00813000
+         DROP  R8                 RELEASE TIB  BASE            @D36IDAP 00814000
+         SPACE 1                                                        00815000
+         DROP  R2                 RELEASE ALTERNATE ENTRY BASE @D21ZDAP 00816000
+         TITLE 'VSE SUPERVISOR     SGERP         ERROR EXIT PROCESSING' 00817000
+ERPNORM  BAL   RE,ERPGPBX         ADDRESS OF PUBX              @D61SDAP 00818000
+         USING PBXADR,RA          PUBX BASE POINTER            @D61SDAP 00819000
+         TM    PBXFLAG,PBXTAPE    IS THIS A TAPE DEVICE        @D61SDAP 00820000
+         BZ    ERPNOR00           NO,                          @D61SDAP 00821000
+         TM    PBXFLAG3,PBXTERP1  9348/3480/3490/TPA?          @DA44241 00822000
+         BO    ERPEXT10           YES, ======================> @D61SDAP 00823000
+ERPNOR00 L     R4,ERQCHQA1        GET CHANQ POINTER            @D51ODGL 00824000
+         LA    R2,ERQ1-L'ERQPRIN1 ADJUST ADDR. FOR ERROR BLOCK @D21IDAP 00825000
+         USING ERRQUE,R2          ERBLOC ERROR ENTRY BASE      @D21ZDAP 00826000
+         TM    DEVSTA,CHANEND     IS THIS ENDING STATUS        @DA24592 00827000
+         BZ    ERPNOR10           YES                          @DA24592 00828000
+         OI    DEVSTA,DEVEND      FORCE ENDING STATUS          @DA24592 00829000
+ERPNOR10 TM    ERRQFLG,RECONLY    WAS THIS RECORDING ONLY REQ  @D21IDAP 00830000
+         BO    ERPCHK70           YES, ======================> @D52VDAP 00831000
+         LTR   R4,R4              CHANQ ENTRY AVAILABLE        @D61NDAP 00832000
+         BZ    ERPGORTY           NO,  ENSURE DEVICE RESTART   @D61NDAP 00833000
+         USING CHQADR,R4          MAKE CHANQ ADDRESSABLE       @D35IDAP 00834000
+         MVC   CHQERRCT(1),ERQERR1 RESTORE ERROR COUNTER       @D51GDAP 00835000
+         AIF   (NOT &VTAM31).NV31020                           @DY46396 00836050
+         TM    CHQGRP,CHQGRVTM    IS IT VTAM REQUEST           @DY46396 00836100
+         BZ    ERPNOR20           NO, SKIP                     @DY46396 00836150
+         SLR   R1,R1              CLEAR REGISTER               @DY46396 00836200
+         ICM   R1,7,ERRQCCB+1     GET CCB ADDRESS IF ANY       @DY46396 00836250
+         BZ    ERPNOR30           NO, PROCEED NORMAL           @DY46396 00836300
+         USING CCBADR,R1          CCBADR BASE                  @DY46396 00836350
+         TM    CCBCLS,CCBCOPY     IS THIS A COPIED CCW         @DY46396 00836400
+         BZ    ERPNOR30           NO, PROCEED NORMAL           @DY46396 00836450
+         MVC   CSW(8),CHQCSW      USE COPIED CSW DATA          @DY46396 00836500
+         B     ERPNOR30           NO, PROCEED NORMAL           @DY46396 00836550
+         DROP  R1                 RELEASE CCBADR BASE          @DY46396 00836600
+.NV31020 ANOP                                                  @DY46396 00836650
+ERPNOR20 TM    CHQDEV,CHQDASD+CHQFBA ERP PROCESSED A DASD      @DY46396 00836700
+         BZ    ERPNOR30           NO                           @D51GDAP 00837000
+         OC    CSW+1(3),CSW+1     PRIMARY STATUS               @D52VDAP 00838000
+         BZ    ERPNOR40           NO,                          @D52VDAP 00839000
+         MVC   CSW+1(7),CHQCSW+1  USE CHANQ RATHER THAN ERP CSW@D14BDAP 00840000
+ERPNOR30 OC    CHQCSW+4(2),CSW+4  UPDATE CSW IN CHANQ          @D14BDAP 00841000
+         OC    CSW+1(3),CSW+1     IS THIS PRIMARY STATUS       @D52VDAP 00842000
+         BZ    ERPNOR40           NO, ASSUME SECONDARY STATUS  @D14BDAP 00843000
+         MVC   CHQCSW+1(7),CSW+1  REPLACE CSW IN CHANQ         @D14BDAP 00844000
+ERPNOR40 ICM   R1,7,ERRQCCB+1     GET CCB ADDRESS IF ANY       @D61NDAP 00845000
+         BZ    ERPCHK             NONE,======================> @D35IDAP 00846000
+         BAL   RE,ERPTSTPW        CHECK IF POWER I/O           @D36IDAP 00847000
+         B     ERPCHK                  ======================> @D61NDAP 00848000
+         DROP  R2                 RELEASE ERROR ENTRY BASE     @D21IDAP 00849000
+         SPACE 1                                                        00850000
+ERPGORTY L     RF,ARETRY          FORCE DEVICE RESTART         @D52VDAP 00851000
+*        B     ERPCHK                  ======================> @D61NDAP 00852000
+         TITLE 'VSE SUPERVISOR     SGERP         FREE ERROR ENTRY     ' 00853000
+         SPACE 3                                                        00854000
+ERPCHK   CLI   PUBCHQPT,NOTQUED   ANY REQ QUEUED TO PUB        @D52VDAP 00855000
+         BNE   ERPCHK05           YES, DO SOME MORE TESTING    @DA44442 00856000
+         NI    PUBCSFLG,XFF-DEVBSY-QEDERR RESET PUB FLAGS      @DA44442 00857000
+         B     ERPCHK70           FORCE DISPATCHER EXIT        @DA44442 00858000
+ERPCHK05 SLR   R8,R8              CLEAR WORK REGISTER          @D51ODGL 00859000
+         IC    R8,PUBCHQPT        GET LOW BYTE OF CHANQ INDEX  @D51ODGL 00860000
+         AIF   (&AG1 LE 254).LOD0000                           @D51ODGL 00861000
+         ICM   R8,2,PUBCHQPH      GET HIGH BYTE                @D51ODGL 00862000
+.LOD0000 ANOP                                                           00863000
+         SLL   R8,CHQSLEN         MULTIPLY WITH ENTRY LENGTH   @D51ODGL 00864000
+         A     R8,ACHANQ          ADDRESS OF CHANQ ENTRY       @D51ODGL 00865000
+         ICM   R8,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00866000
+         CR    R8,R4              IS OUR REQUEST STILL FIRST   @D51ODGL 00867000
+         BE    ERPRSTST           YES, ======================> @D35IDAP 00868000
+         LTR   R4,R4              WAS CHANQ ENTRY AVAILABLE    @D35IDAP 00869000
+         BNZ   ERPCHK40           YES                          @D14CDAP 00870000
+.*                                                             @DA44738 00871000
+.* SOME HEAD QUEUE REQUESTS COULD HAVE BEEN ENQUEUED WHILE THE @DA44738 00872000
+.* DEVICE WAS QUEUED IN ERROR.                                 @DA44738 00873000
+.*                                                             @DA44738 00874000
+         LR    R4,R8              COPY FIRST IN CHAIN ADDRESS  @DA44738 00875000
+ERPCHK10 TM    CHQFLG1,CHQCSQED   WAS PUB QUEUED IN ERROR      @DA44738 00876000
+         BO    ERPCHK20           YES,                         @DA44738 00877000
+         CLI   CHQCHAIN,NOTQUED   WAS THIS LAST ENTRY          @DA44738 00878000
+         BE    ERPCHK30           YES                          @DA44738 00879000
+         SLR   R7,R7              CLEAR CHANQ POINTER          @DA44738 00880000
+         IC    R7,CHQCHNLO        GET NEXT CHANQ ENTRY NUMBER  @DA44738 00881000
+         AIF   (&AG1 LE 254).LOD0020                           @DA44738 00882000
+         ICM   R7,2,CHQCHNHI      INCLUDING HIGH ORDER BYTE    @DA44738 00883000
+.LOD0020 ANOP                                                  @DA44738 00884000
+         SLL   R7,CHQSLEN         MULTIPLY WITH ENTRY LENGTH   @DA44738 00885000
+         A     R7,ACHANQ          CHANQ ENTRY ADDRESS          @DA44738 00886000
+         ICM   R7,8,H0            CLEAR HIGH ORDER BYTE        @D68REEF 00887000
+         LR    R4,R7              COPY CHANQ POINTER           @DA44738 00888000
+         B     ERPCHK10                                        @DA44738 00889000
+ERPCHK20 NI    CHQFLG1,XFF-CHQCSBSY-CHQCSQED RESET GATING BITS @DA44738 00890000
+ERPCHK30 LR    R4,R8              RESTORE 1ST CHANQ ENTRY ADDR.@DA44738 00891000
+         TM    CHQCCSIO,CHQCCACT  HAS DEVICE BEEN STARTED      @DA44738 00892000
+         BO    ERPCHK70           YES, THEN EXIT TO DISPATCHER @DA44738 00893000
+         L     RF,ARETRY          ENSURE DEVICE RESTART        @DA44738 00894000
+         NI    PUBCSFLG,XFF-DEVBSY-QEDERR RESET PUB FLAGS      @DA44738 00895000
+         B     ERPEXT10                ======================> @DA44738 00896000
+ERPCHK40 NI    CHQFLG1,XFF-CHQCSBSY-CHQCSQED RESET PUB FLAGS   @D35IDAP 00897000
+         C     RF,ARETRY          IS REQUEST TO BE RETRIED     @D35IDAP 00898000
+         BE    ERPRETRY           YES, ======================> @D35IDAP 00899000
+         C     RF,ERPXRDLY        OR DELAYED RETRY REQUESTED   @DERPDGL 00900000
+         BE    ERPRETRY           YES  ======================> @DERPDGL 00901000
+         LTR   R1,R1              HAS USER BEEN POSTED         @D61NDAP 00902000
+         BNZ   ERPCHK50           NO, CSW IN CHANQ IS O.K.     @D21LDAP 00903000
+         MVC   CHQCSW(8),CSW      REPLACE CSW IN CHANQ         @D21LDAP 00904000
+ERPCHK50 OI    CHQPROC,CHQDOINT   FORCE DELAYED PROCESSING     @D35IDEP 00905000
+         C     RF,AIGNORE         SET IGNORE OR CANCEL FLAG    @D35IDEP 00906000
+         BNE   ERPCHK60           NOT IGNORE, ASSUME IS CANCEL @D35IDEP 00907000
+         MVI   CHQIOINF,ERPXIGNR  RE-PROCESS INTERRUPT LATER   @D35IDAP 00908000
+         B     ERPCHK70           SET EXIT TO DISPATCHER       @D35IDEP 00909000
+ERPCHK60 MVI   CHQIOINF,ERPXER1A  CANCEL USER WHEN REQ. IS 1ST @D35IDAP 00910000
+ERPCHK70 L     RF,DISPAD          FORCE DISPATCHER EXIT        @D35IDEP 00911000
+         SLR   R4,R4              CLEAR R4 FOR ERPEXT20        @DA33591 00912000
+         B     ERPEXT10                ======================> @D35IDAP 00913000
+         TITLE 'VSE SUPERVISOR     SGERP      REQUEST RETRY PROCESSING' 00914000
+         USING CCBADR,R1          CCB BASE POINTER             @D61NDAP 00915000
+         USING ERRQUE,R2          ERBLOC ERROR ENTRY BASE      @D21ZDAP 00916000
+ERPRETRY MVI   CHQCCSIO,ZERO      INDICATE REQUEST NOT STARTED @D35IDAP 00917000
+         NI    CCBCOM1,CLRCOM1    CLEAR COMMUNICATION BYTE 1   @DA30254 00918000
+         NI    CCBCOM2,CLRCOM2    CLEAR COMMUNICATION BYTE 2   @DA30254 00919000
+         MVI   CCBSTA1,ZERO       RESET DEVICE STATUS FOR RETRY@D61NDAP 00920000
+         MVI   CCBSTA2,ZERO       RESET CHANNEL STATUS         @D61NDAP 00921000
+         CLI   PUBDEVTY,T3480     IS THIS A 3480/3490 DEVICE   @DA43824 00922000
+         BE    ERPRET30           YES                          @D61SDJK 00923000
+         CLI   PUBDEVTY,TTPA      IS THIS A TPA DEVICE         @D61SDJK 00924000
+         BE    ERPRET30           YES                          @D61SDJK 00925000
+         LA    R8,ERQ1-L'ERQPRIN1 ERBLOC ERROR ENTRY ADDRESS   @DA44277 00926000
+         CLR   R2,R8              TRANSIENT ENTRY BEING PROCESS@DA44277 00927000
+         BNE   ERPEXT10           NO,  ======================> @DA44277 00928000
+         L     R8,ERQCAW1         GET PREPARED CAW             @D21CDOW 00929000
+ERPRET20 LTR   R8,R8              AVAILABLE                    @D61SDJK 00930000
+         BZ    ERPEXT10           NO,  ======================> @D21CDOW 00931000
+         OI    CHQGRP,CHQGRINT    INDICATE CAW AVAILABLE       @D21CDOW 00932000
+         ST    R8,CHQCAW          MOVE CAW TO CHANQ            @D21CDOW 00933000
+         B     ERPEXT10                ======================> @D35IDAP 00934000
+ERPRET30 L     R8,ERRQ1CCW        GET PREPARED CAW             @D61SDJK 00935000
+         B     ERPRET20                                        @D61SDJK 00936000
+         DROP  R2                 RELEASE ERBLOC BASE          @D61NDAP 00937000
+         TITLE 'VSE SUPERVISOR     SGERP      FREE DEVICE PROCESSING  ' 00938000
+ERPRSTST L     R7,PBXERBLK        NORMAL ERROR ENTRY ADDRESS   @DA37770 00939000
+         USING ERBLKADR,R7        ERROR ENTRY BASE POINTER     @DA37770 00940000
+         TM    ERBLKFLG,ERACTIVE+ERQUEUED OTHER ERROR ENQUEUED @DA37770 00941000
+         BZ    ERPRSPUB           NO, FREE THE PUB             @DA37770 00942000
+         CLC   ERRQCSW+1(3),ERPDOMID  IS IT A PURE DOM REQUEST @DA44442 00943000
+         BE    ERPRSPUB           YES, FREE THE PUB            @DA44442 00944000
+         TM    ERRQFLG,RECONLY    IS OTHER RECORDING ONLY      @DA44311 00945000
+         BZ    ERPRSP20           NO,  LEAVE PUB GATED         @DA44311 00946000
+ERPRSPUB NI    PUBCSFLG,XFF-DEVBSY-QEDERR RESET PUB FLAGS      @DA44311 00947000
+ERPRSP20 LTR   R4,R4              IS CHANQ ENTRY AVAILABLE     @D35IDAP 00948000
+         BZ    ERPEXT10           NO,  ======================> @D35IDAP 00949000
+         NI    CHQFLG1,XFF-CHQCSBSY-CHQCSQED RESET GATE BITS   @D35IDAP 00950000
+         C     RF,ARETRY          RETRY EXIT                   @D35IDAP 00951000
+         BE    ERPRSP30           YES,                         @DA44172 00952000
+         C     RF,ERPXRDLY        DELAYED RETRY WANTED         @D31..AP 00953000
+         BNE   ERPEXT10           NO,  ======================> @D36IDAP 00954000
+ERPRSP30 NI    PUBCSFLG,XFF-DEVBSY-QEDERR RESET PUB FLAGS      @DA44172 00955000
+         B     ERPRETRY           YES, ======================> @DA44172 00956000
+         DROP  R1                 RELEASE CCB BASE             @D36IDAP 00957000
+         DROP  R7                 RELEASE ERBLKADR BASE        @DA30770 00958000
+         SPACE 2                                                        00959000
+         DROP  R3                 RELEASE PUB BASE             @D36IDAP 00960000
+         DROP  R9                 RELEASE IOINTER BASE         @D31..AP 00961000
+         TITLE 'VSE SUPERVISOR     SGERP         SUBROUTINES          ' 00962000
+         USING CCBADR,R1          CCB BASE POINTER             @D35IDAP 00963000
+ERPTSTPW L     R8,CRADDR          GET ADDRESS OF COMREG        @D36IDAP 00964000
+         USING COMREG,R8          COMREG BASE POINTER          @D36IDAP 00965000
+         CLI   CHQCAWKY,ZERO      IS THIS AN LTA REQUEST       @D66ADAP 00966000
+         BER   RE                 YES, ======================> @DA15084 00967000
+         TM    POWFLG1,POWPART    IS IT POWER/VS PARTITION     @DA03968 00968000
+         BNOR  RE                 NO,  ======================> @DA03968 00969000
+         C     RF,ACANCEL         AIMING FOR CANCEL EXIT       @D36IDAP 00970000
+         BHR   RE                 NO,  ======================> @D3CADAP 00971000
+         OI    CCBCOM1,DISERR     SET UNRECOVERABLE I/O ERROR  @DA03968 00972000
+         L     RF,AIGNORE         POINT TO IGNORE EXIT         @DM11803 00973000
+         BR    RE                      ======================> @D36IDAP 00974000
+         DROP  R8                 RELEASE COMREG BASE          @D369DAP 00975000
+         DROP  R1                 RELEASE CCB    BASE          @D61NDAP 00976000
+         SPACE 3                                               @D35IDAP 00977000
+ERPIOCMP LR    RC,RF              SAVE RETURN ADDRESS                   00978000
+         BAL   RF,IOPOST1         READY TASK IF I/O BOUND      @D36IDAP 00979000
+*SGLINK  IOPOST1,INPUT=(R6,R8,RF),WORK=RE                      @D369DAP 00980000
+         LR    RF,RC              RESTORE CLOBBERED REGISTER   @D36IDAP 00981000
+         BR    R7                 RETURN TO MAIN LINE          @D36IDAP 00982000
+         SPACE 1                                               @D41XXAP 00983000
+         DROP  RA                 RELEASE PUBX BASE POINTER    @D41XXAP 00984000
+         TITLE 'VSE SUPERVISOR     SGERP         RESTORE SAVE AREA    ' 00985000
+ERPEXT10 TM    SYSFLAG3,WAITRAS   DID RAS WAIT FOR ERP         @DA08974 00986000
+         BZ    ERPEXT20           NO                           @D35EDAP 00987000
+         L     R8,ARASTIB         RAS TASK TIB ADDRESS         @D36IDAP 00988000
+         BAL   R7,ERPIOCMP        POST RAS TASK I/O COMPLETE   @D36IDAP 00989000
+.*                                                                      00990000
+.* --->  ENTERED      WHEN SGTAP PROCESSED A RECONLY REQUEST            00991000
+.*                                                                      00992000
+ERPEXT20 LA    R8,DSKTID          DSK TAS-ID                   @D66CDAP 00993000
+         CH    R8,TID             IS DSK-TASK RUNNING          @D66CDAP 00994000
+         BE    ERPEXT60           YES,                         @D61NDAP 00995000
+         L     R8,TCBPTR          ADDRESS OF TCB               @D36IDAP 00996000
+         USING TCBADR,R8          TCB BASE                     @D36IDAP 00997000
+         L     R8,TCBSAVE         ADDRESS OF ERP SAVE AREA     @D36IDAP 00998000
+         USING SVEARA,R8          SAVE AREA BASE               @D36IDAP 00999000
+         LA    R0,ERPINSEL        INITIAL SELECTION ENTRY      @D36IDAP 01000000
+         ST    R0,SVEPSW2         UPDATE PSW ADDRESS           @D36IDAP 01001000
+         NI    SVEPSW,XFF-ENABLE  FORCE DISABLED PSW           @D52VDAP 01002000
+         STM   R9,R8,SVER09       SAVE ALL REGISTERS           @D36IDAP 01003000
+         DROP  R8                 RELEASE SAVE AREA BASE       @D369DAP 01004000
+         DROP  R5                 RELEASE ERBLOC BASE          @DA44277 01005000
+.*                                                                      01006000
+.* --->  ENTERED      WHEN SGDSK REQUESTED ERP SERVICE                  01007000
+.*                                                                      01008000
+ERPEXT60 CLR   R6,RF              EXIT TO DISPATCHER REQUESTED @D61SDAP 01009000
+         BER   R6                 YES, ====================>>> @D61SDAP 01010000
+         L     R9,AINTER          LOAD INTRTN BASE             @D52VDAP 01011000
+         USING INTRTN,R9          INTRTN BASE                  @D37BDFG 01012000
+         LTR   R4,R4              DO WE HAVE CHANQ ENTRY       @D37BDAP 01013000
+         BZ    INTERTRN           NO,  ====================>>> @D36IDAP 01014000
+         XR    RA,RA              CLEAR REGISTER               @D36IDAP 01015000
+         ICM   RA,3,CHQTID        GET TASK-ID                  @D66CDAP 01016000
+         AIF   (&VSE260).Y260040                               @D66CDAP 01017000
+         SRL   RA,8               TASK-ID IS A SINGLE BYTE     @D66CDAP 01018000
+.Y260040 ANOP                                                  @D66CDAP 01019000
+         BAL   R7,SETLCALL        SET UP LOW CORE POINTERS     @D36IDAP 01020000
+*SGLINK  SETLCALL,INPUT=(R6,R7,RA),OUTPUT=RA,WORK=R0           @D369DAP 01021000
+         B     INTERTRN                ====================>>> @D35IDAP 01022000
+         DROP  R9                 RELEASE IOINTER BASE         @D369DAP 01023000
+         DROP  R4                 RELEASE CHANQ BASE           @D369DAP 01024000
+         DROP  R6                 RELEASE DISPATCHER BASE      @D369DAP 01025000
+         DROP  RD                 RELEASE SGERP BASE           @D36IDAP 01026000
+         TITLE 'VSE SUPERVISOR SGERP  ERROR BLOCK DEFINITION'  @D51GDAP 01027000
+         ERBLOC CSECT=YES                                      @D51GDAP 01028000
+         TITLE 'VSE SUPERVISOR SGERP          SVC-44 PROCESSING       ' 01029000
+*********************************************************************** 01030000
+*                                                                     * 01031000
+*        THIS ROUTINE SCHEDULES RECORDING ON THE SYSREC FILE          * 01032000
+*                                                                     * 01033000
+*INPUT   REGISTER 1   ADDRESS OF SD RECORD                            * 01034000
+*                                                                     * 01035000
+*OUTPUT  ONE ERROR QUEUE ENTRY ALLOCATED (ALTERNATE ENTRY FORMAT)     * 01036000
+*                                                                     * 01037000
+*        IF THE SD RECORD IS IN VIRTUAL STORAGE THE PAGES             * 01038000
+*        CONTAINING IT ARE TFIXED. THE COUNT TFIXIDEN IS              * 01039000
+*        INCREMENTED BY ONE DURING TFIX.                              * 01040000
+*                                                                     * 01041000
+*REGISTERS USED                                                       * 01042000
+*                                                                     * 01043000
+*        REGISTER 0   PGMR PARM                                       * 01044000
+*        REGISTER 1   SVC PARM / PMGR PARM                            * 01045000
+*        REGISTER 2   USED INTERNALLY                                 * 01046000
+*        REGISTER 4   USED INTERNALLY                                 * 01047000
+*        REGISTER 5   USED IN SUBROUTINE 'INTOBR'                     * 01048000
+*        REGISTER 6   DISPATCHER BASE                                 * 01049000
+*        REGISTER 7   LINK TO SUBROUTINES                             * 01050000
+*        REGISTER 8   PMGR BASE                                       * 01051000
+*        REGISTER 9   IOINTER BASE                                    * 01052000
+*        REGISTER 10  TCBADR                                          * 01053000
+*        REGISTER 11  SUPERVISOR BASE                                 * 01054000
+*        REGISTER 12  WORK                                            * 01055000
+*        REGISTER 13  SVC BASE                                        * 01056000
+*        REGISTER 14  USED INTERNALLY                                 * 01057000
+*        REGISTER 15  SVCSV3 BASE                                     * 01058000
+*                                                                     * 01059000
+*********************************************************************** 01060000
+         SPACE 2                                               @D35EDAZ 01061000
+         USING SVC44,RD           SVC44 BASE POINTER           @D35EDAZ 01062000
+         USING DISP,R6            DISP BASE POINTER            @D35EDAZ 01063000
+SVC44    SLR   R2,R2              CLEAR REG.FOR LENGTH OF REC. @D61BDAP 01064000
+         LR    RE,R2              INDICATE NON-TFIXED RECORD   @DA42840 01065000
+         IC    R2,D0(R1)          GET LENGTH OF SD-RECORD      @D35EDAZ 01066000
+PCKSVC44 EQU   *                  PROGR.CHECK MAY OCCUR HERE   @D35EDAZ 01067000
+         LA    R4,3(R2,R1)        GET ADDR OF LAST BYTE OF REC @D35EDAZ 01068000
+         LR    R2,R4              PREPARE FOR VALIDATION       @D35EDAZ 01069000
+         LA    R8,ARTID           AR TASK-ID                   @D66ADAP 01070000
+         CH    R8,TID             SYSTEM TASK                  @D66ADAP 01071000
+         BH    SVC44NV            YES, SKIP VALIDATION         @D66ADAP 01072000
+         BAL   R8,VALIDSVA        VALIDATE SD-RECORD           @D35EDAZ 01073000
+*SGLINK VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)              @D379DOW 01074000
+SVC44NV  EQU   *                                               @DA37045 01075000
+         TM    IJBFLG08,IJBSAENV  IS THIS SA ENVIRONMENT       @D61BDAP 01076000
+         BZ    SVC44NOR           NO                           @D61BDAP 01077000
+         OI    2(R1),TRABIT       INDICATE REQUEST COMPLETE    @D61BDAP 01078000
+         B     EXIT                    ====================>>> @D61BDAP 01079000
+SVC44NOR LR    RF,RA              ADDRESS SVCSV3               @DA37045 01080000
+         USING TCBADR,RF                                       @D36ZDAZ 01081000
+         L     RA,IJBSMCOM        STOR. MANAGMNT COMM. AREA    @D51GDRP 01082000
+         USING SMCOM,RA                                        @D51GDRP 01083000
+         C     R1,SMCSSEND        IS SD RECORD IN SUPERVISOR   @D51GDRP 01084000
+         BNH   TSTERQ             YES, DO NOT FIX              @D51GDRP 01085000
+         L     RA,TIBPTR          TIB OF CURRENT PARTITION     @DA37045 01086000
+         USING TIBADR,RA                                       @DA37045 01087000
+         TM    TIBFLAG1,EOTACT    REQUEST FROM EOT RTN         @DA37045 01088000
+         BO    SVC44TF            YES, TFIX SD RECORD          @DA37045 01089000
+         DROP  RA                                              @DA37045 01090000
+         L     RA,PIBPTR2         CURRENT PIB2 ADDR            @D51IDOW 01091000
+         USING PIB2ADR,RA                                      @D51IDOW 01092000
+         L     RA,PIBPCB          GET PCB OF SERVICE OWNER     @D51IDOW 01093000
+         USING PCBADR,RA                                       @D51IDOW 01094000
+         L     RA,PCEPIB          PIB OF CURRENT PARTITION     @D51IDOW 01095000
+         USING PIBADR,RA                                       @D36ZDFG 01096000
+         TM    PIBDATFL,PIBTRAM   REQUEST FROM REAL PROGRAM    @D51IDOW 01097000
+         BZ    TSTERQ             YES, DO NOT TFIX             @D35EDAZ 01098000
+         DROP  RA                                              @D35EDAZ 01099000
+SVC44TF  STM   R9,R8,SVCSV3       SAVE REGISTERS DURING TFIX   @D14ZDWK 01100000
+         ST    R1,SVCWORK         START ADDR                   @D52VDOW 01101000
+         ST    R4,SVCWORK+4       END ADDDR                    @D52VDOW 01102000
+         SLR   RC,RC              CLEAR WORK REG               @D52VDOW 01103000
+         ST    RC,SVCWORK+8       INDICATE LIST END            @D52VDOW 01104000
+         LH    RC,TFIXIDEN        INCREASE COUNTER OF          @D35EDAZ 01105000
+         LA    RC,1(RC)            NON-CCWT                    @D35EDAZ 01106000
+         STH   RC,TFIXIDEN         TFIX USERS                  @D35EDAZ 01107000
+         LA    R1,SVCWORK         R1= A(1ST ENTRY IN FIXLIST)  @D35EDAZ 01108000
+         L     R8,APMGMDAT                                     @D35EDAZ 01109000
+         USING PMGMDATA,R8                                     @D35EDAZ 01110000
+         L     R2,ATFIX                                        @D35EDAZ 01111000
+         AMODESW CALL,REGS=(R7,R2) GO TFIX SD RECORD           @D52VDOW 01112000
+*SGLINK TFIX,INPUT=(R1,R7,R8),                                         X01113000
+               OUTPUT=(R1),                                            X01114000
+               WORK=(R0,R2,R3,R4,R5,R6,R7,RA,RB,RC,RD)         @D35EDAZ 01115000
+         DROP  R8                                              @D35EDAZ 01116000
+         B     SVC44WT            RETURN  0-WAIT F PAGE FRAMES @D35EDAZ 01117000
+         B     SVC44HW            RETURN +4-TFIX COUNTR OVERFL @D35EDAZ 01118000
+         LM    R9,R8,SVCSV3       RETURN +8-NORMAL - RESTORE   @D35EDAZ 01119000
+         LA    RE,RMSTF           IND. TFIXED ALTERN. ENTRY    @D35EDAZ 01120000
+TSTERQ   L     R5,ASRQTAB         RESOURCE DESCRIPTOR TABLE    @D61MPAP 01121000
+         LA    R5,SRQERQ-SRQTAB(,R5) RESOURCE QUEUE            @D61MPAP 01122000
+         USING RQADR,R5           RESOURCE DESCRIPTOR BASE     @D61MPAP 01123000
+         TM    RSCDESC,FREEBIT    IS ERBLOC IN USE             @D66ADAP 01124000
+         BZ    CTD44              YES, IGNORE RECORDING        @D66ADAP 01125000
+         MVC   RSCDESC,TID        SET ERBLOC IN USE            @D66ADAP 01126000
+         DROP  R5                 RELEASE RESOURCE DESCRIPTOR  @D61MPAP 01127000
+         L     R5,AERBLOC         POINT TO ERBLOC AREA         @D37BDFG 01128000
+         USING ERBLOC,R5          ERBLOC BASE                  @DA42144 01129000
+         XC    ERQCSW1(ERQRFRL1-ERQCSW1),ERQCSW1  CLEAR ERBLOC @DA42144 01130000
+         LA    R2,ERQ1            ERP ERROR ENTRY              @D52.DMK 01131000
+         DROP  R5                 RELEASE ERBLOC AREA          @D52.DMK 01132000
+         USING ERQAEADR,R2        ALTERNATE ERROR ENTRY BASE   @D21WDAP 01133000
+         OI    ERQAEFLG,OCCUP     INDICATE ENTRY IN USE        @D37BDFG 01134000
+         MVI   ERQAEMSG,RMSAE     POST ALTERNATE ENTRY         @D37DDAP 01135000
+         MVI   ERQAEIND,XFF       INDICATE NOT AN ERROR RECORD @DA34415 01136000
+         LTR   RE,RE              REAL REQUEST                 @D35EDAZ 01137000
+         BZ    SVC44ST            YES, DO NOT UPDATE           @D37DDAP 01138000
+         OI    ERQAEFLG,X'80'     INDICATE TFIXED RECORD       @D37DDAP 01139000
+         MVC   ERQAECOM(12),SVCWORK KEEP FIXLIST               @D52VDOW 01140000
+SVC44ST  ST    R1,ERQAEADR        STORE ADDRESS OF RECORD      @D37DDAP 01141000
+         MVC   ERQAEINF(L4),D0(R1) SAVE RECORD INFORMATION     @D37DDAP 01142000
+         CLI   ERQAETYP,X'FF'     RECORD BUILDER REQUEST       @D21CDWK 01143000
+         BNE   SVC44TIB           NO, NO PUB ADDRESS AVAILABLE @D21CDWK 01144000
+         MVC   ERQAEPUB(2),6(R1)  SAVE PUB ADDRESS             @D21CDWK 01145000
+SVC44TIB L     RA,TIBPTR          TIB OF CURRENT TASK          @D21CDWK 01146000
+         ST    RA,ERQAETIB        STORE TIB POINTER            @D37DDAP 01147000
+         MVI   2(R1),ZERO         CLEAR FLAG BYTE              @D35EDAZ 01148000
+         L     R8,AERPTIB         ADDR OF ERP TIB              @D14CDOW 01149000
+         USING TIBADR,R8          TIB BASE POINTER             @D61NDAP 01150000
+         CLI   TIBRQID,WAITBND    IS ERP-TASK WAIT-BOUND       @D61NDAP 01151000
+         BE    SVC44PST           YES,                         @D61NDAP 01152000
+         CLI   TIBRQID,SYSBND     ERP ALREADY ACTIVE           @D21YDOW 01153000
+         BNER  R6                 YES,  ===================>>> @D21YDOW 01154000
+SVC44PST L     RF,ERPBASE         GET SGERP BASE ADDRESS       @D61NDAP 01155000
+         USING SGERP,RF           SGERP BASE POINTER           @D61NDAP 01156000
+         OI    SGERPECB+2,TRABIT  POST ERP MASTER ECB          @D61NDAP 01157000
+         DROP  RF                 RELEASE SGERP BASE POINTER   @D61NDAP 01158000
+         BAL   RF,POST            POST ERP TASK, GO TO DISP    @D14CDOW 01159000
+*SGLINK POST,INPUT=(R6,R8,RF),WORK=(RE)                        @D149DOW 01160000
+         BR    R6                       ===================>>> @D61NDAP 01161000
+         DROP  R2                 RELEASE ALTERNATE ENTRY BASE @D21WDAP 01162000
+         DROP  R8                                                       01163000
+         SPACE 1                                               @D35EDAZ 01164000
+         USING TCBADR,RF          TCB     BASE POINTER         @D61NDAP 01165000
+SVC44WT  LM    R9,R8,SVCSV3       RESTORE REGISTERS            @D35EDAZ 01166000
+         LH    RC,TFIXIDEN        DECREASE COUNTER OF          @D35EDAZ 01167000
+         BCTR  RC,0                NON-CCWT                    @D35EDAZ 01168000
+         STH   RC,TFIXIDEN         TFIX USERS                  @D35EDAZ 01169000
+         L     R5,ASRQTAB         RESOURCE DESCRIPTOR BASE     @D61MPAP 01170000
+         LA    R5,SRQPFG-SRQTAB(,R5) PFG WAIT QUEUE            @D61MPAP 01171000
+         B     RESVCX                  ====================>>> @D35EDAZ 01172000
+         SPACE 1                                               @D35EDAZ 01173000
+SVC44HW  LM    R9,R8,SVCSV3       RESTORE REGISTERS            @D35EDAZ 01174000
+         MVI   HWIDBYTE,HWTFXCNT  TFIX COUNTER OVERFLOW        @D36ZDOW 01175000
+         MVI   IJBHWORG,HWORG080  UNIQUE HARD WAIT ORIGINATOR  @D31QDHB 01176000
+         BAL   R5,HARDWAIT        ISSUE HARD WAIT              @D36ZDOW 01177000
+         SPACE 1                                               @D35EDAZ 01178000
+CTD44    EQU   *                                               @D36ZDOW 01179000
+         LTR   RE,RE              REAL REQUEST                 @D35EDAZ 01180000
+         BZ    CTD44WT            YES, RE-SVC                  @D37BDFG 01181000
+         LA    R1,SVCWORK         R1= A(1ST ENTRY IN FIXLIST)  @D35EDAZ 01182000
+         L     R8,APMGMDAT                                     @D35EDAZ 01183000
+         USING PMGMDATA,R8                                     @D35EDAZ 01184000
+         L     R2,ATFREE                                       @D35EDAZ 01185000
+         AMODESW CALL,REGS=(R7,R2) GO TFREE THE TFIXED PAGES   @D52VDOW 01186000
+*SGLINK TFREE,INPUT=(R0,R1,R7,R8)                              @D36ZDOW 01187000
+         DROP  R8                                              @D37BDFG 01188000
+         LH    RC,TFIXIDEN        DECREASE COUNTER OF          @D35EDAZ 01189000
+         BCTR  RC,0                NON-CCWT                    @D35EDAZ 01190000
+         STH   RC,TFIXIDEN         TFIX USERS                  @D35EDAZ 01191000
+CTD44WT  L     R5,ASRQTAB         RESOURCE DESCRIPTOR BASE     @D61MPAP 01192000
+         LA    R5,SRQERQ-SRQTAB(,R5) ERBLOC BOUND              @D61MPAP 01193000
+         B     RESVCX                  ====================>>> @D37BDFG 01194000
+         SPACE 2                                               @D35EDAZ 01195000
+         DROP  RF                                              @DA37045 01196000
+         DROP  R6                                              @D37BDFG 01197000
+         DROP  RD                                              @D37BDFG 01198000
+         TITLE 'VSE SUPERVISOR  SGEMSG  ERP MESSAGE WRITER  '  @D61CDJK 01199000
+         SGEMSG                                                @D61CDJK 01200000
+         TITLE 'VSE SUPERVISOR  SGTAP   RESIDENT TAPE ERP   '  @D61NDJK 01201000
+         SGTAP                                                 @D61NDJK 01202000
+         AIF   (NOT &SGERP).NPRT030                            @D37DDAP 01203000
+         PRINT NOGEN                                           @D37DDAP 01204000
+.NPRT030 ANOP                                                  @D37DDAP 01205000
+         MEND                                                  @D36IDAP 01206000

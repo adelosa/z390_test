@@ -1,0 +1,426 @@
+         MACRO                                                          00050000
+         SGRM                                                           00100000
+         GBLB  &BG370                 /370-SUPPORT             @D35CDEM 00200000
+         GBLB  &BGFBA                                          @D35DDJO 00250000
+         GBLB  &SGRM          COMPONENT NAME FOR PRINT OPTION  @D37ZDOW 00300000
+         GBLB  &BGDEBUG                                        @D37ZDOW 00350000
+         GBLA  &AG1           NUMBER OF PUBS (FOR MORE DEVICES)@D51ODGL 00375001
+.********************************************************************** 00422501
+.*                                                                    * 00470001
+.*       LICENSED MATERIALS - PROPERTY OF IBM                         * 00517501
+.*       THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 00565001
+.*       5686-032 (C) COPYRIGHT IBM CORP. 1979, 2001                  * 00612501
+.*       SEE COPYRIGHT INSTRUCTIONS                                   * 00660001
+.*                                                                    * 00707501
+.********************************************************************** 00755001
+.*                                                                      00802501
+.* /* START OF SPECIFICATIONS ***************************************** 00850000
+.*                                                                    * 00900000
+.*01* MODULE-TYPE = SUPERVISOR GENERATION MACRO                       * 00950000
+.*                                                                    * 01000000
+.*01* DESCRIPTIVE NAME = RESOURCE CONTROL ROUTINES                    * 01050000
+.*                                                                    * 01100000
+.*  CHANGE ACTIVITY = AS FOLLOWS                                      * 01150000
+.*    MORE PARTITION SUPPORT IN 5.1.0                          @D51IDOW 01200000
+.*    MORE DEVICES SUPPORT IN ESA 112                          @D51ODGL 01225001
+.*    MOVE ENQ/DEQ TO SGAP                                     @D52VDOW 01237501
+.*    0P70I JOB CANCELED DUE TO UNDEFINED LOGICAL UNIT         @DA41882 01243701
+.*    MORE THAN 255 TASKS                                      @D66CDOW 01243801
+.*    0S04I ILL.SVC DUE TO DEVZONE FIELD NOT PROPERLY SET      @DY45712 01243902
+.*    0S04I ILL.SVC DUE TO TRACKHOLD TASKID NOT RESET PROPERLY @DY45849 01245004
+.*                                                                    * 01250000
+.**** END OF SPECIFICATIIONS ****************************************** 01300000
+         AIF   (NOT &BGDEBUG OR NOT &SGRM).NOPRINT             @D37ZDOW 01350000
+         PRINT GEN                                             @D37ZDOW 01400000
+.NOPRINT ANOP                                                  @D37ZDOW 01450000
+         TITLE 'SGRM    RESOURCE MANAGEMENT   -   TRACK HOLD'  @D35EDJO 01950000
+*********************************************************************** 02000000
+*        HOLD TRACK ROUTINE                                           * 02050000
+*        SVC 35                                                         02100000
+*********************************************************************** 02150000
+*                                                                       02200000
+*   REGISTER USAGE                                                      02250000
+*   R0   = 0    TRACKHOLD FOR CKD (DASD)                                02300000
+*        = 1    TRACKHOLD FOR FBA (TFBA)                                02350000
+*   R1   CCB/IORB ADDRESS                                               02400000
+*   R2   WORK REGISTER                                                  02450000
+*   R3   PUB ADDRESS (LOADED BY GETPUB)                                 02500000
+*   R4   LINK REGISTER TO SUBROUTINE THCHECK                            02550000
+*        WORK REGISTER                                                  02600000
+*   R6   DISPATCHER ADDRESS                                             02650000
+*   R7   LINK REGISTER TO SUBROUTINE HOLDFREE                           02700000
+*   R8   TRACK HOLD TABLE                                               02750000
+*   R9   WORK REGISTER                                                  02800000
+*   RA   TCB ADDRESS                                                    02850000
+*   RB   PIB ADDRESS                                           @D36IDJO 02900000
+*   RC   LINK REGISTER FOE EOT HANDLING                        @D149DOW 02950000
+*   RD   BASE ADDRESS                                                   03000000
+*   RE   LINK ADDRESS FOR SUBROUTINE GETPUB                             03050000
+*   RF   WORK REGISTER                                                  03100000
+*                                                                       03150000
+***************************************************************@D149DIS 03200000
+         EJECT                                                 @D149DIS 03210001
+         DC    CL8'SGRM    '      MACRO NAME                            03220001
+         DC    CL10'10/22/2000'   LAST APAR/DEVELOPMENT CHANGE          03230001
+         SPACE 1                                               @D149DIS 03240001
+         USING CCBADR,R1                                       @D34RDFG 03250000
+         USING PUBADR,R3                                       @D34RDJO 03300000
+         USING DISP,R6                                         @D35EDJO 03350000
+         USING THADR,R8                                                 03400000
+         USING TCBADR,RA                                       @D35EDJO 03450000
+         USING SGRM,RD            COMMON BASE WITHIN SGRM      @D34RDFG 03500001
+         SPACE 2                                               @D149DIS 03550000
+SGRM     DS    0H                 COMMON BASE SVC35/SVC36      @D52VDOW 03582101
+SVC35    DS    0H                                              @D51ODGL 03614201
+         L     RB,PIBPTR2                                      @D52VDOW 03621301
+         L     RB,PIBPCB-PIB2ADR(,RB)                          @DA41882 03623601
+         L     RB,PCEPIB-PCBADR(,RB) PIB ADDR FOR GETPUB       @DA41882 03625901
+         AIF   (&AG1 LE 254).LOD0000                           @D51ODGL 03628401
+         CLI   CHQFLPTR+1,NOTQUED CHECK FOR A FREE CHANQ ENTRY @D51ODGL 03642601
+.LOD0000 AIF   (&AG1 GT 254).LOD0001                           @D51ODGL 03656801
+         CLI   FLPTR,NOTQUED      CHECK FOR A FREE CHANQ ENTRY @D51ODGL 03671001
+.LOD0001 ANOP                                                  @D51ODGL 03685201
+         BE    RESVCIO            RE-EXECUTE THE SVC 35        @D36IDJO 03700000
+         BAL   R4,THCHECK         CHECK CCB,CCW,               @D35DDJO 03750000
+         AIF   (NOT &BGFBA).PICCO2                             @D35DDJO 03800000
+         LTR   R0,R0              FBA OR CKD                   @D35DDJO 03850000
+         BE    SVC35A4            BRANCH IF DASD               @D35DDJO 03900000
+         CLI   D0(R2),X'63'       DEFINE EXTENT CCW            @D35DDJO 03950000
+         BE    SVC35A5            YES                          @D35DDJO 04000000
+         AGO   .PICCO6                                         @D35DDJO 04050000
+.PICCO2  ANOP                                                           04100000
+         AIF   (NOT &BGFBA).PICCO4                             @D35DDJO 04150000
+         CLI   0(R2),X'63'        DEFINE EXTENT CCW            @D35DDJO 04200000
+         AGO   .PICCO5                                         @D35DDJO 04250000
+.PICCO4  ANOP                                                  @D35DDJO 04300000
+         CLI   0(R2),SEEK                                      @D35DDJO 04350000
+.PICCO5  ANOP                                                  @D35DDJO 04400000
+         BE    SVC35A5                                         @D35DDJO 04450000
+.PICCO6  ANOP                                                  @D35DDJO 04500000
+SVC35EX  MVZ   DEVZON(1),PUBDEVTY                              @D35DDJO 04550000
+         L     R8,TIBPTR          RESTORE TIB POINTER          @D36IDFG 04600000
+         L     RD,IOSBASE         SET BASE FOR SGIOS           @D34RDFG 04650000
+         USING SGIOS,RD                                        @D34RDFG 04700000
+         B     SVC00010           CONTINUE SVC0 PROCESSING     @D36EDJO 04750000
+         USING SGRM,RD                                         @D34RDFG 04800000
+         AIF   (NOT &BGFBA).PICCO7                             @D35DDJO 04850000
+SVC35A4  CLI   0(R2),SEEK                                      @D35DDJO 04900000
+         BNE   SVC35EX                                         @D35DDJO 04950000
+.PICCO7  ANOP                                                  @D35DDJO 05000000
+SVC35A5  EQU   *                                               @D35DDJO 05050000
+         BAL   R7,HOLDFREE .      IS TRACK BEING HELD                   05100000
+         B     SVC35A .           TRACK IS NOT BEING HELD               05150000
+         B     SVC35C             TRK HELD,BUT NOT BY REQ'R    @D35DDJO 05200000
+***************************************************************@D149DIS 05250000
+* TRACK IS BEING HELD BY REQUESTOR                                      05300000
+***************************************************************@D149DIS 05350000
+         TM    THCTR,THMAX .      MORE THAN 16 HOLDS                    05400000
+         BO    ERR21 .            YES - ILLEGAL SVC                     05450000
+         IC    R7,THCTR .         INCREMENT                             05500000
+         LA    R7,1(,R7) .        TRACK HOLD COUNTER                    05550001
+         STC   R7,THCTR .         BY ONE                                05600000
+         B     SVC35EX            CONTINUE SVC0                @D35DDJO 05650000
+         SPACE 1                                                        05700000
+SVC35A   CLI   THFLPTR,XFF .      IS TABLE FULL                         05750000
+         BE    SVC35D .           YES, WAIT FOR FREE SPACE     @D35DDJO 05800000
+         CLI   PUBOPTN,XFF        ENTRIES CHAINED TO PUB       @D35DDJO 05850000
+         BE    SVC35B             NO, NEW WILL BE FIRST        @D35DDJO 05900000
+SVC35E   MVC   THPTR,THFLPTR      CHAIN PREVIOUS LAST ENTRY    @D35DDJO 05950000
+*                                 TO NEW LAST ENTRY            @D35DDJO 06000000
+SVC35AX  SR    R8,R8 .            CLEAR REGISTER               @DM00577 06050000
+         IC    R8,THFLPTR .       PICK UP THE FREE LIST POINTER         06100000
+         MH    R8,THLNGVAL        CALCULATE DISPL              @D51ODGL 06150001
+         A     R8,THTABAD .       POINT TO FREE ENTRY                   06200000
+         MVC   THFLPTR,THPTR .    BUMP TH FREE LIST PTR TO NEXT ENTRY   06250000
+         ST    R1,THCCB-1         CCB ADDRESS FOR CLOSE        @D35EDJO 06300000
+         MVC   THTID,TID          INSERT TASK ID               @D66CDOW 06350001
+         MVI   THPTR,XFF .        SET END OF CHAIN CODE                 06400000
+         LTR   RE,RE              IS NEW ENTRY THE FIRST ONE   @D35DDJO 06450000
+         BE    SVC35G             YES, SET FIRST FLAG          @D35DDJO 06500000
+         AIF   (&AG1 GT 254).LOD0010                           @D51ODGL 06525001
+         MVC   THBWPTR(1),THPTR-THADR(RE)  NEW BACKWARD PTR    @D51ODGL 06550001
+.LOD0010 ANOP                                                  @D51ODGL 06575001
+SVC35AY  EQU   *                                                        06600000
+         AIF   (NOT &BGFBA).CKD3                               @D35DDJO 06650000
+         LTR   R0,R0              CKD OR DASD                  @D35DDJO 06700000
+         BZ    SVC35F             BRANCH IF CKD                @D35DDJO 06750000
+         ST    R2,THTRK           FIRST PHYSICAL BLOCK         @D35DDJO 06800000
+         ST    R4,THTRK+4         LAST PHYSICAL BLOCK          @D35DDJO 06850000
+         B     SVC35EX            CONTINUE SVC0 PROCESSING     @D35DDJO 06900000
+.CKD3    ANOP                                                  @D35DDJO 06950000
+SVC35F   MVC   THTRK(6),0(R2)     TRACK ADDRESS                @D35DDJO 07000000
+         B     SVC35EX            CONTINUE SVC0 PROCESSING     @D35DDJO 07050000
+         SPACE 1                                                        07100000
+SVC35C   OI    THFLG,THWANT .     INDICATE TRACK WANTED                 07150000
+         LA    R1,0(,R8)          GET WANTED THTAB ENTRY       @D36IDFG 07200001
+         L     R5,ASRQTAB                                      @D62MPGL 07233301
+         LA    R5,SRQTRK-SRQTAB(,R5) PT TO WAIT QUEUE          @D62MPGL 07266601
+         B     RESVCX   .         SET UP TO REDRIVE THE SVC    @D36IDFG 07300000
+SVC35D   EQU   *                                               @D35DDJO 07350000
+         L     R8,THTABAD         ADDR OF TRACK HOLD TABLE     @DA09772 07400000
+         LR    R4,R8              COPY ADDRESS                 @DA09772 07450000
+         BCTR  R4,0               DECREMENT BY 2               @DA09772 07500000
+         BCTR  R4,0               TO POINT TO                  @DA09772 07550000
+         LH    R4,0(R4)           NUMBER OF TABLE ENTRIES      @DA09772 07600000
+SVC35D3  CLC   THTID,TID          ENTRY FOR THIS TASK          @D66CDOW 07650001
+         BNE   SVC35D4            NO, NORMAL WAIT              @DA09772 07700000
+         AH    R8,THLNGVAL        YES, CONTINUE SCAN           @D51ODGL 07750001
+         BCT   R4,SVC35D3         THRU THE COMPLETE TABLE      @DA09772 07800000
+         B     ERR21              CANCEL USER                  @DA09772 07850000
+SVC35D4  L     R5,ASRQTAB         POINT                        @D62MGPL 07883301
+         LA    R5,SRQTHTAB-SRQTAB(,R5)  TO WAIT QUEUE          @D62MPGL 07916601
+         B     RESVCX   .         SET UP TO REDRIVE THE SVC    @D36IDFG 07950000
+*                                                                       08000000
+SVC35B   MVC   PUBOPTN(1),THFLPTR CHAIN DIRECTLY TO PUB        @D35DDJO 08050000
+         SR    RE,RE                                           @D35DDJO 08100000
+         B     SVC35AX                                         @D35DDJO 08150000
+*                                                                       08200000
+SVC35G   DS    0H                                              @D51ODGL 08231201
+         AIF   (&AG1 GT 254).LOD0020                           @D51ODGL 08262401
+         LR    RE,R3              COPY PUB POINTER             @D35DDJO 08293601
+         SH    RE,YPUBTAB         PUBINDEX   * 8               @D51ODGL 08324801
+         SRL   RE,PUBSLEN         PUBINDEX                     @D51ODGL 08356001
+         STC   RE,THBWPTR         POINT BACK TO PUB ENTRY      @D51ODGL 08387201
+.LOD0020 ANOP                                                  @D51ODGL 08418401
+         OI    THFLG,THFIRST      THIS ENTRY IS FIRST ONE      @D35DDJO 08450000
+         B     SVC35AY                                         @D35DDJO 08500000
+         EJECT                                                          08550000
+*********************************************************************** 08600000
+*        FREE TRACK ROUTINE                                           * 08650000
+*        SVC 36                                                         08700000
+*********************************************************************** 08750000
+         SPACE 1                                                        08800000
+SVC36    DS    0H                                              @D35DDJO 08814201
+         DROP  RD                                              @D52VDOW 08828401
+         USING SVC36,RD                                        @D52VDOW 08842601
+         L     RD,ASGRM           GET COMMON BASE ADDR         @D52VDOW 08856801
+         USING SGRM,RD            COMMON BASE WITHIN SGRM      @D52VDOW 08871001
+         L     RB,PIBPTR2                                      @D52VDOW 08885201
+         L     RB,PIBPCB-PIB2ADR(,RB)                          @DA41882 08890101
+         L     RB,PCEPIB-PCBADR(,RB) PIB ADDR FOR GETPUB       @DA41882 08895001
+         LTR   R1,R1              EOT REQUEST                  @D14CDOW 08900000
+         BZ    SVC36EOT           YES HANDLE IT                @D14CDOW 08950000
+         BAL   R4,THCHECK         CHECK CCB,CCW, GET PUB       @D35DDJO 09000000
+         BAL   R7,HOLDFREE .      IS TRACK BEING HELD                   09050000
+         B     ERR21 .            TRACK IS NOT BEING HELD               09100000
+         B     ERR21              TRK HELD,BUT NOT BY REQ'R    @D35DDJO 09150000
+***************************************************************@D149DIS 09200000
+* TRACK IS BEING HELD BY REQUESTOR                                      09250000
+***************************************************************@D149DIS 09300000
+         LR    RC,R6              EXIT TO DISPATCHER           @D14CDOW 09350000
+         TM    THCTR,THMAX .      MORE THAN ONE HOLD ON TRACK           09400000
+         BZ    SVC36A .           NO                                    09450000
+         IC    R7,THCTR .         DECREMENT                             09500000
+         BCTR  R7,R0 .            TRACK HOLD COUNTER                    09550000
+         STC   R7,THCTR .         BY ONE                                09600000
+         BR    R6 .               EXIT                                  09650000
+         SPACE 1                                                        09662501
+ASGRM    DC    A(SGRM)            COMMON BASE SVC35/SVC36      @D52VDOW 09675001
+         SPACE 1                                                        09687501
+SVC36A   IC    R4,THFLPTR .       SAVE TH FREE LIST PTR                 09700000
+         MVC   THFLPTR(L1),THPTR-THADR(RE) NEW FREE LIST PTR   @D35DDJO 09750000
+         MVC   THPTR-THADR(1,RE),THPTR PTR TO PREVIOUS ENTRY   @D35DDJO 09800000
+         STC   R4,THPTR .         SAVED FREE LIST PTR          @D35DDJO 09850000
+         CLI   THPTR-THADR(RE),XFF LAST ENTRY DEQUEUED         @D35DDJO 09900000
+         BE    SVC36C             YES,                         @D35DDJO 09950000
+         SR    R4,R4              * FIND NEXT ENTRY            @D35DDJO 10000000
+         IC    R4,THPTR-THADR(RE)   * IN PUB CHAIN             @D35DDJO 10050000
+         MH    R4,THLNGVAL            * AND                    @D51ODGL 10100001
+         A     R4,THTABAD                * UPDATE ITS          @D35DDJO 10150000
+         AIF   (&AG1 GT 254).LOD0030                           @D51ODGL 10175001
+         MVC   THBWPTR-THADR(1,R4),THBWPTR  * BACK WARD PTR    @D35DDJO 10200000
+.LOD0030 ANOP                                                  @D51ODGL 10225001
+         TM    THFLG,THFIRST      FIRST ENTRY DEQUEUED         @D35DDJO 10250000
+         BNO   SVC36C             NO                           @D35DDJO 10300000
+         OI    THFLG-THADR(R4),THFIRST NEXT ENTRY IS FIRST NOW @D35DDJO 10350000
+SVC36C   MVC   THTID,H0           ZERO TASK ID                 @DY45849 10400003
+         L     R5,ASRQTAB                                      @D62MPGL 10433301
+         LA    R5,SRQTHTAB-SRQTAB(,R5) PT TO THTAB WAIT Q      @D62MPGL 10466601
+         BAL   RF,RPOST     .     POST HIGHEST PRIORITY TASK   @D36IDFG 10500000
+         TM    THFLG,THWANT .     IS A TASK WAITING FOR THIS TRACK      10550000
+         MVI   THFLG,ZERO .       RESET FLAG BYTE                       10600000
+         BNOR  RC .               RETURN                       @D14CDOW 10650000
+*   REMOVE WAITERS FROM WAIT STATE                             @D35EDJO 10700000
+         LA    R1,0(,R8)          GET WANTED THTAB ENTRY       @D36IDFG 10750001
+         L     R5,ASRQTAB                                      @D62MPGL 10783301
+         LA    R5,SRQTRK-SRQTAB(,R5) PT TO WAIT QUEUE          @D62MPGL 10816601
+         BAL   RF,RPOST           POST ALL WAITING TASKS       @D36IDFG 10850000
+         BR    RC                 RETURN                       @D14CDOW 10900000
+************************************************************** @D149DOW 10950000
+SVC36EOT EQU   *                  HANDLE EOT REQUESTS          @D14CDOW 11000000
+************************************************************** @D149DOW 11050000
+         USING TIBADR,R8          R8 CONTAINS TIBADR ON SVC ENT@D14CDOW 11100000
+         TM    TIBFLAG1,EOTACT    EOT ACTIVE                   @D14CDOW 11150000
+         DROP  R8                                              @D14CDOW 11200000
+         USING THADR,R8           REESTABLISH ADDRESSABILITY   @D14CDOW 11250000
+         BNO   ERR21              NO, INVALID SVC              @D14CDOW 11300000
+         LH    R3,YPUBTAB         PUB-ADDR                     @D14CDOW 11350000
+         B     SVC36EO2                                        @D14CDOW 11400000
+SVC36EO1 EQU   *                  HANDLE NEXT PUB ENTRY        @D14CDOW 11450000
+         LA    R3,PUBLNG(,R3)                                  @D14CDOW 11500001
+SVC36EO2 EQU   *                  HANDLE FISRT PUB ENTRY       @D14CDOW 11550000
+         CLI   PUBCHANN,XFF       END OF PUB                   @D14CDOW 11600000
+         BER   R6                                              @D14CDOW 11650000
+         AIF   (NOT &BGFBA).NFBA9                              @D14CDOW 11700000
+         CLI   PUBDEVTY,TFBA      IS IT FBA                    @D14CDOW 11750000
+         BNE   SVC36EOC           NO, CHECK FOR CKD            @D52HDAP 11764201
+         CLI   PUBOPTN,PUBOPTVD   NOT OPERATIONAL VIRTUAL FBA  @D52HDAP 11778401
+         BNE   SVC36EO6           NO,                          @D52HDAP 11792601
+         TM    PUBJCFLG,PUBDVCUP  IS DEVICE UP                 @D52HDAP 11806801
+         BNO   SVC36EO1           NO, IT IS NOT OPERATIONAL    @D52HDAP 11821001
+         B     SVC36EO6           CONSIDER THIS A VALID HOLD   @D52HDAP 11835201
+.NFBA9   ANOP                                                  @D14CDOW 11850000
+SVC36EOC CLI   PUBDEVTY,DASD      IS IT DASD                   @D52HDAP 11900001
+         BL    SVC36EO1           NO GO TO NEXT PUB            @D14CDOW 11950000
+         CLI   PUBDEVTY,X'6F'                                  @D14CDOW 12000000
+         BH    SVC36EO1           NO GO TO NEXT PUB            @D14CDOW 12050000
+SVC36EO6 EQU   *                  HANDLE FISRT PUB ENTRY       @D14CDOW 12100000
+         LA    RE,PUBOPTN         REMEMBER PUBOPTN AS ANCHOR   @D14CDOW 12150000
+*                                 TO TRACKHOLD TABLE           @D14CDOW 12200000
+         SR    R8,R8                                           @D14CDOW 12250000
+         IC    R8,PUBOPTN         INDEX IN TRACKHOLD TABLE     @D14CDOW 12300000
+         B     SVC36EO4                                        @D14CDOW 12350000
+SVC36EO5 EQU   *                  DELETE TRTAB ENTRY           @D14CDOW 12400000
+         BAL   RC,SVC36A                                       @D14CDOW 12450000
+SVC36EO3 EQU   *                  HANDLE NEXT TRTAB ENTRY      @D14CDOW 12500000
+         LR    RE,R8              REMEMBER PREDECESSOR         @D14CDOW 12550000
+         SLR   R8,R8                                           @D14CDOW 12600000
+         DROP  R8                                              @D14CDOW 12650000
+         USING THADR,RE           ESTABLISH ADDRESSABILITY     @D14CDOW 12700000
+         IC    R8,THPTR                                        @D14CDOW 12750000
+         DROP  RE                                              @D14CDOW 12800000
+         USING THADR,R8           REESTABLISH ADDRESSABILITY   @D14CDOW 12850000
+SVC36EO4 EQU   *                  HANDLE FISRT TRTAB ENTRY     @D14CDOW 12900000
+         LA    R9,XFF             END OF CHAIN                 @D14CDOW 12950000
+         CR    R8,R9                                           @D14CDOW 13000000
+         BE    SVC36EO1           GO TO NEXT PUB ENTRY         @D14CDOW 13050000
+         MH    R8,THLNGVAL        LENGTH OF ENTRY              @D51ODGL 13100001
+         A     R8,THTABAD         ENTRY IN TRTAB               @D14CDOW 13150000
+         CLC   THTID,TID          SAME TASK                    @D66CDOW 13200001
+         BNE   SVC36EO3           NO, GO TO NEXT TRTAB ENTRY   @D14CDOW 13250000
+         NI    THCTR,XF0          RESET IF MORE THAN ONE HOLD  @D14CDOW 13300000
+         B     SVC36EO5                                        @D14CDOW 13350000
+    TITLE 'SGRM  RESOURCE MANAGEMENT      HOLD/FREE SUBROUTINES'        13400000
+*********************************************************************** 13450000
+*        BLOCK HOLD SUBROUTINE THCHECK                                * 13500000
+*        CHECK CCB, CCW, GET PUB ADDRESS                                13550000
+*********************************************************************** 13600000
+         SPACE 1                                                        13650000
+THCHECK  L     RD,IOSBASE                                      @D35DDJO 13700000
+         USING SGIOS,RD                                        @D35DDJO 13750000
+         BAL   RE,GETPUB          ESTABLISH R3 AS PUB POINTER  @D35DDJO 13800000
+         L     RD,RMBASE                                       @D35DDJO 13850000
+         USING SGRM,RD                                         @D35DDJO 13900000
+         AIF   (NOT &BGFBA).NPIC0                              @D35DDJO 13950000
+         LA    R0,1               TRACKHOLD FOR FBA            @DY45712 13971002
+         CLI   PUBDEVTY,TFBA      FBA                          @DY45712 13972002
+         BE    THCHECK1                                        @DY45712 13973002
+.NPIC0   ANOP                                                  @DY45712 13974002
+         SR    R0,R0              TRACKHOLD FOR CKD            @DY45712 13975002
+         CLI   PUBDEVTY,DASD      DEVTYPE                      @DY45712 13980002
+         BL    ERR21                    IN                     @DY45712 13990002
+         CLI   PUBDEVTY,DASD+X'0F'       CKD RANGE             @DY45712 13991002
+         BH    ERR21              NO,                          @DY45712 13992002
+THCHECK1 L     R2,CCBCCW .        GET ADDRESS OF CCW STRING    @D35DDJO 13993002
+         TM    CCBCLS,XCPR        USER TRANSLATED CHAN.PROGR.  @D35DDJO 14550000
+         BZR   R4                 RETURN TO CALLER             @D35DDJO 14600000
+         LR    R9,R2 .            LOAD CCW ADDRESS TO PAR.REG. @D35DDJO 14650000
+         BAL   R6,VIRTAD .        GET VIRTUAL ADDRESS OF CCW   @D35DDJO 14700000
+*SGLINK VIRTAD,INPUT=(R6,R9),OUTPUT=(RF),WORK=(R9)             @D149DIS 14750000
+         L     R6,DISPAD          RESTORE POINTER TO DISPATCHER@D35DDJO 14800000
+         LTR   R2,RF .            EXISTS VALID VIRTUAL ADDRESS @D35DDJO 14850000
+         BZ    ERR25 .            NO,CANCEL USER               @D35DDJO 14900000
+         BR    R4                 RETURN TO CALLER             @D35DDJO 15000000
+         EJECT                                                 @D149DIS 15050000
+         SPACE 2                                               @D149DIS 15100000
+**************************************************************          15150000
+*        BLOCK HOLD SUBROUTINE HOLDFREE                                 15200000
+*        SCAN ALL ENTRIES CHAINED TO A GIVEN PUB                        15250000
+*                                                                       15300000
+**************************************************************          15350000
+*                                                                       15400000
+HOLDFREE EQU   *                                                        15450000
+         L     R2,0(,R2) .        POINT TO REQ'R TRACK ADDRESS          15500001
+         AIF   (NOT &BG370).NXCPRL2                            @D35EDJO 15550000
+         TM    CCBCLS,XCPR .      USER TRANSLATED CHAN.PROGR.           15600000
+         BZ    GETSKFLD .         NO                                    15650000
+         LR    R9,R2 .            LOAD REAL ADDRESS TO PAR.REG          15700000
+         BAL   R6,VIRTAD .        GET VIRTUAL ADDRESS OF SEEKFIELD      15750000
+         L     R6,DISPAD          RESTORE POINTER TO DISPATCHER@DM05356 15800000
+         LTR   R2,RF .            VALID VIRTUAL ADDRESS                 15850000
+         BZ    ERR25 .            NO,CANCEL USER                        15900000
+GETSKFLD EQU   *                                                        15950000
+.NXCPRL2 ANOP                                                           16000000
+         AIF   (NOT &BGFBA).HOLDFR5                            @D37ZDOW 16050000
+         LTR   R0,R0              FBA OR CKD                   @D35DDJO 16100000
+         BE    HOLDFR5            BRANCH IF CKD                @D35DDJO 16150000
+         L     R4,12(R2)          LAST LOGICAL BLOCK NUMBER    @D35DDJO 16200000
+PCKADTH1 EQU   *                  PROGR.CHECK MAY HAPPEN HERE  @D35DDJO 16250000
+         S     R4,8(,R2)          FIRST LOGICAL BLOCK NUMBER   @D35DDJO 16300001
+         A     R4,4(,R2)          FIRST PHYSICAL BLOCK NUMBER  @D35DDJO 16350001
+         L     R2,4(,R2)          FIRST PHYSICAL BLOCK NUMBER  @D35DDJO 16400001
+         B     HOLDFR6                                         @D37ZDOW 16450000
+***************************************************************@D149DIS 16500000
+*  R4 CONTAINS LAST PHYSICAL BLOCK NUMBER                      @D35DDJO 16550000
+*  R2 CONTAINS FIRST PHYSICAL BLOCK NUMBER                     @D35DDJO 16600000
+***************************************************************@D149DIS 16650000
+.HOLDFR5 ANOP                                                  @D35DDJO 16700000
+HOLDFR5  EQU   *                                                        16750000
+         CLC   0(6),0(R2)         FORCE PF IF TRACK-ADDR       @D37ZDOW 16800000
+*                                 NOT IN CORE                  @D37ZDOW 16850000
+PCKADTH2 EQU   *                  PROGR.CHECK MAY HAPPEN HERE  @D37ZDOW 16900000
+HOLDFR6  EQU   *                                               @D37ZDOW 16950000
+         LA    RE,PUBOPTN .       SAVE ADDRESS FOR UPDATE               17000000
+         CLI   PUBOPTN,XFF        ANY TH REQUEST QUEUED        @D35DDJO 17050000
+         BER   R7                 NO, RETURN                   @D35DDJO 17100000
+SVC3536C EQU   *                                               @D35DDJO 17150000
+         SR    R8,R8 .            CLEAR REGISTER                        17200000
+         IC    R8,THPTR-THADR(RE) GET TRACK HOLD POINTER       @D35EDJO 17250000
+         MH    R8,THLNGVAL        CALCULATE DISPL              @D51ODGL 17300001
+         A     R8,THTABAD .       POINT TO TH ENTRY                     17350000
+         AIF   (NOT &BGFBA).HFR3                               @D35DDJO 17400000
+         LTR   R0,R0              CKD OR FBA                   @D35DDJO 17450000
+         BZ    HOFR3              BRANCH IF CKD                @D35DDJO 17500000
+         C     R4,THTRK           OUTSIDE OF THE RANGE         @D35DDJO 17550000
+         BL    SVC3536D           YES, CHECK NEXT RANGE        @D35DDJO 17600000
+         C     R2,THTRK+4         OUTSIDE OF THE RANGE         @D35DDJO 17650000
+         BH    SVC3536D           YES, CHECK NEXT RANGE        @D35DDJO 17700000
+         CLC   THTID,TID          RANGE OWNED BY ISSUING TASK  @D66CDOW 17750001
+         BNE   4(R7)              NO, RETURN BLOCK NOT AVAIL.  @D35DDJO 17800000
+         C     R2,THTRK           IS IT EXACTLY THAT RANGE     @D35DDJO 17850000
+         BNE   SVC3536D           NO, MAKE A NEW ENTRY         @D35DDJO 17900000
+         C     R4,THTRK+4         IS IT EXACTLY THAT RANGE     @D35DDJO 17950000
+         BE    8(R7)              RETURN IF YES                @D35DDJO 18000000
+SVC3536D CLI   THPTR,XFF          END OF TH CHAIN              @D35DDJO 18050000
+         BER   R7                 YES, RETURN NOT FOUND        @D35DDJO 18100000
+         LR    RE,R8              POINT TO NEXT ENTRY          @D35DDJO 18150000
+         B     SVC3536C           LOOP AROUND                  @D35EDJO 18200000
+         SPACE 1                                               @DM00577 18250000
+.HFR3    ANOP                                                  @D35DDJO 18300000
+HOFR3    CLC   THTRK(6),0(R2)     IS THIS THAT TRACK           @D35DDJO 18350000
+         BNE   SVC3536D           NO,CHECK NEXT ENTRY          @D35DDJO 18400000
+         CLC   THTID,TID          DOES REQUESTER OWN TRACK     @D66CDOW 18450001
+         BNE   4(R7)              NO, OWNED BY OTHER TASK      @D35DDJO 18500000
+         B     8(R7)              YES, OWNED BY ISSUING TASK   @D35DDJO 18550000
+         AIF   (&BGFBA).HFREX                                  @D35DDJO 18600000
+SVC3536D CLI   THPTR,XFF          END OF TH CHAIN              @D35DDJO 18650000
+         BER   R7                 YES, RETURN NOT FOUND        @D35DDJO 18700000
+         LR    RE,R8              POINT TO NEXT ENTRY          @D35DDJO 18750000
+         B     SVC3536C           LOOP AROUND                  @D35EDJO 18800000
+.HFREX   ANOP                                                  @D35DDJO 18850000
+.*                                                             @D51ODGL 18858301
+.*    CONSTANT FOR LENGTH MULTIPLICATION. LENGTH OF 1 ENTRY    @D51ODGL 18866601
+.*    IN TRACK HOLD TABLE.                                     @D51ODGL 18874901
+.*                                                             @D51ODGL 18883201
+THLNGVAL DC    AL2(THLENGTH)                                   @D51ODGL 18891501
+         SPACE 1                                               @DM00577 18900000
+         DROP  R1                 CCBADR,R1                    @D35EDJO 18950000
+         DROP  R3                 PUBADR,R3                    @D35EDJO 19000000
+         DROP  R6                 DISP,R6                      @D35EDJO 19050000
+         DROP  R8                                              @D35EDJO 19100000
+         DROP  RA                 TCBADR,RA                    @D35EDJO 19150000
+         DROP  RD                 BASE ADDRESS OF SGRM         @D36SDJO 23550000
+         AIF   (NOT &BGDEBUG OR NOT &SGRM).PRINT               @D37ZDOW 23600000
+         PRINT NOGEN                                           @D37ZDOW 23650000
+.PRINT   ANOP                                                  @D37ZDOW 23700000
+         MEND                                                           23750000

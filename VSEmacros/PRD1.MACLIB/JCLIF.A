@@ -1,0 +1,105 @@
+         MACRO                                                                  
+&NAME    JCLIF &CMD=VTAPE,&IFAREA=     VTAPE IS DEFAULT                         
+         LCLC  &REG                    REGISTER SPECIFIED FOR IFAREA            
+         LCLC  &PNAME                  SVA PHASE TO PROCESS THE COMMAND         
+*        JOB CONTROL - JCLIF - 5686-CF7-06                                      
+         AGO   .NOCOPY                                                          
+***********************************************************************         
+*                                                                     *         
+*        LICENSED MATERIALS - PROPERTY OF IBM                         *         
+*        "RESTRICTED MATERIALS OF IBM"                                *         
+*        5686-CF7                                                     *         
+*        (C) COPYRIGHT IBM CORP. 2004                                 *         
+*                                                                     *         
+***********************************************************************         
+.NOCOPY  ANOP                                                                   
+.* START OF SPECIFICATIONS ********************************************         
+.*                                                                    *         
+.* MACRO TYPE = JOB CONTROL INTERFACE MACRO                           *         
+.*                                                                    *         
+.* DESCRIPTIVE NAME = INTERFACE TO JOB CONTROL COMMAND PROCESSORS     *         
+.*                                                                    *         
+.* STATUS = NEW IN Z/VSE 3.1.0, 5686-CF7-06                           *         
+.*                                                                    *         
+.* SYNTAX OF MACRO                                                    *         
+.*                      .-CMD=VTAPE,-.                                *         
+.* >>--.------.--JCLIF--'------------'--IFAREA=-.-NAME-.--><          *         
+.*     '-NAME-'                                 '-(RX)-'              *         
+.*                                                                    *         
+.* REGISTER 13 MUST POINT TO A USER SUPPLIED 18F SAVE AREA            *         
+.* REGISTERS 2 TO 12 MAY BE USED FOR REGISTER NOTATION                *         
+.* REGISTERS 14 TO 1 ARE DESTROYED                                    *         
+.*                                                                    *         
+.*        +-------------------------------------------------------+   *         
+.*        | JCLIF IFAREA LAYOUT                                   |   *         
+.*        +--------+---------+------------------------------------+   *         
+.*        | OFFSET | TYPE    | DESCRIPTION                        |   *         
+.*        +--------+---------+------------------------------------+   *         
+.*        | 0      | AL4     | POINTER TO A CL72 MESSAGE OUTOUT   |   *         
+.*        |        |         | AREA, WHICH IS FILLED WITH AN      |   *         
+.*        |        |         | ERROR MESSAGE, IF A SYNTAX ERROR   |   *         
+.*        |        |         | IS DETECTED.                       |   *         
+.*        +--------+---------+------------------------------------+   *         
+.*        | 4      | AL4     | POINTER TO THE COMMAND INPUT AREA. |   *         
+.*        |        |         | THIS AREA MUST HAVE A LENGTH LESS  |   *         
+.*        |        |         | THAN 400 CHARACTERS. THE FIRST     |   *         
+.*        |        |         | BLANK (X'40') CHARACTER NOT        |   *         
+.*        |        |         | ENCLOSED IN QUOTES WILL STOP THE   |   *         
+.*        |        |         | SCAN.                              |   *         
+.*        +--------+---------+------------------------------------+   *         
+.*        | 8      | XL2'0'  | RESERVED FOR FUTURE USE.           |   *         
+.*        +--------+---------+------------------------------------+   *         
+.*                                                                    *         
+.*                                                                    *         
+.* RETURN CODES IN REGISTER 15                                        *         
+.*                                                                    *         
+.*        0   JOB CONTROL COMMAND PROVIDED IN CMD KEYWORD             *         
+.*            COMPLETED SUCCESSFULLY.                                 *         
+.*                                                                    *         
+.*        2   JOB CONTROL COMMAND PROVIDED IN CMD KEYWORD             *         
+.*            FAILED. THE CORRESPONDING ERROR MESSAGE IS CONTAINED    *         
+.*            IN THE USER-SUPPLIED CL72 MESSAGE OUTPUT AREA.          *         
+.*                                                                    *         
+.*        4   INVALID INPUT IN THE USER-SUPPLIED COMMAND              *         
+.*            INPUT AREA:  EITHER UNMATCHED QUOTES OR NO              *         
+.*            BLANK CHARACTER TO INDICATE END OF INPUT.               *         
+.*                                                                    *         
+.*        8   NOT ENOUGH PARTITION GETVIS AVAILABLE TO ALLO-          *         
+.*            CATE STORAGE FOR VARIABLES AND CONTROL BLOCKS.          *         
+.*                                                                    *         
+.* CHANGE ACTIVITIES:                                                 *         
+.* A000000-999999                                                     *         
+.*                                                                    *         
+.**** END OF SPECIFICATIONS *******************************************         
+.* CHECK VALUE OF IFAREA KEYWORD                                                
+         AIF   (T'&IFAREA NE 'O').JCLIF1 KEYWORD OMITTED?                       
+         MNOTE 8,'KEYWORD ''IFAREA'' IS MISSING.'                               
+         MEXIT                                                                  
+.JCLIF1  AIF   ('&IFAREA'(1,1) NE '(').JCLIF2 LEFT PARENTH.?                    
+         AIF   ('&IFAREA'(K'&IFAREA,1) EQ ')').JCLIF11 RIGHT PARENTH.?          
+         MNOTE 8,'''IFAREA=&IFAREA'' IS INVALID.'                               
+         MEXIT                                                                  
+.JCLIF11 ANOP                          IFAREA IN REGISTER NOTATION              
+&REG     SETC  '&IFAREA'(2,K'&IFAREA-2) STRIP AWAY PARENTHESES                  
+.JCLIF2  ANOP                          IFAREA IN SYMBOL NOTATION                
+.* CHECK VALUE OF CMD KEYWORD                                                   
+.TESTCMD AIF   ('&CMD' EQ 'VTAPE').VTAPE,                              X        
+               ('&CMD' EQ 'SYSDEF').SYSDEF                     @D68LDFM         
+         MNOTE 8,'''CMD=&CMD'' IS INVALID.'                                     
+         MEXIT                                                                  
+.VTAPE   ANOP                                                                   
+&PNAME   SETC  '$IJBVTAP'              VTAPE COMMAND PROCESSOR PHASE            
+         AGO   .GENCODE                                        @D68LDFM         
+.SYSDEF  ANOP                                                  @D68LDFM         
+&PNAME   SETC  '$IJBSDSP'              SYSDEF COMMAND PROCESSOR@D68LDFM         
+.GENCODE ANOP                                                  @D68LDFM         
+         CDLOAD &PNAME,SVA=YES         GET PHASE'S ENTRY POINT                  
+         LR    15,1                    REMEMBER ENTRY POINT                     
+         AIF   (K'&REG EQ 0).JCLIF3                                             
+         LR    1,&REG                  PROVIDE POINTER TO PARMLIST              
+         AGO   .JCLIF4                                                          
+.JCLIF3  ANOP                                                                   
+         LA    1,&IFAREA               PROVIDE ADDRESS OF PARMLIST              
+.JCLIF4  ANOP                                                                   
+         BASSM 14,15                   CONTROL TO CMD PROCESSOR PHASE           
+         MEND                                                                   

@@ -1,0 +1,1834 @@
+* % GOTO PLSSKIP;  /*                                                   00001000
+*/********************************************************************/ 00002000
+*/*                                                                  */ 00003000
+*/*01* MACRO-NAME = FREEMAIN                                         */ 00004000
+*/*                                                                  */ 00005000
+*/*01* DESCRIPTIVE-NAME = Free main storage macro.                   */ 00006000
+*/*                                                                  */ 00007000
+*/*01* PROPRIETARY STATEMENT=                                        */ 00008000
+*/***PROPRIETARY_STATEMENT********************************************/ 00009000
+*/*                                                                  */ 00010000
+*/*                                                                  */ 00011000
+*/*         LICENSED MATERIALS - PROPERTY OF IBM                     */ 00012790
+*/*         "RESTRICTED MATERIALS OF IBM"                            */ 00013580
+*/*         5686-066                                                 */ 00014370
+*/*         (C)COPYRIGHT IBM CORP. 1996                              */ 00015160
+*/*                                                                  */ 00016000
+*/* STATUS= JBB4422                                                  */ 00017000
+*/*                                                                  */ 00018000
+*/***END_OF_PROPRIETARY_STATEMENT*************************************/ 00019000
+*/*                                                                  */ 00020000
+*/*01* FUNCTION =                                                    */ 00021000
+*/*    Interface to VSM used to free a block of virtual storage.     */ 00022000
+*/*                                                                  */ 00023000
+*/*01* MACROS-INVOKED = SYSSTATE                                     */ 00024000
+*/*                                                                  */ 00025000
+*/*01* EXTERNAL MACRO VARIABLES = SYSASCE                            */ 00026000
+*/*                                                                  */ 00027000
+*/*01* CHANGE ACTIVITY =                                             */ 00028000
+*/*                                                                  */ 00029000
+*/*         $D1=DCR0127,HBB3310,861029,PDF5: Allow disabled,         */ 00030000
+*/*             AR mode users of branch entry GETMAIN/FREEMAIN to    */ 00031000
+*/*             get/free storage from the primary address space.     */ 00032000
+*/*             (Access registers are ignored.)                  @D1A*/ 00033000
+*/*         OZ74333 - When REG1 is used for ADDRESS parm, no LA was  */ 00034000
+*/*             done                                                 */ 00035000
+*/*         $L1=PROD310,HBB3310,870603,PDF5:  Copy-right changes @L1A*/ 00036000
+*/*         OY30573 - Restore value in register for KEY parameter    */ 00037000
+*/*      $L2=SUBOV  ,JBB4422,900928,PDDS: Support for new low        */ 00038000
+*/*                  private, user-key subpools.                 @L2A*/ 00039000
+*/*      $O1=OY45819,JBB4422,910620,PDF5: Subpool FREEMAIN request   */ 00040000
+*/*                  fails to assemble.  'FREEMAIN RU,SP=SPNUM'      */ 00041000
+*/*                  was expanding to include 'O 15,IHBxxxxZ', which */ 00042000
+*/*                  was supposed to set the 'key-specified' bit     */ 00043000
+*/*                  in register 15 if the KEY parameter was         */ 00044000
+*/*                  specified.  IHBxxxxZ was, however, undefined.   */ 00045000
+*/*                  The KEY parameter makes no sense on a subpool   */ 00046000
+*/*                  FREEMAIN, so the fix for this APAR was to       */ 00047000
+*/*                  remove the 'O 15,IHBxxxxZ' from the expansion.  */ 00048000
+*/*                                                              @O1A*/ 00049000
+*/*      $O2=OY47011,JBB4422,910824,PDF5: Remove superfluous         */ 00050000
+*/*                  instructions from FREEMAIN expansion.           */ 00051000
+*/*                                                              @O2A*/ 00052000
+*/*      @D61ADTN: VSE/ESA Compatibility with MVS/ESA                */ 00053000
+*/*                                                                  */ 00054000
+*/********************************************************************/ 00055000
+*/*                                                              @D1A*/ 00056000
+* %/*                                                                   00057000
+         MACRO                                                          00058000
+&NAME    FREEMAIN &MODE,&LV=,&LA=,&A=,&SP=,&BRANCH=,&KEY=,&MF=I,       *00059000
+               &RELATED=                                                00060000
+.******************************************************************     00061000
+.* Parameters                                                           00062000
+.******************************************************************     00063000
+.* &MODE    - The mode                                                  00064000
+.* &LV      - The input length value                                    00065000
+.* &LA      - The input length address                                  00066000
+.* &A       - The address GETMAIN will return your output in            00067000
+.* &SP      - The subpool                                               00068000
+.* &MF      - The macro format                                          00069000
+.* &KEY     - The key                                                   00070000
+.* &BRANCH  - Branch entry or SVC                                       00071000
+.* &RELATED - Any valid macro keyword specification                     00072000
+.******************************************************************     00073000
+.* Local and global variables                                           00074000
+.******************************************************************     00075000
+.* &SVCN    - SVC number. currently valid choices: 4,10,120             00076000
+.* &PRG     - parameter register                                        00077000
+.* &AA      - 1= LV value is in a register                              00078000
+.* &B       - 1= LA value is in a register                              00079000
+.* &C       - 1= A value is in a register                               00080000
+.* &D       - something to do with subpool                              00081000
+.* &KYSPC   - 1= key was specified on the macro          @L2A           00082000
+.* &M       -                                                           00083000
+.* &CTR     -                                                           00084000
+.* &GLBR    - 1= global branch entry request                            00085000
+.* &BR      - 1= branch entry request                                   00086000
+.* &SPREG   - 1= subpool was passed to us in a register                 00087000
+.* &UNCND   - 1= its an unconditional request                           00088000
+.* &CND     - 1= its a conditional request                              00089000
+.* &KEYRG   - 1= key was passed to us in a register                     00090000
+.* &LVREG   - 1= length value was passed to us in a register            00091000
+.* &GNAME   -                                                           00092000
+.* &SYSASCE - indicates whether the invoker of FREEMAIN is in AR        00093000
+.*            mode or primary mode.                                     00094000
+.*                                                                      00095000
+.******************************************************************     00096000
+         LCLC  &GNAME                                                   00097000
+         LCLB  &AA,&B,&C,&D,&M(3),&GLBR,&BR,&UNCND,&SPREG,&KEYRG,&LVREG 00098000
+         LCLB  &KYSPC                                                   00099000
+.*                        @L2A                                          00100000
+         LCLA  &CTR,&SVCN,&PRG,&CND                                     00101000
+         GBLC  &SYSASCE                Global character variable -      00102000
+.*                                     indicates whether the invoker    00103000
+.*                                     of GETMAIN is in AR ASC mode or  00104000
+.*                                     primary ASC mode.           @D1A 00105000
+&PRG     SETA  15             DEFAULT PARM REG FOR RC AND RU FORMS      00106000
+&GNAME   SETC  'IHB'.'&SYSNDX'                                          00107000
+.********************************************************************** 00108000
+.*   Check for unsupported keywords in the VSE Environment   @D61ADTN * 00109000
+.********************************************************************** 00110000
+.*                                                                      00111000
+         AIF (T'&BRANCH NE 'O').ERBRNCH                        @D61PDTN 00112000
+.*                                                                      00113000
+         SYSSTATE TEST            This macro sets the global       @D1A 00114000
+.*                                variable SYSASCE.  This          @D1A 00115000
+.*                                variable is used later to        @D1A 00116000
+.*                                determine whether the caller is  @D1A 00117000
+.*                                in AR ASC mode or primary ASC    @D1A 00118000
+.*                                mode.                            @D1A 00119000
+.*                                                                      00120000
+.******************************************************************     00121000
+.* If no key was specified then go to the label SKIP since key          00122000
+.* can't be checked against anything else.                              00123000
+.******************************************************************     00124000
+.*                                                                      00125000
+         AIF   ('&KEY' EQ '').SKIP                                      00126000
+.*                                                                      00127000
+.******************************************************************     00128000
+.* Key was specified, set a variable to indicate that it was            00129000
+.* specified on the freemain invocation.  This will help us             00130000
+.* distinguish between key not specified and key 0 specified. @L2A      00131000
+.******************************************************************     00132000
+.*                                                                      00133000
+&KYSPC   SETB  ('&KEY' NE '')                    @L2A                   00134000
+.*                                                                      00135000
+.******************************************************************     00136000
+.* Key was specified, and since it can only be specified with RC and    00137000
+.* RU issue an error message for the other modes.                       00138000
+.******************************************************************     00139000
+.*                                                                      00140000
+         AIF   ('&MODE' NE 'RC' AND '&MODE' NE 'RU').ERRORA             00141000
+.*                                                                      00142000
+.******************************************************************     00143000
+.* Set a bit to indicate if the key is in a register or not.            00144000
+.* If possible , check the key given and issue error messages if        00145000
+.* its invalid.                                                         00146000
+.******************************************************************     00147000
+.*                                                                      00148000
+&KEYRG   SETB  ('&KEY'(1,1) EQ '(')     KEY IS IN A REGISTER            00149000
+         AIF   (&KEYRG).SKIP   REGISTER VALUE CANNOT BE CHECKED         00150000
+         AIF   (T'&KEY NE 'N').SKIP     EQUATED KEYS CANNOT BE CHECKED  00151000
+         AIF   (&KEY GT 15).ERRORB                                      00152000
+.*                                                                      00153000
+.******************************************************************     00154000
+.* Branch form cannot be specified with the list form of the macro      00155000
+.******************************************************************     00156000
+.*                                                                      00157000
+.SKIP    AIF   ('&MF' EQ 'L' AND '&BRANCH' NE '').ERRORC                00158000
+.*                                                                      00159000
+.******************************************************************     00160000
+.* If branch wasn't specified, continue at BRCNT                        00161000
+.******************************************************************     00162000
+.*                                                                      00163000
+         AIF   ('&BRANCH' EQ '').BRCNT                                  00164000
+.*                                                                      00165000
+.******************************************************************     00166000
+.* If its just a single branch request like YES or NO then go to        00167000
+.* BRSNG to continue                                                    00168000
+.******************************************************************     00169000
+.*                                                                      00170000
+         AIF   ('&BRANCH'(1,1) NE '(').BRSNG                            00171000
+.*                                                                      00172000
+.******************************************************************     00173000
+.* The only valid double branch request is YES,GLOBAL. Give error       00174000
+.* message for anything else.                                           00175000
+.******************************************************************     00176000
+.*                                                                      00177000
+       AIF   ('&BRANCH(1)' NE 'YES' OR '&BRANCH(2)' NE 'GLOBAL').ERRORD 00178000
+.*                                                                      00179000
+.******************************************************************     00180000
+.* Global requests are only valid for RC and RU forms of freemain       00181000
+.* so issue an error message for any others.                            00182000
+.******************************************************************     00183000
+.*                                                                      00184000
+         AIF   ('&BRANCH(2)' EQ 'GLOBAL' AND '&MODE' NE 'RC' AND       *00185000
+               '&MODE' NE 'RU').ERRORF                                  00186000
+.*                                                                      00187000
+.******************************************************************     00188000
+.* Set the bits that say this is global and that its branch entry       00189000
+.******************************************************************     00190000
+.*                                                                      00191000
+&GLBR    SETB  1                                                        00192000
+&BR      SETB  1                                                        00193000
+.*                                                                      00194000
+.******************************************************************     00195000
+.* Branch unconditionally to BRCNT to continue                          00196000
+.******************************************************************     00197000
+.*                                                                      00198000
+         AGO   .BRCNT                                                   00199000
+.*                                                                      00200000
+.******************************************************************     00201000
+.* If branch NO was specified, its an error because you must            00202000
+.* specify branch YES when key has been specified (something that       00203000
+.* we already decided was specified in code above)                      00204000
+.******************************************************************     00205000
+.*                                                                      00206000
+.BRSNG   AIF   ('&BRANCH' NE 'YES').ERRORD                              00207000
+.*                                                                      00208000
+.******************************************************************     00209000
+.* Otherwise it was just a single, valid yes so set the bit that        00210000
+.* says this is branch entry                                            00211000
+.******************************************************************     00212000
+.*                                                                      00213000
+&BR      SETB  1                                                        00214000
+.BRCNT   ANOP                                                           00215000
+.*                                                                      00216000
+.******************************************************************     00217000
+.* Set the SVC number to  5                                             00218000
+.******************************************************************     00219000
+.*                                                                      00220000
+&SVCN    SETA  5                                                        00221000
+.*                                                                      00222000
+.******************************************************************     00223000
+.* If this is a 1 character mode freemain request (such as  V, L and    00224000
+.* R) then go to SKPC to continue processing                            00225000
+.******************************************************************     00226000
+.*                                                                      00227000
+         AIF   (K'&MODE LT 2).SKPC                                      00228000
+.*                                                                      00229000
+.******************************************************************     00230000
+.* Since the greatest size mode is a 2 character one, flag all the      00231000
+.* others as errors                                                     00232000
+.******************************************************************     00233000
+.*                                                                      00234000
+         AIF   (K'&MODE GT 2).ERROR7                           @G860P30 00235000
+.*                                                                      00236000
+.******************************************************************     00237000
+.* If its an unconditional request, go to SKPC to continue processing   00238000
+.******************************************************************     00239000
+.*                                                                      00240000
+         AIF   ('&MODE'(2,1) NE 'C').SKPC                               00241000
+.*                                                                      00242000
+.******************************************************************     00243000
+.* Set the conditional variable to indicate that this is a conditional  00244000
+.* request                                                              00245000
+.******************************************************************     00246000
+.*                                                                      00247000
+&CND     SETA  32                                                       00248000
+.*                                                                      00249000
+.******************************************************************     00250000
+.* Mode must be specified on the internal format. If it wasn't go       00251000
+.* to error1                                                            00252000
+.******************************************************************     00253000
+.*                                                                      00254000
+.SKPC    AIF   ('&MODE' EQ '' AND '&MF' EQ 'I').ERROR1                  00255000
+.*                                                                      00256000
+.******************************************************************     00257000
+.* Both LV and LA cannot be given on the same request                   00258000
+.******************************************************************     00259000
+.*                                                                      00260000
+         AIF   ('&LV' NE '' AND '&LA' NE '').ERROR5                     00261000
+.*                                                                      00262000
+.******************************************************************     00263000
+.* If mode wasn't specified then go to CONTA to continue processing.    00264000
+.******************************************************************     00265000
+.*                                                                      00266000
+         AIF   ('&MODE' EQ '').CONTA                                    00267000
+.*                                                                      00268000
+.******************************************************************     00269000
+.* All E modes require LV                                               00270000
+.******************************************************************     00271000
+.*                                                                      00272000
+         AIF   ('&MODE'(1,1) EQ 'E' AND '&LA' NE '').ERROR6             00273000
+.*                                                                      00274000
+.******************************************************************     00275000
+.* All R modes don't use LA. They either use LV or SP                   00276000
+.******************************************************************     00277000
+.*                                                                      00278000
+         AIF   ('&MODE'(1,1) EQ 'R' AND '&LA' NE '').ERROR6             00279000
+.*                                                                      00280000
+.******************************************************************     00281000
+.* All L modes require LA                                               00282000
+.******************************************************************     00283000
+.*                                                                      00284000
+         AIF   ('&MODE'(1,1) EQ 'L' AND '&LV' NE '').ERROR4             00285000
+.*                                                                      00286000
+.******************************************************************     00287000
+.* V forms don't use LV                                                 00288000
+.******************************************************************     00289000
+.*                                                                      00290000
+         AIF   ('&MODE'(1,1) EQ 'V' AND '&LV' NE '').ERROR4             00291000
+.*                                                                      00292000
+.******************************************************************     00293000
+.* V forms don't use LA                                                 00294000
+.******************************************************************     00295000
+.*                                                                      00296000
+         AIF   ('&MODE'(1,1) EQ 'V' AND '&LA' NE '').ERROR6             00297000
+.*                                                                      00298000
+.******************************************************************     00299000
+.* If the macro format isn't I then continue at CONTB                   00300000
+.******************************************************************     00301000
+.*                                                                      00302000
+.CONTA   AIF   ('&MF' NE 'I').CONTB                                     00303000
+.*                                                                      00304000
+.******************************************************************     00305000
+.* E forms require LV to be specified                                   00306000
+.******************************************************************     00307000
+.*                                                                      00308000
+         AIF   ('&MODE'(1,1) EQ 'E' AND '&LV' EQ '').ERROR8             00309000
+.*                                                                      00310000
+.******************************************************************     00311000
+.* L forms require LA to be specified                                   00312000
+.******************************************************************     00313000
+.*                                                                      00314000
+         AIF   ('&MODE'(1,1) EQ 'L' AND '&LA' EQ '').ERROR8             00315000
+.*                                                                      00316000
+.******************************************************************     00317000
+.* All non-R forms require A to be specified                            00318000
+.******************************************************************     00319000
+.*                                                                      00320000
+         AIF   ('&MODE'(1,1) NE 'R' AND '&A' EQ '').ERROR8              00321000
+.*                                                                      00322000
+.******************************************************************     00323000
+.* If its a list form go to LROUT to do list form processing            00324000
+.******************************************************************     00325000
+.*                                                                      00326000
+.CONTB   AIF   ('&MF' EQ 'L').LROUT                                     00327000
+.*                                                                      00328000
+.******************************************************************     00329000
+.* If its an internal form go to IROUT to do internal form processing   00330000
+.******************************************************************     00331000
+.*                                                                      00332000
+         AIF   ('&MF' EQ 'I').IROUT                                     00333000
+.*                                                                      00334000
+.******************************************************************     00335000
+.* The only form left is execute form and this form requires that       00336000
+.* you supply a remote control program parameter....MF=(E,ctrl prog)    00337000
+.* So, if the number of things given isn't 2, then its an error         00338000
+.******************************************************************     00339000
+.*                                                                      00340000
+         AIF   (N'&MF LE 1).ERROR2                                      00341000
+         AIF   ('&MF(1)' NE 'E').ERROR2                                 00342000
+.*                                                                      00343000
+.******************************************************************     00344000
+.* Load register 1 with the parameter list                              00345000
+.******************************************************************     00346000
+.*                                                                      00347000
+&NAME    IHBINNRA &MF(2)                                                00348000
+.*                                                                      00349000
+.******************************************************************     00350000
+.* If mode wasn't specified, skip the setting of M.                     00351000
+.******************************************************************     00352000
+.*                                                                      00353000
+.CONTC   AIF   ('&MODE' EQ '').CONTD                                    00354000
+.*                                                                      00355000
+.******************************************************************     00356000
+.* Set the bits to indicate if it was a list request, element           00357000
+.* request or variable request.                                         00358000
+.******************************************************************     00359000
+.*                                                                      00360000
+&M(1)    SETB  ('&MODE'(1,1) EQ 'E')                                    00361000
+&M(2)    SETB  ('&MODE'(1,1) EQ 'L')                                    00362000
+&M(3)    SETB  ('&MODE'(1,1) EQ 'V')                                    00363000
+.*                                                                      00364000
+.******************************************************************     00365000
+.* If its not one of these and we are at this code, its an error        00366000
+.******************************************************************     00367000
+.*                                                                      00368000
+         AIF   (&M(1)+&M(2)+&M(3) NE 1).ERROR7                          00369000
+.*                                                                      00370000
+.******************************************************************     00371000
+.* Place this information in a control variable and then store it       00372000
+.* in the parameter list.                                               00373000
+.******************************************************************     00374000
+.*                                                                      00375000
+&CTR     SETA  128*&M(2)+192*&M(3)+&CND                                 00376000
+         MVI   8(1),&CTR                         MOVE MODE BYTE TO LIST 00377000
+.*                                                                      00378000
+.******************************************************************     00379000
+.* If LV wasn't specified then skip over the checks related to it       00380000
+.******************************************************************     00381000
+.*                                                                      00382000
+.CONTD   AIF   ('&LV' EQ '').CONTG                                      00383000
+.*                                                                      00384000
+.******************************************************************     00385000
+.* If LV was given to us in a register, go to ISAREGA to process it     00386000
+.******************************************************************     00387000
+.*                                                                      00388000
+         AIF   ('&LV'(1,1) EQ '(').ISAREGA                              00389000
+.*                                                                      00390000
+.******************************************************************     00391000
+.* If LV was given to us in a variable, go to CONTAA to process it      00392000
+.******************************************************************     00393000
+.*                                                                      00394000
+         AIF   (T'&LV EQ 'N').CONTAA                                    00395000
+.*                                                                      00396000
+.******************************************************************     00397000
+.* Otherwise, just store it in the parameter list in the right place    00398000
+.******************************************************************     00399000
+.*                                                                      00400000
+.CONTBB  ANOP                                                           00401000
+         B     *+8                               BRANCH AROUND LENGTH   00402000
+         DC    AL4(&LV)                          LENGTH                 00403000
+         MVC   0(4,1),*-4                        MOVE LENGTH INTO LIST  00404000
+.*                                                                      00405000
+.******************************************************************     00406000
+.* Branch unconditionally to CONTG to continue processing               00407000
+.******************************************************************     00408000
+.*                                                                      00409000
+         AGO   .CONTG                                                   00410000
+.*                                                                      00411000
+.******************************************************************     00412000
+.* If the length that we are trying to free is greater than a page      00413000
+.* then go to CONTBB to continue                                        00414000
+.******************************************************************     00415000
+.*                                                                      00416000
+.CONTAA  AIF   (&LV GT 4095).CONTBB                                     00417000
+.*                                                                      00418000
+.******************************************************************     00419000
+.* Otherwise, store the length in the parameter list and branch         00420000
+.* unconditionally to CONTG to continue processing                      00421000
+.******************************************************************     00422000
+.*                                                                      00423000
+         LA    14,&LV.(0,0)                      PICK UP LENGTH         00424000
+         ST    14,0(0,1)                         STORE LENGTH INTO LIST 00425000
+         AGO   .CONTG                                                   00426000
+.*                                                                      00427000
+.******************************************************************     00428000
+.* Otherwise, store the length in the parameter list and branch         00429000
+.* unconditionally to CONTG to continue processing                      00430000
+.******************************************************************     00431000
+.*                                                                      00432000
+.ISAREGA ST    &LV(1),0(0,1)                     STORE LENGTH INTO LIST 00433000
+.*                                                                      00434000
+.******************************************************************     00435000
+.* If LA wasn't specified then go to CONTH to continue processing       00436000
+.******************************************************************     00437000
+.*                                                                      00438000
+.CONTG   AIF   ('&LA' EQ '').CONTH                                      00439000
+.*                                                                      00440000
+.******************************************************************     00441000
+.* If LA was specified in a register then go to ISAREGB to continue     00442000
+.******************************************************************     00443000
+.*                                                                      00444000
+         AIF   ('&LA'(1,1) EQ '(').ISAREGB                              00445000
+.*                                                                      00446000
+.******************************************************************     00447000
+.* Otherwise, its there for the taking so just put it in the            00448000
+.* parameter list. Then, branch unconditionally to CONTH to continue    00449000
+.******************************************************************     00450000
+.*                                                                      00451000
+         LA    14,&LA                            PICK UP LIST ADDRESS   00452000
+         ST    14,0(0,1)                         STORE LA INTO LIST     00453000
+         AGO   .CONTH                                                   00454000
+.*                                                                      00455000
+.******************************************************************     00456000
+.* LA is in a register, get it and put it in the                        00457000
+.* parameter list.                                                      00458000
+.******************************************************************     00459000
+.*                                                                      00460000
+.ISAREGB ST    &LA(1),0(0,1)                     STORE LA INTO LIST     00461000
+.*                                                                      00462000
+.******************************************************************     00463000
+.* If A wasn't specified then go to CONTI to continue                   00464000
+.******************************************************************     00465000
+.*                                                                      00466000
+.CONTH   AIF   ('&A' EQ '').CONTI                                       00467000
+.*                                                                      00468000
+.******************************************************************     00469000
+.* If A was specified in a register then go to ISAREGC to process       00470000
+.* it.                                                                  00471000
+.******************************************************************     00472000
+.*                                                                      00473000
+         AIF   ('&A'(1,1) EQ '(').ISAREGC                               00474000
+.*                                                                      00475000
+.******************************************************************     00476000
+.* Otherwise take the address and store it in the parameter list        00477000
+.* before branching unconditionally to CONTI to continue processing     00478000
+.******************************************************************     00479000
+.*                                                                      00480000
+         LA    14,&A                             PICK UP AREA LIST ADDR 00481000
+         ST    14,4(0,1)                         STORE INTO LIST        00482000
+         AGO   .CONTI                                                   00483000
+.*                                                                      00484000
+.******************************************************************     00485000
+.* A in a register processing. Store it in the parameter list           00486000
+.******************************************************************     00487000
+.*                                                                      00488000
+.ISAREGC ST    &A(1),4(0,1)                      STORE A-ADDR INTO LIST 00489000
+.*                                                                      00490000
+.******************************************************************     00491000
+.* If subpool wasn't specified, we're done, go to FINI                  00492000
+.******************************************************************     00493000
+.*                                                                      00494000
+.CONTI   AIF   ('&SP' EQ '').FINI                                       00495000
+.*                                                                      00496000
+.******************************************************************     00497000
+.* If subpool is in a register, then go to ISAREGD to continue          00498000
+.* processing                                                           00499000
+.******************************************************************     00500000
+.*                                                                      00501000
+         AIF   ('&SP'(1,1) EQ '(').ISAREGD                              00502000
+.*                                                                      00503000
+.******************************************************************     00504000
+.* Otherwise, just put the subpool in the parameter list.               00505000
+.* Then unconditionally branch to FINI to finish.                       00506000
+.******************************************************************     00507000
+.*                                                                      00508000
+         MVI   9(1),&SP                          MOVE SUBPOOL INTO LIST 00509000
+         AGO   .FINI                                                    00510000
+.*                                                                      00511000
+.******************************************************************     00512000
+.* Subpool in a register processing.                                    00513000
+.* Then unconditionally branch to FINI to finish.                       00514000
+.******************************************************************     00515000
+.*                                                                      00516000
+.ISAREGD STC   &SP(1),9(0,1)                     STORE SUBPOOL IN LIST  00517000
+         AGO   .FINI                                                    00518000
+.*                                                                      00519000
+.******************************************************************     00520000
+.* List Form processing ...if length wasn't specified, go to CONTJ      00521000
+.******************************************************************     00522000
+.*                                                                      00523000
+.LROUT   AIF   ('&LV' EQ '').CONTJ                                      00524000
+.*                                                                      00525000
+.******************************************************************     00526000
+.* If the length was given to us in a register, thats an error          00527000
+.******************************************************************     00528000
+.*                                                                      00529000
+         AIF   ('&LV'(1,1) EQ '(').ERROR3                               00530000
+.*                                                                      00531000
+.******************************************************************     00532000
+.* Else it was just given to us straight, take it then branch to        00533000
+.* CONTL to continue                                                    00534000
+.******************************************************************     00535000
+.*                                                                      00536000
+&NAME    DC    A(&LV)                            LENGTH                 00537000
+         AGO   .CONTL                                                   00538000
+.*                                                                      00539000
+.******************************************************************     00540000
+.* If the length address wasn't specified go to CONTK to continue       00541000
+.******************************************************************     00542000
+.*                                                                      00543000
+.CONTJ   AIF   ('&LA' EQ '').CONTK                                      00544000
+.*                                                                      00545000
+.******************************************************************     00546000
+.* If the length address was given to us in a register, its an error    00547000
+.******************************************************************     00548000
+.*                                                                      00549000
+         AIF   ('&LA'(1,1) EQ '(').ERROR3                               00550000
+.*                                                                      00551000
+.******************************************************************     00552000
+.* Else it was just given to us straight, take it , put it in the       00553000
+.* parameter list and branch to CONTL to continue                       00554000
+.******************************************************************     00555000
+.*                                                                      00556000
+&NAME    DC    A(&LA)                            LIST ADDRESS           00557000
+         AGO   .CONTL                                                   00558000
+.CONTK   ANOP                                                           00559000
+.*                                                                      00560000
+.******************************************************************     00561000
+.* Save the space in the parameter list that the LA would have taken    00562000
+.* had it been specified.                                               00563000
+.******************************************************************     00564000
+.*                                                                      00565000
+&NAME    DC    F'0'                                                     00566000
+.*                                                                      00567000
+.******************************************************************     00568000
+.* If A parameter wasn't specified then go to CONTM to continue         00569000
+.******************************************************************     00570000
+.*                                                                      00571000
+.CONTL   AIF   ('&A' EQ '').CONTM                                       00572000
+.*                                                                      00573000
+.******************************************************************     00574000
+.* If A parameter was specified in a register, its an error. Go to      00575000
+.* ERROR3 to continue.                                                  00576000
+.******************************************************************     00577000
+.*                                                                      00578000
+         AIF   ('&A'(1,1) EQ '(').ERROR3                                00579000
+.*                                                                      00580000
+.******************************************************************     00581000
+.* Otherwise just store it in the parameter list                        00582000
+.******************************************************************     00583000
+.*                                                                      00584000
+         DC    A(&A)                             AREA LIST ADDRESS      00585000
+.*                                                                      00586000
+.******************************************************************     00587000
+.* Unconditionally branch to CONTN to continue processing               00588000
+.******************************************************************     00589000
+.*                                                                      00590000
+         AGO   .CONTN                                                   00591000
+.*                                                                      00592000
+.******************************************************************     00593000
+.* Save the space in the parameter list that the A would have taken     00594000
+.* had it been specified.                                               00595000
+.******************************************************************     00596000
+.*                                                                      00597000
+.CONTM   DC    F'0'                              AREA LIST ADDRESS      00598000
+.*                                                                      00599000
+.******************************************************************     00600000
+.* If mode wasn't specified, then go to CONTO to continue processing    00601000
+.******************************************************************     00602000
+.*                                                                      00603000
+.CONTN   AIF   ('&MODE' EQ '').CONTO                                    00604000
+.*                                                                      00605000
+.******************************************************************     00606000
+.* Set a series of bits in M to indicate the mode specified             00607000
+.******************************************************************     00608000
+.*                                                                      00609000
+&M(1)    SETB  ('&MODE'(1,1) EQ 'E')                                    00610000
+&M(2)    SETB  ('&MODE'(1,1) EQ 'L')                                    00611000
+&M(3)    SETB  ('&MODE'(1,1) EQ 'V')                                    00612000
+.*                                                                      00613000
+.******************************************************************     00614000
+.* If none of the about set instructions was true, then go to           00615000
+.* ERROR7 to issue an error message because the mode is invalid.        00616000
+.******************************************************************     00617000
+.*                                                                      00618000
+         AIF   (&M(1)+&M(2)+&M(3) NE 1).ERROR7                          00619000
+.*                                                                      00620000
+.******************************************************************     00621000
+.* Fill in the mode byte and put it in the parameter list               00622000
+.******************************************************************     00623000
+.*                                                                      00624000
+&CTR     SETA  128*&M(2)+192*&M(3)+&CND                                 00625000
+         DC    AL1(&CTR)                         MODE BYTE              00626000
+.*                                                                      00627000
+.******************************************************************     00628000
+.* Unconditionally branch to CONTSP to continue processing              00629000
+.******************************************************************     00630000
+.*                                                                      00631000
+         AGO   .CONTSP                                                  00632000
+.*                                                                      00633000
+.******************************************************************     00634000
+.* Save the space it would have taken if the mode byte was there.       00635000
+.******************************************************************     00636000
+.*                                                                      00637000
+.CONTO   DC    AL1(0)                            MODE BYTE              00638000
+.*                                                                      00639000
+.******************************************************************     00640000
+.* If subpool wasn't specified, go to CONTU to continue processing      00641000
+.******************************************************************     00642000
+.*                                                                      00643000
+.CONTSP  AIF   ('&SP' EQ '').CONTU                                      00644000
+.*                                                                      00645000
+.******************************************************************     00646000
+.* If subpool is in a register, its an error, go to ERROR3              00647000
+.******************************************************************     00648000
+.*                                                                      00649000
+         AIF   ('&SP'(1,1) EQ '(').ERROR3                               00650000
+.*                                                                      00651000
+.******************************************************************     00652000
+.* Otherwise just store the subpool value in the parameter list         00653000
+.******************************************************************     00654000
+.*                                                                      00655000
+         DC    AL1(&SP)                          SUBPOOL VALUE          00656000
+.*                                                                      00657000
+.******************************************************************     00658000
+.* Unconditionally branch to FINISH to continue processing              00659000
+.******************************************************************     00660000
+.*                                                                      00661000
+         AGO   .FINISH                                                  00662000
+.*                                                                      00663000
+.******************************************************************     00664000
+.* Save the space it would have taken if the subpool was given  .       00665000
+.******************************************************************     00666000
+.*                                                                      00667000
+.CONTU   DC    AL1(0)                            SUBPOOL VALUE          00668000
+.*                                                                      00669000
+.******************************************************************     00670000
+.* Exit the macro                                                       00671000
+.******************************************************************     00672000
+.*                                                                      00673000
+.FINISH  MEXIT                                                          00674000
+.*                                                                      00675000
+.******************************************************************     00676000
+.* Internal Form processing, go to the appropriate spot depending       00677000
+.* on if its R mode or P mode                                           00678000
+.******************************************************************     00679000
+.*                                                                      00680000
+.IROUT   AIF   ('&MODE'(1,1) EQ 'R').RROUT                              00681000
+         AIF   ('&MODE'(1,1) EQ 'P').PROUT                     @Z30EN9G 00682000
+.*                                                                      00683000
+.******************************************************************     00684000
+.* Internal Form processing                                             00685000
+.******************************************************************     00686000
+.*                                                                      00687000
+         CNOP  0,4                                                      00688000
+&NAME    BAL   1,*+14                            BRANCH AROUND LIST     00689000
+.*                                                                      00690000
+.******************************************************************     00691000
+.* If Length variable wasn't specified then got to CNTA to continue     00692000
+.******************************************************************     00693000
+.*                                                                      00694000
+         AIF   ('&LV' EQ '').CNTA                                       00695000
+.*                                                                      00696000
+.******************************************************************     00697000
+.* If Length variable was given to us in a register, got to CNTB        00698000
+.* to continue                                                          00699000
+.******************************************************************     00700000
+.*                                                                      00701000
+         AIF   ('&LV'(1,1) EQ '(').CNTB                                 00702000
+.*                                                                      00703000
+.******************************************************************     00704000
+.* Otherwise just store it in the parm list since it was given to       00705000
+.* us directly on the invocation.                                       00706000
+.******************************************************************     00707000
+.*                                                                      00708000
+         DC    A(&LV)                            LENGTH                 00709000
+.*                                                                      00710000
+.******************************************************************     00711000
+.* Unconditionally branch to CNTC   to continue processing              00712000
+.******************************************************************     00713000
+.*                                                                      00714000
+         AGO   .CNTC                                                    00715000
+.*                                                                      00716000
+.******************************************************************     00717000
+.* Save the space it would have taken if the length was given  .        00718000
+.******************************************************************     00719000
+.*                                                                      00720000
+.CNTB    DC    A(0)                              LENGTH                 00721000
+.*                                                                      00722000
+.******************************************************************     00723000
+.* Set &AA to indicate that the LV was given in a register              00724000
+.******************************************************************     00725000
+.*                                                                      00726000
+&AA      SETB  1                                                        00727000
+.*                                                                      00728000
+.******************************************************************     00729000
+.* Unconditionally branch to CNTC   to continue processing              00730000
+.******************************************************************     00731000
+.*                                                                      00732000
+         AGO   .CNTC                                                    00733000
+.*                                                                      00734000
+.******************************************************************     00735000
+.* If the length address wasn't specified then go to CNTDD to continue  00736000
+.******************************************************************     00737000
+.*                                                                      00738000
+.CNTA    AIF   ('&LA' EQ '').CNTDD                                      00739000
+.*                                                                      00740000
+.******************************************************************     00741000
+.* If the length address was specified in a register go to CNTD         00742000
+.* to continue                                                          00743000
+.******************************************************************     00744000
+.*                                                                      00745000
+         AIF   ('&LA'(1,1) EQ '(').CNTD                                 00746000
+.*                                                                      00747000
+.******************************************************************     00748000
+.* Otherwise, just store the length address in the parameter list       00749000
+.* since it was given to us directly on the invocation                  00750000
+.******************************************************************     00751000
+.*                                                                      00752000
+         DC    A(&LA)                            LIST ADDRESS           00753000
+.*                                                                      00754000
+.******************************************************************     00755000
+.* Unconditionally branch to CNTC   to continue processing              00756000
+.******************************************************************     00757000
+.*                                                                      00758000
+         AGO   .CNTC                                                    00759000
+.CNTD    ANOP                                                           00760000
+.*                                                                      00761000
+.******************************************************************     00762000
+.* Set &B on to indicate that LA was given to us in a register          00763000
+.******************************************************************     00764000
+.*                                                                      00765000
+&B       SETB  1                                                        00766000
+.*                                                                      00767000
+.******************************************************************     00768000
+.* Save the space it would have taken if the length address was given   00769000
+.******************************************************************     00770000
+.*                                                                      00771000
+.CNTDD   DC    A(0)                                                     00772000
+.*                                                                      00773000
+.******************************************************************     00774000
+.* If the address was given in a register, go to CNTE to                00775000
+.* continue                                                             00776000
+.******************************************************************     00777000
+.*                                                                      00778000
+.CNTC    AIF   ('&A'(1,1) EQ '(').CNTE                                  00779000
+.*                                                                      00780000
+.******************************************************************     00781000
+.* Otherwise, just store the address in the parameter list since        00782000
+.* it was given to us directly on the invocation                        00783000
+.******************************************************************     00784000
+.*                                                                      00785000
+         DC    A(&A)                             AREA LIST ADDRESS      00786000
+.*                                                                      00787000
+.******************************************************************     00788000
+.* Unconditionally branch to CNTF   to continue processing              00789000
+.******************************************************************     00790000
+.*                                                                      00791000
+         AGO   .CNTF                                                    00792000
+.*                                                                      00793000
+.******************************************************************     00794000
+.* Save the space it would have taken if the area list address          00795000
+.* was given                                                            00796000
+.******************************************************************     00797000
+.*                                                                      00798000
+.CNTE    DC    A(0)                              AREA LIST ADDRESS      00799000
+.*                                                                      00800000
+.******************************************************************     00801000
+.* Set &C to inicate that the address was given to us in a register.    00802000
+.******************************************************************     00803000
+.*                                                                      00804000
+&C       SETB  1                                                        00805000
+.CNTF    ANOP                                                           00806000
+.*                                                                      00807000
+.******************************************************************     00808000
+.* Set the mode byte to indicate the mode type that was specified       00809000
+.******************************************************************     00810000
+.*                                                                      00811000
+&M(1)    SETB  ('&MODE'(1,1) EQ 'E')                                    00812000
+&M(2)    SETB  ('&MODE'(1,1) EQ 'L')                                    00813000
+&M(3)    SETB  ('&MODE'(1,1) EQ 'V')                                    00814000
+.*                                                                      00815000
+.******************************************************************     00816000
+.* If no valid mode types were specified, go to ERROR7                  00817000
+.******************************************************************     00818000
+.*                                                                      00819000
+         AIF   (&M(1)+&M(2)+&M(3) NE 1).ERROR7                          00820000
+.*                                                                      00821000
+.******************************************************************     00822000
+.* Fill in the mode byte                                                00823000
+.******************************************************************     00824000
+.*                                                                      00825000
+&CTR     SETA  128*&M(2)+192*&M(3)+&CND                                 00826000
+.*                                                                      00827000
+.******************************************************************     00828000
+.* Store the mode byte in the parameter list.                           00829000
+.******************************************************************     00830000
+.*                                                                      00831000
+         DC    AL1(&CTR)                         MODE BYTE              00832000
+.*                                                                      00833000
+.******************************************************************     00834000
+.* If subpool wasn't specified, then go to CNTL to continue             00835000
+.******************************************************************     00836000
+.*                                                                      00837000
+.CNTSP   AIF   ('&SP' EQ '').CNTL                                       00838000
+.*                                                                      00839000
+.******************************************************************     00840000
+.* If subpool was given to us in a register, go to ISAREGQ              00841000
+.* to process it                                                        00842000
+.******************************************************************     00843000
+.*                                                                      00844000
+         AIF   ('&SP'(1,1) EQ '(').ISAREGQ                              00845000
+.*                                                                      00846000
+.******************************************************************     00847000
+.* Else the subpool was specified right on the parameter, just put      00848000
+.* it in the parameter list.                                            00849000
+.******************************************************************     00850000
+.*                                                                      00851000
+         DC    AL1(&SP)                          SUBPOOL VALUE          00852000
+.*                                                                      00853000
+.******************************************************************     00854000
+.* Unconditionally branch to CNTM   to continue processing              00855000
+.******************************************************************     00856000
+.*                                                                      00857000
+         AGO   .CNTM                                                    00858000
+.*                                                                      00859000
+.******************************************************************     00860000
+.* Save the space so that we can put the register that the subpool is   00861000
+.* specified in into the parm list.                                     00862000
+.******************************************************************     00863000
+.*                                                                      00864000
+.ISAREGQ DC    AL1(0)                            SUBPOOL VALUE          00865000
+         STC   &SP(1),9(0,1)                     STORE SUBPOOL          00866000
+.*                                                                      00867000
+.******************************************************************     00868000
+.* Unconditionally branch to CNTM   to continue processing              00869000
+.******************************************************************     00870000
+.*                                                                      00871000
+         AGO   .CNTM                                                    00872000
+.*                                                                      00873000
+.******************************************************************     00874000
+.* Save the space that the subpool would have taken up if it had been   00875000
+.* specified                                                            00876000
+.******************************************************************     00877000
+.*                                                                      00878000
+.CNTL    DC    AL1(0)                            SUBPOOL VALUE          00879000
+.*                                                                      00880000
+.******************************************************************     00881000
+.* If the length variable wasn't given to us in a register go to        00882000
+.* CNTN to continue otherwise, store the length in the parameter        00883000
+.* list                                                                 00884000
+.******************************************************************     00885000
+.*                                                                      00886000
+.CNTM    AIF   (NOT &AA).CNTN                                           00887000
+         ST    &LV(1),0(0,1)                     STORE LENGTH IN LIST   00888000
+.*                                                                      00889000
+.******************************************************************     00890000
+.* Unconditionally branch to CNTO   to continue processing              00891000
+.******************************************************************     00892000
+.*                                                                      00893000
+         AGO   .CNTO                                                    00894000
+.*                                                                      00895000
+.******************************************************************     00896000
+.* If the length address wasn't given to us in a register go to         00897000
+.* CNTO to continue processing otherwise take it out of the             00898000
+.* register and store it in the parameter list.                         00899000
+.******************************************************************     00900000
+.*                                                                      00901000
+.CNTN    AIF   (NOT &B).CNTO                                            00902000
+         ST    &LA(1),0(0,1)                     STORE LA INTO LIST     00903000
+.*                                                                      00904000
+.******************************************************************     00905000
+.* If the a-address wasn't given to us in a register go to              00906000
+.* FINI to continue processing otherwise take it out of the             00907000
+.* register and store it in the parameter list.                         00908000
+.******************************************************************     00909000
+.*                                                                      00910000
+.CNTO    AIF   (NOT &C).FINI                                            00911000
+         ST    &A(1),4(0,1)                      STORE A-ADDR INTO LIST 00912000
+.*                                                                      00913000
+.******************************************************************     00914000
+.* Unconditionally branch to FINI   to continue processing              00915000
+.******************************************************************     00916000
+.*                                                                      00917000
+         AGO   .FINI                                                    00918000
+.*                                                                      00919000
+.******************************************************************     00920000
+.* R form processing. If the number of characters in the mode is        00921000
+.* 2 go to NREGM to do RC and RU processing.                            00922000
+.******************************************************************     00923000
+.*                                                                      00924000
+.RROUT   AIF   (K'&MODE EQ 2).NREGM                                     00925000
+.*                                                                      00926000
+.******************************************************************     00927000
+.* This is SVC 10 processing  (just plain old R)                        00928000
+.******************************************************************     00929000
+.*                                                                      00930000
+&SVCN    SETA  10                                                       00931000
+.*                                                                      00932000
+.******************************************************************     00933000
+.* If the length variable and the a-address weren't specified go to     00934000
+.* SPROUT to continue processing. This is a subpool freemain.           00935000
+.******************************************************************     00936000
+.*                                                                      00937000
+         AIF   ('&LV' EQ '' AND '&A' EQ '').SPROUT                      00938000
+.*                                                                      00939000
+.******************************************************************     00940000
+.* If the length variable or the a-address wasn't specified go to       00941000
+.* ERROR8. One or the other must be specified on regular freemains.     00942000
+.******************************************************************     00943000
+.*                                                                      00944000
+         AIF   ('&LV' EQ '' OR '&A' EQ '').ERROR8                       00945000
+.*                                                                      00946000
+.******************************************************************     00947000
+.* If the length variable was given in register 0 and the subpool       00948000
+.* was also specified, its an error. Go to error9.                      00949000
+.******************************************************************     00950000
+.*                                                                      00951000
+         AIF   ('&LV' EQ '(0)' AND '&SP' NE '').ERROR9                  00952000
+.*                                                                      00953000
+.******************************************************************     00954000
+.* If the length variable was given in a register, go to ISARGA         00955000
+.* to continue processing.                                              00956000
+.******************************************************************     00957000
+.*                                                                      00958000
+         AIF   ('&LV'(1,1) EQ '(').ISARGA                               00959000
+.*                                                                      00960000
+.******************************************************************     00961000
+.* If subpool wasn't specified, then go to CTUA to continue             00962000
+.* processing.                                                          00963000
+.******************************************************************     00964000
+.*                                                                      00965000
+         AIF   ('&SP' EQ '').CTUA                                       00966000
+.*                                                                      00967000
+.******************************************************************     00968000
+.* Set &D to indicate that the subpool was specified.                   00969000
+.******************************************************************     00970000
+.*                                                                      00971000
+&D       SETB 1                                                         00972000
+.*                                                                      00973000
+.******************************************************************     00974000
+.* If subpool was specified in a register, to to ISARGB to              00975000
+.* continue                                                             00976000
+.******************************************************************     00977000
+.*                                                                      00978000
+         AIF   ('&SP'(1,1) EQ '(').ISARGB                               00979000
+.CMNB    CNOP  0,4                                                      00980000
+&NAME    B     *+8                               BRANCH AROUND LENGTH   00981000
+.*                                                                      00982000
+.******************************************************************     00983000
+.* If subpool wasn't specified then go to NSPS to continue processing   00984000
+.******************************************************************     00985000
+.*                                                                      00986000
+         AIF   (NOT &D).NSPS                                            00987000
+.*                                                                      00988000
+.******************************************************************     00989000
+.* Otherwise, store the subpool and the length variable since they      00990000
+.* were both given to us on the invocation.                             00991000
+.******************************************************************     00992000
+.*                                                                      00993000
+         DC    AL1(&SP)                          SUBPOOL VALUE          00994000
+         DC    AL3(&LV)                          LENGTH                 00995000
+.*                                                                      00996000
+.******************************************************************     00997000
+.* Unconditionally branch to CMNA   to continue processing              00998000
+.******************************************************************     00999000
+.*                                                                      01000000
+         AGO   .CMNA                                                    01001000
+.*                                                                      01002000
+.******************************************************************     01003000
+.* Since no subpool was specified, just store the length variable       01004000
+.* in the parameter list.                                               01005000
+.******************************************************************     01006000
+.*                                                                      01007000
+.NSPS    DC    A(&LV)                            LENGTH                 01008000
+.*                                                                      01009000
+.******************************************************************     01010000
+.* Load the subpool and the length into register 0                      01011000
+.******************************************************************     01012000
+.*                                                                      01013000
+.CMNA    L     0,*-4                             LOAD SP AND LV         01014000
+.*                                                                      01015000
+.******************************************************************     01016000
+.* If the address parameter was given in a register branch to           01017000
+.* ISARGD to continue, otherwise just load it into register 1           01018000
+.******************************************************************     01019000
+.*                                                                      01020000
+.CTUD    AIF   ('&A'(1,1) EQ '(').ISARGD                                01021000
+         L     1,&A                              LOAD AREA ADDRESS      01022000
+.*                                                                      01023000
+.******************************************************************     01024000
+.* Unconditionally branch to FINI   to continue processing              01025000
+.******************************************************************     01026000
+.*                                                                      01027000
+         AGO   .FINI                                                    01028000
+.*                                                                      01029000
+.******************************************************************     01030000
+.* If the length variable isn't determinable or is greater than a       01031000
+.* a page go to CMNB to continue.                                       01032000
+.******************************************************************     01033000
+.*                                                                      01034000
+.CTUA    AIF   (T'&LV NE 'N').CMNB                                      01035000
+         AIF   (&LV GT 4095).CMNB                                       01036000
+.*                                                                      01037000
+.******************************************************************     01038000
+.* Otherwise, just load the length into register 0                      01039000
+.******************************************************************     01040000
+.*                                                                      01041000
+&NAME    LA    0,&LV.(0,0)                       LOAD LENGTH            01042000
+.*                                                                      01043000
+.******************************************************************     01044000
+.* Unconditionally branch to CTUD   to continue processing              01045000
+.******************************************************************     01046000
+.*                                                                      01047000
+         AGO   .CTUD                                                    01048000
+.ISARGD  ANOP                                                  @ZA74333 01049000
+.*                                                                      01050000
+.******************************************************************     01051000
+.* Load the address into register 1                                     01052000
+.******************************************************************     01053000
+.*                                                                      01054000
+         LA    1,0(0,&A(1))                      LOAD AREA ADDRESS      01055000
+.*                                                                      01056000
+.******************************************************************     01057000
+.* Unconditionally branch to FINI   to continue processing              01058000
+.******************************************************************     01059000
+.*                                                                      01060000
+         AGO   .FINI                                                    01061000
+.*                                                                      01062000
+.******************************************************************     01063000
+.* P form processing                                                    01064000
+.******************************************************************     01065000
+.*                                                                      01066000
+.PROUT   ANOP                                                  @Z30EN9G 01067000
+.*                                                                      01068000
+.******************************************************************     01069000
+.* Branch must be specified with P form processing. If it wasn't        01070000
+.* go to ERROR8 to issue a nastygram.                                   01071000
+.******************************************************************     01072000
+.*                                                                      01073000
+         AIF   ('&BRANCH' EQ '').ERROR8                        @Z30EN9G 01074000
+.*                                                                      01075000
+.******************************************************************     01076000
+.* If the address was given to us in a register go to the PROUTR        01077000
+.* (p form register processing)                                         01078000
+.******************************************************************     01079000
+.*                                                                      01080000
+         AIF   ('&A'(1,1) EQ '(').PROUTR                       @Z30EN9G 01081000
+.*                                                                      01082000
+.******************************************************************     01083000
+.* Otherwise, load the actual address into register 1                   01084000
+.******************************************************************     01085000
+.*                                                                      01086000
+&NAME    L     1,&A                        LOAD AREA ADDRESS   @Z30EN9G 01087000
+.*                                                                      01088000
+.******************************************************************     01089000
+.* Unconditionally branch to FINI   to continue processing              01090000
+.******************************************************************     01091000
+.*                                                                      01092000
+         AGO   .FINI                                           @Z30EN9G 01093000
+.*                                                                      01094000
+.******************************************************************     01095000
+.* P form register processing                                           01096000
+.******************************************************************     01097000
+.*                                                                      01098000
+.PROUTR  ANOP                                                  @Z30EN9G 01099000
+.*                                                                      01100000
+.******************************************************************     01101000
+.* Load the actual address into register 1                              01102000
+.******************************************************************     01103000
+.*                                                                      01104000
+&NAME    LA    1,0(0,&A(1))                LOAD AREA ADDRESS   @Z30EN9G 01105000
+.*                                                                      01106000
+.******************************************************************     01107000
+.* Unconditionally branch to FINI   to continue processing              01108000
+.******************************************************************     01109000
+.*                                                                      01110000
+         AGO   .FINI                                           @Z30EN9G 01111000
+.*                                                                      01112000
+.******************************************************************     01113000
+.* If we can't look at the length variable or its greater than          01114000
+.* a page then go to CONTFF to continue processing                      01115000
+.******************************************************************     01116000
+.*                                                                      01117000
+.ISARGB  AIF   (T'&LV NE 'N').CONTFF                                    01118000
+         AIF   (&LV GT 4095).CONTFF                                     01119000
+.*                                                                      01120000
+.******************************************************************     01121000
+.* Otherwise load register 0 with the subpool, shift it to the          01122000
+.* high order byte.                                                     01123000
+.******************************************************************     01124000
+.*                                                                      01125000
+&NAME    LR    0,&SP(1)                          PICK UP SUBPOOL        01126000
+         SLL   0,24(0)                           SHIFT TO HI-ORDER BYTE 01127000
+.*                                                                      01128000
+.******************************************************************     01129000
+.* Store the length in register 14 then put it all together in          01130000
+.* register 0 by ORing the two together.                                01131000
+.******************************************************************     01132000
+.*                                                                      01133000
+         LA    14,&LV.(0,0)                      PICK UP LENGTH         01134000
+         OR    0,14                              PACK SP AND LV         01135000
+.*                                                                      01136000
+.******************************************************************     01137000
+.* Unconditionally branch to CTUD   to continue processing              01138000
+.******************************************************************     01139000
+.*                                                                      01140000
+         AGO   .CTUD                                                    01141000
+.CONTFF  CNOP  0,4                                                      01142000
+&NAME    B     *+8                               BRANCH AROUND LENGTH   01143000
+         DC    A(&LV)                            LENGTH                 01144000
+.*                                                                      01145000
+.******************************************************************     01146000
+.* Store the subpool in register 0, shift it to the hi order            01147000
+.* byte and combine it with the length which is 10 instructions         01148000
+.* back.                                                                01149000
+.******************************************************************     01150000
+.*                                                                      01151000
+         LR    0,&SP(1)                          PICK UP SUBPOOL        01152000
+         SLL   0,24(0)                           SHIFT TO HI-ORDER BYTE 01153000
+         O     0,*-10                            PACK SP AND LV         01154000
+.*                                                                      01155000
+.******************************************************************     01156000
+.* Unconditionally branch to CTUD   to continue processing              01157000
+.******************************************************************     01158000
+.*                                                                      01159000
+         AGO   .CTUD                                                    01160000
+.ISARGA  AIF   ('&NAME' EQ '').UNNAMED                                  01161000
+&NAME    DS    0H                                                       01162000
+.UNNAMED AIF   ('&LV(1)' EQ '0').CTUD                                   01163000
+         AIF   ('&SP' NE '').CTUG                                       01164000
+         LR    0,&LV(1)                          LOAD LENGTH            01165000
+.*                                                                      01166000
+.******************************************************************     01167000
+.* Unconditionally branch to CTUD   to continue processing              01168000
+.******************************************************************     01169000
+.*                                                                      01170000
+         AGO   .CTUD                                                    01171000
+.CTUG    AIF   ('&SP'(1,1) EQ '(').CTUGP                                01172000
+         LA    0,&SP.(0,0)                       LOAD SUBPOOL           01173000
+.*                                                                      01174000
+.******************************************************************     01175000
+.* Unconditionally branch to CTUGPP to continue processing              01176000
+.******************************************************************     01177000
+.*                                                                      01178000
+         AGO   .CTUGPP                                                  01179000
+.CTUGP   LR    0,&SP(1)                          LOAD SUBPOOL           01180000
+.CTUGPP  SLL   0,24(0)                           SHIFT TO HI-ORDER BYTE 01181000
+         OR    0,&LV(1)                          PACK SP AND LV         01182000
+.*                                                                      01183000
+.******************************************************************     01184000
+.* Unconditionally branch to CTUD   to continue processing              01185000
+.******************************************************************     01186000
+.*                                                                      01187000
+         AGO   .CTUD                                                    01188000
+.*                                                                      01189000
+.******************************************************************     01190000
+.* Subpool processing, if it wasn't specified, its an error             01191000
+.******************************************************************     01192000
+.*                                                                      01193000
+.SPROUT  AIF   ('&SP' EQ '').ERROR8                                     01194000
+         AIF   ('&SP'(1,1) EQ '(').ISARGQ                               01195000
+&NAME    LA    0,&SP.(0,0)                       LOAD SUBPOOL           01196000
+.CTUX    SLL   0,24(0)                           SHIFT TO HI-ORDER BYTE 01197000
+.CTUXX   SR    1,1                               INDICATE SP RELEASE    01198000
+.*                                                                      01199000
+.******************************************************************     01200000
+.* Unconditionally branch to FINI   to continue processing              01201000
+.******************************************************************     01202000
+.*                                                                      01203000
+         AGO   .FINI                                                    01204000
+.ISARGQ  AIF   ('&NAME' EQ '').NONE                                     01205000
+&NAME    DS    0H                                                       01206000
+.NONE    AIF   ('&SP(1)' EQ '0').CTUXX                                  01207000
+         LR    0,&SP(1)                          LOAD SUBPOOL           01208000
+.*                                                                      01209000
+.******************************************************************     01210000
+.* Unconditionally branch to CTUX   to continue processing              01211000
+.******************************************************************     01212000
+.*                                                                      01213000
+         AGO   .CTUX                                                    01214000
+.NREGM   ANOP      REGISTER (RC AND RU) FORMS OF FREEMAIN               01215000
+&PRG     SETA  &PRG-12*&BR     CHANGE PARM REG FOR BRANCH ENTRY         01216000
+.*                                                                      01217000
+.******************************************************************     01218000
+.* Set the SVC number to be SVC 120                                     01219000
+.* Remember whether this is a conditional or unconditional FREEMAIN     01220000
+.* Remember whether the subpool was passed in a register.               01221000
+.* Remember whether both subpool and key were passed in a register.     01222000
+.*                                                              @O1A    01223000
+.******************************************************************     01224000
+.*                                                                      01225000
+&SVCN    SETA  120                                                      01226000
+&UNCND   SETB  ('&MODE' EQ 'RU')                                        01227000
+         AIF   ('&SP' EQ '').CONT1                                      01228000
+&SPREG   SETB  ('&SP'(1,1) EQ '(')                                      01229000
+.CONT1   ANOP                                                           01230000
+&B       SETB  (&SPREG AND &KEYRG)                                      01231000
+.*                                                                      01232000
+.******************************************************************     01233000
+.* Perform special processing if this is a subpool FREEMAIN             01234000
+.*                                                              @O1A    01235000
+.******************************************************************     01236000
+.*                                                                      01237000
+         AIF   ('&LV' EQ '' AND '&A' EQ '').NSPFM                       01238000
+.*                                                                      01239000
+.******************************************************************     01240000
+.* The absence of both the LV parameter and the A parameter             01241000
+.* indicates a request for a subpool FREEMAIN.  The presence of         01242000
+.* just a length to free (LV) or just an address to free (A) makes      01243000
+.* no sense.                                                            01244000
+.*                                                              @O1A    01245000
+.******************************************************************     01246000
+.*                                                                      01247000
+         AIF   ('&LV' EQ '' OR '&A' EQ '').ERROR8                       01248000
+.*                                                                      01249000
+.******************************************************************     01250000
+.* Remember whether the length to free (LV) was passed in a register    01251000
+.*                                                              @O1A    01252000
+.******************************************************************     01253000
+.*                                                                      01254000
+&LVREG   SETB  ('&LV'(1,1) EQ '(')                                      01255000
+.*                                                                      01256000
+.******************************************************************     01257000
+.* Put data that was specified on the macro in the calling              01258000
+.* program's storage so that it can later be loaded into registers      01259000
+.* and thus passed to the FREEMAIN service.                             01260000
+.*                                                                      01261000
+.* The first step in this process is to generate code to branch around  01262000
+.* the pseudo parmlist.  The correctness of the method used to          01263000
+.* compute the number of bytes to branch is not obvious, so it is       01264000
+.* explained below.  Note that &B = 1 if both the subpool and key       01265000
+.* were passed in registers, and that &LVREG = 1 if the argument of     01266000
+.* the LV parameter was passed in a register.                           01267000
+.*                                                                      01268000
+.* The largest possible pseudo parmlist looks like this:                01269000
+.*                                                                      01270000
+.* Length  Contents                                                     01271000
+.* ------  --------                                                     01272000
+.* 04      Length of storage being freed, argument of the LV parm       01273000
+.* 01      Flags that go in byte 0 of the parameter reg                 01274000
+.* 01      Subpool number, argument of the SP parameter                 01275000
+.* 01      Key, argument of the KEY parameter                           01276000
+.* 01      Flags that go in byte 3 of the parameter reg                 01277000
+.*                                                                      01278000
+.* This sums 8, and we must also take the branch instruction itself     01279000
+.* into account, so the max distance to branch is 12.  If the FREEMAIN  01280000
+.* coder placed the argument of the LV parameter in a register, then    01281000
+.* there is nothing in the pseudo parmlist for it.  If the FREEMAIN     01282000
+.* coder placed both the argument of the SP parameter and the KEY       01283000
+.* parameter in registers, then there is nothing in the pseudo          01284000
+.* parmlist for them either.  So, the smallest possible pseudo          01285000
+.* parmlist looks like this:                                            01286000
+.*                                                                      01287000
+.* Length  Contents                                                     01288000
+.* ------  --------                                                     01289000
+.* 01      Flags that go in byte 0 of the parameter reg                 01290000
+.* 01      Flags that go in byte 3 of the parameter reg                 01291000
+.*                                                                      01292000
+.* The CNOP 0,4 comes into play in the following case:                  01293000
+.* If the FREEMAIN coder placed the argument of the SP parameter in a   01294000
+.* register (but the argument of the KEY parameter is not in a          01295000
+.* register) then the pseudo parmlist contains the 1 byte key, but not  01296000
+.* the subpool.  The pseudo parmlist would like this:                   01297000
+.*                                                                      01298000
+.* Length  Contents                                                     01299000
+.* ------  --------                                                     01300000
+.* 04      Length of storage being freed, argument of the LV parm       01301000
+.* 01      Flags that go in byte 0 of the parameter reg                 01302000
+.* 01      Key, argument of the KEY parameter                           01303000
+.* 01      Flags that go in byte 3 of the parameter reg                 01304000
+.* 01      Inserted by the assembler to force correct boundary!         01305000
+.*                                                                      01306000
+.******************************************************************     01307000
+.*                                                                      01308000
+         CNOP  0,4                                                      01309000
+&NAME    B     *+12-4*&LVREG-2*&B          BRANCH AROUND DATA @O2C      01310000
+         AIF   (&LVREG OR '&LV' EQ '').CONT10                           01311000
+         DC    A(&LV)                            LENGTH                 01312000
+.CONT10  ANOP                                                           01313000
+.*                                                                      01314000
+.******************************************************************     01315000
+.* Produce the first byte of the "pseudo parmlist".  See the prolog     01316000
+.* of IGVVSM31 for a breakdown of exactly what goes in this byte.       01317000
+.******************************************************************     01318000
+.*                                                                      01319000
+&GNAME.F DC    BL1'0&KYSPC.000000'      Flags              @O2A         01320000
+.*                                                                      01321000
+.******************************************************************     01322000
+.* If the key parameter was not specified, we skip to CONT1A to         01323000
+.* save the space that the key would have taken up if it had been       01324000
+.* specified.  If key was specified in a register, we need do           01325000
+.* nothing to remember what was specified, so we skip to CONTB.         01326000
+.* If key was specified and was not in a register, we                   01327000
+.* put the key that was specified on the macro in the calling           01328000
+.* program's storage so that it can later be loaded into a register     01329000
+.* and thus passed to the FREEMAIN service.                             01330000
+.*                                                              @O1A    01331000
+.******************************************************************     01332000
+.*                                                                      01333000
+         AIF   ('&KEY' EQ '').CONT1A    KEY PARM PRESENT?               01334000
+         AIF   (&KEYRG).CONT1B                                          01335000
+         DC    AL1(&KEY*16)                      STORAGE KEY            01336000
+         AGO   .CONT1B                                                  01337000
+.CONT1A  DC    AL1(0)                            RESERVED               01338000
+.*                                                                      01339000
+.******************************************************************     01340000
+.* If the subpool parameter was not specified, we skip to CONT1E to     01341000
+.* insert the default subpool number, which is zero.  If subpool was    01342000
+.* specified in a register, we need do nothing to remember what was     01343000
+.* specified, so we skip to CONT1C.  If subpool was specified and       01344000
+.* was not in a register, we put the subpool that was specified on      01345000
+.* the macro in the calling program's storage so that it can later      01346000
+.* be loaded into a register and thus passed to the FREEMAIN            01347000
+.* service.                                                             01348000
+.*                                                              @O1A    01349000
+.******************************************************************     01350000
+.*                                                                      01351000
+.CONT1B  AIF   (&SPREG).CONT1C                   SUBPOOL IN REGISTER?   01352000
+         AIF   ('&SP' EQ '').CONT1E                                     01353000
+         DC    AL1(&SP)                          SUBPOOL NUMBER         01354000
+         AGO   .CONT1C                                                  01355000
+.CONT1E  DC    AL1(0)                            SUBPOOL NUMBER         01356000
+.*                                                                      01357000
+.******************************************************************     01358000
+.* Put data that was specified on the macro in the calling              01359000
+.* program's storage so that it can later be loaded into a register     01360000
+.* and thus passed to the FREEMAIN service.  In particular,             01361000
+.* remember whether the FREEMAIN was conditional or unconditional.      01362000
+.* If the length (LV) was not specified, or if it was passed in a       01363000
+.* register, there is no need to load the passed length into reg 0,     01364000
+.* so we skip to LVCHK.                                                 01365000
+.*                                                              @O1A    01366000
+.******************************************************************     01367000
+.*                                                                      01368000
+.CONT1C  DC    BL1'000000&UNCND.1'               MODE BYTE              01369000
+         AIF   (&LVREG OR '&LV' EQ '').LVCHK                            01370000
+         L     0,*-8+2*&B                        LOAD LENGTH            01371000
+         AGO   .NCT1                                                    01372000
+.*                                                                      01373000
+.******************************************************************     01374000
+.* The length (LV) was passed in a register or was not specified.       01375000
+.* The &D check puzzles me.  If the length is not in a register, it     01376000
+.* must be true that LV was not specified at all, so we have nothing    01377000
+.* to load into register 0.  If the length was passed in a register     01378000
+.* other than register 0, we move the length to register 0.             01379000
+.*                                                              @O1A    01380000
+.******************************************************************     01381000
+.*                                                                      01382000
+.LVCHK   AIF   (&D).CONT1D                                              01383000
+         AIF   (NOT &LVREG).NCT1                                        01384000
+.CNT1    AIF   ('&LV(1)' EQ '0').NCT1                                   01385000
+         LR    0,&LV(1)                          LOAD LENGTH            01386000
+.NCT1    AIF   ('&A'(1,1) EQ '(').NREGA                                 01387000
+         L     1,&A                              LOAD AREA ADDRESS      01388000
+         AGO   .CONT1D                                                  01389000
+.*                                                                      01390000
+.******************************************************************     01391000
+.* If the address to be freed was placed in register 1 by the           01392000
+.* FREEMAIN invoker, then there is no need to move it to register 1.    01393000
+.*                                                              @O1A    01394000
+.******************************************************************     01395000
+.*                                                                      01396000
+.NREGA   AIF   ('&A(1)' EQ '1').CONT1D                                  01397000
+         LR    1,&A(1)                           LOAD AREA ADDRESS      01398000
+.*                                                                      01399000
+.******************************************************************     01400000
+.* Below collect data from various places, and copy it into the         01401000
+.* parameter register that will be passed to the FREEMAIN service       01402000
+.* routines.  The subpool and key are always passed to the FREEMAIN     01403000
+.* service routines in the parameter register.  The coder of the        01404000
+.* FREEMAIN macro can, however, choose to put the subpool and key in a  01405000
+.* variety of places - either or both can be in a register, or can be   01406000
+.* passed as a symbol, or can be a decimal number.  If the coder of     01407000
+.* the FREEMAIN macro has passed the subpool and/or key as a decimal    01408000
+.* number or a symbol, then the value passed will already be in the     01409000
+.* pseudo parmlist.  Otherwise, the value passed will be in the         01410000
+.* register that the FREEMAIN coder chose.                              01411000
+.*                                                              @O2A    01412000
+.******************************************************************     01413000
+.*                                                                      01414000
+.CONT1D  AIF   (&KEYRG OR &SPREG).KORSREG                               01415000
+.*                                                                      01416000
+.******************************************************************     01417000
+.* Neither the key nor the subpool are in a register, so everything     01418000
+.* we need is in the pseudo parmlist.                                   01419000
+.*                                                              @O2A    01420000
+.******************************************************************     01421000
+.*                                                                      01422000
+         L     &PRG.,&GNAME.F                    LOAD PARAMETERS        01423000
+.*                                                             2@O2D    01424000
+         AGO   .FINI                                                    01425000
+.*                                                                      01426000
+.******************************************************************     01427000
+.* Either the key or subpool is in a register                           01428000
+.******************************************************************     01429000
+.*                                                                      01430000
+.KORSREG AIF   (&B).BOTHREG                                             01431000
+.*       ONLY ONE OF KEY OR SP IS IN A REGISTER                         01432000
+         AIF   (NOT &SPREG).KEYREG                                      01433000
+.*       ONLY SP IS A REGISTER                                          01434000
+         AIF   ('&SP(1)' EQ '&PRG').SPINPRG                             01435000
+.*       SP IS NOT IN THE PARAMETER REGISTER.                           01436000
+         LR    &PRG.,&SP(1)                      INSERT SUBPOOL ID      01437000
+.SPINPRG SLL   &PRG.,8(0)                     SHIFT SP TO BYTE 2 YM1995 01438000
+         ICM   &PRG.,13,&GNAME.F                 INSERT REST OF PARMS   01439000
+.*                                                                @O2D  01440000
+         AGO   .FINI                                                    01441000
+.*                                                                      01442000
+.******************************************************************     01443000
+.* The key was passed in a register, but the subpool was not.           01444000
+.******************************************************************     01445000
+.*                                                                      01446000
+.KEYREG  AIF   ('&KEY(1)' EQ '&PRG').KYINPRG                            01447000
+.*       KEY IS NOT IN THE PARAMETER REGISTER                           01448000
+         LR    &PRG.,&KEY(1)                     OBTAIN STORAGE KEY     01449000
+.KYINPRG SLL   &PRG.,16(0)                   SHIFT KEY TO BYTE 1 YM1995 01450000
+         ICM   &PRG.,11,&GNAME.F                 ADD REST OF PARMS      01451000
+.*                                                              @O2D    01452000
+         AGO   .FINI                                                    01453000
+.*                                                                      01454000
+.******************************************************************     01455000
+.* Both sp and key are in registers                                     01456000
+.******************************************************************     01457000
+.*                                                                      01458000
+.BOTHREG AIF   ('&KEY(1)' NE '&SP(1)').NOTSAME                          01459000
+.*                                                                      01460000
+.******************************************************************     01461000
+.* Both key and sp are the same register                                01462000
+.******************************************************************     01463000
+.*                                                                      01464000
+         AIF   ('&KEY(1)' EQ '&PRG').BOTHPRG                            01465000
+.*                                                                      01466000
+.******************************************************************     01467000
+.* The common register is not the parm register                         01468000
+.******************************************************************     01469000
+.*                                                                      01470000
+         LR    &PRG.,&KEY(1)                     GET KEY & SUBPOOL ID   01471000
+.BOTHPRG ICM   &PRG.,9,&GNAME.F                  ADD REST OF PARAMETERS 01472000
+.*                                                              @O2D    01473000
+         AGO   .FINI                                                    01474000
+.*                                                                      01475000
+.******************************************************************     01476000
+.* Both key and sp are regs, but they are different registers.          01477000
+.******************************************************************     01478000
+.*                                                                      01479000
+.NOTSAME AIF   ('&KEY(1)' EQ '&PRG' OR '&SP(1)' EQ '&PRG').PRGIS1       01480000
+.*                                                                      01481000
+.******************************************************************     01482000
+.* Neither register is the parameter register                           01483000
+.******************************************************************     01484000
+.*                                                                      01485000
+         LR    &PRG.,&KEY(1)                     INSERT KEY             01486000
+.ADDSP   SLL   &PRG.,8(0)                  SHIFT KEY INTO BYTE 2 YM1995 01487000
+         OR    &PRG.,&SP(1)                      ADD SUBPOOL NUMBER     01488000
+         SLL   &PRG.,8(0)                   SHIFT TO BYTES 1 & 2 YM1995 01489000
+.*                                                                      01490000
+.******************************************************************     01491000
+.* Unconditionally branch to BOTHPRG to continue processing             01492000
+.******************************************************************     01493000
+.*                                                                      01494000
+         AGO   .BOTHPRG                                                 01495000
+.PRGIS1  AIF   ('&KEY(1)' EQ '&PRG').ADDSP                              01496000
+.*       SP IS IN THE PARM REGISTER, KEY IS IN ANOTHER REG.             01497000
+         SLL   &PRG.,8(0)                 MOVE SUBPOOL TO BYTE 2 YM1995 01498000
+         SLL   &KEY(1),16(0)                 SHIFT KEY TO BYTE 1 YM1995 01499000
+         OR    &PRG.,&KEY(1)                     COMBINE KEY & SUBPOOL  01500000
+         SRL   &KEY(1),16(0)                 RESTORE KEY BACK  @YA30573 01501000
+.*                                                                      01502000
+.******************************************************************     01503000
+.* Unconditionally branch to BOTHPRG to continue processing             01504000
+.******************************************************************     01505000
+.*                                                                      01506000
+         AGO   .BOTHPRG                                                 01507000
+.*       SUBPOOL FREEMAIN                                               01508000
+.NSPFM   AIF   ('&SP' EQ '').ERROR8                                     01509000
+         CNOP  0,4                                                      01510000
+&NAME    SR    0,0                               ZERO LENGTH            01511000
+         SR    1,1                               INDICATE SP RELEASE    01512000
+         B     *+8-2*&B                          BRANCH AROUND VALUES   01513000
+&D       SETB  1                                                        01514000
+.*                                                                      01515000
+.******************************************************************     01516000
+.* Unconditionally branch to CONT10  to continue processing             01517000
+.******************************************************************     01518000
+.*                                                                      01519000
+         AGO   .CONT10                                                  01520000
+.*                                                                      01521000
+.******************************************************************     01522000
+.* If its a branch entry request, go to SETBE to continue               01523000
+.******************************************************************     01524000
+.*                                                                      01525000
+.FINI    AIF   (&BR).SETBE                                              01526000
+.*                                                                      01527000
+.******************************************************************     01528000
+.* Otherwise, issue the SVC                                             01529000
+.******************************************************************     01530000
+.*                                                                      01531000
+* R14 is used as work register for the SIMSVC                  @D61ADTN 01532000
+         SIMSVC WR=(14)            ISSUE VSE/ESA FREEMAIN SVC  @D61ADTN 01533000
+         SVC   &SVCN                             ISSUE FREEMAIN SVC     01534000
+.*                                                                      01535000
+.******************************************************************     01536000
+.* Exit the macro                                                       01537000
+.******************************************************************     01538000
+.*                                                                      01539000
+         MEXIT                                                          01540000
+.SETBE   L     15,16(0,0)         ADDRESS THE CVT              @G860P30 01541000
+         AIF   ('&MODE' EQ 'P').CBBE                           @Z30EN9G 01542000
+         AIF   (&SVCN EQ 120).CRBE                                      01543000
+         AIF   (&SVCN EQ 10).RMBE                                       01544000
+         L     15,844(0,15)       FREEMAIN ENTRY CVTLFRM       @G860P30 01545000
+.*                                                                      01546000
+.******************************************************************     01547000
+.* Unconditionally branch to SBE     to continue processing             01548000
+.******************************************************************     01549000
+.*                                                                      01550000
+         AGO   .SBE                                                     01551000
+.CBBE    L     15,972(0,15)       FREEMAIN ENTRY CVTCBBR       @G860P30 01552000
+.*                                                                      01553000
+.******************************************************************     01554000
+.* Unconditionally branch to SBE     to continue processing             01555000
+.******************************************************************     01556000
+.*                                                                      01557000
+         AGO   .SBE                                            @Z30EN9G 01558000
+.RMBE    L     15,840(0,15)       FREEMAIN ENTRY CVTRMBR       @G860P30 01559000
+.*                                                                      01560000
+.******************************************************************     01561000
+.* Unconditionally branch to SBE     to continue processing             01562000
+.******************************************************************     01563000
+.*                                                                      01564000
+         AGO   .SBE                                                     01565000
+.*                                                                      01566000
+.********************************************************************** 01567000
+.*                                                                      01568000
+.* The code below finds the address of the VSM entry point that must    01569000
+.* be branched to.  This path is used by SVC 120 eqivalent branch       01570000
+.* entry requests (local and global).  Callers in AR ASC mode are       01571000
+.* allowed to use this interface to free global storage or to free      01572000
+.* storage from the primary address space.  This is made possible by    01573000
+.* the 'SAC 0', which causes ARs to be ignored.  (VSM will not work if  01574000
+.* ARs are active.)  Note that the 'SAC 0' must appear                  01575000
+.* before register 15 is used as a base register because there is no    01576000
+.* guarantee that AR 15 is set up properly.  (Using reg 15 as a base    01577000
+.* register without a valid ALET in AR 15 will cause a program          01578000
+.* check.)                                                              01579000
+.*                                                                      01580000
+.****************************************************************  @D1A 01581000
+.*                                                                      01582000
+.CRBE    ANOP                                                      @D1C 01583000
+         AIF ('&SYSASCE' EQ 'P').SKIPSW1  If we are already in     @D1A 01584000
+.*                                primary ASC mode, do not         @D1A 01585000
+.*                                produce a SAC to switch to       @D1A 01586000
+.*                                primary.  (That is, skip the     @D1A 01587000
+.*                                switch.)                         @D1A 01588000
+         SAC   0                  Switch to primary ASC mode.      @D1A 01589000
+.SKIPSW1 ANOP                                                      @D1A 01590000
+         AIF   (&GLBR).GLBE       Global branch entry ?            @D1C 01591000
+.*                                                                 @D1A 01592000
+.******************************************************************     01593000
+.* Find the SVC 120 equivalent local branch entry point.           @D1A 01594000
+.******************************************************************     01595000
+.*                                                                 @D1A 01596000
+         L     15,504(0,15)       FREEMAIN ENTRY CVTCRMN       @G860P30 01597000
+.*                                                                      01598000
+.******************************************************************     01599000
+.* Unconditionally branch to S120BE  to continue processing             01600000
+.******************************************************************     01601000
+.*                                                                      01602000
+         AGO   .S120BE                                             @D1C 01603000
+.*                                                                 @D1A 01604000
+.******************************************************************     01605000
+.* Find the SVC 120 equivalent global branch entry point.          @D1A 01606000
+.******************************************************************     01607000
+.*                                                                 @D1A 01608000
+.*                                                                 @D1A 01609000
+.******************************************************************     01610000
+.* Load register 4 with the address of the VSWK                         01611000
+.******************************************************************     01612000
+.*                                                                 @D1A 01613000
+.GLBE    L     4,684(0,15)        GLOBAL WORK/SAVE AREA ADDR   @G860P30 01614000
+         L     4,4(0,4)           VSM GLOBAL SAVE AREA         @G860P30 01615000
+.*                                                                 @D1A 01616000
+.******************************************************************     01617000
+.* Load register 15 with the global branch entry point.                 01618000
+.******************************************************************     01619000
+.*                                                                 @D1A 01620000
+         L     15,680(0,15)       GLBRANCH ENTRY CVTGLMN       @G860P30 01621000
+.*                                                                 @D1A 01622000
+.******************************************************************     01623000
+.* Call freemain                                                        01624000
+.******************************************************************     01625000
+.*                                                                 @D1A 01626000
+.S120BE  BALR  14,15              CALL FREEMAIN                    @D1A 01627000
+         AIF ('&SYSASCE' EQ 'P').SKIPSW2 If we were entered in     @D1A 01628000
+.*                                primary ASC mode, do not         @D1A 01629000
+.*                                produce a SAC to switch back     @D1A 01630000
+.*                                to AR mode.  (That is, skip      @D1A 01631000
+.*                                the switch.)                     @D1A 01632000
+         SAC   512                Switch back to AR mode.          @D1A 01633000
+.SKIPSW2 ANOP                                                      @D1A 01634000
+.*                                                                      01635000
+.******************************************************************     01636000
+.* Exit the macro                                                       01637000
+.******************************************************************     01638000
+.*                                                                      01639000
+         MEXIT                                                     @D1A 01640000
+.*                                                                 @D1A 01641000
+.******************************************************************     01642000
+.*  Branch to FREEMAIN service.  This handles SVC 5 and 10         @D1A 01643000
+.*  equivalent branch entry, and 'P' type requests.                @D1A 01644000
+.******************************************************************     01645000
+.*                                                                 @D1A 01646000
+.SBE     BALR  14,15              Call FREEMAIN.                   @D1C 01647000
+.*                                                                      01648000
+.******************************************************************     01649000
+.* Exit the macro                                                       01650000
+.******************************************************************     01651000
+.*                                                                      01652000
+         MEXIT                                                          01653000
+.*                                                                 @D1A 01654000
+.*                                                                      01655000
+.******************************************************************     01656000
+.* If mode wasn't specifed with internal macro format its an error      01657000
+.******************************************************************     01658000
+.*                                                                      01659000
+.ERROR1  IHBERMAC 17                                                    01660000
+.*                                                                      01661000
+.******************************************************************     01662000
+.* Exit the macro                                                       01663000
+.******************************************************************     01664000
+.*                                                                      01665000
+         MEXIT                                                          01666000
+.*                                                                      01667000
+.******************************************************************     01668000
+.*  Invalid MF operand was specified                                    01669000
+.******************************************************************     01670000
+.*                                                                      01671000
+.ERROR2  IHBERMAC 1001,MF,&MF INVALID MF OPERAND -- &MF                 01672000
+.*                                                                      01673000
+.******************************************************************     01674000
+.* Exit the macro                                                       01675000
+.******************************************************************     01676000
+.*                                                                      01677000
+         MEXIT                                                          01678000
+.*                                                                      01679000
+.******************************************************************     01680000
+.* A parm was given to us in a register and that isn't legal            01681000
+.******************************************************************     01682000
+.*                                                                      01683000
+.ERROR3  IHBERMAC 69                                                    01684000
+.*                                                                      01685000
+.******************************************************************     01686000
+.* Exit the macro                                                       01687000
+.******************************************************************     01688000
+.*                                                                      01689000
+         MEXIT                                                          01690000
+.*                                                                      01691000
+.******************************************************************     01692000
+.* LA is required and wasn't specified                                  01693000
+.******************************************************************     01694000
+.*                                                                      01695000
+.ERROR4  IHBERMAC 89                                                    01696000
+.*                                                                      01697000
+.******************************************************************     01698000
+.* Exit the macro                                                       01699000
+.******************************************************************     01700000
+.*                                                                      01701000
+         MEXIT                                                          01702000
+.*                                                                      01703000
+.******************************************************************     01704000
+.* Both LA and LV can't be specified on the same request                01705000
+.******************************************************************     01706000
+.*                                                                      01707000
+.ERROR5  IHBERMAC 91                                                    01708000
+.*                                                                      01709000
+.******************************************************************     01710000
+.* Exit the macro                                                       01711000
+.******************************************************************     01712000
+.*                                                                      01713000
+         MEXIT                                                          01714000
+.*                                                                      01715000
+.******************************************************************     01716000
+.*  LV is required but wasn't specified.                                01717000
+.******************************************************************     01718000
+.*                                                                      01719000
+.ERROR6  IHBERMAC 90                                                    01720000
+.*                                                                      01721000
+.******************************************************************     01722000
+.* Exit the macro                                                       01723000
+.******************************************************************     01724000
+.*                                                                      01725000
+         MEXIT                                                          01726000
+.*                                                                      01727000
+.******************************************************************     01728000
+.* Invalid mode specified                                               01729000
+.******************************************************************     01730000
+.*                                                                      01731000
+.ERROR7  IHBERMAC 1001,MODE,&MODE      INVALID MODE OPERAND &MODE       01732000
+.*                                                                      01733000
+.******************************************************************     01734000
+.* Exit the macro                                                       01735000
+.******************************************************************     01736000
+.*                                                                      01737000
+         MEXIT                                                          01738000
+.*                                                                      01739000
+.******************************************************************     01740000
+.*  A required parameter wasn't specified                               01741000
+.******************************************************************     01742000
+.*                                                                      01743000
+.ERROR8  IHBERMAC 01                                                    01744000
+.*                                                                      01745000
+.******************************************************************     01746000
+.* Exit the macro                                                       01747000
+.******************************************************************     01748000
+.*                                                                      01749000
+         MEXIT                                                          01750000
+.*                                                                      01751000
+.******************************************************************     01752000
+.* Length value and subpool relationship screwed up                     01753000
+.******************************************************************     01754000
+.*                                                                      01755000
+.ERROR9  IHBERMAC 92                                                    01756000
+.*                                                                      01757000
+.******************************************************************     01758000
+.* Exit the macro                                                       01759000
+.******************************************************************     01760000
+.*                                                                      01761000
+         MEXIT                                                          01762000
+.*                                                                      01763000
+.******************************************************************     01764000
+.*  Key can only be specified with RU and RC freemains                  01765000
+.******************************************************************     01766000
+.*                                                                      01767000
+.ERRORA  IHBERMAC 1020,KEY,&MODE                                        01768000
+.*                                                                      01769000
+.******************************************************************     01770000
+.* Exit the macro                                                       01771000
+.******************************************************************     01772000
+.*                                                                      01773000
+         MEXIT                                                          01774000
+.*                                                                      01775000
+.******************************************************************     01776000
+.*  Key must be between 0 and 15 inclusive.                             01777000
+.******************************************************************     01778000
+.*                                                                      01779000
+.ERRORB  IHBERMAC 1001,KEY,&KEY                                         01780000
+.*                                                                      01781000
+.******************************************************************     01782000
+.* Exit the macro                                                       01783000
+.******************************************************************     01784000
+.*                                                                      01785000
+         MEXIT                                                          01786000
+.*                                                                      01787000
+.******************************************************************     01788000
+.*  No such thing as branch entry list form of freemain.                01789000
+.******************************************************************     01790000
+.*                                                                      01791000
+.ERRORC  IHBERMAC 1020,BRANCH,''MF=L''                                  01792000
+.*                                                                      01793000
+.******************************************************************     01794000
+.* Exit the macro                                                       01795000
+.******************************************************************     01796000
+.*                                                                      01797000
+         MEXIT                                                          01798000
+.*                                                                      01799000
+.******************************************************************     01800000
+.*  The only valid 2 branch request is YES,GLOBAL                       01801000
+.******************************************************************     01802000
+.*                                                                      01803000
+.ERRORD  IHBERMAC 1001,BRANCH,&BRANCH                                   01804000
+.*                                                                      01805000
+.******************************************************************     01806000
+.* Exit the macro                                                       01807000
+.******************************************************************     01808000
+.*                                                                      01809000
+         MEXIT                                                          01810000
+.*                                                                      01811000
+.******************************************************************     01812000
+.*  BRANCH is not supported in VSE/ESA                     @D61ADTN     01813000
+.******************************************************************     01814000
+.*                                                                      01815000
+.ERBRNCH IHBERMAC 1309,BRANCH                              @D61ADTN     01816000
+.*                                                                      01817000
+.******************************************************************     01818000
+.* Exit the macro                                                       01819000
+.******************************************************************     01820000
+.*                                                                      01821000
+         MEXIT                                             @D61ADTN     01822000
+.*                                                                      01823000
+.******************************************************************     01824000
+.* Global requests are only valid for RC and RU forms of freemain       01825000
+.******************************************************************     01826000
+.*                                                                      01827000
+.ERRORF  IHBERMAC 1020,&BRANCH(2),&MODE                                 01828000
+         MEND                                                           01829000
+* */  % PLSSKIP: ;                                                      01830000
+* % FREEMAIN:  MACRO KEYS(LV, LA, A, SP,                                01831000
+*            BRANCH, RTCD, KEY, MF, RELATED);                           01832000
+* ANS('? ' || MACLABEL || ' FREEMANP '|| MACLIST || MACKEYS || ';');    01833000
+*%       END FREEMAIN;                                                  01834000

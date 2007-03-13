@@ -1,0 +1,158 @@
+*PROCESS FLAG(5)                                                        00001000
+*COMPILATION UNIT:  LEASMPIP                                            00002000
+*********************************************************************** 00003000
+*                                                                     * 00004000
+*  Licensed Materials - Property of IBM                               * 00005000
+*                                                                     * 00006000
+*  5686-066-32-75K (C) Copyright IBM Corp. 1991, 2002                 * 00007000
+*  All rights reserved                                                * 00008000
+*                                                                     * 00009000
+*  US Government Users Restricted Rights - Use,                       * 00010000
+*  duplication or disclosure restricted by GSA                        * 00011000
+*  ADP Schedule Contract with IBM Corp.                               * 00012000
+*                                                                     * 00013000
+*********************************************************************** 00014000
+*                                                                     * 00015000
+*   FUNCTION :  CEEPIPI - INITIALIZE THE PIPI ENVIRONMENT,            * 00016000
+*                         CALL A PIPI HLL PROGRAM, AND TERMINATE      * 00017000
+*                         THE ENVIRONMENT.                            * 00018000
+*                                                                     * 00019000
+* 1.CALL CEEPIPI TO INITIALIZE A SUBROUTINE ENVIRONMENT UNDER LE.     * 00020000
+* 2.CALL CEEPIPI TO LOAD AND CALL A REENTRANT HLL SUBROUTINE.         * 00021000
+* 3.CALL CEEPIPI TO TERMINATE THE LE PIPI ENVIRONMENT.                * 00022000
+*                                                                     * 00023000
+* NOTE: 1. ASMPIPI is not REENTRANT.                                  * 00024000
+*       2. PHASE EDCPIPI must be created before running this sample.  * 00025000
+*                                                                     * 00026000
+* Change History :                                                    * 00027000
+*                                                                     * 00028000
+*                                                                     * 00029000
+*********************************************************************** 00030000
+*                                                                       00031000
+* ===================================================================== 00032000
+* STANDARD PROGRAM ENTRY CONVENTIONS.                                   00033000
+* ===================================================================== 00034000
+ASMPIPI  CSECT                                                          00035000
+ASMPIPI  AMODE ANY                                                      00036000
+ASMPIPI  RMODE ANY                                                      00037000
+         STM   R14,R12,12(R13)    SAVE CALLER'S REGISTERS               00038000
+         LR    R12,R15            GET BASE ADDRESS                      00039000
+         USING ASMPIPI,R12        IDENTIFY BASE REGISTER                00040000
+         ST    R13,SAVE+4         BACK-CHAIN THE SAVE AREA              00041000
+         LA    R15,SAVE           GET ADDR OF THIS ROUTINE'S SAVE AREA  00042000
+         ST    R15,8(R13)         FORWARD-CHAIN IN CALLER'S SAVE AREA   00043000
+         LR    R13,R15            R13 -> SAVE AREA OF THIS ROUTINE      00044000
+*                                                                       00045000
+* LOAD LE CEEPIPI SERVICE ROUTINE INTO MAIN STORAGE.                    00046000
+*                                                                       00047000
+         CDLOAD CEEPIPI           LOAD CEEPIPI ROUTINE DYNAMICALLY      00048000
+         ST    R0,PPRTNPTR        SAVE THE ADDR OF CEEPIPI ROUTINE      00049000
+*                                                                       00050000
+* INITIALIZE AN LE PIPI SUBROUTINE ENVIRONMENT.                         00051000
+*                                                                       00052000
+INIT_ENV EQU   *                                                        00053000
+         LA    R5,PPTBL           GET ADDRESS OF PIPI TABLE             00054000
+         ST    R5,@CEXPTBL        CEEXPTBL-ADDR -> PIPI TABLE           00055000
+         L     R15,PPRTNPTR       GET ADDRESS OF CEEPIPI ROUTINE        00056000
+*                                 INVOKE CEEPIPI ROUTINE                00057000
+         CALL  (15),(INITSUB,@CEXPTBL,@SRVRTNS,RUNTMOPT,TOKEN)          00058000
+*                                 CHECK RETURN CODE:                    00059000
+         LTR   R2,R15               IS R15 = ZERO?                      00060000
+         BZ    CSUB                 YES (SUCCESS).. GO TO NEXT SECTION  00061000
+*                                   NO (FAILURE).. ISSUE MESSAGE        00062000
+         WTO   'ASMPIPI : CALL TO CEEPIPI(INIT_SUB) FAILED',ROUTCDE=2   00063000
+         C     R2,=F'8'           CHECK FOR PARTIAL INITIALIZATION      00064000
+         BE    TSUB                 YES.. GO DO PIPI TERMINATION        00065000
+*                                   NO.. ISSUE MESSAGE & QUIT           00066000
+         WTO   'ASMPIPI : INIT_SUB FAILURE RC IS NOT 8.',ROUTCDE=2      00067000
+         DUMP  RC=(2)             CANCEL WITH BAD RC AND DUMP MEMORY    00068000
+*                                                                       00069000
+* CALL THE SUBROUTINE, WHICH IS LOADED BY LE                            00070000
+*                                                                       00071000
+CSUB     EQU   *                                                        00072000
+         L     R15,PPRTNPTR       GET ADDRESS OF CEEPIPI ROUTINE        00073000
+         CALL  (15),(CALLSUB,PTBINDEX,TOKEN,PARMPTR,                   X00074000
+               SUBRETC,SUBRSNC,SUBFBC)   INVOKE CEEPIPI ROUTINE         00075000
+*                                 CHECK RETURN CODE:                    00076000
+         LTR   R2,R15               IS R15 = ZERO?                      00077000
+         BZ    TSUB                 YES (SUCCESS).. GO TO NEXT SECTION  00078000
+*                                   NO (FAILURE).. ISSUE MESSAGE & QUIT 00079000
+         WTO   'ASMPIPI : CALL TO CEEPIPI(CALL_SUB) FAILED',ROUTCDE=2   00080000
+         DUMP  RC=(2)             CANCEL WITH BAD RC AND DUMP MEMORY    00081000
+*                                                                       00082000
+* TERMINATE THE ENVIRONMENT.                                            00083000
+*                                                                       00084000
+TSUB     EQU   *                                                        00085000
+         L     R15,PPRTNPTR       GET ADDRESS OF CEEPIPI ROUTINE        00086000
+         CALL  (15),(TERM,TOKEN,ENV_RC)  INVOKE CEEPIPI ROUTINE         00087000
+*                                 CHECK RETURN CODE:                    00088000
+         LTR   R2,R15               IS R15 = ZERO ?                     00089000
+         BZ    DONE                 YES (SUCCESS).. GO TO NEXT SECTION  00090000
+*                                   NO (FAILURE).. ISSUE MESSAGE & QUIT 00091000
+         WTO   'ASMPIPI : CALL TO CEEPIPI(TERM) FAILED',ROUTCDE=2       00092000
+         DUMP  RC=(2)             CANCEL WITH BAD RC AND DUMP MEMORY    00093000
+*                                                                       00094000
+* STANDARD EXIT CODE.                                                   00095000
+*                                                                       00096000
+DONE     EQU   *                                                        00097000
+         LA    R15,0                PASSED RETURN CODE FOR SYSTEM       00098000
+         L     R13,SAVE+4           GET ADDRESS OF CALLER'S SAVE AREA   00099000
+         L     R14,12(R13)          RELOAD CALLER'S REGISTER 14         00100000
+         LM    R0,R12,20(R13)       RELOAD CALLER'S REGISTERS 0-12      00101000
+         BR    R14                  BRANCH BACK TO CALLER               00102000
+*                                                                       00103000
+* ===================================================================== 00104000
+* CONSTANTS AND SAVE AREA.                                              00105000
+* ===================================================================== 00106000
+SAVE     DC    18F'0'                                                   00107000
+PPRTNPTR DS    A                  SAVE THE ADDRESS OF CEEPIPI ROUTINE   00108000
+*                                                                       00109000
+* PARAMETERS PASSED TO A CEEPIPI(INIT_SUB) CALL.                        00110000
+*                                                                       00111000
+INITSUB  DC    F'3'               FUNCTION CODE TO INITIALIZE FOR SUBR  00112000
+@CEXPTBL DC    A(PPTBL)           ADDRESS OF PIPI TABLE                 00113000
+@SRVRTNS DC    A(0)               ADDR OF SERVICE-RTNS VECTOR, 0 = NONE 00114000
+RUNTMOPT DC    CL255' '           FIXED LENGTH STRING OF RUNTIME OPTNS  00115000
+TOKEN    DS    F                  UNIQUE VALUE RETURNED (OUTPUT)        00116000
+*                                                                       00117000
+* PARAMETERS PASSED TO A CEEPIPI(CALL_SUB) CALL.                        00118000
+*                                                                       00119000
+CALLSUB  DC    F'4'               FUNCTION CODE TO CALL SUBROUTINE      00120000
+PTBINDEX DC    F'0'               THE ROW NUMBER OF PIPI TABLE ENTRY    00121000
+PARMPTR  DC    A(0)               POINTER TO @PARMLIST OR ZERO IF NONE  00122000
+SUBRETC  DS    F                  SUBROUTINE RETURN CODE (OUTPUT)       00123000
+SUBRSNC  DS    F                  SUBROUTINE REASON CODE (OUTPUT)       00124000
+SUBFBC   DS    3F                 SUBROUTINE FEEDBACK TOKEN (OUTPUT)    00125000
+*                                                                       00126000
+* PARAMETERS PASSED TO A CEEPIPI(TERM) CALL.                            00127000
+*                                                                       00128000
+TERM     DC    F'5'               FUNCTION CODE TO TERMINATE            00129000
+ENV_RC   DS    F                  ENVIRONMENT RETURN CODE (OUTPUT)      00130000
+*                                                                       00131000
+* ===================================================================== 00132000
+* PIPI TABLE.                                                           00133000
+* ===================================================================== 00134000
+PPTBL    CEEXPIT  ,               PIPI TABLE WITH INDEX                 00135000
+         CEEXPITY EDCPIPI,0       0 = DYNAMICALLY LOADED ROUTINE WITH   00136000
+*                                     RE-ENTRANT OPTION                 00137000
+         CEEXPITS ,               END OF PIPI TABLE                     00138000
+*                                                                       00139000
+*                                                                       00140000
+         LTORG                                                          00141000
+R0       EQU   0                                                        00142000
+R1       EQU   1                                                        00143000
+R2       EQU   2                                                        00144000
+R3       EQU   3                                                        00145000
+R4       EQU   4                                                        00146000
+R5       EQU   5                                                        00147000
+R6       EQU   6                                                        00148000
+R7       EQU   7                                                        00149000
+R8       EQU   8                                                        00150000
+R9       EQU   9                                                        00151000
+R10      EQU   10                                                       00152000
+R11      EQU   11                                                       00153000
+R12      EQU   12                                                       00154000
+R13      EQU   13                                                       00155000
+R14      EQU   14                                                       00156000
+R15      EQU   15                                                       00157000
+         END   ASMPIPI                                                  00158000

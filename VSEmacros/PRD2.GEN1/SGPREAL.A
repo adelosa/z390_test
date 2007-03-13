@@ -1,0 +1,1214 @@
+         MACRO                                                          00050000
+         SGPREAL                                                        00100000
+         ACTR  100                                             @D14ZDRP 00350000
+.*************************************************************          00550009
+*                                                            *          00600009
+.*       IBM DISK OPERATING SYSTEM                           *          00650009
+*        SUPERVISOR - SGPREAL - 5686-066-06                  *          00700009
+*                                                            *          00800000
+*        LICENSED MATERIALS - PROPERTY OF IBM                *          00850009
+*        "RESTRICTED MATERIALS OF IBM"                       *          00900009
+*        5686-066                                            *          00950009
+*        (C) COPYRIGHT IBM CORP. 1977, 2001                  *          00960009
+*                                                            *          01050000
+**************************************************************          01100009
+         SPACE 2                                                        01150000
+         TITLE 'VSE/AF SUPERVISOR     SGPREAL     PAGE MANAGEMENT (GETR*01200001
+               EAL ROUTINE)'                                   @D14ZDRP 01350000
+         SPACE 2                                                        01400000
+* /* START OF SPECIFICATIONS ****************************************** 01450000
+*                                                                       01500000
+*01* MODULE NAME = SGPREAL                                              01550000
+*                                                                       01600000
+*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                          01650000
+*                                                                       01700000
+*01* DESCRIPTIVE NAME = GETREAL/FREEREAL SUPPORT OF PAGE MANAGEMENT     01750000
+*                       SERVICES                                        01800000
+*                                                                       01850000
+*01* CHANGE ACTIVITY = AS FOLLOWS                                       01900000
+*    CHANGE DESCRIPTIONS                                                01950000
+*            NEW MACRO -- FIRST RELEASE 35 FOR S/370 ONLY               02000000
+* S/370 - SUPPORT                                              @D35CDKH 02050007
+* PFIX IN SVA (FOR /370-MODE)                                  @D14BDRP 02100007
+* 16 MB REAL STORAGE FOR /370                                  @D14ADVB 02150007
+* MULTIPLE VIRTUAL ADDRESS SPACES                              @D14NDFG 02200007
+* 4 K PAGESIZE FOR 370 AND VM MODE                             @DA33314 02250007
+* NEW SYSTEM LAYOUT                                            @D51GDRP 02300007
+* MORE THAN 16MB REAL                                          @D51GDTP 02350007
+* 31-BIT ENABLING                                              @D52VDRP 02375007
+* FIXEXCHG CALLED WITH WRONG BASE                    @D52VDRP  @KX40934 02387507
+* NON-PDS SYSTEM                                               @D61BDRP 02393707
+* MULTI-PROCESSOR SUPPORT                                      @D61RDRP 02396807
+* MAINTAIN CURSELCT AND I-BIT PROPERLY                         @DY44117 02396907
+* ISSUE IPTE BEFORE PTE INSTRUCTION IS MODIFIED                @DY44241 02397007
+* REMOVE FAST-CCW-TRANSLATION SUPPORT                          @D64YDOW 02398007
+* MORE THAN 255 TASKS                                          @D66ODOW 02399009
+*                                                                       02400000
+* A000000-999999                                               @D35CDKH 02450000
+**** END OF SPECIFICATIONS *******************************************/ 02500000
+PMRRADR  DS    0D                                              @D14ZDVB 02550000
+         DC    CL8'SGPREAL'       CODE IDENTIFICATION IN DUMP           02600000
+         DC    CL10'02/25/2001'   LAST APAR / DEVELOPMENT CHANGE        02650008
+*-------------------------------------------------------------*@D149DVB 02800000
+*        ROUTINE PROLOGUE                                      @D149DVB 02850000
+*        ROUTINE NAME: GETREAL                                 @D149DVB 02900000
+*        MACRO:        SGPREAL                                 @D149DVB 02950000
+*        FUNCTION:  ALLOCATES AND PFIXES REAL SPACE AREA       @D149DVB 03000000
+*        CALLED BY: SVGREAL, IJBSINP, GETFRM                   @D149DVB 03025001
+*                          WITH AMODE(31),DATON                @D529DRP 03037501
+*        CALLS: RWAIT WITH AMODE(31),DATON                     @D529DRP 03050001
+*        BRANCHES TO GETR020 WITH AMODE(31),DATOFF             @D529DRP 03075001
+*        ENTRY POINTS:                                         @D149DVB 03100000
+*                   GETREAL - IJBSINP                          @D149DVB 03150001
+*                   GETREAL2 - SVGREAL                         @D149DVB 03200001
+*                   GETREAL3 - GETFRM                          @D529DRP 03225001
+*        INPUT:                                                @D149DVB 03250000
+*                   R2  :  LOWER LIMIT AS REAL ADDRESS         @D149DVB 03300000
+*                   R3  :  UPPER LIMIT AS REAL ADDRESS         @D149DVB 03350000
+*                   R7  :  RETURN ADDRESS                      @D149DVB 03375001
+*                 IF ENTERED IN GETREAL2/GETREAL3 ADDITIONALLY @D149DVB 03400001
+*                   R6  :  ADDRESS (PCB) IF ENTERED IN GETREAL2@D149DVB 03450000
+*                   R8  :  ADDRESS PAGEMANAGER DATA AREA       @D149DVB 03550000
+*        OUTPUT:                                               @D149DVB 03600000
+*                   R2  :  ADDR (LAST HANDLED PFTE)            @D149DVB 03650000
+*                   RF  :  RETURN CODE                         @D149DVB 03700000
+*                    0  =  O.K.                                @D149DVB 03750000
+*                    4  =  DRAP FOUND NOT IN 1ST PAGE-FRAME    @D149DVB 03800000
+*                          R2 CONTAINS ADDR(FAILING PFTE)      @D149DVB 03850000
+*                          IF CALLED AS SVC_55 AREA TILL PF    @D149DVB 03900000
+*                             WITH DRAP=0N FIXED               @D149DVB 03950000
+*                          OTHERWISE NOTHING FIXED             @D149DVB 04000000
+*                    8  =  DRAP FOUND IN 1ST PAGE              @D149DVB 04050000
+*                          R2 CONTAINS ADDR(FAILING PFTE)      @D149DVB 04100000
+*                                                              @D149DVB 04150000
+*        OPERATION:                                            @D149DVB 04200000
+*                                                              @D149DVB 04250000
+*        GETREAL:                         /* E N T R Y  P T  */@D149DVB 04300000
+*        DO   WHILE RBGETR GATE NOT OPEN                       @D149DVB 04350000
+*             ACCL RWAIT(SRQGETR)                              @D149DVB 04400000
+*        END_DO                                                @D149DVB 04450000
+*        RID := GETRBND                                        @D149DVB 04500000
+*        GETREAL2:                        /* E N T R Y  P T  */@D149DVB 04550000
+*        SAVE CURRENT TIB-ADDR (IN FIXTIB)                     @D149DVB 04600000
+*        PCB.GETREALR := ON                                    @D149DVB 04650000
+*        /*             GET LOWER AND UPPER RANGE IN PFT     */@D149DVB 04700000
+*        LL := (BEG_ADDRESS/PAGESIZE)*PAGESIZE                 @D149DVB 04750000
+*        UL := (END_ADDRESS/PAGESIZE)*PAGESIZE                 @D149DVB 04800000
+*        PFTE_LL := ADDR_PFTE(LL)                              @D149DVB 04850000
+*        PFTE_UL := ADDR_PFTE(UL)                              @D149DVB 04900000
+*        RC := 0                                               @D149DVB 04950000
+*        DO_FOR1: DO FOR ALL PFTES BETWEEN (PFTE_LL,PFTE_UL)   @D149DVB 05000000
+*        SELECTION :                                           @D149DVB 05050000
+*           WHEN PFTE.DRAP=ON   /* PFTE REPRESENTS FAILING ST*/@D149DVB 05100000
+*              THEN  DO                                        @D149DVB 05150000
+*              RC := 4                                         @D149DVB 05200000
+*              IF CURRENT_PFTE = PFTE_LL  /* 1ST PF FAILING  */@D149DVB 05250000
+*                 THEN RC := 8                                 @D149DVB 05300000
+*                 ELSE DO FOR ALL PFTES IN (PFTE_LL,PFTE HANDLED)       05350000
+*                   IF PFTE.PNRINV V (PFTE.NFVP=OFF & PFTE.TFIXC=0 )    05400000
+*                      THEN INCREMENT NPSQE                    @D149DVB 05450000
+*                   PFTE.NFVP := OFF                           @D149DVB 05500000
+*                   END  (DO FOR)                              @D149DVB 05550000
+*              END                                             @D149DVB 05600000
+*           WHEN PFTE.PNRINV V (PFTE.NFVP=OFF & PFTE.TFIXC=0 ) @D149DVB 05650000
+*            /*  PF INVALID  OR NO PFIX_REQ AND NOT TFIXED   */@D149DVB 05700000
+*              THEN DO                                         @D149DVB 05750000
+*        LAB:     IF NPSQE < MINPSQE                           @D149DVB 05800000
+*                    THEN IF PF ARE KEPT BY FASTCCWX           @D149DVB 05850000
+*                         THEN CALL DEFIXCON                   @D149DVB 05900000
+*                         GOTO LAB                             @D149DVB 05950000
+*                         ELSE CALL RWAIT (SRQPFG)             @D149DVB 06000000
+*                         GOTO SELECTION                       @D149DVB 06050000
+*                    ELSE DECREMENT NPSQE                      @D149DVB 06100000
+*                         PFTE.NFRP:= ON                       @D149DVB 06150000
+*              END                                             @D149DVB 06200000
+*           WHEN PFTE.TFIXC > 0          /* PAGE IN PF TFIXED*/@D149DVB 06250000
+*              THEN DO                                         @D149DVB 06300000
+*              PF.TFIXED := ON                                 @D149DVB 06350000
+*              PFTE.NFRP := ON                                 @D149DVB 06400000
+*              END                                             @D149DVB 06450000
+*           WHEN PFTE.NFVP = ON & PFTE.TFIXC =0                @D149DVB 06500000
+*           /* PAGE IN PF NOT TFIXED BUT PF REQUESTED BY PFIX*/@D149DVB 06550000
+*              THEN PFTE.NFRP := ON                            @D149DVB 06600000
+*           END (SELECTION)                                    @D149DVB 06650000
+*        END  (DO_FOR1)                                        @D149DVB 06700000
+*        DO WHILE RC=0 OR SVC_55 REQUEST                       @D149DVB 06750000
+*        IF PF.TFIXED = ON                                     @D149DVB 06800000
+*           THEN DO                                            @D149DVB 06850000
+*           DO FOR PFTES BETWEEN (PFTE_LL,PFTE_UL)             @D149DVB 06900000
+*        LAD:   IF PFTE.TFIXC > 0                              @D149DVB 06950000
+*               THEN                                           @D149DVB 07000000
+*                  IF PFTE KEPT BY FASTCCWX                    @D149DVB 07050000
+*                     THEN CALL DEFIXALL /* TFREE PAGE FRAME */@D149DVB 07100000
+*                     GOTO LAD                                 @D149DVB 07150000
+*               ELSE                                           @D149DVB 07200000
+*                     PFTE.NFRP := ON                          @D149DVB 07250000
+*                     CALL RWAIT(SRQPGFX)                      @D149DVB 07300000
+*                                        /* RETRY ONCE MORE  */@D149DVB 07350000
+*           END (DO FOR)                                       @D149DVB 07400000
+*           END                                                @D149DVB 07450000
+*        ACT_PIK := PCB.PIK                                    @D149DVB 07500000
+*        DO_FOR2:                                              @D149DVB 07550000
+*        DO FOR ALL PFTES BETWEEN (PFTE_LL,PFTE_UL)            @D149DVB 07600000
+*        LAK :                                                 @D149DVB 07650000
+*           IF PFTE.DRAP = ON            /* FAILING STORAGE  */@D149DVB 07700000
+*              THEN LEAVE DO_FOR2                              @D149DVB 07750000
+*           IF PFTE.PNRINV = OFF         /* UNUSED PAGE FRAME*/@D149DVB 07800000
+*              THEN                                            @D149DVB 07850000
+*                 IF PFTE.POABIT+PCBIT = OFF                   @D149DVB 07900000
+*                 /* PF ¬CONNECTED &  PAGE_OUT ¬ACTIVE FOR PF*/@D149DVB 07950000
+*                   THEN IF PFTE.NFVP=ON /*  PF REQ BY PFIX  */@D149DVB 08000000
+*                      THEN DO                                 @D149DVB 08050000
+*                        CPFTE := FIND (IPFQ,PFTE.NFRP = OFF ) @D149DVB 08100000
+*                       /* FIND PFTE IN IPFQ WITH PF.NFRP=OFF*/@D149DVB 08150000
+*                        IF CPFTE := NIL                       @D149DVB 08200000
+*                           THEN                               @D149DVB 08250000
+*                             CPFTE:=FIND(PSQ,¬(PFTE.NFRP+PCBIT+POABIT) 08300000
+*                             IF CPFTE := NIL THEN GOTO WAIT   @D149DVB 08350000
+*                        CALL FIXEXCHG (PFTE,CPFTE)            @D149DVB 08400000
+*                   ELSE DO                                    @D149DVB 08450000
+*           WAIT :                                             @D149DVB 08500000
+*                     CALL RWAIT(SRQPGIO) /* WAIT FOR FRAMES */@D149DVB 08550000
+*                     GOTO LAK                                 @D149DVB 08600000
+*              ELSE                                            @D149DVB 08650000
+*           CALL REMOVE (PFTE,PSQ)                             @D149DVB 08700000
+*           IF PFTE.PNRINV=OFF    /*PF OCCUPIED BY VALID PAGE*/@D149DVB 08750000
+*              THEN DO                                         @D149DVB 08800000
+*              GET CHANGE AND REFERENCE STATE (PF_ADDR)        @D149DVB 08850000
+*              IF CHANGE_STATE = ON                            @D149DVB 08900000
+*                 THEN CALL ENQUOW                             @D149DVB 08950000
+*                 GOTO LAK                                     @D149DVB 09000000
+*                 ELSE DO                                      @D149DVB 09050000
+*                    IF PFTE.POEBIT = ON  /*  PFTE IN PGQUO  */@D149DVB 09100000
+*                      THEN DELETE(PFTE,PGQUO)                 @D149DVB 09150000
+*                 END                                          @D149DVB 09200000
+*                 CALL PAGDISCA (PFTE)    /* DISCONNECT PAGE */@D149DVB 09250000
+*              END                                             @D149DVB 09300000
+*           IF PFTE.PFIXC ¬= 0 THEN EXIT (COND=HW(X'FF1'))     @D149DVB 09350000
+*           PFTE.PFIXC := 1                                    @D149DVB 09400000
+*           INCREMENT PCB.SMPFIX                               @D149DVB 09450000
+*           DO UNTIL PTE AVAILABLE                             @D149DVB 09500000
+*              IF REQ = EXEC _REAL        /* INVALID STE EXP */@D149DVB 09550000
+*                 THEN STE(SCBPTR) := FCT(ADDR_STE,APTR)       @D149DVB 09600000
+*                 ELSE CALL PTASG(STE(SCBPTR)                  @D149DVB 09650000
+*                                         /*REAL AREA  SDAIDS*/@D149DVB 09700000
+*           END (DO_UNTIL)                                     @D149DVB 09750000
+*           PFTE.PNR := (ADDR_PTE-APTX)                        @D149DVB 09800000
+*           PFTE.FLAGS := PFTEREAL        /*INDICATE REAL REQ*/@D149DVB 09850000
+*           PF.STORAGE KEY := ACT_PIK                          @D149DVB 09900000
+*           PTE := PF_ADDR/2**8                                @D149DVB 09950000
+*        END DO_FOR2                                           @D149DVB 10000000
+*        GREND:                                                @D149DVB 10050000
+*DEL     EXECUTE PTLB                     /*CONSIDER NEW PTES*/@D149DVB 10100001
+*        RESET SAVED TIB ADDR                                  @D149DVB 10150000
+*        RETURN (RC,ADDR LAST HANDLED PFTE)                    @D149DVB 10200000
+*        END OF GETREAL;                                       @D149DVB 10250000
+*-------------------------------------------------------------*@D149DVB 10300000
+         SPACE 3                                                        10350000
+GETREAL  DS    0H                                              @D14NDFG 10400000
+         L     R8,APMGMDAT        POINT TO PMR DATA AREA       @D14NDFG 10500000
+         USING PMGMDATA,R8        SET BASE FOR DATA AREA                10550000
+         L     R9,APMRRADR        LOAD BASE FOR CODE                    10600000
+         USING PMRRADR,R9         SET BASE FOR CODE                     10650000
+         L     R6,PCBPTR          GET PCB ADDR FOR FIX INFORM  @D36IDRP 10700000
+         USING PCBADR,R6          SET BASE FOR PCB             @D36IDRP 10750000
+         SPACE 1                                                        10800000
+GETREAL0 L     R5,ASRQTAB         GET SRQ TABLE ADDRESS        @D61RDGL 10850001
+         TM    RBGETR-SRQTAB(R5),FREEBIT           GATE OPEN ? @D66ODOW 10900009
+         BO    GETREAL1           YES, BRANCH                  @D66ODOW 10950009
+         LA    R5,SRQGETR-SRQTAB(,R5) P.TO GETREAL WAIT QUEUE  @D61RDGL 11000001
+         BAL   RC,RWAIT           WAIT FOR GETREAL OPEN        @D36IDFG 11050000
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D369DRP 11100000
+         B     GETREAL0           TEST WHETHER GATE NOW OPEN            11150000
+         SPACE 1                                                        11200000
+GETREAL1 MVI   RID+D1,GETRBND     GATE GETREAL RTN                      11250000
+*-------------------------------------------------------------*         11300000
+*        SAVE TIB OF REQUESTING TASK IN FIXTIB OF PCB          @D369DRP 11350000
+*        INDICATE GETREAL IN FIXTYPE OF PCB                    @D369DRP 11400000
+*-------------------------------------------------------------*         11450000
+         SPACE 1                                                        11500000
+GETREAL2 DS    0H                                              @D52VDRP 11550001
+         OI    FIXTYPE,GTRBIT     INDICATE GETREAL IN PCB      @D369DRP 11650000
+GETREAL3 DS    0H                 ENTRY POINT FROM GETFRM-RTN  @D52VDRP 11666601
+         MVC   FIXTIB,TIBPTR      SAVE TIB PTR OF REQUESTOR    @D36IDFG 11683201
+         SR    R0,R0              CLEAR DRAP INDICATION REG             11700000
+         LR    R1,R0              CLEAR PAGE FIXED SWITCH      @D14NDVB 11750000
+         N     R2,PADDRMSK        SET ADDRESS TO PG BOUNDARY            11800000
+         N     R3,PADDRMSK        SET ADDR TO PAGE BOUNDARY             11850000
+         LR    RB,R2              LOAD BEGIN AND END                    11900000
+         LR    RD,R3              ADDRESS FOR GETREAL                   11950000
+         SRL   RB,PFSHIFT         OFFSET IN PFT                         12000000
+         SRL   RD,PFSHIFT         OFFSET IN PFT                         12050000
+         A     RB,APFT            POINT TO PFTE                         12100000
+         A     RD,APFT            POINT TO PFTE                         12150000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 12168701
+         AMODESW SET,DAT=OFF                                   @D52VDRP 12175001
+*        GENSERV LRADBG,RREG=(R6),VADD=(R6),ERR=NADDR                  *12181201
+                                         GET REAL ADDR OF PCB  @D52VDRP 12187401
+         GENSERV LRADBG,RREG=(R6),VADD=(R6),ERR=NADDR          @D52VDRP 12193601
+         LR    RF,RB              SAVE 1ST PFTE OF AREA                 12200000
+         B     GETR020            GO TO HANDLE 1ST PAGE FRAME  @D14ZDVB 12250000
+         DROP  R6                 DROP BASE FOR PCB            @D52VDRP 12300001
+         EJECT                                                          12350000
+*-------------------------------------------------------------*         12400000
+*        FIRST MAIN PART OF GETREAL                                     12450000
+*        --------------------------                                     12500000
+*        THIS PART OF THE GETREAL ROUTINE INDICATES IN ALL              12550000
+*        PFTE'S CORRESPONDING TO THE REQUESTED AREA, THAT               12600000
+*        THEY MUST NOT BE FIXED(NFRP=ON). IT WAITS AS LONG AS           12650000
+*        THERE IS ANY TFIXED PAGE IN THE AREA                           12700000
+*        EXECUTES IN AMODE(31),DATOFF                          @D529DRP 12708301
+*        CALLED ROUTINES:                                      @D529DRP 12716601
+*              RWAIT WITH AMODE(31),DATON                      @D529DRP 12724901
+*              DEFIXCON, DEFIXALL WITH AMODE(24),DATON         @D529DRP 12733201
+*        BRANCHES TO EEEGETR , GREND WITH AMODE(31),DATOFF     @D529DRP 12741501
+*                                                                       12750000
+*        REGISTER USAGE IN THIS PART :                                  12800000
+*                                                                       12850000
+*        R0 - DRAP=ON INDICATION                                        12900000
+*        R1 - PAGE FIXED SWITCH                                         12950000
+*        R2 - PARAMETER LEFT UNCHANGED                                  13000000
+*        R3 - PARAMETER LEFT UNCHANGED                                  13050000
+*        R4 - PTR TO PFTE WHEN WAITING FOR TFREE                        13100000
+*        R5 - WORK REG                                                  13150000
+*        R6 - ADDR OF PCB OF REQUESTED AREA (REAL)             @D529DRP 13200001
+*        R7 - RETURN ADDRESS                                            13250000
+*        R8 - BASE FOR DATA AREA                                        13300000
+*        R9 - BASE FOR CODE AREA                                        13350000
+*        RA - LINK TO NEXT LEVEL                                        13400000
+*        RB - ADDR OF CURRENT PFTE IN AREA                              13450000
+*        RC - WORK REG                                                  13500000
+*        RD - ADDR OF LAST PFTE OF AREA                                 13550000
+*        RE - WORK REG                                                  13600000
+*        RF - ADDR OF FIRST PFTE OF AREA                                13650000
+*                                                                       13700000
+*        OUTPUT : ALL PF'S OF THE REQUESTED AREA ARE UNFIXED,           13750000
+*                 ALL PFTE'S ARE IN PSQ BUT THEY ARE NOT CONTAINED      13800000
+*                 IN THE VALUE OF NPSQE                                 13850000
+*                IF A DRAP-BIT IS ON IN THE AREA AND REQUEST IS@D369DRP 13900000
+*                 NOT FROM SVC55, THE REQUESTED AREA IS LEFT   @D369DRP 13950000
+*                 UNCHANGED AND NPSQE IS UNCHANGED, RETURN IS  @D369DRP 14000000
+*                 TO CALLER WITH THE CORRECT RETURN CODE.      @D369DRP 14050000
+*-------------------------------------------------------------*         14100000
+         SPACE 1                                                        14150000
+         USING PCBADR,R6                                       @D52VDRP 14162501
+         USING PFTE,RB                                                  14175001
+GETR010  DS    0H                                              @D14NDVB 14200000
+         LA    RB,LPFTE(RB)       GET NEXT PFTE                         14250000
+         CR    RB,RD              LAST PFTE OF AREA REACHED             14300000
+         BH    ENDPFTE1           YES, BRANCH                           14350000
+         SPACE 1                                               @D14ZDVB 14400000
+GETR020  EQU   *                  ENTRY AFTER WAIT FOR NPSQE>MINPSQE    14450000
+         TM    S370FLG,DRAP       IS PF FAILING STORAGE                 14550000
+         BO    ENDDRAP            YES, BRANCH                           14600000
+         TM    S370FLG,PNRINV     IS PAGE# INVALID(PF UNUSED)           14650000
+         BO    GETR040            YES , BRANCH                          14700000
+         LH    R5,TFIXC           GET TFIX-COUNTER                      14750001
+         LTR   R5,R5              IS PG IN PF TFIXED                    14800000
+         BNZ   PGTFIXED           YES, BRANCH                           14850000
+         TM    S370FLG,NFVP       PG IN PF REQUESTED FOR PFIX           14900000
+         BO    GETR050            YES, BRANCH                           14950000
+GETR040  CLC   NPSQE,MINPSQE      MIN # OF PSQ-ENTR. REACHED            15000000
+         BNH   MINPSQE1           YES, BRANCH                           15050000
+*        GENSERV DEC,FIELD=NPSQE,REG=(R5)                      @D52VDVB 15083301
+         GENSERV DEC,FIELD=NPSQE,REG=(R5)                      @D52VDVB 15116601
+GETR050  OI    S370FLG,NFRP       INDICATE PF NOT FIXABLE               15250000
+         B     GETR010            HANDLE NEXT PF                        15300000
+         SPACE 1                                                        15350000
+MINPSQE1 EQU   *                                                        15400000
+         AGO   .FSTRL10                                        @D64YDOW 15410007
+*      GENSERV TEST,FIELD=LOWFXPTR,REG=(R5),BC=BZ,LAB=FSTCCW1  @D52VDVB 15483301
+       GENSERV TEST,FIELD=LOWFXPTR,REG=(R5),BC=BZ,LAB=FSTCCW1  @D52VDVB 15516601
+         L     R9,ACCWT           LOAD BASE FOR CCW FIXING F.           15650000
+         DROP  R9                 FORGET CURRENT BASE FOR CODE          15700000
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 15712501
+         AMODESW SET,DAT=ON                                    @D52VDRP 15725001
+         SGCOV SGPREAL,MC=0                                    @D52VDRP 15737501
+         USING CCWTADR,R9         SET BASE FOR CCW FIXING F.            15750000
+*        AMODESW CALL,AMODE=24,ADDRESS=DEFIXCON,REGS=(RA,RA)   @D52VDRP 15775001
+         AMODESW CALL,AMODE=24,ADDRESS=DEFIXCON,REGS=(RA,RA)   @D52VDRP 15800001
+*SGLINK  DEFIXCON,INPUT=(R9,RA)                                @D369DRP 15850000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 15862501
+         AMODESW SET,DAT=OFF                                   @D52VDRP 15875001
+         L     R9,APMRRADR        RESTORE BASE FOR CODE                 15900000
+         DROP  R9                 FORGET BASE FOR CCW-FIX               15950000
+         USING PMRRADR,R9         SET BASE FOR CODE                     16000000
+         B     GETR040                                                  16050000
+         SPACE 1                                                        16100000
+FSTCCW1  EQU   *                                                        16150000
+.FSTRL10 ANOP                                                  @D64YDOW 16160007
+         L     R5,ASRQTAB                                      @D61RDGL 16200001
+         LA    R5,SRQPFG-SRQTAB(,R5) PT TO PFG WAIT QUEUE      @D61RDGL 16250001
+         LA    RA,GETR020         POST RETURN ADDRESS          @D14ZDVB 16300000
+         SGCOV SGPREALS,MC=0                                   @D52VDRP 16325001
+         B     GRWAIT             WAIT FOR ENOUGH PF'S         @D14ZDVB 16350000
+         SPACE 1                                                        16400000
+PGTFIXED LA    R1,1               IND AT LEAST ONE PG TFIXED   @D14NDVB 16450000
+         OI    S370FLG,NFRP       INDICATE PF NOT FIXABLE               16500000
+         B     GETR010            HANDLE NEXT PF                        16550000
+         DROP  RB                 FORGET BASE FOR PFTE                  16600000
+         SPACE 1                                                        16650000
+* --- END OF FIRST LOOP  -------------------------------------*@D149DVB 16700000
+         SPACE 1                                                        16750000
+ENDDRAP  LA    R0,8               INDICATE 1ST PAGE FAILING    @D52VDRP 16800001
+         SGCOV SGPREALS,MC=1                                   @D52VDRP 16825001
+         CR    RF,RB              1ST PAGE FAILING                      16850000
+         BE    ENDDRAP1           YES, BRANCH                  @D52VDRP 16900001
+         LA    R0,4               INDICATE NOT 1ST PAGE FAIL.  @D52VDRP 16950001
+         TM    FIXTYPE,SVC55BIT   ENTRY FROM SVC55             @D52VDRP 17000001
+         BO    ENDPFTE1           YES, CONTINUE WITH GETREAL   @D52VDRP 17050001
+         SPACE 1                                               @D14NDVB 17150000
+*     RESET NFRP-BIT, ADJUST NPSQE TO CORRECT VALUE,           @D369DRP 17200000
+*     RETURN TO CALLER, NOTHING IS FIXED                       @D369DRP 17250000
+         SPACE 1                                               @D14NDVB 17300000
+ENDDRAP1 SRL   R2,PFSHIFT         OFFSET IN PFT                @D36IDRP 17350000
+         A     R2,APFT            R2 ADDR OF 1ST PFTE OF AREA  @D36IDRP 17400000
+         B     ENDDRAP2           HANDLE FIRST PAGE FRAME      @D36IDRP 17450000
+         SPACE 1                                               @D14NDVB 17500000
+ENDDRPLP LA    R2,LPFTE(R2)       GET ADDR OF NEXT PFTE        @D36IDRP 17550000
+ENDDRAP2 CR    R2,RB              END OF AREA REACHED          @D36IDRP 17600000
+         BNL   GREND              YES, RETURN                  @D36IDRP 17650000
+         USING PFTE,R2                                         @D36IDRP 17700000
+         TM    S370FLG,PNRINV     IS PAGE FRAME UNUSED         @D36IDRP 17750000
+         BO    ENDDRAP3           YES, UPDATE NPSQE            @D36IDRP 17800000
+         TM    S370FLG,NFVP       PG IN PF REQUESTED BY PFIX   @D36IDRP 17850000
+         BO    ENDDRAP4           YES, DON'T UPDATE NPSQE      @D36IDRP 17900000
+*      GENSERV TEST,FIELD=TFIXC,REG=(R5),BC=BNZ,LAB=ENDDRAP4   @D52VDVB 17929101
+       GENSERV TEST,FIELD=TFIXC,REG=(R5),BC=BNZ,LAB=ENDDRAP4   @D52VDVB 17958201
+ENDDRAP3 DS    0H                                              @D36IDRP 18074601
+*        GENSERV INC,FIELD=NPSQE,REG=(R5)                      @D52VDVB 18103701
+         GENSERV INC,FIELD=NPSQE,REG=(R5)                      @D52VDVB 18132801
+ENDDRAP4 NI    S370FLG,XFF-NFRP   RESET NFRP-BIT               @D36IDRP 18250000
+         B     ENDDRPLP           HANDLE NEXT PFTE             @D36IDRP 18300000
+         DROP  R2                                              @D36IDRP 18350000
+         SPACE 2                                                        18400000
+ENDPFTE1 LTR   R1,R1              ANY PAGE IN PF'S OF AREA TFXD@D14ADVB 18450000
+         BZ    EEEGETR            ============> NO, EXIT THIS PART      18500001
+         SPACE 1                                                        18550000
+*     AT LEAST ONE PAGE WAS TFIXED IN REQUESTED AREA                    18600000
+         SPACE 1                                                        18650000
+NXTPF0   DS    0H                                                       18700001
+         LR    R4,R2              GET 1ST PARAMETER                     18750000
+         SRL   R4,PFSHIFT         OFFSET IN PFT                         18800000
+         A     R4,APFT            POINT TO PFTE                         18850000
+         USING PFTE,R4            SET BASE FOR PFTE                     18900000
+NXTPF1   DS    0H                                              @D52VDVB 18928501
+*     GENSERV  TEST,FIELD=TFIXC,REG=(R5),BC=BZ,LAB=NXTPF2      @D52VDVB 18957001
+      GENSERV  TEST,FIELD=TFIXC,REG=(R5),BC=BZ,LAB=NXTPF2      @D52VDVB 18985501
+         SPACE 1                                               @D14BDVB 19100000
+         AGO   .FSTRL20                                        @D64YDOW 19110007
+*      GENSERV TEST,FIELD=LOWFXPTR,REG=(R5),BC=BZ,LAB=FSTCCW3  @D52VDVB 19183301
+       GENSERV TEST,FIELD=LOWFXPTR,REG=(R5),BC=BZ,LAB=FSTCCW3  @D52VDVB 19216601
+         L     R9,ACCWT           LOAD BASE FOR CCW FIXING F.           19350000
+         DROP  R9                 FORGET CURRENT BASE FOR CODE          19400000
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 19416601
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 19433201
+         USING CCWTADR,R9         SET BASE FOR CCW FIXING F.            19450000
+         SGCOV SGPREAL,MC=1                                    @D52VDRP 19462501
+*        AMODESW CALL,AMODE=24,ADDRESS=DEFIXALL,REGS=(RA,RA)   @D52VDRP 19475001
+         AMODESW CALL,AMODE=24,ADDRESS=DEFIXALL,REGS=(RA,RA)   @D52VDRP 19500001
+*SGLINK  DEFIXALL,INPUT=(R9,RA)                                @D369DRP 19550000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN        @D52VDRP 19566601
+         AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN        @D52VDRP 19583201
+         L     R9,APMRRADR        RESTORE BASE FOR CODE                 19600000
+         DROP  R9                 FORGET BASE FOR CCW-FIX               19650000
+         USING PMRRADR,R9         SET BASE FOR CODE                     19700000
+         B     NXTPF1                                                   19750000
+         SPACE 1                                                        19800000
+FSTCCW3  EQU   *                                                        19850000
+.FSTRL20 ANOP                                                  @D64YDOW 19860007
+*     WAIT FOR TFREE                                                    19950000
+         SPACE 1                                                        20000000
+         OI    S370FLG,NFRP                                    @D14BDVB 20050000
+         SGCOV SGPREALS,MC=2                                   @D52VDRP 20075001
+         L     R5,ASRQTAB                                      @D61RDGL 20100001
+         LA    R5,SRQPGFX-SRQTAB(,R5) ADDR OF RESOURCE DESCR.  @D61RDGL 20125001
+         LA    RA,NXTPF0          POST RETURN ADDRESS          @D14ZDVB 20150000
+GRWAIT   EQU   *                                                        20200000
+         AGO   .FSTRL30                                        @D64YDOW 20210007
+*        GENSERV INC,FIELD=DEFIXCNT,REG=(R4)  REQUEST DEFIX BY @D52VDVB 20272201
+*                                  FAST CCW-TRANSLATION        @D52VDVB 20294401
+         GENSERV INC,FIELD=DEFIXCNT,REG=(R4)                   @D52VDVB 20316601
+.FSTRL30 ANOP                                                  @D64YDOW 20316707
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 20466601
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 20483201
+         BAL   RC,RWAIT                                                 20500000
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D369DRP 20550000
+* RWAIT RETURNS WITH DAT ON                                    @D52VDRP 20566601
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN        @D52VDRP 20574901
+         AMODESW SET,DAT=OFF                                   @D52VDRP 20583201
+         AGO   .FSTRL40                                        @D64YDOW 20583307
+*        GENSERV DEC,FIELD=DEFIXCNT,REG=(R4)                   @D52VDVB 20633301
+         GENSERV DEC,FIELD=DEFIXCNT,REG=(R4)                   @D52VDVB 20666601
+.FSTRL40 ANOP                                                  @D64YDOW 20666707
+         BR    RA                 BRANCH TO NXTPF0/GETR020     @D149DVB 20850001
+         SPACE 1                                                        20900000
+NXTPF2   LA    R4,LPFTE(R4)       GET NEXT PFTE                @D14BDVB 20950000
+         CR    R4,RB              END OF AREA REACHED                   21000000
+         BL    NXTPF1             NO, BRANCH                            21050000
+*                                 UNFIXED                               21100000
+         DROP  R4                 FORGET BASE FOR PFTE                  21150000
+         DROP  R6                 DROP BASE FOR PCB            @D52VDRP 21175001
+         EJECT                                                          21200000
+*-------------------------------------------------------------*         21250000
+*        SECOND MAIN PART OF GETREAL                                    21300000
+*        ---------------------------                                    21350000
+*        LOOPS THROUGH THE REQUESTED AREA AND TAKES ACTIONS             21400000
+*        UNDER THE FOLLOWING CONDIDTIONS :                              21450000
+*        1. PF UNUSED : MAKES PAGE WITH SAME ADDRESS AS PF              21500000
+*                       ADDRESSABLE                                     21550000
+*        2. PF CONTAINS A VALID PAGE :                                  21600000
+*             A. PAGE IS NOT REQUESTED BY PFIX :                        21650000
+*                IF C-BIT ON WRITE PAGE ON PDS, INVALIDATE PTE          21700000
+*                AND DO ACTION 1.                                       21750000
+*             B. PAGE REQUESTED BY PFIX :                               21800000
+*                FIND UN UNFIXED PF AND EXCHANGE PAGES AND DO           21850000
+*                ACTION 1/2 DEPENDING ON THE STATE OF THE EX-           21900000
+*                CHANGED PAGE                                           21950000
+*             C. PAGE CONNECTED TO PAGE FRAME                           22000000
+*                WAIT FOR END OF PC-STATE AND DO ACTION 2.A             22050000
+*        ENTERED FROM GETR020 WITH AMODE(31),DATOFF            @D529DRP 22058301
+*        CALLED ROUTINES:                                      @D529DRP 22066601
+*              ENQUOW, FIXEXCHG, PAGDISCA, PMRREMOV, PTASG,    @D529DRP 22074901
+*              RWAIT     WITH AMODE(31),DATON                  @D529DRP 22091501
+*                                                                       22100000
+*        REGISTER USAGE IN THIS PART :                                  22150000
+*                                                                       22200000
+*        R0 - DRAP=ON INDICATION                                        22250000
+*        R1 - WORKREGISTER                                     @D149DRP 22300000
+*        R2 - ADDR OF CURRENT PFTE / WORK REGISTER LATER ON    @D149DRP 22350000
+*        R3 - ADDR OF LAST PFTE OF AREA                                 22400000
+*        R4 - WORK REG                                                  22450000
+*        R5 - WORK REG                                                  22500000
+*        R6 - ADDR OF PCB OF REQUESTED AREA (REAL)                      22550001
+*        R7 - RETURN ADDRESS                                            22600000
+*        R8 - BASE FOR DATA AREA                                        22650000
+*        R9 - BASE FOR CODE AREA                                        22700000
+*        RA - WORK REG/ LINK TO NEXT LEVEL                              22750000
+*        RB - WORKREG                                                   22800000
+*        RC - WORK REG / ADDR OF PFTE LATER ON                 @D149DRP 22850000
+*        RD - WORK REG                                                  22900000
+*        RE - ADDR OF PF CORRESPONDING TO R2                            22950000
+*        RF - WORK REGISTER                                    @D51IDRP 23000000
+*             /RETURN CODE ON RETURN TO CALLER                          23050000
+*-------------------------------------------------------------*         23100000
+         SPACE 1                                                        23150000
+EEEGETR  DS    0H                                              @D51IDRP 23200000
+         USING PCBADR,R6          SET BASE FOR PCB (REAL)      @D52VDRP 23225001
+         LR    RE,R2              SAVE PF-ADDRESS                       23250000
+         SRL   R2,PFSHIFT         OFFSET IN PFT  1ST PF                 23300000
+         SRL   R3,PFSHIFT         OFFSET IN PFT LAST  PF                23350000
+         A     R2,APFT            POINT TO PFTE                         23400000
+         A     R3,APFT            POINT TO PFTE                         23450000
+         USING PFTE,R2            SET BASE FOR PFTE                     23500000
+         SPACE 1                                                        23550000
+GETR060  CR    R2,R3              END OF AREA REACHED                   23600000
+         BH    GREND00            YES,BR                                23650000
+GETR080  DS    0H                                                       23700001
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN WITHIN LOOP     23716601
+         AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN        @D52VDRP 23733201
+         TM    S370FLG,DRAP       PF FAILING STORAGE                    23766601
+         BO    GREND              YES, GO TO END OF GETREAL             23800000
+         TM    S370FLG,PNRINV     PF UNUSED                             23850000
+         BO    REMOVE10           YES, BRANCH                           23900000
+         TM    PFTEFLG,POABIT+PCBIT PAGE OUT ACT. OR PAGE CONN.@D14ZDRP 23950000
+         BNZ   PGCON              YES, BRANCH                           24000000
+         TM    S370FLG,NFVP       PG IN PF REQUESTED BY PFIX            24050000
+         BO    PFNFVP             YES, BRANCH                           24100000
+REMOVE10 LR    RC,R2              PFTE-ADDR FOR FOLLOW. PART IN REG.C   24150000
+         DROP  R2                 FORGET BASE FOR PFTE         @D14BDRP 24200000
+         USING PFTE,RC            RESET BASE FOR PFTE          @D14BDRP 24250000
+         BAL   RA,PMRREMOV        REMOVE PFTE FROM PSQ                  24300000
+*SGLINK  PMRREMOV,INPUT=(R8:APMGMDAT,RA:LINK,RC:PFTE),WORK=(R4,R5)      24325001
+         TM    S370FLG,PNRINV     PF UNUSED                             24350000
+         BO    CLPGE04            YES, BRANCH                           24400000
+         SPACE 1                                                        24450000
+*     PAGE FRAME IS OCCUPIED BY A VALID PAGE                            24500000
+         SPACE 1                                                        24550000
+         L     RD,PFTEPNR         GET PG# OF PG IN PF                   24600000
+         N     RD,PAGNMASK        PAGE NUMBER                  @D14NDFG 24650000
+         SLL   RD,PNSHIFT         EXTENDED PAGE ADDRESS        @D51GDRP 24700000
+         L     R9,APMRSERV        GET BASE ADDR FOR SUBRTN     @KXA1851 24710001
+         USING PMRSERV,R9                                      @KXA1851 24720001
+         BAL   RA,PAGIPTE         SET PAGE TO DISCONNECTED     @KXA1851 24730001
+*SGLINK  PAGIPTE,INPUT=(R8,R9,RA,RC,RE),WORK=(R4,R5,RF),               *24740002
+               AMODE=31,DATOFF                                          24750002
+         L     R9,APMRRADR        RESTORE BASE FOR CODE AREA   @KXA1851 24760002
+         USING PMRRADR,R9                                      @KXA1851 24770002
+         RRBE   0,RE              RESET REFERENCE BIT          @D51GDTP 25400000
+         BC    10,CLPGE00         BR IF C-BIT OFF                       25600000
+         TM    IJBFLG08,IJBNOPDS  SYSTEM WITHOUT PDS           @D61BDRP 25650001
+         BO    PFNPDS             YES, BRANCH                  @D61BDRP 25700001
+         NI    PFTEFLG3,XFF-CURSELCT CURRENT SELECTION OFF     @KXA1851 25710002
+.*             CURSELCT IS SET ON IN PAGIPTE IF THE RELATED PAGE        25720002
+.*             IS A VPOOL PAGE IN CONNECTED STATEHE RELATED PAGE        25730002
+         LR    RF,R6              SAVE ADDR OF PCB             @D51IDRP 25750000
+         SGCOV SGPREAL,MC=2                                    @D52VDRP 25800001
+         L     RA,AENQUOW         GET ENTRY ADDR FOR ENQUOW             26000000
+         BALR  RA,RA              CALL ENQUOW                           26050000
+*SGLINK  ENQUOW,INPUT=(R8:APMGMDAT,RA:LINK,RC:PFTE,RD:PAGE,RE:PF),     *26073801
+               WORKR=(R4,R5,R6),AMODE=31  DATOFF                        26097601
+*   NOTE: R9 WILL BE SAVED AND RESTORED BY ENQUOUNC/ENQUOW     @D52VDVB 26121401
+*         WE GET CONTROL BACK WITH DAT ON                      @D52VDRP 26171401
+         LR    R2,RC              RESTORE PFTE ADDR            @D14BDRP 26250000
+         LR    R6,RF              RESTORE ADDR OF PCB          @D51IDRP 26300000
+         B     GETR080            TRY IT ONCE MORE                      26450000
+         SPACE 2                                                        26500000
+*-------------------------------------------------------------*         26550000
+*        CLEAR PAGE                                                     26600000
+*        INITIALIZE PFTE                                                26650000
+*        INITIALIZE PTE                                                 26700000
+*        SET STORAGE KEY                                                26750000
+*        SET NFRP OFF                                                   26800000
+*    INPUT: RC - ADDR OF PFTE                                  @D149DRP 26850000
+*           RD - EPA BELONGING TO PFTE                         @D149DRP 26900000
+*           RE - ADDR OF PAGE-FRAME                            @D149DRP 26950000
+*-------------------------------------------------------------*         27000000
+         SPACE 1                                                        27050000
+         USING PMRRADR,R9         RESET BASE FOR CODE AREA     @D51GDRP 27075001
+CLPGE00  DS    0H                                              @D14NDVB 27100000
+         NI    PFTEFLG3,XFF-CURSELCT CURRENT SELECTION OFF     @DY44117 27110002
+*DEL     AIF   (NOT &BGDEBUG).DBGR005                                   27125001
+         TM    PFTEFLG,POEBIT     ENTRY IN PGQUO                        27150000
+         BNZ   CLPGE01            YES, ERROR                            27180001
+         TM    PFTEFLG3,POSLISON  SCHEDULED FOR PREPAGE-OUT    @D52VDRP 27210001
+         BZ    CLPGE02            NO, O.K.                     @D52VDRP 27220001
+.* POSLISON CAN'T BE ON, SINCE FRAMES WITH C-BIT ON HAS BEEN   @D52VDRP 27230001
+.* WRITTEN OUT BY ENQUOW JUST AHEAD.                           @D52VDRP 27240001
+CLPGE01  BAL   R5,PMRHWERR        YES, ERROR                   @D52VDRP 27290001
+CLPGE02  DS    0H                                                       27400001
+.DBGR005 ANOP                                                  @D52VDRP 27450001
+         LR    RB,R9              SAVE BASE ADDR               @D14BDRP 27500000
+         L     R9,APMRSERV        GET BASE FOR                 @D51GDRP 27550001
+         USING PMRSERV,R9         SUBROUTINE                   @D51GDRP 27600001
+         BAL   RA,PAGDISCA        DISCONNECT PAGE                       27650000
+*SGLINK  PAGDISCA,INPUT=(R8:APMGMDAT,R9:BASE,RA:LINK,RC:PFTE,RD:EPA,RE:*27683301
+               PF),WORK=(R4,R5,RF),AMODE=31 DATOFF                      27716601
+         LR    R9,RB              * GET BASE FOR PRESENT                27750000
+         USING PMRRADR,R9         * ROUTINE AGAIN                       27800000
+         USING PCBADR,R6          RESET BASE FOR PCB           @D52VDVB 27850001
+CLPGE04  EQU   *                                                        27900000
+*DEL     AIF   (NOT &BGDEBUG).DBGR010                                   27950001
+*      GENSERV INCOMP,FIELD=PFIXC,REG=(R5),BC=BE,LAB=NGRERR,           *28000001
+               COMPF=F1                                        @D52VDVB 28050001
+       GENSERV INCOMP,FIELD=PFIXC,REG=(R5),BC=BE,LAB=NGRERR,           *28100001
+               COMPF=F1                                        @D52VDVB 28150001
+         BAL   R5,PMRHWERR        OTHERWISE HARD WAIT FF1      @D149DVB 28200000
+NGRERR   EQU   *                                                        28250000
+         AGO   .DBGR015                                        @D52VDVB 28275001
+.DBGR010 ANOP                                                           28300000
+*      GENSERV INC,FIELD=PFIXC,REG=(R5)                        @D52VDVB 28316601
+       GENSERV INC,FIELD=PFIXC,REG=(R5)                        @D52VDVB 28333201
+.DBGR015 ANOP                                                           28349801
+         TM    FIXTYPE,GTRSBIT    SPECIAL REQUEST FROM GETFRM  @D52VDRP 28355301
+         BO    CLPGE40            YES, HANDLING OF VIRT. ADDR. @D52VDRP 28360801
+*        GENSERV INC,FIELD=SMPFIX,REG=(R5)                     @D52VDVB 28383301
+         GENSERV INC,FIELD=SMPFIX,REG=(R5)                     @D52VDVB 28416601
+         SPACE 1                                                        28434501
+CLPGE05  DS    0H                                                       28452401
+*   GET EPA CORRESPONDING TO RE IN RD                          @D52VDRP 28470301
+         LR    RD,RE                                           @D52VDRP 28488201
+         C     R6,ASYSPCB         REQUEST FROM SDAID           @D52VDRP 28506101
+         BE    CLPGE06            YES, EPA = PAGE ADDRESS      @D52VDRP 28524001
+         S     RD,PMRSPREL        GET EPA FOR ALLOC R AREA     @D52VDRP 28574001
+CLPGE06  DS    0H                                              @D52VDRP 28631401
+         LRA   R5,0(RE)           TEST PAGE STATUS             @D14NDFG 28650000
+         BC    2,CLPGE20          SKIP FOR INVALID PAGE        @D14NDFG 28750000
+*DEL     AIF   (NOT &BGDEBUG).DBGR020                          @D14NDFG 28800001
+         BC    4,CLPGE07          EXPECT INVALID SEGMENT       @D14NDFG 28850001
+         BAL   R5,PMRHWERR        SYSTEM ERROR                 @D14NDFG 28900000
+CLPGE07  EQU   *                                               @D14NDFG 28950001
+.DBGR020 ANOP                                                  @D14NDFG 29000000
+*   R5 CONTAINS REAL ADDRESS OF STE                            @D52VDRP 29012501
+         C     R6,ASYSPCB         REQUEST FROM SDAID           @D52VDRP 29025001
+         BE    CLPGE10            SKIP IF YES                  @D52VDRP 29037501
+         L     RB,SCBPTR          POINT TO CURRENT SCB         @D14NDFG 29050000
+*        GENSERV LRADBG,RREG=(RB),VADD=(RB),ERR=NADDR                  *29061601
+               GET REAL ADDR OF SCB                            @D52VDRP 29073201
+         GENSERV LRADBG,RREG=(RB),VADD=(RB),ERR=NADDR          @D52VDRP 29084801
+         USING SCBADR,RB          SET BASE FOR SCB (REAL)      @D14NDFG 29096401
+         LR    R4,RD              GET EPA                      @D52VDRP 29108301
+         N     R4,PMSGMSK         ... ON SEGMENT BOUNDARY      @D52VDRP 29116601
+         SRL   R4,PTSHIFT         GET VIRT. ADDR OF PT         @D52VDRP 29124901
+         A     R4,SCBAPT          .. FOR THIS SEGMENT          @D52VDRP 29133201
+         L     RF,SCBAPMRA        GET SCB OF CORRESP. PMRAS    @D52VDRP 29881201
+*        GENSERV LRADBG,RREG=(RF),VADD=(RF),ERR=NADDR                  *29881901
+               GET REAL ADDR OF SCB                            @D52VDRP 29882601
+         GENSERV LRADBG,RREG=(RF),VADD=(RF),ERR=NADDR          @D52VDRP 29883301
+         LCTL  CR1,CR1,SCBRSTO-SCBADR(RF) SWITCH TO SPACE      @D52VDRP 29884301
+*        GENSERV LRADBG,RREG=(R4),VADD=(R4),ERR=NADDR                  *29887401
+               GET REAL ADDR OF 1ST PTE OF SEGMENT             @D52VDRP 29890501
+         GENSERV LRADBG,RREG=(R4),VADD=(R4),ERR=NADDR          @D52VDRP 29893601
+         LCTL  CR1,CR1,SCBRSTO    SWITCH BACK                  @D52VDRP 29896701
+         DROP  RB                 DROP BASE FOR SCB (REAL)     @D52VDRP 29898301
+         USING STE,R5                                          @D14NDFG 29900000
+         ST    R4,STEPTO          MAKE SEGMENT VALID           @D51GDTP 30150000
+         OI    STEFLG,STELENXA    INSURE LENGTH VALID          @D51GDTP 30200000
+         DROP  R5                                              @D14NDFG 30300000
+         B     CLPGE05            TRY AGAIN                    @D14NDFG 30350000
+         SPACE 1                                                        30361101
+* ENTERED HERE ONLY FOR SDAID                                           30372201
+CLPGE10  DS    0H                                              @D52VDRP 30383301
+         LR    RD,RE              PTASG INPUT = EPA ADDRESS    @D51GDRP 30450000
+         LR    R5,RB              SAVE REAL ADDR OF SCB        @D52GDWL 30455501
+         L     RB,SCBPTR          ADDR OF SCB                  @D52GDWL 30461001
+         L     R9,APMRSERV        PROVIDE ....                 @D52VDVB 30466601
+         USING PMRSERV,R9         ... ADDRESIBILITY            @D52VDVB 30483201
+         BAL   RA,PTASG           GET PAGE TABLE ASSIGNED      @D14NDFG 30500000
+*SGLINK  PTASG,INPUT=(R8:APMGMDAT,R9:BASE,RA:LINK,RB:SCB,RD:PAGE),     *30522201
+               NOMODR=(R0-RF),AMODE=31 DATON                            30544401
+         L     R9,APMRRADR                                     @D52VDVB 30566601
+         USING PMRRADR,R9                                      @D52VDVB 30583201
+         LR    RB,R5              RELOAD REAL ADDR OF SCB      @D52GDWL 30616601
+         B     CLPGE05            TRY AGAIN                    @D14NDFG 30650000
+         SPACE 1                                               @D14NDVB 30700000
+*   PTE IS AVAILABLE                                           @D14NDFG 30750000
+         SPACE 1                                               @D14NDVB 30800000
+CLPGE20  LR    RB,RD              GET EPA                      @D52VDRP 30850001
+         USING PTE,R5             SET BASE FOR PTE                      30900000
+         C     R6,ASYSPCB         REQUEST FROM SDAID           @D51IDRP 30950000
+         BNE   CLPGE25            SKIP IF NOT                  @D51IDRP 31000000
+         TM    PTESTAT,PTENASS    IS PDS ALLOCATED             @D51GDRP 31050000
+         BO    CLPGE10            NO, ALLOCATE IT NOW          @D51GDRP 31100000
+CLPGE25  SRL   RB,PNSHIFT         GET EPA NUMBER               @D52VDRP 31150001
+         ST    RB,PFTEPNR         INSERT PNR IN PFTE, CLR FLGS @D14NDFG 31350000
+         MVI   S370FLG,ZERO       CLEAR FLAG BYTE              @D51GDRP 31400000
+         L     RF,ASCBATAB                                     @KD40295 31405501
+*        GENSERV LRADBG,RREG=(RF),VADD=(RF),ERR=NADDR                  *31411001
+                                      GET REAL ADDR OF SCBATAB @KD40295 31416501
+         GENSERV LRADBG,RREG=(RF),VADD=(RF),ERR=NADDR          @KD40295 31422001
+         USING SCBATAB,RF         GET SCB OF AREA (SCBS)       @KD40295 31427501
+         L     RF,ASCBS           ... AND SET IT               @KD40295 31433001
+         DROP  RF                 ...  IN PFTE                 @KD40295 31438501
+         ST    RF,PFTESCB         ...  (ASSUME SDAID REQ.)     @KD40295 31444001
+         SLR   RF,RF                                           @D51IDRP 31450000
+         IC    RF,PCEKEY          GET STORAGE KEY              @D51IDRP 31500000
+         C     R6,ASYSPCB         REQUEST FROM SDAID           @D51IDRP 31550000
+         BE    CLPGE35            YES, PFTE IS O.K.            @D51IDRP 31583301
+         MVC   PFTESCB,SCBPTR     SET SCB ADDR IN PFTE         @KD40295 31616601
+         OI    S370FLG,PFTEREAL   PFTE ASSIGNED TO REAL PART.  @D14NDFG 31650000
+CLPGE35  DS    0H                 SET KEY                      @D51GDTP 32000000
+         SSKE  RF,RE              SET STORAGE KEY              @D51GDTP 32150000
+         ST    RE,PTEFRA          SET PF# IN PTE               @D51GDTP 32650000
+         DROP  R5                                              @D14NDFG 32750000
+CLPGE40  DS    0H                                              @D52VDRP 32775001
+         LA    R2,LPFTE(,RC)      POINT TO NEXT PFTE OF AREA   @DA33314 32800000
+         AL    RE,PAGESIZE        ADDR NEXT PAGE               @D14NDVB 32850000
+         B     GETR060            AND HANDLE THIS ONE                   32900000
+         DROP  RC                 FORGET PFTE                           32950000
+         SPACE 1                                                        33000000
+*    END OF GETREAL, SET RETURN CODE IN RF, IF RETURN CODE ¬= 0         33050000
+*    R2 CONTAINS PTR TO PFTE OF FAILING FRAME                           33100000
+         SPACE 1                                                        33150000
+GREND00  LR    R2,R3              RESTORE LAST HANDLED PF TO R2@D14ADVB 33200000
+GREND    DS    0H                                              @D61RDRP 33225001
+.* PTLB NOT REQUIRED, SINCE IPTE IS DONE BY PAGEIPTR OR FIXEXCHG        33250002
+.*DEL    PTLB  ,                  REMOVE ADDRESSES IN TLB      @D61RDRP 33275001
+         LR    RF,R0              GET RETURN CODE TO RF                 33300000
+         XC    FIXTIB,FIXTIB      RESET TIB PTR IN PCB         @D36IDFG 33350000
+         MVI   FIXTYPE,ZERO       RESET FIXTYPE INDICATION     @D51GDRP 33400000
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 33416601
+         AMODESW SET,DAT=ON                                    @D52VDRP 33433301
+*        AMODESW RETURN,REG=(R7)  ==========>  RETURN TO CALLER@D52VDRP 33449901
+         AMODESW RETURN,REG=(R7)  ==========>  RETURN TO CALLER@D52VDRP 33466601
+         SPACE 2                                               @D14ZDVB 33500000
+*     PAGE CONNECTED                                                    33550000
+         SPACE 1                                                        33600000
+PGCON    LR    R1,R2              GET PFTE POINTER             @D36IDFG 33650000
+         SGCOV SGPREALS,MC=3                                   @D52VDRP 33675001
+PGCONIO  L     R5,ASRQTAB         POINT                        @D61RDGL 33688801
+         LA    R5,SRQPGIO-SRQTAB(,R5)   TO PGIO WAIT QUEUE     @D61RDGL 33702601
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 33716601
+         AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 33733201
+         BAL   RC,RWAIT           GO TO WAIT FOR POSTING                33750000
+*SGLINK  RWAIT,INPUT=(R1,R5,RC)                                         33783301
+* RWAIT RETURNS WITH DAT ON                                    @D52VDRP 33816601
+         B     GETR080            ----------> TRY IT AGAIN     @D149DVB 33850000
+         SPACE 2                                                        33900000
+*    NON-PDS SYSTEM, AND PAGE IN PF HAS CHANGE-BIT ON          @D61BDRP 33906201
+*    -  FIND AN UNUSED PF AND EXCHANGE IT                      @D61BDRP 33912401
+*    -  INSERT PFTE POINTED TO BY RC (AFTER EXCHANGE POINTED   @D61BDRP 33918601
+*       TO BY RE) IN PSQ                                       @D61BDRP 33924801
+         SPACE 1                                                        33931001
+PFNPDS   DS    0H                                              @D61BDRP 33935102
+         L     R9,APMRSERV        GET BASE ADDR FOR SUBRTN     @KXA1851 33935202
+         USING PMRSERV,R9                                      @KXA1851 33935302
+         BAL   RA,PAGADDR         SET PAGE TO ADDRESSABLE      @KXA1851 33935403
+*SGLINK  PAGADDR,INPUT=(R8,R9,RA),WORK=(R5),                           *33935502
+               AMODE=31,DATOFF                                          33935602
+         L     R9,APMRRADR        RESTORE BASE FOR CODE AREA   @KXA1851 33935702
+         USING PMRRADR,R9                                      @KXA1851 33935802
+         LR    R2,RC              SET PFTE ADDR IN CORR. REG.  @D61BDRP 33935902
+         SGCOV SGPREAL,MC=3                                    @D61BDRP 33939202
+         SPACE 2                                                        33943401
+*    PAGE IN PF IS REQUESTED BY PFIX (NFVP = ON)                        33950000
+         SPACE 1                                                        34000000
+PFNFVP   L     RB,IPFQPTR         GET ADDR OF IPFQ-HEADER               34050000
+         SGCOV SGPREALS,MC=4                                   @D52VDRP 34075001
+         USING PFTE,RB                                                  34100000
+         C     RB,PFTEFPTR        IPFQ EMPTY                            34150000
+         BE    PSQSRCH            YES, BRANCH                           34200000
+         L     R4,PFTEFPTR        GET 1ST INVALIDE PFTE                 34250000
+         DROP  RB                                                       34300000
+         USING PFTE,R4            SET BASE FOR PFTE                     34350000
+PFNFVPLP TM    S370FLG,NFRP+PFTERES RES. BY GETREAL/PFIX/GETPT @KD40410 34400001
+         BZ    PFFOUND            NO, TAKE THIS PFTE                    34450000
+         L     R4,PFTEFPTR        GET NEXT IPFQ-ENTRY                   34500000
+         CR    R4,RB              END OF IPFQ                           34550000
+         BNE   PFNFVPLP           NO, BRANCH                            34600000
+PSQSRCH  TM    IJBFLG08,IJBNOPDS  SYSTEM WITH PDS              @D61BDRP 34620001
+         BZ    PSQSRCH1           YES, O.K.                    @D61BDRP 34640001
+         BAL   R5,PMRHWERR        NO, ERROR                    @D61BDRP 34660001
+PSQSRCH1 L     RB,PSQPTR          GET                          @D61BDRP 34680001
+         LR    R4,RB              PSQ-HEADER                            34700000
+NFVPLOOP L     R4,PFTEFPTR        GET NEXT PFTE IN PSQ                  34750000
+         CR    R4,RB              END OF QUEUE REACHED                  34800000
+         BNE   PSQ01              NO, BR                                34850000
+         SGCOV SGPREALS,MC=5                                   @D52VDRP 34875001
+         LR    R1,R5              GET PFTE ADDR FOR RWAIT      @D365DRP 34900000
+         B     PGCONIO            WAIT FOR COMPL. OF I/O AND ...       *34950000
+                                  TRY IT AGAIN                 @D365DRP 35000000
+PSQ01    TM    S370FLG,NFRP+PFTERES RES. BY PFIX/GETREAL/GETPT @KD40410 35050001
+         BNZ   NFVPLOOP           YES, BR & TRY NEXT PF        @KD40410 35100001
+         LR    R5,R4              SAVE PFTE ADDR               @D365DRP 35150000
+         TM    PFTEFLG,POABIT+PCBIT PAGE-OUT ACT. OR PAGE CONN.@D14ZDRP 35200000
+         BNZ   NFVPLOOP           YES, BR & TRY NEXT PF                 35250000
+         DROP  R4                 FORGET BASE FOR PFTE IN PSQ           35300000
+*                                                                       35350000
+PFFOUND  LR    R5,RE              SAVE PF-ADDRESS                       35400000
+         LR    RE,R4              PUT PFTE-ADDR IN SUBR. REG            35450000
+         LR    RC,R2                                                    35500000
+         L     RA,AFIXEXCH        GET ADDR OF FIXEXCHG RTN     @KX40934 35550001
+         BALR  RA,RA              EXCHANGE PAGES               @KX40934 35600001
+*SGLINK  FIXEXCHG,INPUT=(R8:APMGMDAT,RA:LINK,RC:PFTE,RE:PFTE),         *35650001
+               NOMODR=(R0-RF),AMODE=31 DATOFF                           35700001
+         LR    RC,RE              GET PFTE TO BE INS. (NON-PDS)@D61BDRP 35750001
+         LR    RE,R5              RESTORE PF-ADDRESS                    35800000
+         TM    IJBFLG08,IJBNOPDS  SYSTEM WITH PDS              @D61BDRP 35808601
+         BZ    REMOVE10           YES, ------> O.K.            @D61BDRP 35817201
+         L     RB,PSQPTR          NO, INSERT PFTE IN           @D61BDRP 35825801
+         BAL   RA,PMRINSBT        ... PSQ                      @D61BDRP 35834401
+*SGLINK  PMRINSBT,INPUT=(R8:APMGMDAT,RA:LINK,RB,RC:PFTE),WORK=(R4,R5)   35843201
+         B     REMOVE10                                                 35850000
+         SPACE 2                                                        35900000
+*                                                                       36000000
+         DROP  R8,R9              FORGET BASE FOR CODE/DATA             36050000
+         DROP  R6                 FORGET PCB                   @D369DRP 36100000
+         TITLE 'VSE/AF SUPERVISOR     SGPREAL     PAGE MANAGEMENT (FREE*36150001
+               REAL ROUTINE)'                                  @D14ZDRP 36200000
+*-------------------------------------------------------------*@D149DVB 36250000
+*        ROUTINE PROLOGUE                                      @D149DVB 36300000
+*        ROUTINE NAME: SVFREAL                                 @D149DVB 36350000
+*        MACRO:        SGPREAL                                 @D149DVB 36400000
+*        FUNCTION:  RETURNS PAGE FRAMES INTO PAGE POOL.        @D149DVB 36450000
+*        CALLED BY: SVC54 , IJBSINP                            @D149DVB 36500001
+*        CALLED ROUTINES :                                     @D149DVB 36550000
+*                   RPOST         WITH AMODE(31),DATON         @D149DVB 36575001
+*                   CLEARPF       WITH AMODE(31),DATOFF        @D149DVB 36600001
+*                   DELREPA,RWAIT WITH AMODE(24),DATON         @D149DVB 36625001
+*        ENTRY POINT:                                          @D149DVB 36650000
+*                   SVFREAL    IF CALLED AS SVC54              @D149DVB 36700000
+*                   FREEREAL   IF CALLED BY IJBSINP AMODE(31)  @D149DVB 36750001
+*        EXIT :     DISPATCHER IF CALLED AS SVC54              @D149DVB 36800000
+*                   CALLER     IF CALLED BY IJBSINP            @D149DVB 36850001
+*        ERROR EXIT :                                          @D149DVB 36900000
+*                   ERR21  ( I L L E G A L  S V C )            @D149DVB 36950000
+*        INPUT:                                                @D149DVB 37000000
+*           IF ENTERED AT SVFREAL:                             @D52VDRP 37030001
+*                   R6  =  ADDRESS (DISPATCHER)                @D149DVB 37060001
+*                   RB  =  ADDRESS USER'S SAVEAREA             @D52VDRP 37090001
+*           IF ENTERED AT FREEREAL:                            @D52VDRP 37120001
+*                   R2  =  LOWER LIMIT AS REAL ADDRESS         @D149DVB 37150000
+*                   R3  =  UPPER LIMIT AS REAL ADDRESS         @D149DVB 37200000
+*                   R7  =  RETURN ADDRESS IF CALLED BY IJBSINP @D149DVB 37400001
+*        OUTPUT:    -                                          @D149DVB 37450000
+*                                                              @D149DVB 37500000
+*        OPERATION:                                            @D149DVB 37550000
+*                                                              @D149DVB 37600000
+*        SVFREAL: IF PSWKEY = ¬ 0 V ( ¬(SDAIS V $$BATTN V TERMINATOR))  37650000
+*                 THEN EXIT (COND = ERR21)                     @D149DVB 37700000
+*        LL := (LOWER_LIMIT/PAGESIZE)*PAGESIZE  /*   PAGE ....    */    37750000
+*        UL := (UPPER_LIMIT/PAGESIZE)*PAGESIZE  /*   .... BOUNDARY*/    37800000
+*        ENTER CRITICAL SECTION                                @D149DVB 37850000
+*        IF GETREAL ACTIVE THEN EXIT(CON= HW (X'FF1'))         @D149DVB 37900000
+*        LL := ADDR (GETREALED AREA)                           @D149DVB 37950000
+*        IF LL = 0 THEN RETURN                  /*AREA ¬AVAILABLE */    38000000
+*        ADDR(GETREALED AREA) := 0                             @D149DVB 38050000
+*        UL := (END_ADDR(GETREALED AREA)/PAGESIZE)*PAGESIZE    @D149DVB 38100000
+*        PCB_ADDR := ADDR(SYS_PCB)                             @D149DVB 38150000
+*        CALL FREREAL2 (UL,LL,PCB_ADDR)                        @D149DVB 38200000
+*        LEAVE CRITICAL SECTION                                @D149DVB 38250000
+*        RETURN (DISPATCHER)                                   @D149DVB 38300000
+*                                                              @D149DVB 38350000
+*        FREEREAL:                              /*  ENTRY POINT   */    38400000
+*        LL := (BEG_ADDR / PAGESIZE)*PAGESIZE                  @D149DVB 38450000
+*        UL := (END_ADDR / PAGESIZE)*PAGESIZE                  @D149DVB 38500000
+*        PCB_ADDR := ADDR(PART_PCB)                            @D149DVB 38550000
+*        FREREAL2:                              /*  ENTRY POINT   */    38600000
+*        PTE_PATTERN := (0,PTEIBIT+PTEINVAD)                   @D149DVB 38650000
+*        DO WHILE LL < UL                                      @D149DVB 38700000
+*              ADDR_PFTE(LL)                                   @D149DVB 38750000
+*              ADDR_PTE(PFTE)                                  @D149DVB 38800000
+*              PTE := PTE_PATTERN                              @D149DVB 38850000
+*              DO IPTE FOR PAGE                                @D61RDRP 38875001
+*              DECREASE PFTE.PFIXC                             @D149DVB 38900000
+*              IF PFTE.PFIXC > 0 THEN EXIT(COND = HW (X'FF1')) @D149DVB 38950000
+*              DECREASE PCB.SMPFIX                             @D149DVB 39000000
+*              IF PFTE.DRAP = OFF                              @D149DVB 39050000
+*                THEN DO                                       @D149DVB 39100000
+*                     CALL CLEARPF (LL)  /* CLEAR PAGE FRAME      */    39150000
+*                     INCREASE NPSQE     /* # OF FREE PAGE FRAMES */    39200000
+*                END                                           @D149DVB 39250000
+*              LL := LL + PAGESIZE       /*    GET NEXT PAGE      */    39300000
+*        END (DO_WHILE)                                        @D149DVB 39350000
+*        IF NPSQE < MINPSQE                                    @D149DVB 39400000
+*              THEN DO                                         @D149DVB 39450000
+*              CALL RPOST (SRQPFG)  /*    POST ALL TASKS..   */@D149DVB 39500000
+*              CALL RPOST (SRQPFR)  /* WAITING FOR PAGEFRAMES*/@D149DVB 39550000
+*              END                                             @D149DVB 39600000
+*        RETURN (CALLER)                                       @D149DVB 39700000
+*        END (SVFREAL);                                        @D149DVB 39750000
+*---------------------------------------------------------------------* 39800000
+*        INTERNAL                                                       39850000
+*        REGISTER USAGE :                                               39900000
+*              R1           -   INVALIDATION PATTERN FOR PTE            39950000
+*              R2           -   INP. PARM.(LL) SET TO PG BNDY  @D14NDFG 40000000
+*              R3           -   INP. PARM.(UL) SET TO PG BOUNDARY       40050000
+*              R0,R4,R5,RF  -   WORK REG'S                     @D14NDVB 40100000
+*              R6           -   ADDR OF DISP                   @D369DRP 40150000
+*              R7           -   RETURN ADDRESS                 @D14NDFG 40200000
+*              R8           -   BASE FOR DATA AREA                      40250000
+*              R9           -   BASE FOR CODE                           40300000
+*              RA           -   WORK REGISTER                  @D14NDFG 40350000
+*                               LINK TO NEXT LEVEL             @D369DFG 40400000
+*              RB           -   SAVE AREA POINTER, WORK REG    @D14NDFG 40450000
+*              RC           -   ADDR OF PFTE BELONGING TO RE            40500000
+*              RD           -   POINTER TO PCB                          40550000
+*              RE           -   ADDR OF ACTUAL PAGE FRAME               40600000
+*---------------------------------------------------------------------* 40650000
+         SPACE 1                                                        40700000
+         USING DISP,R6                                         @D36IDRP 40750000
+SVFREAL  DS    0H                                              @D14NDVB 40800000
+         L     R8,APMGMDAT                                              40850000
+         USING PMGMDATA,R8                                              40900000
+         L     R9,APMRRADR        GET BASE FOR CODE                     40950000
+         USING PMRRADR,R9         SET BASE FOR CODE                     41000000
+         USING SVEARA,RB          SET BASE FOR SAVE AREA       @D14NDFG 41050000
+         TM    SVEPSWKY,KEY0      REQUESTOR HAS KEY 0                   41100000
+         BNZ   ERR21              ==========> NO, ILLEGAL SVC  @D149DVB 41150000
+         CLC   D0(L'SDAID,RB),SDAID REQUEST SDAID              @D14NDFG 41200000
+         BE    SVCFROK            YES ----->                   @D14NDFG 41250000
+         CLC   D0(L'BVSEPT,RB),BVSEPT  REQUEST FOR $$BVSEPT            *41300000
+                                  ... FOR VSE/PT               @D14NDVB 41350000
+         BE    SVCFROK            YES ----->                   @D14NDFG 41400000
+         CLC   D0(L'BATTON,RB),BATTON REQUEST FOM $$BATTN      @D14NDFG 41450000
+         BNE   ERR21              ==========> NO, ILLEGAL SVC  @D14NDFG 41500000
+         DROP  RB                 FORGET BASE FOR SAVE AREA    @D14NDFG 41550000
+SVCFROK  DS    0H                                                       41600001
+         SPACE 1                                                        41650000
+*     FREEREAL OF SDAIDS                                                41700000
+         SPACE 1                                                        41750000
+         TM    IJBFLG03,GETRGTE   IF SVC55 REQUEST IN PROGRESS @D14ZDVB 41800000
+         BOR   R6                 ==========> YES, RETURN DISP @D149DVB 41900000
+         SGCOV SGPREAL,MC=4                                    @D52VDRP 41950001
+         L     R2,AAAADR          GET ALTERNATE ADDR. AREA ADR          42250000
+         LTR   R2,R2              IF NO ALTERNATE AERA PRESENT          42300000
+         BZR   R6                 ==========> YES, EXIT DISP   @D14NDFG 42350000
+         XC    AAAADR,AAAADR      UPDATE ALTERNATE AREA ADDR            42400000
+         L     R3,AAAEND          GET END OF AAA                        42450000
+         N     R3,PADDRMSK        ON PAGE BOUNDARY                      42500000
+         L     RD,ASYSPCB         GET SYSTEM PCB ADDR          @D365DRP 42550000
+*        AMODESW CALL,AMODE=31,ADDRESS=FREREAL2,REGS=(R7,R7)   @D52VDRP 42583301
+         AMODESW CALL,AMODE=31,ADDRESS=FREREAL2,REGS=(R7,R7)   @D52VDRP 42616601
+         BR    R6                 ==========>  EXIT DISPATCHER @D14NDFG 42650000
+         SPACE 1                                                        42700000
+*-------------------------------------------------------------*@D14NDFG 42750000
+*        SUBROUTINE ENTRY POINT FROM INVPART (IJBSINP)         @D14NDFG 42800001
+*-------------------------------------------------------------*@D14NDFG 42850000
+         SPACE 1                                                        42900000
+FREEREAL L     R6,DISPAD          GET DISPATCHER ADDRESS       @D14NDFG 42950000
+         L     R8,APMGMDAT        PAGE MANAGER DATA AREA       @D14NDFG 43050000
+         AGO   .FSTRL50                                        @D64YDOW 43060007
+         LH    R5,PIK             INPUT FOR DELREPA            @D14NDFG 43150000
+         L     RE,ADELREPA                                     @D14NDFG 43200000
+*        AMODESW CALL,REGS=(RE,RE) DELETE REPLICAS FOR PART.   @D52VDRP 43225001
+         AMODESW CALL,REGS=(RE,RE) DELETE REPLICAS FOR PART.   @D52VDRP 43250001
+*SGLINK  DELREPA,INPUT=(R5,RE),WORK=(R9)                       @D14NDFG 43300001
+.FSTRL50 ANOP                                                  @D64YDOW 43310007
+         L     R9,APMRRADR        GET BASE FOR CODE            @D14NDFG 43400000
+         N     R2,PADDRMSK        AREA BEGIN ON PAGE BOUNDARY  @D14NDFG 43450000
+         N     R3,PADDRMSK        AREA END ON PAGE BOUNDARY    @D14NDFG 43500000
+         L     RD,PCBPTR          GET ADDR OF PART. PCB        @D365DRP 43550000
+FREREAL2 LA    R1,PTEIBIT+PTEINVAD INVALIDATION PATTERN        @D14NDFG 43650000
+         SLL   R1,8               MOVE TO BYTE 2               @D51GDTP 43750000
+         LR    RE,R2              FRAME ADDR IN CORRECT REG    @D14BDRP 43850000
+         LR    RC,R2              GET ADDR                              43900000
+         SRL   RC,PFSHIFT         OF                                    43950000
+         A     RC,APFT            PFTE OF 1ST PAGE                      44000000
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE              @D52VDRP 44015001
+         AMODESW SET,DAT=OFF                                   @D52VDRP 44020001
+*        GENSERV LRADBG,RREG=(RD),VADD=(RD),ERR=NADDR    GET REAL      *44025001
+               ADDR OF PCB                                     @D52VDRP 44030001
+         GENSERV LRADBG,RREG=(RD),VADD=(RD),ERR=NADDR          @D52VDRP 44035001
+         USING PCBADR,RD          SET BASE FOR PCB ENTRY       @D365DRP 44040001
+         SPACE 1                                               @D14ZDVB 44050000
+FRPFLOOP CR    RE,R3              IF LL NOT LOWER THAN UL               44100000
+         BH    PWTASKS            YES, POST TASKS AND RETURN            44150001
+         USING PFTE,RC            SET BASE FOR PFTE            @D14NDFG 44200000
+         L     RA,PFTEPNR                                      @DY44241 44250005
+         N     RA,PAGNMASK        MASK OUT EPA#                @DY44241 44300005
+         SLL   RA,PNSHIFT         GET EPA                      @D61RDRP 45039301
+         L     R4,PFTESCB         GET SCB BELONGING TO EPA     @D61RDRP 45045301
+*        GENSERV LRADBG,RREG=(R4),VADD=(R4),ERR=NADDR GET REAL ADDR OF *45051301
+                                  SCB                                   45054305
+         GENSERV LRADBG,RREG=(R4),VADD=(R4),ERR=NADDR          @D61RDRP 45057301
+         USING SCBADR,R4         BASE FOR SCB                  @D61RDRP 45060301
+         TM    SCBFLG,SCBSHA     IS IT SDAID REQUEST           @D61RDRP 45063301
+         BO    FRPF010           YES, EPA = VIRT. ADDR.        @D61RDRP 45066301
+         DROP  R4                DROP BASE FOR SCB (REAL)      @D61RDRP 45069301
+         A     RA,PMRSPREL       NO, GET VIRT. ADDR. (REAL PART@D61RDRP 45072301
+FRPF010  DS    0H                                              @D61RDRP 45075301
+*        GENSERV IPTE,VADD=(RA),SCB=(R4),WORKR=(R2,R3) INVALIDATE PAGE *45078301
+                                   TABLE ENTRY                          45081305
+         GENSERV IPTE,VADD=(RA),SCB=(R4),WORKR=(R2,R3)         @D61RDRP 45084301
+         L     R4,PFTEPNR                                      @DY44241 45084405
+         N     R4,PAGNMASK        MASK OUT EPA#                @DY44241 45084505
+         SLL   R4,PNRPTOSH        PTE OFFSET                   @DY44241 45084605
+         L     R5,PFTESCB         GET CORRECT SCB FOR PAGE     @DY44241 45084705
+*        AMODESW SET,DAT=ON       ENTER VIRT. MODE FOR SCBATAB @DY44241 45084805
+         AMODESW SET,DAT=ON       ENTER VIRT. MODE FOR SCBATAB @DY44241 45084905
+         DROP  RC                 DROP PFTE BASE TEMPORARILY   @DY44241 45085005
+*     RC HAS STILL TO CONTAIN REAL ADDR OF PFTE                         45085105
+         USING SCBADR,R5                                       @DY44241 45086005
+         A     R4,SCBAPT          PTE PTR WITHIN PAGE  TABLE   @DY44241 45087005
+         L     R5,SCBAPMRA        GET PMRAS FOR PTE            @DY44241 45087105
+         LCTL  CR1,CR1,SCBRSTO    SWITCH TO PMRAS              @DY44241 45087205
+         USING PTE,R4             SET BASE FOR PTE             @DY44241 45087305
+         ST    R1,PTEFRA          INVALIDATE PTE               @DY44241 45087405
+         DROP  R4                 DROP BASE FOR PTE            @DY44241 45087505
+         L     R5,SCBPTR          SWITCH BACK TO               @DY44241 45087605
+         LCTL  CR1,CR1,SCBRSTO    ... ORIGINAL SPACE           @DY44241 45087705
+         DROP  R5                 DROP BASE FOR SCBADR         @DY44241 45087805
+*        AMODESW SET,DAT=OFF                                            45087905
+         AMODESW SET,DAT=OFF                                   @DY44241 45088005
+         USING PFTE,RC            RESET BASE FOR PFTE          @DY44241 45088105
+*        GENSERV DECTEST,FIELD=PFIXC,REG=(R4),BC=BZ,LAB=PFIXCOK         45089005
+         GENSERV DECTEST,FIELD=PFIXC,REG=(R4),BC=BZ,LAB=PFIXCOK        *45125005
+                                                               @D52VDVB 45126005
+         BAL   R5,PMRHWERR        ERROR GO TO HARD WAIT F1              45350000
+PFIXCOK  EQU   *                                                        45400000
+*        GENSERV DEC,FIELD=SMPFIX,REG=(R4)                     @D52VDVB 45557001
+         GENSERV DEC,FIELD=SMPFIX,REG=(R4)                     @D52VDVB 45585501
+         TM    S370FLG,DRAP       PF FAILING STORAGE                    45700000
+         BO    NXTLOOP            YES, TAKE NEXT PAGE                   45750000
+         LR    R0,R7              SAVE RETURN ADDRESS          @D14NDFG 45800000
+         BAL   R7,CLEARPF         CLEAR PAGE  FRAME                     45850000
+*SGLINK  CLEARPF,INPUT=(R7,R8,RE,RC),WORK=(R4,R5,RA,RB),               *45883301
+               AMODE=31 DATOFF                                          45916601
+         LR    R7,R0              RESTORE RETURN ADDRESS       @D14NDFG 45950000
+*        GENSERV INC,FIELD=NPSQE,REG=(R4)                      @D52VDVB 45983301
+         GENSERV INC,FIELD=NPSQE,REG=(R4)                      @D52VDVB 46016601
+         SPACE 1                                               @D149DVB 46150000
+NXTLOOP  AL    RE,PAGESIZE        POINT TO NEXT PAGE FRAME     @D14NDVB 46200000
+         LA    RC,LPFTE(RC)       POINT TO NEXT PFTE                    46250000
+         B     FRPFLOOP           ---------->                  @D149DVB 46300000
+         DROP  RC                 FORGET PFTE                           46350000
+         SPACE 1                                                        46400000
+PWTASKS  DS    0H                                              @D52VDRP 46412501
+*        AMODESW SET,DAT=ON       ENTER VIRTUAL MODE           @D52VDRP 46425001
+         AMODESW SET,DAT=ON                                    @D52VDRP 46437501
+         DROP  RD                 FORGET BASE FOR PCB (REAL)            46450001
+         CLC   NPSQE,MINPSQE                                   @D14ZDVB 46475001
+         BNH   NOPOST01                                                 46500000
+         L     R5,ASRQTAB                                      @D61RDGL 46533301
+         LA    R5,SRQPFG-SRQTAB(,R5)                           @D61RDGL 46566601
+         BAL   RF,RPOST           POST ALL TASKS WAITING       @D36IDRP 46600000
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D369DRP 46650001
+         L     R5,ASRQTAB            ..                        @D61RDGL 46683301
+         LA    R5,SRQPFR-SRQTAB(,R5) FOR FREE PAGE FRAMES      @D61RDGL 46716601
+         BAL   RF,RPOST                                        @D36IDRP 46750000
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D369DRP 46800001
+NOPOST01 EQU   *                                                        46850000
+*        AMODESW RETURN,REG=(R7)  ==========>  RETURN TO CALLER@D52VDRP 46925001
+         AMODESW RETURN,REG=(R7)  ==========>  RETURN TO CALLER@D52VDRP 46950001
+         DROP  R6                 FORGET BASE FOR DISP         @D36IDRP 47050000
+         DROP  R8,R9              FORGET BASE FOR CODE/DATA             47150000
+         TITLE 'VSE/AF SUPERVISOR     SGPREAL     PAGE MANAGEMENT (SVC *47200001
+               GETREAL)'                                       @D14ZDRP 47250000
+*-------------------------------------------------------------*@D149DVB 47300000
+*        ROUTINE PROLOGUE                                      @D149DVB 47350000
+*        ROUTINE NAME: SVGREAL                                 @D149DVB 47400000
+*        MACRO:        SGPREAL                                 @D149DVB 47450000
+*        FUNCTION:  PROVIDES - IF POSSIBLE - REQUESTED NUMBER OF        47500000
+*                   PAGE FRAMES FROM THE AREA SPECIFIED BY     @D52VDRP 47533301
+*                   SMCSSBEG AND SMCSSEND                      @D52VDRP 47566601
+*        CALLED BY: SVC55                                      @D149DVB 47600000
+*        CALLED ROUTINES : RWAIT AMODE(24),DATON               @D149DVB 47633301
+*                          GETREAL2 AMODE(31),DATON            @D52VDRP 47666601
+*        ENTRY POINT:  SVGREAL                                 @D149DVB 47700000
+*        EXIT :     DISPATCHER                                 @D149DVB 47750000
+*        ERROR EXIT :                                          @D149DVB 47800000
+*                   ERR21 ( I L L E G A L  S V C )             @D149DVB 47850000
+*        INPUT:                                                @D149DVB 47900000
+*                   R0  =  NUMBER OF PAGE FRAMES TO BE GETREALED        47950000
+*                   R6  =  ADDRESS (DISPATCHER)                @D149DVB 48150000
+*                   RA  =  ADDRESS (TCB)                       @D149DVB 48200000
+*                   RB  =  ADDRESS USER'S SAVEAREA             @D149DVB 48250000
+*        OUTPUT:                                               @D149DVB 48300000
+*                   R0  =  NUMBER OF GETREALED PAGE FRAMES     @D149DVB 48350000
+*                   R1  =  ADDR( GETREALED AREA )              @D149DVB 48400000
+*                          UNCHANGED IF NO GETREALED AVAILABLE @D149DVB 48450000
+*                                                              @D149DVB 48500000
+*        OPERATION:                                            @D149DVB 48550000
+*                                                              @D149DVB 48600000
+*        SVGREAL: IF PSWKEY = ¬ 0 V ( ¬(SDAIS V $$BATTN ))     @D149DVB 48650000
+*                 THEN INDICATE ERR21 AND RETURN (DISPATCHER)  @D149DVB 48700000
+*        ENTER CRITICAL SECTION                                @D149DVB 48750000
+*        IF GETREAL ACTIVE THEN RETURN (DISPATCHER)            @D149DVB 48800000
+*        IF ADDR(GETREALED AREA) = 0 THEN RETURN (DISPATCHER)  @D149DVB 48850000
+*        SET GETREAL.SDAIDS                                    @D149DVB 48900000
+*        DO WHILE RBGETR GATE NOT OPEN                         @D149DVB 48950000
+*                 THEN CALL RWAIT(SRQSPFIX)                    @D149DVB 49000000
+*        RID := SPFIXBND                                       @D149DVB 49050000
+*        PCB_ADDR := ADDR(SYS_PCB)                             @D149DVB 49100000
+*        REQ_PF := #(PAGE FRAMES TO BE GETREALED)              @D149DVB 49150000
+*        SPACE_#:= (SMCSSEND+1-SMCSSBEG)/PAGESIZE              @D149DVB 49200000
+*        IF SPACE_# < MINSVAPX                                 @D149DVB 49250000
+*                 THEN SPACE_#:= MINSVAPX                      @D149DVB 49300000
+*        IF (SMAXPFIX - SPACE_#) < REQ_PF                      @D149DVB 49350000
+*                 THEN REQ_PF := SMAXPFIX-SPACE                @D149DVB 49400000
+*        IF REQ_PF ¬> 0               /* NO FRAMES AVAILABLE */@D149DVB 49450000
+*                 THEN DO                                      @D149DVB 49500000
+*                 GETR_PF := 0                                 @D149DVB 49550000
+*                 RETURN (DISPATCHER;REQ_PF)                   @D149DVB 49600000
+*                 END                                          @D149DVB 49650000
+*        UL := SMCSSBEG                                        @D149DVB 49700000
+*        LL := SMCSSBEG- REQ_PF * PAGESIZE - 1                 @D149DVB 49750000
+*        CALL GETREAL2 ( LL, UL ; RC )                         @D149DVB 49800000
+*        CASE                                                  @D149DVB 49850000
+*          WHEN RC  = NO PAGE FRAME   /* DRAP IN FIRST PF    */@D149DVB 49900000
+*                 THEN GETR_PF := 0                            @D149DVB 49950000
+*          WHEN RC = FAILING STORE    /* DRAP FOUND IN AT ...*/@D149DVB 50000000
+*                 THEN DO             /*  ..LEAST ONE PF     */@D149DVB 50050000
+*                 END_ADDR(GETREALED AREA) :=                  @D149DVB 50100000
+*                    (ADDR(PFTE)-ADDR(PFTAB))*PAGESIZE/L'PFTE  @D149DVB 50150000
+*                 GETR_PF :=                                   @D149DVB 50200000
+*                    ((END_ADDR(GETREALED AREA)+1-LL)/PAGESIZE @D149DVB 50250000
+*                 ADDR(GETREALED AREA) := LL                   @D149DVB 50300000
+*                 SMRPBEG := LL                                @D149DVB 50350000
+*                 END                                          @D149DVB 50400000
+*          WHEN RC = OK                                        @D149DVB 50450000
+*                 THEN DO                                      @D149DVB 50500000
+*                 END_ADDR(GETREALED AREA) := UL               @D149DVB 50550000
+*                 GETR_PF:= REQ_PF                             @D149DVB 50600000
+*                 ADDR(GETREALED AREA) := LL                   @D149DVB 50650000
+*                 SMRPBEG := LL                                @D149DVB 50700000
+*                 END                                          @D149DVB 50750000
+*        ENDCASE                                               @D149DVB 50800000
+*        RESET GETREAL.SDAIDS                                  @D149DVB 50850000
+*        RETURN (DISPATCHER; GETR_PF, ADDR(GETREALED AREA)     @D149DVB 50900000
+*        END (SVGREAL) ;                                       @D149DVB 50950000
+*---------------------------------------------------------------------* 51000000
+*        INTERNAL                                                       51050000
+*        REGISTER USAGE :                                               51100000
+*              R2 - R4          -   WORK REGISTERS                      51150000
+*              R5               -   ADDR OF SAVE AREA                   51200000
+*              R6               -   ADDR OF DISP / ADDR OF SYSPCB       51250000
+*              R7               -   LINK TO NEXT LEVEL                  51300000
+*              R8               -   BASE FOR DATA AREA                  51350000
+*              R9               -   BASE FOR CODES                      51400000
+*              RA               -   TCB POINTER                @D369DFG 51450000
+*---------------------------------------------------------------------* 51500000
+         SPACE 1                                                        51550000
+SVGREAL  DS    0H                                              @D14NDVB 51600000
+         USING DISP,R6                                                  51650000
+         L     R8,APMGMDAT                                              51700000
+         USING PMGMDATA,R8        ESTABLISH BASE FOR  CODE              51750000
+         L     R9,APMRRADR                                              51800000
+         USING PMRRADR,R9                                               51850000
+         LR    R5,RB              GET USER SAVE AREA ADDRESS   @D14NDFG 51900000
+         USING SVEARA,R5                                                51950000
+         TM    SVEPSWKY,KEY0      REQUESTOR HAS KEY 0                   52000000
+         BNZ   ERR21              ==========> EXIT ILLEGAL SVC @D149DVB 52050000
+         CLC   D0(L6,R5),SDAID    REQUEST SDAID                         52100000
+         BE    SVCGROK            YES,BR                                52150000
+         CLC   D0(L7,R5),BATTON   REQUEST FOM $$BATTN                   52200000
+         BNE   ERR21              ==========> EXIT ILLEGAL SVC @D149DVB 52250000
+SVCGROK  DS    0H                                                       52300001
+         TM    IJBFLG03,GETRGTE   IF ALREADY A SVC 55 REQUEST           52350000
+         BOR   R6                 ==========> EXIT DISPATCHER  @D149DVB 52400000
+         L     R2,AAAADR          GET ADDR OF ALTERNATE AREA            52450000
+         LTR   R2,R2              IF ALREADY AN ALTERNATE AREA          52500000
+         BNZR  R6                 ==========> YES, EXIT DISP   @D149DVB 52550000
+         OI    IJBFLG03,GETRGTE   ELSE INDICATE GETREAL FOR SDAIDS      52600000
+SVCGR00  DS    0H                                                       52650001
+         L     RC,ASRQTAB                                      @D61RDGL 52683301
+         TM    RBSPFIX-SRQTAB(RC),FREEBIT          GATE OPEN ? @D66ODOW 52716609
+         BO    SVCGR01            YES, BRANCH                  @D66ODOW 52750009
+         LA    R5,SRQSPFIX-SRQTAB(,RC)   PFIX/GETREAL QUEUE    @D61RDGL 52800001
+         BAL   RC,RWAIT           WAIT FOR GETREAL OPEN        @D36IDFG 52850000
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @D369DRP 52900000
+         LR    R5,RB              GET USER SAVE AREA ADDRESS   @D14NDVB 52950000
+         B     SVCGR00            TEST WHETHER GATE NOW OPEN            53000000
+         DROP  R6                                                       53050000
+SVCGR01  MVI   RID+1,SPFIXBND     GATE SYSTEM PFIX/GETREAL     @D14NDFG 53100000
+*                                                                       53200000
+         LM    R0,R1,SVER00       LOAD PARAMETER REG'S                  53250000
+         SPACE 1                                               @D14ZDVB 53300000
+*  CALCULATE NUMBER OF PAGEFRAMES AVAILABLE FOR GETREAL        @D149DRP 53350000
+         SPACE 1                                               @D14ZDVB 53400000
+         L     R6,IJBSMCOM        STOR. MANAGMNT COMM. AREA    @D51GDRP 53450000
+         USING SMCOM,R6                                        @D51GDRP 53500000
+         L     R4,SMCSSEND        GET FIRST BYTE AFTER END OF  @D51GDRP 53550000
+         LA    R4,1(R4)              SYSTEM AREA               @D51GDRP 53600000
+         S     R4,SMCSSBEG        FIRST BYTE AFTER SUPERVISOR  @D14NDFG 53650000
+         SRL   R4,PNSHIFT                                      @D14NDFG 53700000
+         CR    R0,R4              IF  ENOUGH PAGE FRAMES                53750000
+         BNH   GRTEST2            AVAILABLE  BR                         53800000
+         LR    R0,R4              UPDATE NO. OF REQU. PAGE FRAM         53850000
+GRTEST2  LTR   R0,R0              IF NO PAGE FRAMES AVAILABLE           53900000
+         BNP   SVGREXT1           RETURN TO REQUESTOR                   53950000
+         L     R2,SMCSSBEG        BEGIN OF SDAID AREA          @D14NDFG 54000000
+         DROP  R6                 DROP SMCOM                   @D51GDRP 54050000
+         L     R6,ASYSPCB         GET ADDR OF SYSTEM PCB       @D365DRP 54100000
+         USING PCBADR,R6                                       @D52VDRP 54112501
+         OI    FIXTYPE,SVC55BIT   INDICATE REQUEST FROM SVC55  @D52VDRP 54125001
+         DROP  R6                 DROP BASE FOR PCB            @D52VDRP 54137501
+         LR    R3,R0              NUMBER OF REQUESTED PAGES    @D14NDFG 54150000
+         SLL   R3,PNSHIFT         SIZE OF AREA IN BYTES        @D14NDFG 54200000
+         AR    R3,R2              END OF AREA + 1              @D14NDFG 54250000
+         BCTR  R3,0               GET END ADDR OF AREA FOR GETR@D14BDRP 54300000
+         STM   R0,R5,GREALSV      SAVE NEEDED REG'S                     54350000
+*        AMODESW CALL,AMODE=31,ADDRESS=GETREAL2,REGS=(R7,R7)   @D52VDRP 54400001
+         AMODESW CALL,AMODE=31,ADDRESS=GETREAL2,REGS=(R7,R7)   @D52VDRP 54450001
+         LR    RE,R2              GET PFTE ADDR. OF LST HANDLED PF      54500000
+         S     RE,APFT            GET OFFSET                            54550000
+         SLL   RE,PFSHIFT         GET LAST HANDLED PF-ADDRESS  @D14ZDVB 54600000
+         LM    R0,R5,GREALSV      RESTORE REG'S                         54650000
+         ST    R3,AAAEND          SET END OF AAA               @D14BDRP 54700000
+         B     GRETBRTB(RF)       BR DEPENDANT OF DRAP ON      @D14BDVB 54750000
+GRETBRTB B     AAAOK              NO DRAP ON, GETREAL O.K.     @D14BDRP 54800000
+         B     FAILST             DRAP NOT IN 1ST PF                    54850000
+         B     SVGREXT1           NO AAA ASSIGNED, 1ST PF FAILING       54900000
+*     END OF BRANCH TABLE                                               54950000
+         SPACE 1                                                        55000000
+FAILST   BCTR  RE,0               GET LAST CORRECT ADDRESS              55050000
+         ST    RE,AAAEND          SET END OF AAA                        55100000
+         A     RE,F1                                           @D52VDRP 55150001
+         SR    RE,R2              GET SPACE FOR AAA                     55200000
+         SRL   RE,PNSHIFT         GET # OF PAGES FOR AAA                55250000
+         LR    R0,RE              # TO RETURN REGISTER                  55300000
+AAAOK    LR    R1,R2              MOVE AAAADR TO RETURN REG             55350000
+         ST    R1,AAAADR          UPDATE ALTERNATE AREA ADDR            55400000
+SVGREXIT STM   R0,R1,SVER00       INSERT N AND ALTERNATE AREA A@D14ZDVB 55450000
+         DROP  R5                 FORGET SAVE AREA                      55500000
+         NI    IJBFLG03,XFF-GETRGTE RESET SVC GETREAL IN PROGRESS      *55550001
+                                  INDICATOR                             55600000
+         L     R6,DISPAD                                                55650000
+         BR    R6                 ==========>  EXIT DISPATCHER @D149DVB 55700000
+         SPACE 1                                                        55750000
+SVGREXT1 SLR   R0,R0              INDICATE AREA NOT AVAILABLE  @D14BDRP 55800000
+         B     SVGREXIT           ---------->                  @D14BDRP 55850000
+         SPACE 1                                                        55900000
+         DROP  R8,R9              FORGET BASE REGISTERS                 55950000
+         MEND                                                           56200000

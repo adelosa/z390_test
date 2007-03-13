@@ -1,0 +1,181 @@
+         MACRO                                                          00050000
+&NAME    UNLOCK ,&JC=                                                   00100000
+         LCLA  &RDTL          DTL REGISTER NUMBER                       00150000
+         LCLA  &RPARM         PARAMETER REGISTER NUMBER                 00200000
+         LCLA  &SVC           SVC NUMBER                                00250000
+         LCLA  &FLAGS         WORKFIELD FOR FLAG BYTES                  00300000
+         LCLC  &ADDR          WORK FIELD FOR POSITIONAL OPERAND         00350000
+         LCLA  &EOJFLG        JC=EOJ                                    00400000
+         LCLA  &NEWFLG        UNLOCK SVC                                00450000
+         LCLA  &ALLFLG        UNLOCK ALL SPECIFIED                      00500000
+         LCLA  &SYSID         JC=SYSID                         @D36SDJO 00550000
+.*                                                                      00600000
+         AGO   .ZZZ                                                     00650000
+*********************************************************************** 00700000
+*                                                                     * 00750000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 00800000
+*        5686-007 (C) COPYRIGHT IBM CORP. 1979,1988                   * 00850000
+*        ALL RIGHTS RESERVED                                          * 00900000
+*        LICENSED MATERIALS - PROGRAM PROPERTY OF IBM                 * 00950000
+.*       SEE COPYRIGHT INSTRUCTIONS, G120-2083                        * 01000000
+*                                                                     * 01050000
+*********************************************************************** 01100000
+.ZZZ ANOP                                                               01150000
+.*-------------------------------------------------------------         01200000
+.* /* START OF SPECIFICATIONS *********************************         01250000
+.*01* MODULE TYPE = USER INTERFACE MACRO.                               01300000
+.*                                                                      01350000
+.*01* DESCRIPTIVE NAME = RESOURCE REQUEST MACRO.                        01400000
+.*                                                                      01450000
+.*01* NOTES = CHANGE ACTIVITY                                           01500000
+.*    NEW MODULE FIRST RELEASE  35                                      01550000
+.*    DASD SAHARING SUPPORT IN REL. 1.2                        @D36SDJO 01600000
+.* A000000-999999                                              @D356DJO 01650000
+.*                                                                      01700000
+.**** END OF SPECIFICATIONS ******************************** */         01750000
+.*                                                                      01800000
+.*  THIS MACRO IS USED FOR RESOURCE PROTECTION.                         01850000
+.*  IT RELEASES RESOURCES REPRESENTED BY A LOCK CONTROL BLOCK(DTL).     01900000
+.*                                                                      01950000
+.* ARGUMENT LIST DESCRIPTION:                                           02000000
+.*                                                                      02050000
+.*  ONE POSITIONAL OPERAND MAY BE SPECIFIED.                            02100000
+.*  IT PROVIDES THE ADDRESS OF A DTL (DEFINE THE LOCK).                 02150000
+.*  THE ADDRESS OF THE DTL MAY BE SPECIFIED IN A-TYPE                   02200000
+.*  OR S-TYPE FORMAT OR IN REGISTER FORMAT.                             02250000
+.*                                                                      02300000
+.*  THE TERM A-TYPE FORMAT MEANS A NAME OR AN ADDRESS                   02350000
+.*  EXPRESSION EXPANDING IN AN A-TYPE ADDRESS CONSTANT.                 02400000
+.*  THE TERM S-TYPE FORMAT MEANS A NAME OR AN ADDRESS                   02450000
+.*  EXPRESSION WHICH COULD BE EXPANDED IN AN S-TYPE                     02500000
+.*  ADDRESS CONSTANT. IT WILL BE USED AS OPERAND OF AN                  02550000
+.*  INSTRUCTION IN BASE REGISTER,DISPLACEMENT FORMAT.                   02600000
+.*  IT IS TO BE WRITTEN AS (S,ADDRESS EXPRESSION).                      02650000
+.*  THE REGISTER NOTATION IS A REGISTER NUMBER OR AN                    02700000
+.*  APPROPRIATELY EQUATED SYMBOL ENCLOSED IN PARENTHESES.               02750000
+.*                                                                      02800000
+.*  SPECIAL CASES:                                                      02850000
+.*                                                                      02900000
+.*  UNLOCK ALL                                                          02950000
+.*  THE PARAMETER 'ALL' IS USED TO UNLOCK ALL RESOURCES                 03000000
+.*  LOCKED BY THE ISSUING TASK.                                         03050000
+.*                                                                      03100000
+.*  UNLOCK ALL,JC=EOJ                                                   03150000
+.*  THE ADDITIONAL KEYWORD 'JC=EOJ' CAUSES ALL RESOURCES                03200000
+.*  OF THE ISSUING TASK BEING UNLOCKED INCLUDING THOSE                  03250000
+.*  WHICH HAVE BEEN LOCKED WITH JC=YES.                                 03300000
+.*                                                                      03350000
+.*  UNLOCK NAME,JC=SYSID                                                03400000
+.*  THE KEYWORD JC=SYSID REMOVES ALL ENTRIES FROM THE          @D36SDJO 03450000
+.*  EXTERNAL FILE, WHICH HAVE BEEN LOCKED BY ANOTHER CPU.      @D36SDJO 03500000
+.*  IN THIS CASE THE PARAMETER 'NAME' SPECIFIES THE ADDRESS             03550000
+.*  OF AN 8-BYTE FIELD CONTAINING THE CPU-ID OF THE            @D36SDJO 03600000
+.*  OTHER SHARING SYSTEM.                                      @D36SDJO 03650000
+.*  THE MACRO 'UNLOCK NAME,JC=SYSID' MUST ONLY BE USED                  03700000
+.*  BY THE ATTENTION ROUTINE.                                  @D36SDJO 03750000
+.*                                                                      03800000
+.********************************************************************** 03850000
+.*                                                                      03900000
+&SVC     SETA  110            SVC NUMBER                                03950000
+&RDTL    SETA  1              NUMBER OF DTL ADDRESS REGISTER            04000000
+&RPARM   SETA  0              NUMBER OF PARAMETER REG                   04050000
+&NEWFLG  SETA  1              NEW UNLOCK SVC VERSUS OLD RELEASE SVC     04100000
+&EOJFLG  SETA  X'10'          B'1' IF JC=EOJ                            04150000
+&ALLFLG  SETA  X'20'          B'1' IF  UNLOCK ALL SPECIFIED             04200000
+&SYSID   SETA  X'40'          B'1' IF JC=SYSID                 @D36SDJO 04250000
+.*                                                                      04300000
+.* -------------------------------------------------------------        04350000
+.*       M A C R O  L A B E L                                           04400000
+.* -------------------------------------------------------------        04450000
+.*                                                                      04500000
+         AIF   ('&NAME' EQ '').NEXT                                     04550000
+&NAME    DC    0H'0'                                                    04600000
+.NEXT    ANOP                                                           04650000
+.*                                                                      04700000
+.* -------------------------------------------------------------        04750000
+.*       I N I T I A L I S A T I O N                                    04800000
+.* -------------------------------------------------------------        04850000
+.*                                                                      04900000
+.*   PROVIDE A FLAG BIT TO SHOW THAT THIS SVC IS AN UNLOCK SVC.         04950000
+&FLAGS    SETA  &NEWFLG                                                 05000000
+.*                                                                      05050000
+.* -------------------------------------------------------------        05100000
+.*       C H E C K  N U M B E R  O F  O P E R A N D S                   05150000
+.* -------------------------------------------------------------        05200000
+.*                                                                      05250000
+         AIF   (N'&SYSLIST EQ 0).EMPTY                                  05300000
+         AIF   (N'&SYSLIST EQ 1).SPEC1                                  05350000
+ MNOTE 8,'MORE THAN ONE POSITIONAL OPERAND, GENERATION SUPPRESSED.'     05400000
+         SPACE 2                                                        05450000
+         MEXIT                                                          05500000
+.*                                                                      05550000
+.EMPTY   ANOP                                                           05600000
+         AIF   ('&JC' EQ 'SYSID').EMPTY2                       @D36SDJO 05650000
+ MNOTE 8,'NO VALID POSITIONAL OPERAND SPECIFIED,GENERATION SUPPRESSED.' 05700000
+         SPACE 2                                                        05750000
+         MEXIT                                                          05800000
+.EMPTY2  ANOP                                                  @D36SDJO 05850000
+&FLAGS   SETA  &FLAGS+&SYSID                                   @D36SDJO 05900000
+         AGO   .GEN3                                           @D36SDJO 05950000
+.*                                                                      06000000
+.* -------------------------------------------------------------        06050000
+.*       C H E C K   ' J C '  O P E R A N D                             06100000
+.* -------------------------------------------------------------        06150000
+.*                                                                      06200000
+.SPEC1   ANOP                                                           06250000
+         AIF   (T'&JC EQ 'O').JCL3                                      06300000
+         AIF   ('&JC' EQ 'SYSID').JCL2                                  06350000
+         AIF   ('&JC' NE 'EOJ').ERR2                                    06400000
+         AIF   ('&SYSLIST(1)' EQ 'ALL').JCL1                            06450000
+.ERR2    MNOTE 8,'MACRO OPERANDS INCORRECT. GENERATION TERMINATED.'     06500000
+         SPACE 2                                                        06550000
+         MEXIT                                                          06600000
+.JCL1    ANOP                                                           06650000
+&FLAGS   SETA  &FLAGS+&EOJFLG                                           06700000
+         AGO   .ALL                                                     06750000
+.JCL2    ANOP                                                  @D36SDJO 06800000
+&FLAGS   SETA  &FLAGS+&SYSID                                   @D36SDJO 06850000
+.JCL3    ANOP                                                           06900000
+.*                                                                      06950000
+.* -------------------------------------------------------------        07000000
+.*       C H E C K  P O S I T I O N A L  O P E R A N D .                07050000
+.* -------------------------------------------------------------        07100000
+.*                                                                      07150000
+         AIF   ('&SYSLIST(1)'(1,1) EQ '(').PAREN                        07200000
+         AIF   ('&SYSLIST(1)' EQ 'ALL').ALL                             07250000
+&ADDR    SETC  '&SYSLIST(1)'                                            07300000
+         AGO   .GEN1     A-TYPE OPERAND                                 07350000
+.PAREN   AIF   ('&SYSLIST(1)'(1,3) EQ '(S,').STYPE                      07400000
+&ADDR    SETC  '&SYSLIST(1,1)'                                          07450000
+         AGO   .GEN4                                                    07500000
+.STYPE   ANOP                                                           07550000
+&ADDR    SETC  '&SYSLIST(1)'(4,K'&SYSLIST(1)-4)                         07600000
+.*                                                                      07650000
+.* -------------------------------------------------------------        07700000
+.*       G E N E R A T E   A S S E M B L E R   C O D E .                07750000
+.* -------------------------------------------------------------        07800000
+.*                                                                      07850000
+.*   S-TYPE OPERAND                                                     07900000
+         LA    &RDTL,&ADDR                                              07950000
+         AGO   .GEN3                                                    08000000
+.GEN1    ANOP                      A-TYPE OPERAND                       08050000
+         L     &RDTL,=A(&ADDR)     ADDRESS OF DTL                       08100000
+.GEN3    ANOP                                                           08150000
+         LA    &RPARM,&FLAGS.(,0) UNLOCK PARAMETERS                     08200000
+         SVC   &SVC                UNLOCK THE RESOURCE                  08250000
+         SPACE 1                                                        08300000
+         MEXIT                                                          08350000
+.GEN4    ANOP                      REGISTER TYPE OPERAND                08400000
+         AIF   ('&ADDR' EQ '1').GEN3                                    08450000
+         LR    &RDTL,&ADDR                                              08500000
+         AGO   .GEN3                                                    08550000
+.* -------------------------------------------------------------        08600000
+.*       G E N E R A T E   A S S E M B L E R   C O D E                  08650000
+.*       F O R    U N L O C K   A L L    M A C R O .                    08700000
+.* -------------------------------------------------------------        08750000
+.ALL     ANOP                                                           08800000
+&FLAGS   SETA  &FLAGS+&ALLFLG                                           08850000
+         LA    &RPARM,&FLAGS.(,0)  POINTER TO PARMFIELD                 08900000
+         SVC   &SVC                UNLOCK ALL RESOURCES                 08950000
+         SPACE 1                                                        09000000
+         MEND                                                           09050000

@@ -1,0 +1,1272 @@
+         MACRO                                                          00050001
+         SGPPMT                                                         00100001
+         TITLE 'SGPPMT - ALLOCATE/FREE PMR TABLES'                      00200001
+.*************************************************************          00300001
+*                                                            *          00350001
+.*       IBM DISK OPERATING SYSTEM                           *          00400001
+*        SUPERVISOR - GETPMT - 5686-CF7-06                   *          00450005
+*                                                            *          00600001
+*        LICENSED MATERIALS - PROPERTY OF IBM                *          00650001
+*        "RESTRICTED MATERIALS OF IBM"                       *          00700002
+*        5686-CF7                                            *          00750005
+*        (C) COPYRIGHT IBM CORP. 1992, 2004                  *          00760005
+*                                                            *          00850001
+**************************************************************          00900001
+.* /* START OF SPECIFICATIONS ***************************************** 00950001
+.*                                                                      01000001
+.*01* MODULE NAME = SGPPMT                                              01050001
+.*                                                                      01100001
+.*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                         01150001
+.*                                                                      01200001
+.*01* DESCRIPTIVE NAME = ALLOCATION OF PAGE MANAGEMENT TABLES           01250001
+.*                                                                      01300001
+.*01* CHANGE ACTIVITY = AS FOLLOWS                                      01350001
+.*                                                                      01400001
+.*    31 BIT ENABLING                                          @D52VDRP 01410001
+.*    DATA SPACE SUPPORT                                       @D52GDWL 01420001
+.*    HARDWAIT FF1 DURING "EXEC ...,REAL" DUE TO NOT ENOUGH    @KX40782 01430001
+.*     SPACE ALLOCATED FOR PAGE-TABLE OF REAL SPACE  @D52VDRP  @KX40782 01440001
+.*     DON'T PFIX, IF NOTHING MORE IS REQUESTED      @D52GDWL  @KX40934 01445001
+.*     INITIALIZE COMPLETE POSL-HEADER               @D52VDRP  @KD40023 01447501
+.*     NON-PDS SYSTEM, DON'T ALLOCATE POSL                     @D61BDRP 01448701
+.*     MULTI-PROCESSOR SUPPORT                                 @D61RDRP 01449301
+.*     MORE THAN 255 TASKS                                     @D66ODOW 01449402
+.* A000000-999999                                              @D52VDRP 01450001
+.**** END OF SPECIFICATIONS ******************************************/ 01500001
+*---------------------------------------------------------------------- 01550001
+*        ROUTINE PROLOGUE: GETPMT                                       01600001
+*                                                                       01650001
+*        FUNCTION: INITIALIZES PAGE MANAGEMENT TABLES                   01750001
+*        ENTRY POINT:                                                   01800001
+*           GETPMT                                                      01850001
+*        INVOKED BY: STORAGE MANAGEMENT (IJBSSM) AMODE(31),DATON        01900001
+*                      (VIA AMODESW CALL)                               01950001
+*        OPERATION:                                                     02000001
+*          ALLOCATES PMR TABLES (SGT, PT AND PTAS) FOR                  02050001
+*          THE SPACE SPECIFIED BY THE SCB AND INITIALIZES THEM          02100001
+*--------------------------------------------------------------         02150001
+*        INPUT :                                                        02200001
+*           R1 - ADDR OF SCB OF SPACE TO BE HANDLED                     02250001
+*                SCB.SCBEYEC                                            02254501
+*                SCB.SCBID                                              02259001
+*                SCB.SCBSPN                                             02263501
+*                SCB.SCBFLG (TYPE OF SPACE (ADDRESS/DATA)               02268001
+*                SCB.SCBASTER                                           02272501
+*                SCB.SCBASTE                                            02277001
+*                SCB.SCBPASZ                                            02281501
+*                SCB.SCBEXSZ                                            02286001
+*                SCB.SCBCUSZ                                            02290501
+*                IF SCBCUSZ=0 THEN ALL OTHER FIELDS ARE ZERO            02295001
+*           R7 - RETURN ADDRESS                                         02300001
+*           R8 - ADDR OF SGPDATA                                        02350001
+*--------------------------------------------------------------         02400001
+*        INTERNAL REGISTER USAGE                                        02450001
+*              R3-R6 - WORK REGISTERS                                   02500001
+*              R7 -    RETURN ADDRESS                                   02550001
+*              R8 -    ADDR OF PAGE MANAGEMENT DATA AREA                02600001
+*              R9 -    BASE ADDR OF THIS CODE                           02650001
+*              RB -    WORK REGISTER                                    02675001
+*                                                                       02700001
+*--------------------------------------------------------------         02750001
+         SPACE 1                                                        02800001
+GETPMT   DS    0H                                                       02850001
+         L     R8,AGETPMT         SET BASE FOR                          02900001
+         USING GETPMT,R8          *  CODE AREA                          02950001
+         SLR   RF,RF              SET RETURN CODE TO ZERO               03000001
+         STM   R0,RF,GETPMSV      SAVE LOCAL WORK REGISTERS             03050001
+         DROP  R8                                                       03100001
+         LR    R9,R8              GET BASE FOR                          03150001
+         USING GETPMT,R9          *  CODE AREA                          03200001
+         L     R8,APMGMDAT        GET BASE FOR DATA AREA                03250001
+         USING PMGMDATA,R8                                              03300001
+         B     GETPMT00                                                 03350001
+         DS    0F                                                       03400001
+GETPTL   DC    CL8'GETPMT'                                              03450001
+         DC    C'02/25/2001'                                            03500001
+         SPACE 1                                                        03550001
+*   LOCAL EQUATES                                                       03600001
+         SPACE 1                                                        03650001
+NOPMRSP  EQU   X'04'              NO PMR SPACE AV. FOR TABLES           03700001
+NORSTOR  EQU   X'08'              NO REAL STORAGE TO PFIX TABL.         03750001
+INVREQ   EQU   X'0C'              INVALID REQUEST                       03800001
+         SPACE 1                                                        03812501
+GETPMFLG DC    X'00'              FLAG BYTE                             03825001
+GETPMINT EQU   X'80'              REQUEST SETTING OF ADDRESSES          03837501
+GETRSPID EQU   X'40'              GETPMT FOR REAL SPACE                 03843701
+         DS    0F                                                       03850001
+GPFIXLST DS    0F                 PARAMETERLIST FOR SPFIX               03950001
+GPFIXBEG DC    F'0'               BEGIN ADDR TO BE PFIXED               04000001
+GPFIXLEN DC    F'0'               LENGTH -1 OF AREA                     04050001
+         DC    AL1(128),AL3(0)    END INDICATION                        04100001
+GETPMSTE DS    F                  ADDR OF 1ST STE IN PRIV. AREA         04116601
+GETPMRST DS    F                  REAL ADDRESS OF SGT                   04133201
+         SPACE 1                                                        04150001
+* TABLES TO DRIVE SPFIX FOR PT, PTAS AND POSL, AND CALCPMSP RTN         04153501
+.* GETPFXTB HAS TO FOLLOW GETCALCT IMMEDIATELY                          04157001
+GETCALCT DC    A(ACTSGTSZ),A(SCBVSTO-SCBADR) VALUES FOR SGT             04160501
+GETPFXTB DC    A(ACTPTSZ),A(SCBAPT-SCBADR)  VALUES FOR PAGE TABLE       04164201
+         DC    A(ACTPTASZ),A(SCBAPTAS-SCBADR)  VALUES FOR PTAS          04171301
+         DC    A(ACTPOSSZ),A(SCBAPOSL-SCBADR)  VALUES FOR POSL          04178401
+         DC    X'FF'              END INDICATION                        04185501
+         SPACE 1                                                        04192601
+*   SAVE AREAS FOR GETPMT                                               04200001
+         SPACE 1                                                        04250001
+         DS    0F                                                       04275001
+GETPMSV  DS    16F                SAVE AREA FOR GETPMT                  04300001
+GETPMSF  EQU   GETPMSV+15*4       SAVE AREA FOR RF                      04350001
+GETPMSEX DS    16F                SAVE AREA TO CALL EXT. RTNS           04400001
+GETPMSV2 DS    16F                SAVE AREA FOR 2ND LEVEL               04450001
+GETVSIZ  DS    F                  SIZE OF AREA TO BE GETVISED           04500001
+ACTSGTSZ DS    F                  SIZE OF SGT FOR ACT. REQ.    @D52GDWL 04525001
+ACTPTSZ  DS    F                  SIZE OF PAGE-TABLE FOR ACT. REQ.      04550001
+ACTPTASZ DS    F                  SIZE OF PTAS-TABLE FOR ACT. REQ.      04575001
+ACTPOSSZ DS    F                  SIZE OF POSL-TABLE FOR ACT. REQ.      04587501
+SAV1STPF DS    F                  ADDR OF 1ST PAGE FRAME                04600001
+SAVLSTPF DS    F                  ADDR OF LAST PAGE FRAME               04625001
+SAV1PFTE DS    F                  ADDR OF 1ST PFTE                      04650001
+SAVLPFTE DS    F                  ADDR OF LAST PFTE                     04675001
+PMTSCBSV DS    F                  SAVED ACTUAL SCB                      04725001
+GPFIXSV  DS    F                  SAVED PFIX COUNTER FOR AREA 1         04733301
+GPFIX3SV DS    F                  SAVED PFIX COUNTER FOR AREA 3         04741601
+         SPACE 1                                                        04750001
+*   GETPMT LOGIC                                                        05200001
+         SPACE 1                                                        05250001
+GETPMT00 DS    0H                                                       05300001
+         LM    RA,RB,GETPTL       GET IDENTIFICATION           @D61NDRP 05320001
+         DEBUG ALLREGS,XXDBGMC    CREATE DEBUG ENTRY                    05330001
+         USING SCBADR,R1          SET BASE FOR SCB                      05350001
+         SPACE 1                                                        05600001
+*  GATE AGAINST CONCURRENT SYSTEM PFIX                                  05650001
+GETPM005 L     R5,ASRQTAB         POINT                        @D61RDRP 05675001
+         LA    R5,SRQSPFIX-SRQTAB(,R5)  TO SYSTEM PFIX QUEUE   @D61RDRP 05700001
+         TM    RBSPFIX-SRQSPFIX(R5),FREEBIT       GATE OPEN?   @D66ODOW 05725002
+         BO    GETPM010           YES, BRANCH                  @D66ODOW 05750002
+         BAL   RC,RWAIT           SAVE STATUS AND WAIT                  05850001
+*SGLINK  RWAIT,INPUT=(R5,RC)                                            05900001
+         B     GETPM005           TRY IT AGAIN                          05950001
+         USING RQADR,R5                                                 05960001
+GETPM010 MVC   RBSPFIX-SRQSPFIX(2,R5),TID CLOSE GATE, SET OWNER@D66ODOW 05981202
+         DROP  R5                 DROP BASE FOR RQADR                   06037501
+         SPACE 1                                                        06050001
+         L     R3,ASIDSTR         ADDRESS OF SPACE IDS                  06054201
+         USING SIDSTR,R3                                                06058401
+         CLC   SCBID,SIDR         IS REQUEST FOR REAL SPACE             06062601
+         BNE   GETPM015           NO, BRANCH                            06066801
+         OI    GETPMFLG,GETRSPID  INDICATE REQUEST FOR REAL SPACE       06071001
+         DROP  R3                 DROP BASE FOR SIDSTR         @KD40158 06073101
+GETPM015 ICM   R3,15,SCBCUSZ      REQUEST FOR EXTEND                    06075201
+         BNZ   GETPM020           YES, SKIP TOTAL SIZE CALC.            06080001
+*  CALCULATE VIRTUAL SPACE REQUIRED FOR PMR TABLES                      06095001
+         OI    GETPMFLG,GETPMINT  INDICATE 1ST REQUEST FOR SPACE        06110001
+         L     R6,SCBPASZ         GET SIZE OF SPACE IN K                06125001
+         BAL   RA,CALCPMSP        GET REQUIRED SIZE FOR PMR TAB         06150001
+*SGLINK  CALCPMSP,INPUT=(R1,R6,R8,R9,RA),OUTPUT=(RB),                  *06161001
+               WORK=(R3,R4,R5,R6),AMODE=31 DATON                        06172001
+         ST    RB,GETVSIZ         SAVE IT FOR LATER USE                 06183201
+         NI    GETPMFLG,XFF-GETPMINT RESET 1ST REQ. INDICATION          06199801
+*  CALCULATE REAL SPACE REQUIRED FOR PMR TABLES                         06216401
+GETPM020 L     R6,SCBEXSZ         GET SIZE OF ACTUAL ...                06233001
+         A     R6,SCBCUSZ         ... SPACE IN K                        06249601
+         BAL   RA,CALCPMSP        GET REQUIRED SIZE FOR FIXED PMR TAB   06266201
+*SGLINK  CALCPMSP,INPUT=(R1,R6,R8,R9,RA),OUTPUT=(RB),                  *06277401
+               WORK=(R3,R4,R5,R6),AMODE=31 DATON                        06288601
+         SPACE 1                                                        06300001
+         L     R5,ASYSPCB         GET ADDR OF SYSTEM PCB                06400001
+         USING PCBADR,R5                                                06450001
+*  CHECK FOR ENOUGH REAL STORAGE                                        06487501
+         L     R3,SMPFIX          SAVE ACTUAL ...                       06495301
+         ST    R3,GPFIXSV         ... PFIX VALUE OF AREA 1              06503101
+         L     R4,SMPFIX3         SAVE ACTUAL ...                       06510901
+         ST    R4,GPFIX3SV        ... PFIX VALUE OF AREA 3              06518701
+         SRL   RB,PNSHIFT         GET NUMBER OF PAGES REQUIRED          06526501
+         SH    RB,SCBPFIX3        ... BY THIS                           06534301
+         SH    RB,SCBPFIX         ...   REQUEST                         06542101
+         BNP   GETPMTRC           -----> RETURN, NOTHING REQ.  @KX40934 06546001
+         L     R3,SMAXPFIX        GET NUMBER                            06550001
+         A     R3,SMAXPFX3        *   OF                                06600001
+         S     R3,SMPFIX          *     PAGES  STILL                    06650001
+         S     R3,SMPFIX3         *  AVAILABLE FOR SYSTEM PFIX          06700001
+         CR    R3,RB              ENOUGH REAL STORAGE LEFT              06750001
+         BL    GETPMTR8           NO,   RETURN WITH RC                  06800001
+         DROP  R5                 DROP BASE FOR SYST. PCB               06850001
+         SPACE 1                                                        06900001
+*   CALL SUBROUTINES DEPENDING ON TYPE OF SPACE TO BE CREATED           06950001
+         LA    R7,GETPMPT         GET ROUTINE ADDR FOR PMRAS            07000001
+         TM    SCBFLG,SCBPMRSP    IS IT REQUEST FOR PMRAS               07050001
+         BO    GETPMCAL           YES, CALL ROUTINE GETPMPT             07100001
+         LA    R7,GETPT           GET ROUTINE ADDR                      07150001
+         TM    SCBFLG,SCBASP      IS IT REQUEST FOR ADDR. SPACE         07200001
+         BO    GETPMCAL           YES, CALL GETPT                       07250001
+         TM    SCBFLG,SCBDSP      IS IT REQUEST FOR DATA SPACE          07300001
+         BO    GETPMCAL           YES, CALL GETPT                       07350001
+         B     GETPMERR           NO, ILLEGAL REQUEST                   07400001
+GETPMCAL BALR  R7,R7              CALL CORRECT ROUTINE                  07450001
+         ST    RF,GETPMSF         SAVE RETURN CODE                      07500001
+         LTR   RF,RF              REQUEST O.K.                          07501201
+         BNZ   GETPMTRC           NO, BRANCH                            07502401
+         SPACE 1                                                        07503601
+*  SET NUMBER OF FRAMES FIXED UP TO NOW FOR THIS SPACE                  07504801
+         L     R5,ASYSPCB         GET ADDR OF SYSTEM PCB                07506001
+         USING PCBADR,R5                                                07507201
+         L     R3,SMPFIX          GET NUMBER FOR ...                    07511301
+         S     R3,GPFIXSV         ...                                   07515401
+         AH    R3,SCBPFIX         ... AREA 1                            07519501
+         STH   R3,SCBPFIX         SET IT IN SCB                         07523601
+         L     R3,SMPFIX3         GET NUMBER FOR ...                    07527701
+         S     R3,GPFIX3SV        ...                                   07531801
+         AH    R3,SCBPFIX3        ... AREA 3                            07535901
+         STH   R3,SCBPFIX3        SET IT IN SCB                         07540001
+         DROP  R1                 DROP BASE FOR SCB                     07544401
+         DROP  R5                 DROP BASE FOR SYSPCB                  07545601
+         SPACE 1                                                        07550001
+GETPMTRC DS    0H                                                       07564201
+         NI    GETPMFLG,XFF-GETRSPID RESET INDICATION                   07571301
+         LM    RA,RB,GETPTL       GET IDENTIFICATION           @D61NDRP 07596101
+         DEBUG ALLREGS,XXDBGMC    CREATE DEBUG ENTRY                    07608501
+         L     R6,DISPAD                                                07635201
+         USING DISP,R6                                                  07650001
+         L     R5,ASRQTAB                                      @D61RDRP 07683301
+         LA    R5,SRQSPFIX-SRQTAB(,R5) PTR TO RSRC DESCRIPTOR  @D61RDRP 07716601
+         BAL   RF,RPOST           POST ALL WAITERS                      07750001
+*SGLINK  RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                            07800001
+         LM    R0,RF,GETPMSV      RESTORE WORK REGISTERS                07850001
+*        AMODESW RETURN,REG=(R7)  RETURN TO CALLER                      07900001
+         AMODESW RETURN,REG=(R7)  RETURN TO CALLER                      07950001
+         DROP  R6                 DROP BASE FOR DISPATCHER              08000001
+         SPACE 1                                                        08050001
+GETPMTR8 LA    RF,NORSTOR         INDICATE NOT ENOUGH REAL STOR         08100001
+         B     GETPMER1           SET RETURN CODE                       08150001
+GETPMERR LA    RF,INVREQ          INDICATE INVALID REQUEST              08200001
+GETPMER1 ST    RF,GETPMSF         SAVE RETURN CODE                      08250001
+         B     GETPMTRC           RETURN                                08300001
+         TITLE 'SGPPMT - GETPT   ROUTINE'                               08400001
+*--------------------------------------------------------------         08450001
+*   FUNCTION:                                                           08500001
+*     GET SEGMENT TABLE, PAGE TABLE AND PTAS FOR A NEW                  08550001
+*     ADDRESS SPACE                                                     08600001
+*        INPUT :                                                        08650001
+*           R1 - ADDR OF SCB OF SPACE TO BE HANDLED                     08700001
+*           R7 - RETURN ADDRESS                                         08750001
+*        OUTPUT:                                                        08800001
+*           RF - RETURN CODE                                            08850001
+*--------------------------------------------------------------         08900001
+*        INTERNAL REGISTER USAGE                                        08950001
+*              R1 -    WORK REGISTER IN ERROR CASE (I.E. RF # 0)        08983301
+*              R2-R6 - WORK REGISTERS                                   09016601
+*              R7 -    RETURN ADDRESS                                   09050001
+*              R8 -    ADDR OF PAGE MANAGEMENT DATA AREA                09100001
+*              R9 -    BASE ADDR OF THIS CODE                           09150001
+*              RB -    WORK REGISTER                                    09175001
+*                                                                       09200001
+*--------------------------------------------------------------         09250001
+         SPACE 1                                                        09300001
+GETPT    DS    0H                                                       09350001
+         USING SCBADR,R1                                                09383301
+         L     R3,TIBPTR          SAVE CURRENT SCB POINTER ...          09416601
+         MVC   PMTSCBSV,TIBSCB-TIBADR(R3) ... OF TASK                   09433201
+         ICM   R3,15,SCBAPMRA     IS IT REQUEST FOR EXTEND              09438801
+         BNZ   GETPT010           YES, SWITCH TO PMR SPACE              09444401
+         L     R6,SCBPASZ         GET SIZE OF SPACE IN K                09451701
+         BAL   RA,CALCPMSP        RESET TOTAL SIZE VALUES               09459001
+*SGLINK  CALCPMSP,INPUT=(R1,R6,R8,R9,RA),OUTPUT=(RB),                  *09463901
+               WORK=(R3,R4,R5,R6),AMODE=31 DATON                        09468801
+         L     R3,ASCBATAB        GET ADDR OF SCBATAB                   09473701
+         USING SCBATAB,R3                                               09503001
+         L     R3,ASCBFPMR        GET SCB OF 1ST PMRAS                  09532301
+         DROP  R3                 DROP BASE FOR SCBATAB                 09561601
+         LR    R6,R3              SAVE ADDR OF 1ST PMR-SCB              09590901
+         LR    R5,R1              SAVE SCB ADDR OF NEW SPACE            09650001
+GETPT010 DS    0H                                                       09750001
+*    SWITCH TO PMRAS                                                    09787501
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          09825001
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          09862501
+         ICM   R2,15,SCBAPMRA     IS IT REQUEST FOR EXTEND              09870001
+         BNZ   GETPT030           YES, DO ONLY PFIX OF ADD. AREA        09877501
+         DROP  R1                 DROP BASE FOR SCB                     09885001
+         USING SCBADR,R3                                                09892501
+         LA    R2,GETPMSEX-16     PROVIDE SAVE AREA ADDR                09900001
+*        SGETVIS LENGTH=GETVSIZ,ADDRESS=(R4),LOC=ANY,SAVE=(R2),         09950001
+*              PAGE=YES,PMSPACE=YES                                     10000001
+         SGETVIS LENGTH=GETVSIZ,ADDRESS=(R4),LOC=ANY,SAVE=(R2),        *10050001
+               PAGE=YES,PMSPACE=YES                                     10100001
+         LTR   RF,RF              WAS REQUEST SUCCESSFUL                10150001
+         BZ    GETPT020           YES, CONTINUE                         10200001
+         L     R3,SCBFWPT         NO, GET SCB OF NEXT PMRAS             10231201
+         CR    R3,R6              END OF CHAIN REACHED                  10262401
+         BNE   GETPT010           NO, TRY TO GET AREA IN THIS PMRAS     10293601
+         SGCOV SGPPMT,MC=0        IND. MORE THAN ONE PMR SPACE          10321801
+         LA    RF,NOPMRSP         INDICATE NO PMR SPACE AVAIL.          10350001
+         B     GETPTEX            ==============>  RETURN               10400001
+         DROP  R3                 DROP BASE FOR SCB                     10450001
+GETPT020 DS    0H                                                       10500001
+         LR    R1,R5              RESTORE SCB ADDR OF NEW SPACE         10550001
+         USING SCBADR,R1                                                10800001
+         ST    R3,SCBAPMRA        SET SCB OF PMRAS CONT. TABLES         10850001
+         ST    R4,SCBVSTO         SET VIRT. ADDRESS OF SGT              10900001
+         A     R4,ACTSGTSZ        GET VIRT. ADDR. OF PAGE-TABLE@D52GDWL 10950001
+         ST    R4,SCBAPT          * AND SET IT IN SCB                   11000001
+         TM    GETPMFLG,GETRSPID  REQUEST FOR REAL SPACE                11016601
+         BO    GETPT025           YES, --> NO PTAS AND POSL             11033201
+         A     R4,ACTPTSZ         GET VIRT. ADDR. OF PTAS               11050001
+         ST    R4,SCBAPTAS        * AND SET IT IN SCB                   11100001
+         A     R4,ACTPTASZ        GET VIRT. ADDR. OF POSL               11102301
+         TM    IJBFLG08,IJBNOPDS  SYSTEM WITHOUT PDS           @D61BDRP 11103101
+         BO    GETPT025           YES, --> NO POSL  SS         @D61BDRP 11103901
+         ST    R4,SCBAPOSL        SET POSL ADDRESS IN SCB               11104701
+GETPT025 DS    0H                                                       11105801
+         BAL   RA,GETFRMSG        GET FRAMES FOR SEGMENT TABLE          11107101
+         LTR   RF,RF              REQUEST SUCCESSFUL                    11114201
+         BNZ   GETPTERR           NO, ----> ERROR EXIT                  11121301
+         L     RD,SCBVSTO         GET ADDR OF 1ST PAGE                  11128401
+         L     R4,SCBAPMRA        GET ADDR OF SCB FOR PAGE              11135501
+         BAL   RA,ASPTE           ASSGN SGT PAGE(S) TO FRAME(S)         11142601
+*SGLINK  ASPTE,INPUT=(R4,R8,R9,RA,RD),AMODE=31 DATON                    11171301
+         SPACE 1                                                        11200001
+* PFIX AREAS REQUIRED FOR ACTIVE PRIV. AREA                             11214201
+GETPT030 L     R6,SCBEXSZ         GET SIZE OF ...                       11228401
+         A     R6,SCBCUSZ         ... SPACE IN K                        11242601
+         BAL   RA,CALCPMSP        GET REQUIRED SIZE FOR PMR TAB         11256801
+*SGLINK  CALCPMSP,INPUT=(R1,R6,R8,R9,RA),OUTPUT=(RB),                  *11266201
+               WORK=(R3,R4,R5,R6),AMODE=31 DATON                        11275601
+         DROP  R1                 DROP BASE FOR SCB                     11285201
+         LR    R5,R1              SAVE SCB ADDR                         11300001
+         USING SCBADR,R5                                                11316601
+         LA    R6,GETPFXTB        POINT TO 1ST PFIX CONTROL INFO        11333201
+         LA    R2,GETPMSEX-16     GET SAVE AREA FOR SPFIX               11350001
+         LA    R1,GPFIXLST        GET ADDR OF PARAMETER LIST            11400001
+GETPT032 L     R4,4(,R6)          GET BEGIN OF                          11450001
+         L     R4,SCBADR(R4)      .... OF AREA AND                      11500001
+         LTR   R4,R4              IS AREA AVAILABLE                     11516601
+         BZ    GETPT035           NO, SKIP THIS ENTRY                   11533201
+         ST    R4,GPFIXBEG         ... SET IT IN PFIX LIST              11550001
+         L     R4,0(,R6)          GET LENGTH                            11600001
+         L     R4,0(,R4)          ... OF AREA                           11650001
+         BCTR  R4,0               ...  MINUS 1 AND                      11700001
+         ST    R4,GPFIXLEN        ... SET IT IN PFIX LIST               11750001
+*        SPFIX ADDRESS=(1),RLOC=ANY,GATE=NO,SAVE=(2)  PFIX AREA         11800001
+         SPFIX ADDRESS=(1),RLOC=ANY,GATE=NO,SAVE=(2)                    11850001
+         LTR   RF,RF              PFIX SUCCESSFUL                       12300001
+         BZ    GETPT035           YES, O.K.                             12350001
+         BAL   R5,PMRHWERR        NO, SYSTEM ERROR                      12400001
+GETPT035 DS    0H                                                       12415001
+         LA    R6,8(,R6)          POINT TO NEXT ENTRY                   12430001
+         CLI   0(R6),XFF          END REACHED                           12445001
+         BNE   GETPT032           NO, PFIX NEXT AREA                    12460001
+         LR    R1,R5              RESTORE SCB ADDR                      12475001
+         DROP  R5                 DROP BASE FOR SCB                     12487501
+         USING SCBADR,R1                                                12500001
+         ICM   R4,15,SCBCUSZ      IS IT REQUEST FOR EXTEND              12502001
+         BNZ   GETPT190           YES, ---> ALL DONE                    12504001
+         ICM   R4,15,SCBAPOSL     GET ADDR OF PSLCB                     12506801
+         BZ    GETPT037           SKIP IF NO POSL AVAILABLE             12509601
+         L     R2,SCBPASZ         PROVIDE                               12512501
+         SRL   R2,5               *    LENGTH                           12525001
+         ST    R2,PSLSTLEN-PSLCB(,R4)  * OF PSLSTATE                    12537501
+         SLL   R2,PNBLSHFT        GET NUMBER OF PAGES          @KD40023 12540001
+         BCTR  R2,0               GET EPA# OF LAST PAGE        @KD40023 12542501
+         ST    R2,PSLAENDP-PSLCB(,R4) SET IT IN POSL           @KD40023 12545001
+         ST    R1,PSLASCB-PSLCB(,R4) SET SCB ADDR IN POSL      @KD40023 12547501
+GETPT037 L     R2,SCBVSTO                                               12550001
+*        GENSERV LRADBG,RREG=(R2),VADD=(R2),ERR=NADDR                   12600001
+         GENSERV LRADBG,RREG=(R2),VADD=(R2),ERR=NADDR                   12650001
+         ST    R2,SCBRSTO                                               12700001
+         L     R3,SCBAPMRA        GET SCB ADDRESS OF PMRAS              12750001
+         MVC   SCBXSTL,SCBXSTL-SCBADR(R3) SET LENGTH FOR ESA            13000001
+         L     R4,SCBRSTO-SCBADR(R3)  GET REAL                          13100001
+         N     R4,PMCR1MSK            *  ADDRESS OF SGT                 13150001
+         TM    SCBFLG,SCBDSP      IS THIS FOR A DATA SPACE?    @D52GDWL 13166601
+         BO    GETPT080           YES                          @D52GDWL 13183201
+         L     R3,PMSGTSZ         GET LENGTH OF SEGMENT TABLE           13200001
+         LR    R5,R3              *  FOR MVCL                           13250001
+*        AMODESW SET,DAT=OFF                                            13275001
+         AMODESW SET,DAT=OFF                                            13300001
+         MVCL  R2,R4              MOVE SGT OF PMRAS1 TO NEW SGT         13350001
+*        AMODESW SET,DAT=ON                                             13375001
+         AMODESW SET,DAT=ON                                             13400001
+         SPACE 1                                                        13450001
+*   SET ALL STE'S OF PRIVATE AREA INVALID                               13500001
+         L     R3,IJBSMCOM                                              13550001
+         USING SMCOM,R3                                                 13600001
+         L     R3,SMCPRPBG                                              13650001
+         DROP  R3                 DROP BASE FOR SMCOM                   13700001
+         SRL   R3,STSHIFT         GET OFFSET IN SGT                     13750001
+         A     R3,SCBVSTO         GET ADDR OF 1ST STE (PRIV.AREA        13800001
+         L     R4,PMPSEG#         GET NUMBER OF STE'S                   13850001
+         USING STE,R3                                                   13900001
+GETPT050 MVC   STE(LSTE),PMINVSTE INVALIDATE ENTRY                      13950001
+         LA    R3,LSTE(,R3)       GET NEXT ENTRY                        14000001
+         BCT   R4,GETPT050        HANDLE THIS ENTRY                     14050001
+         DROP  R3                 DROP BASE FOR STE                     14200001
+         SPACE 1                                                        14201901
+*  IF REQUEST FOR REAL SPACE, SET PTE'S TO INACTIVE                     14203801
+.* FOR THE OTHER SPACES, THIS IS DONE DURING PTASG                      14205701
+         TM    GETPMFLG,GETRSPID  REQUEST FOR REAL SPACE                14209001
+         BZ    GETPT190           NO, ALL DONE                          14212301
+         L     R6,SCBPASZ         GET SIZE OF SPACE IN K       @KX40782 14215801
+         BAL   RA,CALCPMSP        RESET TOTAL SIZE VALUES      @KX40782 14216401
+         L     R2,SCBAPT          GET ADDR OF 1ST PTE                   14217101
+         LR    R3,R2              GET ADDR OF ...                       14219001
+         A     R3,ACTPTSZ         ... LAST +1 PTE                       14220901
+         LA    R4,LPTE-1          GET L(PTE)-1 FOR EXECUTE              14222801
+         USING PTE,R2                                                   14224701
+GETPT061 MVC   PTE(LPTE),PMINVPTE INACTIVATE PTE                        14226601
+         LA    R2,LPTE(,R2)       GET ADDR OF NEXT PTE                  14228501
+         CR    R2,R3              ALL PTE'S HANDLED                     14230401
+         BL    GETPT061           NO, HANDLE THIS ONE                   14232301
+         B     GETPT190                                        @D52GDWL 14233201
+         DROP  R2                 DROP BASE FOR PTE                     14234201
+         SPACE 1                                               @D52GDWL 14234401
+GETPT080 OC    SCBRSTO,PMRPSPCB   SET PRIVATE SPACE CONTROL    @D52GDRP 14234701
+         L     R4,SCBPASZ         MAX SIZE OF DATA SPACE IN K  @D52GDWL 14234801
+         SLL   R4,10              SIZE IN BYTES                @D52GDWL 14234901
+         AL    R4,PMSGDIS         * ROUND TO SEGMENT           @D52GDWL 14235001
+         N     R4,PMSGMSK         *       BOUNDARY             @D52GDWL 14235101
+         SRL   R4,SNSHIFT         NUMBER OF SEGMENTS           @D52GDWL 14235201
+         LA    R4,15(,R4)         *                            @D52GDWL 14235401
+         SRL   R4,4               * ROUND TO MULTIPLES OF 16   @D52GDWL 14235501
+         SLL   R4,4               *                            @D52GDWL 14235601
+         LR    R3,R4              SEGMENT NUMBER               @D52GDWL 14235701
+         SRL   R3,4               DEVIDE BY 16                 @D52GDWL 14235801
+         BCTR  R3,0               MINUS ONE                    @D52GDWL 14235901
+         STC   R3,SCBXSTL         STORE IN SCB                 @D52GDWL 14236001
+         USING STE,R3             SET BASE FOR STE             @D52GDWL 14236101
+         L     R3,SCBVSTO         GET ADDR OF SGT              @D52GDWL 14236201
+         SGCOV SGPPMTD,MC=0       DATA SPACE CODE COVERAGE     @D52GDWL 14236301
+GETPT085 MVC   STE(LSTE),PMINVSTE INVALID SGT ENTRY            @D52GDWL 14236401
+         LA    R3,LSTE(,R3)       POINT TO NEXT SGT ENTRY      @D52GDWL 14236501
+         BCT   R4,GETPT085        LOOP THROUGH SGT             @D52GDWL 14236601
+         DROP  R3                 RELEASE STE ADDRESSAB.       @D52GDWL 14236701
+         SPACE 1                                                        14236801
+*                                                              @D52GDWL 14236901
+*        IF THE 'COMMON SEGMENT' FEATURE IS INSTALLED, ALL     @D52GDWL 14237001
+*        SEGMENT TABLES CREATED SO FAR HAVE THE 'COMMON        @D52GDWL 14237101
+*        SEGMENT' BIT ON FOR THE SHARED AREAS. FOR DATA        @D52GDWL 14237201
+*        SPACES, THE 'PRIVATE-SPACE-CONTROL' BIT HAS TO BE     @D52GDWL 14237301
+*        SUPPORTED TOO. IF THIS IS NOT THE CASE, THE 'COMMON   @D52GDWL 14237401
+*        SEGMENT' BITS IN ALL SEGMENT TABLES HAVE TO BE RESET. @D52GDWL 14237501
+*                                                              @D52GDWL 14237601
+         CLI   PMSTECOM,ZERO      DO WE HAVE 'COMMON SEGMENTS'?@D52GDWL 14237701
+         BE    GETPT190           NO, NOTHING TO DO            @D52GDWL 14237801
+         ASYSCOM R2                                            @D52GDWL 14237901
+         USING SYSCOM,R2          SET BASE FOR SYSCOM          @D52GDWL 14238001
+         TM    IJBCONF2,IJBPSBIT  PRIVATE-SPACE-CONTROL SUPP.? @D52GDWL 14238101
+         BO    GETPT190           YES, LEAVE SGTS AS THEY ARE  @D52GDWL 14238201
+         L     R6,IJBSMCOM        STORAGE MGMT COMMUN. AREA    @D52GDWL 14238801
+         DROP  R2                 RELEASE BASE FOR SYSCOM      @D52GDWL 14238901
+         XC    SCBRSTO,PMRPSPCB   RESET PRIVATE SPACE CONTROL  @D52GDWL 14239001
+         XC    PMRPSPCB,PMRPSPCB  RESET IT FOR EVER            @D52GDWL 14239101
+         LA    R2,X'FF'           INVERT ...                   @D52GDWL 14239201
+         IC    R3,PMSTECOM        ... BITS IN                  @D52GDWL 14239301
+         XR    R3,R2              ... COMMON SEGMENT MASK      @D52GDWL 14239401
+         STC   R3,PMSTECOM        ... USED TEMP. IN RESETCSB   @D52GDWL 14239501
+         LR    RA,R1              SAVE AD . OF SCB             @D52GDWL 14239601
+         DROP  R1                 DROP BASE FOR SCB                     14239701
+*                                                              @D52GDWL 14239801
+*        LOOP THROUGH THE SCB CHAINS AND RESET THE             @D52GDWL 14239901
+*        'COMMON SEGMENT' BITS.                                @D52GDWL 14240001
+*                                                              @D52GDWL 14240101
+         L     R2,ASCBATAB        GET ADDR OF SCB ADDR TABLE   @D52GDWL 14240201
+         USING SCBATAB,R2         MAKE TABLE ADDRESSABLE       @D52GDWL 14240301
+         LA    R5,ASCBQB          ADDR OF BEGIN OF QUEUE       @D52GDWL 14240401
+         DROP  R2                 RELEASE SCB ADDR TABLE       @D52GDWL 14240501
+         LA    R4,SCBCHNUM        NUMBER OF CHAINS             @D52GDWL 14240601
+GETPT100 ICM   RB,15,0(R5)        GET ADDR OF SCB              @D52GDWL 14240701
+         BZ    GETPT130           CHAIN IS EMPTY               @D52GDWL 14240801
+         USING SMCOM,R6           SET BASE FOR SMCOM           @D52GDWL 14240901
+GETPT110 LA    R0,0               BEGIN IF SHARED AREAS LOW    @D52GDWL 14241001
+         L     R1,SMCSPEND        END OF SHARED AREAS LOW      @D52GDWL 14241101
+         BAL   RE,RESETCSB        RESET 'COMMON SEGMENT' BIT   @D52GDWL 14241201
+*SGLINK  RESESTCSB,INPUT=(R0,R1,RB,RE),WORK=(R2,R3)            @D52GDRP 14241301
+         L     R0,SMCSVA31        BEGIN OF SHARED AREA HIGH    @D52GDWL 14241401
+         L     R1,SMCESV31        END OF SHARED AREA HIGH      @D52GDWL 14241501
+         BAL   RE,RESETCSB        RESET 'COMMON SEGMENT' BIT   @D52GDWL 14241601
+         DROP  R6                 RELEASE SMCOM ADDRESSAB.     @D52GDWL 14241701
+GETPT120 L     RB,SCBFWPT-SCBADR(RB)  NEXT SCB IN CHAIN        @D52GDWL 14241801
+         C     RB,0(R5)           END OF CHAIN?                @D52GDWL 14241901
+         BNE   GETPT110           NO, CONTINUE WITH NEXT SCB   @D52GDWL 14242001
+GETPT130 LA    R5,4(R5)           SWITCH TO NEXT QUEUE         @D52GDWL 14242101
+         BCT   R4,GETPT100        CONTINUE WITH NEXT QUEUE     @D52GDWL 14242201
+*                                                              @D52GDWL 14242301
+         MVI   PMSTECOM,X'00'     TOO BAD, NO 'COMMON ...      @D52GDWL 14242401
+*                                 ...SEGMENTS' ANY MORE        @D52GDWL 14242501
+         SGCOV SGPPMTDS,MC=0      DATA SPACE CODE COVERAGE     @D52GDWL 14242601
+*        DISPMAC FUNC=PTLB        PROPAGATE PTLB ON ALL CPU'S  @D61RDRP 14242701
+         DISPMAC FUNC=PTLB        PROPAGATE PTLB ON ALL CPU'S  @D61RDRP 14242801
+         LR    R1,RA              RESTORE ADDR OF SCB          @D52GDWL 14242901
+*                                                              @D52GDWL 14243001
+GETPT190 SLR   RF,RF              IND. SUCCESSFUL COMPL.                14243101
+*   GENERAL EXIT FROM GETPT ROUTINE                                     14243201
+GETPTEX  L     R3,PMTSCBSV        GET ORIGINAL SCB                      14243301
+*    SWITCH BACK TO ORIGINAL SPACE                                      14243401
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          14243701
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          14245601
+         BR    R7                 =============>  RETURN                14247501
+         SPACE 1                                                        14251801
+*   ERROR EXIT FROM GETPT ROUTINE                                       14256101
+GETPTERR DS    0H                                                       14260401
+         SGCOV SGPPMTS,MC=0       IND. MORE THAN ONE PMR SPACE          14261801
+         USING SCBADR,R1                                                14263201
+         LR    R5,RF              SAVE RETURN CODE                      14264701
+         LA    R2,GETPMSEX-16     PROVIDE SAVE AREA ADDR.               14269001
+         L     R0,GETVSIZ         GET SIZE OF AREA TO BE FREED          14273301
+         L     R1,SCBVSTO         GET ADDR OF AREA TO BE FREED          14276701
+         DROP  R1                 DROP BASE FOR SCB                     14280101
+*        SFREEVIS LENGTH=(0),ADDRESS=(1),SAVE=(R2),PMSPACE=YES          14283501
+         SFREEVIS LENGTH=(0),ADDRESS=(1),SAVE=(R2),PMSPACE=YES          14286901
+         LR    RF,R5              RESTORE RETURN CODE                   14290501
+         B     GETPTEX            RETURN                                14294801
+*                                                             *@D52GDWL 14295001
+*-------------------------------------------------------------*@D52GDWL 14295101
+*        THIS ROUTINE RESETS FOR A GIVEN AREA THE 'COMMON     *@D52GDWL 14295201
+*        SEGMENT' BIT IN THE SEGMENT TABLE.                   *@D52GDWL 14295301
+*                                                             *@D52GDWL 14295401
+*        INPUT:  R0 - BEGIN OF AREA                           *@D52GDWL 14295501
+*                R1 - END OF AREA                             *@D52GDWL 14295601
+*                RB - ADDR OF SCB                             *@D52GDWL 14295701
+*                RE - RETURN ADDRESS                          *@D52GDWL 14295801
+*        WORK REGISTERS: R2, R3                                @D52GDRP 14295901
+*-------------------------------------------------------------*@D52GDWL 14296001
+*                                                              @D52GDWL 14296101
+RESETCSB DS    0H                 RESET 'COMMON SEGMENT' BIT   @D52GDWL 14296201
+         N     R0,PMSGMSK         SET ADDR TO SEGMENT BOUNDARY @D52GDWL 14296301
+         LR    R2,R0              SAVE ADDRESS                 @D52GDWL 14296401
+         SRL   R2,STSHIFT         OFFSET IN SEGMENT TABLE      @D52GDWL 14296501
+         USING SCBADR,RB          SET BASE FOR SCB             @D52GDWL 14296601
+         L     R3,SCBRSTO         GET REAL ADDR. OF ...        @D52GDRP 14296701
+         N     R3,PMCR1MSK        ... SEGMENT TABLE            @D52GDRP 14296801
+         AR    R2,R3              GET REAL ADDR OF STE         @D52GDRP 14296901
+         DROP  RB                 REALEASE SCB ADDRESSAB.      @D52GDWL 14297001
+*        AMODESW SET,DAT=OFF      SET DAT OFF                  @D52GDWL 14297101
+         AMODESW SET,DAT=OFF      SET DAT OFF                  @D52GDWL 14297201
+         USING STE,R2             SET BASE FOR STE             @D52GDWL 14297301
+RESCSB5  CR    R0,R1              END OF AREA?                 @D52GDWL 14297401
+         BH    RESCSBE            YES, EXIT                    @D52GDWL 14297501
+         NC    STEFLG,PMSTECOM    RESET 'COMMON SEGMENT'       @D52GDWL 14297601
+         A     R0,PMSGSIZE        ADDR OF NEXT STORAGE SEGMENT @D52GDWL 14297701
+         LA    R2,LSTE(R2)        ADDR OF NEXT STE             @D52GDWL 14297801
+         B     RESCSB5            CONTINUE WITH NEXT SEGMENT   @D52GDWL 14297901
+         DROP  R2                 RELEASE STE ADDRESSAB.       @D52GDWL 14298001
+RESCSBE  DS    0H                                              @D52GDRP 14298101
+*        AMODESW SET,DAT=ON       SET DAT ON                   @D52GDWL 14298201
+         AMODESW SET,DAT=ON       SET DAT ON                   @D52GDWL 14298301
+         BR    RE                 ===========> RETURN          @D52GDRP 14298401
+*                                                              @D52GDWL 14298501
+*                                                              @D52GDWL 14298601
+         TITLE 'SGPPMT - GETPMPT ROUTINE'                               14300001
+*--------------------------------------------------------------         14350001
+*   FUNCTION:                                                           14400001
+*     GET SEGMENT TABLE, PAGE TABLE AND PTAS FOR A NEW                  14450001
+*     PAGEMANAGER ADDRESS SPACE.                                        14500001
+.* REQUIRES, THAT THE NEW PMR-SCB IS ALREADY ENQUEUED AT THE            14516601
+.* END OF THE SCB-QUEUE FOR PMR ADDRESS SPACES.                         14533201
+*        INPUT :                                                        14550001
+*           R1 - ADDR OF SCB OF SPACE TO BE HANDLED                     14600001
+*           R7 - RETURN ADDRESS                                         14650001
+*        OUTPUT:                                                        14700001
+*           RF - RETURN CODE                                            14750001
+*--------------------------------------------------------------         14800001
+*        INTERNAL REGISTER USAGE                                        14850001
+*              R1 -    WORK REGISTER IN ERROR CASE (I.E. RF # 0)        14875001
+*              R2-R6 - WORK REGISTERS                                   14900001
+*              R7 -    RETURN ADDRESS                                   14950001
+*              R8 -    ADDR OF PAGE MANAGEMENT DATA AREA                15000001
+*              R9 -    BASE ADDR OF THIS CODE                           15050001
+*                                                                       15100001
+*--------------------------------------------------------------         15150001
+         SPACE 1                                                        15200001
+GETPMPT  DS    0H                                                       15250001
+         USING SCBADR,R1                                                15355401
+         BAL   RA,GETFRMSG        GET FRAMES FOR SEGMENT TABLE          15398801
+         LTR   RF,RF              REQUEST SUCCESSFUL                    15405001
+         BNZ   GETPMTER           NO,  -----> ERROR EXIT                15455001
+         L     R2,SAV1STPF        GET REAL ADDRESS OF SGT               15505001
+         ST    R2,SCBRSTO         SAVE IT IN SCB                        15555001
+         ST    R2,GETPMRST        SET REAL ADDRESS OF SGT               15605001
+         ST    R1,SCBAPMRA        PMR-AS CONTAINS ITS OWN TABLES        15655001
+         L     R3,ASCBATAB        GET ADDR OF 1ST PMR-AS ...            15705001
+         USING SCBATAB,R3                                               15755001
+         L     R3,ASCBFPMR        ... SCB                               15805001
+         DROP  R3                 DROP BASE FOR SCBATAB                 15855001
+         MVC   SCBXSTL,SCBXSTL-SCBADR(R3) SET LENGTH FOR ESA            16150001
+         L     R4,SCBRSTO-SCBADR(R3)  GET REAL                          16151001
+         N     R4,PMCR1MSK            *  ADDRESS OF SGT (PMRAS1)        16151501
+         L     R3,PMSGTSZ         GET LENGTH OF SEGMENT TABLE           16152001
+         LR    R5,R3              *  FOR MVCL                           16152501
+         DROP  R1                 DROP BASE FOR SCB, R1 STILL USED      16153001
+*        AMODESW SET,DAT=OFF                                            16153501
+         AMODESW SET,DAT=OFF                                            16154001
+         MVCL  R2,R4              MOVE SGT OF PMRAS1 TO NEW SGT         16154501
+         SPACE 1                                                        16155001
+*   SET ALL STE'S OF PRIVATE AREA INVALID                               16155501
+         L     R3,IJBSMCOM                                              16156001
+         USING SMCOM,R3                                                 16156501
+         L     R3,SMCPRPBG                                              16157001
+         DROP  R3                 DROP BASE FOR SMCOM                   16157501
+         SRL   R3,STSHIFT         GET OFFSET IN SGT                     16158001
+         A     R3,GETPMRST        REAL ADDR. OF 1ST STE OF PRIV. AREA   16158501
+         ST    R3,GETPMSTE        SAVE IT FOR LATER USE                 16159001
+         L     R4,PMPSEG#         GET NUMBER OF STE'S                   16159501
+         USING STE,R3                                                   16160001
+GETPMT10 MVC   STE(LSTE),PMINVSTE INVALIDATE ENTRY                      16160501
+         LA    R3,LSTE(,R3)       GET NEXT ENTRY                        16161001
+         BCT   R4,GETPMT10        HANDLE THIS ENTRY                     16161501
+         DROP  R3                 DROP BASE FOR STE                     16162001
+         L     R2,PMSGTSZ                                               16162501
+         A     R2,GETPMRST        GET REAL PT ADDR. OF PRIV. AREA       16163001
+         LR    R5,R2              IS PT ADDR. ON ...                    16163501
+         N     R5,PMDISMSK        ... PAGE BOUNDARY                     16164001
+         BNZ   GETPMT15           NO, REAL PT ADDR IS O.K.              16164501
+*        AMODESW SET,DAT=ON                                             16165001
+         AMODESW SET,DAT=ON                                             16165501
+         BAL   RA,GETFRM          YES, GET FRAME FOR PAGE-TABLE ..      16166001
+         LTR   RF,RF              REQUEST O.K.                          16167001
+         BZ    GETPDBG1           YES, BRANCH                           16167501
+         BAL   R5,PMRHWERR        NO, ENTER HARD-WAIT                   16168001
+GETPDBG1 DS    0H                                                       16168501
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN                 16169501
+         AMODESW SET,DAT=OFF                                            16170001
+         L     R2,SAV1STPF        GET ADDR OF REAL PTE IN R2            16170501
+GETPMT15 DS    0H                                                       16171001
+         SPACE 1                                                        16171501
+*  MAKE SEGMENTS EL (SMCPRPBG,PMPRPBEG-1) VALID AND MARK                16172001
+*   CORRESPONDING PTE'S AS INACTIVE                                     16172501
+*  THE PAGES DESCRIBING (SMCPRPBG,PMPRPBEG-1) ARE MADE ADDRESSABLE      16173001
+*   AND PFIXED.                                                         16173501
+*   R2 - REAL ADDR OF 1ST PTE                                           16174001
+         L     R6,GETPMSTE        GET ADDR OF 1ST STE                   16174501
+         L     R3,PMPRPBEG        GET REAL ADDR. OF ...                 16175001
+         BCTR  R3,0               ... LAST                              16175501
+         N     R3,PMSGMSK         ... STE                               16176001
+         SRL   R3,STSHIFT         ...   TO BE                           16176501
+         A     R3,GETPMRST        ...     HANDLED                       16177001
+         USING STE,R6                                                   16177501
+         USING PTE,R2                                                   16178001
+         ST    R2,STEPTO          SET PTO AND MAKE SEGM. VALID          16180501
+         OI    STEPTL,STELENXA    SET UP LENGTH OF STE                  16181001
+* HANDLE FRAMES/PAGES OCCUPIED BY SGT AND 1ST PT                        16182001
+         L     R5,PMSGTSZ         GET NUMBER OF ...                     16182501
+         A     R5,PMDISMSK        ... PAGES OCCUPIED                    16183001
+         SRL   R5,PNSHIFT         ... BY SGT                            16183501
+         SLR   RD,RD              GET EPA# OF 1ST PAGE                  16184001
+         L     R0,GETPMRST        GET FRAME ADDR. FOR 1ST PAGE          16184501
+GETPMT17 LR    RC,R0              GET CORRESP. ..                       16185001
+.*       N     RC,PMPAGMSK        IS ALREADY ON PAGE BOUNDARY           16185501
+         SRL   RC,PFSHIFT         ... PFTE                              16186001
+         A     RC,APFT            ...   ADDRESS                         16186501
+         MVC   PTE(LPTE),PMINVPTE SET PTE INACTIVE (KEY ZERO)           16187001
+         BAL   RA,ASPTEPF         ASSGN PTE TO FRAME                    16187501
+*SGLINK  ASPTEPF,INPUT=(R0,R1,R8,R9,RA,RC,RD),OUTPUT=(R2),WORK=(RE),   *16187801
+               AMODE=31 DATOFF                                          16188101
+         LA    RD,1(,RD)          GET NEXT EPA#                         16188501
+         LA    R2,LPTE(,R2)       GET NEXT PTE ADDR                     16189001
+         A     R0,PMPGSIZE        GET NEXT FRAME ADDRESS                16189501
+         BCT   R5,GETPMT17        ----> HANDLE NEXT SGT PAGE            16190001
+         L     R5,PMSGTSZ         IS 1ST PT IN ...                      16190501
+         N     R5,PMDISMSK        ... LAST SGT PAGE                     16191001
+         BNZ   GETPMT18           YES, HANDLE REM. PTE'S FOR 1ST SEGM.  16191501
+         L     R0,SAV1STPF        GET ADDR OF FRAME FOR 1ST PT PAGE     16192001
+         L     RC,SAV1PFTE        GET CORRESP. PFTE ADDR.               16192501
+         MVC   PTE(LPTE),PMINVPTE SET PTE INACTIVE (KEY ZERO)           16193001
+         BAL   RA,ASPTEPF         ASSGN 1ST PT PAGE TO FRAME            16193501
+*SGLINK  ASPTEPF,INPUT=(R0,R1,R8,R9,RA,RC,RD),OUTPUT=(R2),WORK=(RE),   *16193801
+               AMODE=31 DATOFF                                          16194101
+         LA    R2,LPTE(,R2)       GET NEXT PTE ADDR                     16194501
+         LA    RD,1(,RD)          GET NEXT EPA#                         16195001
+GETPMT18 LA    R5,NPAGPSEG        GET NUMBER OF PAGES REMAIN. ...       16195501
+         SR    R5,RD              ... IN 1ST SEGMENT                    16196001
+         LR    R4,R2              GET END ...                           16196501
+         A     R4,PMDISMSK        ... OF PT                             16197001
+         N     R4,PMPAGMSK        ...  AREA +1                          16197501
+         B     GETPMT30           -----> INVALIDATE REM. PTE'S          16198001
+         SPACE 1                                                        16198501
+GETPMT20 DS    0H                                                       16199001
+*   R5 NUMBER OF PTE'S TO BE HANDLED IN SEGMENT                         16199501
+         ST    R2,STEPTO          SET PTO AND MAKE SEGM. VALID          16202001
+         OI    STEPTL,STELENXA    SET UP LENGTH OF STE                  16202501
+         SPACE 1                                                        16203501
+*   SET ALL PTE'S BELONGING TO SEGMENT TO INVALID                       16204001
+         LA    R5,NPAGPSEG        GET NUMBER OF PAGES PER SEGMENT       16204501
+GETPMT30 MVC   PTE(LPTE),PMINVPTE FLAG PTE AS INACTIVE                  16205001
+         LA    R2,LPTE(,R2)       GET NEXT PTE ADDRESS                  16205501
+         BCT   R5,GETPMT30        HANDLE NEXT PTE                       16206001
+         LA    R6,LSTE(,R6)       GET NEXT STE                          16206501
+         CR    R6,R3              STE STILL TO BE HANDLED               16207001
+         BH    GETPMT35           NO, ------> LEAVE LOOP                16207501
+         CR    R2,R4              PTE AREA STILL AVAILABLE              16208001
+         BL    GETPMT20           YES, HANDLE NEXT SEGMENT              16208501
+*        AMODESW SET,DAT=ON                                             16209001
+         AMODESW SET,DAT=ON                                             16209501
+         BAL   RA,GETFRM          NO, GET NEW FRAME                     16210001
+         LTR   RF,RF              REQUEST O.K.                          16211001
+         BZ    GETPDBG2           YES, BRANCH                           16211501
+         BAL   R5,PMRHWERR        NO, ENTER HARD-WAIT                   16212001
+GETPDBG2 DS    0H                                                       16212501
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN                 16213501
+         AMODESW SET,DAT=OFF                                            16214001
+         L     R0,SAV1STPF        GET FRAME ADDRESS                     16214501
+         L     RC,SAV1PFTE        GET CORRESP. PFTE ADDRESS             16215001
+         BAL   RA,ASPTEPF         ASSGN PAGE TO FRAME                   16215501
+*SGLINK  ASPTEPF,INPUT=(R0,R1,R8,R9,RA,RC,RD),OUTPUT=(R2),WORK=(RE),   *16215801
+               AMODE=31 DATOFF                                          16216101
+         LA    RD,1(,RD)          GET NEXT EPA NUMBER                   16216501
+         L     R2,SAV1STPF        GET ADDR OF 1ST PTE                   16217001
+         LR    R4,R2              GET END ...                           16217501
+         A     R4,PMDISMSK        ... OF PT                             16218001
+         N     R4,PMPAGMSK        ...  AREA +1                          16218501
+         B     GETPMT20           HANDLE SEGMENT                        16219001
+         DROP  R2                 DROP BASE FOR PTE                     16219501
+         DROP  R6                 DROP BASE FOR STE                     16220001
+GETPMT35 DS    0H                                                       16220501
+         SPACE 1                                                        16221001
+* MAKE REMAINING PAGES EL. (SMCPRPBG,PMPRPBEG-1) ADDRESSABLE, PFIXED    16221501
+         L     R4,PMPRPBEG        GET NUMBER OF ...                     16222001
+         L     R5,IJBSMCOM        ... PAGES REQUIRED                    16222501
+         USING SMCOM,R5                                                 16223001
+         S     R4,SMCPRPBG        ...    FOR PMR-TABLES                 16223501
+         SRL   R4,PNSHIFT         ...      OF PMR ADDR. SPACE           16224001
+         DROP  R5                 DROP BASE FOR SMCOM                   16224501
+         SR    R4,RD              GET REMAINING NUMBER OF PAGES         16225001
+         BZ    GETPMT50           BRANCH IF ALL DONE                    16225501
+GETPMT40 DS    0H                                                       16226001
+*        AMODESW SET,DAT=ON                                             16226501
+         AMODESW SET,DAT=ON                                             16227001
+         BAL   RA,GETFRM          GET ADDR OF FRAME FOR PAGE            16227501
+         LTR   RF,RF              REQUEST O.K.                          16228501
+         BZ    GETPDBG3           YES, BRANCH                           16229001
+         BAL   R5,PMRHWERR        NO, ENTER HARD-WAIT                   16229501
+GETPDBG3 DS    0H                                                       16230001
+*        AMODESW SET,DAT=OFF      ENTER REAL MODE AGAIN                 16231001
+         AMODESW SET,DAT=OFF                                            16231501
+         L     R0,SAV1STPF        GET FRAME ADDRESS                     16232001
+         L     RC,SAV1PFTE        GET CORRESP. PFTE ADDRESS             16232501
+         BAL   RA,ASPTEPF         ASSGN PAGE TO FRAME                   16233001
+*SGLINK  ASPTEPF,INPUT=(R0,R1,R8,R9,RA,RC,RD),OUTPUT=(R2),WORK=(RE),   *16233301
+               AMODE=31 DATOFF                                          16233601
+         LA    RD,1(,RD)          GET NEXT EPA NUMBER                   16234001
+         BCT   R4,GETPMT40        HANDLE NEXT PAGE                      16234501
+GETPMT50 DS    0H                                                       16235001
+*        AMODESW SET,DAT=ON       ENTER VIRT. MODE AGAIN                16235501
+         AMODESW SET,DAT=ON       ENTER VIRT. MODE AGAIN                16236001
+         USING SCBADR,R1          RESET BASE FOR SCB                    16236501
+         L     R3,ASCBATAB                                              16237001
+         USING SCBATAB,R3                                               16237501
+         L     R3,ASCBFPMR        GET SCB ADDR OF 1ST PMR-AS            16238001
+         DROP  R3                 DROP BASE FOR SCBATAB                 16238501
+         MVC   SCBVSTO,SCBVSTO-SCBADR(R3) SET VIRT. SGT ADDR            16250001
+         MVC   SCBAPTAS,SCBAPTAS-SCBADR(R3) SET ADDR OF PTAS            16300001
+         MVC   SCBAPT,SCBAPT-SCBADR(R3) SET ADDR OF PT                  16350001
+         SPACE 1                                                        17650001
+         L     R3,TIBPTR          SAVE CURRENT SCB POINTER ...          17651001
+         MVC   PMTSCBSV,TIBSCB-TIBADR(R3) ... OF TASK                   17652001
+*        SGSETUP SETSCB,NEXTSCB=R1,OPTION=NOSAVE,WR1=R4,WR2=R5          17653001
+         SGSETUP SETSCB,NEXTSCB=R1,OPTION=NOSAVE,WR1=R4,WR2=R5          17654001
+         DROP  R1                 DROP BASE FOR PMRAS SCB               17654601
+*   INVOKE INVPAG2ND TO INITIALIZE PMR SPACE GETVIS AREA                17655201
+         STM   R0,RF,GETPMSEX     SAVE REGISTERS                        17656001
+         L     RD,PMPRPBEG        GET BEGIN ADDR OF AREA                17657001
+         L     R1,PMPRPEND        GET END ADDRESS OF AREA               17658501
+         SLR   R5,R5              KEY 0 FOR INVPAGE                     17661001
+         L     RE,AINVPSUB        GET ENTRY ADDR FOR INVPAGE            17662001
+*        AMODESW CALL,REGS=(RE,RE)   INVALIDATE SGT AREA                17663001
+*SGLINK  INVP2ND,INPUT=(R1:END,R5,RD:BEG,RE:LINK),OUTPUT=(R0),         *17663601
+               WORK=(R1-RD,RF),AMODE=31  DATON                          17664201
+         AMODESW CALL,REGS=(RE,RE)   INVALIDATE SGT AREA                17665001
+         L     R9,AGETPMT         RESTORE BASE FOR CODE AREA            17666001
+         LM    R0,RF,GETPMSEX     RESTORE REGISTERS                     17667001
+         L     R3,PMTSCBSV        GET ORIGINAL SCB                      17681001
+*    SWITCH BACK TO ORIGINAL SPACE                                      17682001
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          17683001
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          17684001
+         SLR   RF,RF              IND. SUCCESSFUL COMPL.                17685001
+GETPMTER BR    R7                 ===============> RETURN               17735001
+         TITLE 'SGPPMT - ASPTE ROUTINE'                                 18853501
+*  ASSIGN PAGES TO PAGE FRAMES                                          18857001
+*    AMODE(31),DATON                                                    18858701
+*    INPUT:                                                             18860501
+*       R4       - ADDR OF SCB OF SPACE THE AREA (R4) BELONGS TO        18863101
+*       RD       - ADDR OF 1ST PAGE TO BE HANDLED                       18865701
+*       RA       - RETURN ADDRESS                                       18868301
+*       SAV1STPF - ADDR OF 1ST RESERVED FRAME                           18871001
+*       SAVLSTPF - ADDR OF LAST RESERVED FRAME                          18874501
+*       SAV1PFTE - ADDR OF 1ST PFTE                                     18878001
+*       SAVLPFTE - ADDR OF LAST PFTE                                    18881501
+         SPACE 1                                                        18885001
+*SGLINK  ASPTE,S,INPUT=(R4,R8,R9,RA,RD),AMODE=31 DATON                  18886101
+         SPACE 1                                                        18887201
+ASPTE    DS    0H                                                       18888501
+         STM   R0,RF,GETPMSV2     SAVE CALLERS REGISTER                 18892001
+*   INVOKE INVPAG2ND TO GET PTE'S IN STATE PTEIBIT=ON   ??????          18892201
+         L     R1,SAVLSTPF        GET END ADDR.                         18892401
+         S     R1,SAV1STPF         ... OF                               18892601
+         AR    R1,RD                ...    AREA                         18892801
+         SLR   R5,R5              KEY 0 FOR INVPAGE                     18893001
+         L     RE,AINVPSUB        GET ENTRY ADDR FOR INVPAGE            18893201
+*        AMODESW CALL,REGS=(RE,RE)   INVALIDATE SGT AREA                18893401
+*SGLINK  INVP2ND,INPUT=(R1:END,R5,RD:BEG,RE:LINK),OUTPUT=(R0),         *18893501
+               WORK=(R1-RD,RF),AMODE=31  DATON                          18893601
+         AMODESW CALL,REGS=(RE,RE)   INVALIDATE SGT AREA                18893801
+         L     R9,AGETPMT         RESTORE BASE FOR CODE AREA            18894001
+         LM    R0,RF,GETPMSV2     RESTORE REGISTERS                     18894201
+         USING SCBADR,R4          SET BASE FOR SCB                      18894801
+         BAL   RE,EPACNVR2        GET EPA                               18895001
+*SGLINK  EPACNVR2,INPUT=(R4,R8,RE,RD),OUTPUT=(RD),WORK=(R5),           *18895101
+               AMODE=31 DATON                                           18895201
+         L     R0,SAV1STPF        GET 1ST FRAME ADDR                    18895401
+         L     RC,SAV1PFTE        GET 1ST PFTE ADDR                     18895601
+*        AMODESW SET,DAT=OFF                                            18895801
+         AMODESW SET,DAT=OFF                                            18896001
+         SRL   RD,PNSHIFT         GET EPA#                              18896301
+         LR    R1,R4              GET SCB ADDR IN CORR. REGISTER        18896601
+ASPTELP  DS    0H                                                       18896901
+         BAL   RA,ASPTEPF         SET PTE AND PFTE                      18897201
+*SGLINK  ASPTEPF,INPUT=(R0,R1,R8,R9,RA,RC,RD),OUTPUT=(R2),WORK=(RE),   *18897401
+               AMODE=31 DATOFF                                          18897601
+         AL    R0,PMPGSIZE        GET NEXT FRAME ADDR                   18897801
+         LA    RD,1(RD)           GET NEXT EPA#                         18898101
+         LA    RC,LPFTE(RC)       GET NEXT PFTE ADDR                    18898401
+         C     RC,SAVLPFTE        ALL FRAMES,PAGES HANDLED              18898701
+         BNH   ASPTELP            NO, HANDLE NEXT ONE                   18899301
+*        AMODESW SET,DAT=ON                                             18899401
+         AMODESW SET,DAT=ON                                             18899501
+         LM    R0,RF,GETPMSV2     RESTORE CALLERS REGISTER              18899601
+         BR    RA                 ======> RETURN                        18899701
+         DROP  R4                 DROP BASE FOR SCBADR         @KD40158 18921501
+         SPACE 1                                                        18943401
+*  VALIDATE PTE AND PFTE                                                18987101
+*     AMODE(31),DATOFF                                                  19030801
+*     INPUT:                                                            19074501
+*       R0 - ADDR OF FRAME BELONGING TO PFTE                            19118201
+*       R1 - ADDR OF SCB THE PAGE BELONGS TO                            19161901
+*       RA - RETURN ADDRESS                                             19205601
+*       RC - REAL ADDR OF PFTE                                          19249301
+*       RD - EPA NUMBER OF PAGE TO BE HANDLED                           19293001
+*     OUTPUT:                                                           19336701
+*       R2 - ADDR OF REAL PTE FOR EPA                                   19380401
+         USING PFTE,RC            SET BASE FOR PFTE                     19424101
+*SGLINK  ASPTEPF,S,INPUT=(R0,R1,R8,R9,RA,RC,RD),OUTPUT=(R2),WORK=(RE), *19438601
+               AMODE=31 DATOFF                                          19453101
+ASPTEPF  DS    0H                                                       19467801
+         SLL   RD,PNSHIFT          GET EPA                              19511501
+*        GENSERV RPTE,EPA=(RD),SCB=(R1),RPTE=(R2),WORKR=(R3,R4,R5)      19555201
+*                    GET REAL ADDR OF PTE                               19598901
+         GENSERV RPTE,EPA=(RD),SCB=(R1),RPTE=(R2),WORKR=(R3,R4,R5)      19642601
+         USING PTE,R2             SET BASE FOR PTE                      19686301
+         SRL   RD,PNSHIFT         GET EPA NUMBER AGAIN                  19730001
+         XC    PFTE(LPFTE),PFTE   CLEAR PFTE                            19773701
+         STCM  RD,7,PFTEEPA#      SET EPA NUMBER IN PFTE                19817401
+         ST    R1,PFTESCB         SET CORRECT SCB IN PFTE               19861101
+*        GENSERV INC,FIELD=PFIXC,REG=(RE) SET PFIXC TO 1                19904801
+         GENSERV INC,FIELD=PFIXC,REG=(RE) SET PFIXC TO 1                19948501
+         IC    RE,PTEKEY          GET STORAGE KEY FROM PTE              19992201
+         SSKE  RE,R0              SET STORAGE KEY FOR FRAME             20385501
+         STCM  R0,M14,PTEFRA      SET PF-ADDR IN PTE                    20429201
+         BR    RA                 ============>  RETURN                 20516601
+         DROP  R2                 DROP BASE FOR PTE                     20560301
+         DROP  RC                 DROP BASE FOR PFTE                    20604001
+         TITLE 'SGPPMT - GETFRM ROUTINE'                                20650001
+*--------------------------------------------------------------         20700001
+*    FUNCTION:                                                          20750001
+*      RESERVES A NUMBER OF ADJACENT PAGE FRAMES  IN AREA 3             20800001
+*      OR 1. AT EXIT THE FRAMES ARE RESERVED                            20837501
+*    ENTRY POINTS:                                                      20875001
+*      GETFRMSG - SEARCHES FOR NUMBER OF FRAMES REQUIRED FOR SGT        20900001
+*      GETFRM   - SEARCHES FOR ONE PAGE FRAME                           20925001
+*        INPUT :                                                        20950001
+*           R8 - ADDR OF SGPDATA                                        21050001
+*           RA - RETURN ADDRESS                                         21100001
+*        OUTPUT:                                                        21150001
+*           R0 - NUMBER OF FRAMES RESERVED                              21200001
+*           RF - RETURN CODE, 0 - OK, #0 - ERROR                        21300001
+*           SAV1STPF - ADDR OF 1ST RESERVED PAGE FRAME                  21316601
+*           SAVLSTPF - ADDR OF LAST RESERVED PAGE FRAME                 21324901
+*           SAV1PFTE - ADDR OF PFTE OF 1ST RESERVED PAGE FRAME          21333201
+*           SAVLPFTE - ADDR OF PFTE OF LAST RESERVED PAGE FRAME         21341501
+*--------------------------------------------------------------         21350001
+*        INTERNAL REGISTER USAGE                                        21400001
+*              R0 -    NUMBER OF FRAMES TO BE SEARCHED                  21450001
+*              R2 -    WORK REGISTER                                    21483301
+*              R3 -    WORK REGISTER                                    21516601
+*              R4 -    ADDR OF ACTUAL PFTE                              21550001
+*              R5 -    ADDR OF LAST PFTE IN AREA                        21600001
+*              R6 -    ADDR OF SYSTEM PCB                               21650001
+*              R8 -    ADDR OF PAGE MANAGEMENT DATA AREA                21700001
+*              R9 -    BASE ADDR OF THIS CODE                           21750001
+*              RA -    RETURN ADDRESS                                   21800001
+*              RF -    WORK REGISTER                                    21850001
+*--------------------------------------------------------------         21900001
+         SPACE 1                                                        21950001
+GETFRMSG DS    0H                                                       21958301
+         LA    R0,2               ASSUME SGTSIZE >4K                    21966601
+         CLC   ACTSGTSZ,PMPGSIZE  IS IT REALLY >4K             @D52GDWL 21974901
+         BH    GETFRM01           YES, BRANCH                           21983201
+GETFRM   LA    R0,1               REQUEST ONE FRAME                     21991501
+GETFRM01 DS    0H                                                       22000001
+         STM   R0,RE,GETPMSV2     SAVE REGISTERS                        22050001
+         L     R6,ASYSPCB         GET BASE FOR SYSTEM PCB               22100001
+         USING PCBADR,R6                                                22150001
+         L     R2,IJBSMCOM                                              22200001
+         USING SMCOM,R2                                                 22250001
+         XC    PCBPXOPT,PCBPXOPT  CLEAR FIELD                           22350001
+         OI    PCBPXOPT,PCBPXAR3  INDICATE AREA 3                       22400001
+         L     R4,SMCRBG3         GET BEGIN ADDR OF AREA                22450001
+         L     R5,SMCRND3         GET END ADDR OF AREA                  22500001
+         L     R3,SMPFIX3         CHECK WHETHER                         22550001
+         AR    R3,R0              *  ENOUGH                             22600001
+         C     R3,SMAXPFX3        *   PAGE FRAMES AVAILABLE             22650001
+         BL    GETFRM20           YES, BRANCH                           22700001
+GETFRM10 L     R3,SMPFIX          CHECK WHETHER                         22750001
+         AR    R3,R0              *  ENOUGH                             22800001
+         C     R3,SMAXPFIX        *   PAGE FRAMES AVAILABLE             22850001
+         BNL   GETFRMER           NO, RETURN                            22900001
+         NI    PCBPXOPT,XFF-PCBPXAR3 RESET AREA 3 INDICATION            22950001
+         L     R4,SMCRBG1         GET BEGIN ADDR OF AREA                23000001
+         L     R5,SMCRND1         GET END ADDR OF AREA                  23050001
+         DROP  R2                 DROP BASE FOR SMCOM                   23100001
+GETFRM20 DS    0H                                                       23150001
+*        AMODESW SET,DAT=OFF                                            23200001
+         AMODESW SET,DAT=OFF                                            23250001
+*        GENSERV LRADBG,RREG=(R6),VADD=(R6),ERR=NADDR                   23300001
+*                                GET REAL PCB ADDRESS                   23350001
+         GENSERV LRADBG,RREG=(R6),VADD=(R6),ERR=NADDR                   23400001
+         N     R5,PMPAGMSK        POINT TO BEG. OF LAST FRAME           23425001
+         SRL   R4,PFSHIFT         GET 1ST                               23450001
+         SRL   R5,PFSHIFT         * AND LAST                            23500001
+         A     R4,APFT            *   PFTE ADDRESSES                    23550001
+         A     R5,APFT            *    FOR THE AREA                     23600001
+         LR    R2,R0              SET PF COUNTER                        23650001
+         LR    R3,R4              SAVE PREVIOUS PFTE ADDR               23700001
+         XC    SAV1PFTE,SAV1PFTE  NOTHING FOUND UP TO NOW               23750001
+         B     GETFRM32           SKIP LOOP CONTROL                     23800001
+*  LOOP THRU AREA AND SEARCH FOR ONE OR TWO ADJACENT                    23850001
+*  PAGE FRAMES WITH PFIXC=0, DRAP, NFRP AND NFVP BITS OFF.              23900001
+         USING PFTE,R4                                                  23950001
+GETFRM30 DS    0H                                                       24000001
+         LR    R2,R0              RESET LOOP COUNTER                    24025001
+GETFRM31 LR    R3,R4              SAVE PREVIOUS PFTE ADDR               24050001
+         LA    R4,LPFTE(,R4)      GET NEXT PFTE ADDR                    24100001
+         CR    R4,R5              END OF AREA REACHED                   24150001
+         BH    GETFRM40           YES, BRANCH                           24200001
+GETFRM32 TM    S370FLG,DRAP+NFRP+NFVP  PF USABLE                        24250001
+         BNZ   GETFRM30           NO,  TRY NEXT PF                      24300001
+         TM    S370FLG,PNRINV     PF UNUSED                             24350001
+         BO    GETFRM35           YES, CHECK ADJACENT FRAME             24400001
+         CLC   PFIXC,F0           PAGE FRAME PFIXED                     24450001
+         BNE   GETFRM30           YES, TRY NEXT PF                      24500001
+GETFRM35 BCT   R2,GETFRM31        CHECK ADJACENT PFTE                   24550001
+         C     R0,F1              IS ONLY ONE PF SEARCHED               24583301
+         BNE   GETFRM36           NO, R3 IS OK.K.                       24616601
+         LR    R3,R4              YES , SET R3                          24649901
+GETFRM36 ST    R3,SAV1PFTE        SAVE 1ST PFTE                         24683201
+         ST    R4,SAVLPFTE        SAVE 2ND PFTE IF ANY                  24716501
+         CLC   TFIXC-PFTE(,R3),F0 1ST PFTE TFIXED                       24750001
+         BNE   GETFRM30           YES, CONTINUE SEARCH                  24800001
+         CLC   TFIXC,F0           2ND PFTE TFIXED                       24850001
+         BNE   GETFRM30           YES, CONTINUE SEARCH                  24900001
+*  ONE OR TWO PAGE FRAMES FOUND AND NOT TFIXED                          24950001
+GETFRM40 DS    0H                                                       25100001
+*        AMODESW SET,DAT=ON                                             25150001
+         AMODESW SET,DAT=ON                                             25200001
+         L     R6,ASYSPCB         RESET VIRTUAL ADDR OF SYSPCB          25225001
+         ICM   R3,15,SAV1PFTE     ANYTHING FOUND UP TO NOW              25250001
+         BNZ   GETFRM50           YES, LEAVE SEARCH LOOP                25300001
+         TM    PCBPXOPT,PCBPXAR3  ARE WE IN AREA 3                      25350001
+         BZ    GETFRMER           NO, RETURN                            25400001
+         L     R2,IJBSMCOM        RESET SMCOM ADDRESS                   25450001
+         B     GETFRM10           YES, TRY AREA 1                       25500001
+GETFRM50 DS    0H                                                       25550001
+         TM    PCBPXOPT,PCBPXAR3  ARE WE IN AREA 3                      25600001
+         BO    GETFRM51           YES, SKIP                             25650001
+         L     R4,SMPFIX          INCREASE PFIX COUNTER                 25700001
+         AR    R4,R0              * FOR                                 25750001
+         ST    R4,SMPFIX          *   AREA 1                            25800001
+         B     GETFRM52           SKIP AREA 3 CODE                      25850001
+GETFRM51 L     R4,SMPFIX3         INCREASE PFIX COUNTER                 25900001
+         AR    R4,R0              * FOR                                 25950001
+         ST    R4,SMPFIX3         *   AREA 3                            26000001
+GETFRM52 DS    0H                                                       26020001
+*        AMODESW SET,DAT=OFF                                            26040001
+         AMODESW SET,DAT=OFF                                            26060001
+         L     R4,SAVLPFTE        GET ADDR OF ADJACENT PFTE             26080001
+         OI    S370FLG-PFTE(R3),PFTERES IND. PF NOT PFIXABLE            26120001
+         OI    S370FLG,PFTERES        INDICATE PF NOT PFIXABLE          26160001
+         DROP  R4                 DROP PFTE BASE                        26200001
+*        AMODESW SET,DAT=ON                                             26216601
+         AMODESW SET,DAT=ON                                             26233201
+         S     R3,APFT            GET ADDR OF                           26250001
+         SLL   R3,PFSHIFT         * OF 1ST PF FOUND                     26300001
+         LR    R2,R3              GET LOWER LIMIT OF AREA               26450001
+         LR    R5,R0              GET NUMBER OF FRAMES                  26500001
+         M     R4,PMPGSIZE        GET LENGTH OF AREA                    26550001
+         AR    R3,R5              GET ADDR OF LAST                      26600001
+         BCTR  R3,0               * FRAME                               26650001
+         N     R3,PMPAGMSK        *  TO BE HANDLED                      26700001
+         ST    R2,SAV1STPF        SET 1ST PF ADDR FOR CALLER            26750001
+         ST    R3,SAVLSTPF        SET LAST PF ADDR FOR CALLER           26800001
+         L     R7,AGETREL3        GET ENTRY POINT ADDRESS               26850001
+         OI    FIXTYPE,GTRSBIT    INDICATE SPECIAL GETREAL              26900001
+         L     R9,APMRRADR        GET BASE FOR GETREAL                  26975001
+*        AMODESW CALL,REGS=(R7,R7) INVOKE GETREAL TO FREE PF'S          27000001
+*SGLINK  GETREAL3,INPUT=(R2,R3,R6,R7,R8,R9),OUTPUT=(R2,RF)              27025001
+         AMODESW CALL,REGS=(R7,R7) INVOKE GETREAL TO FREE PF'S          27050001
+         L     R9,AGETPMT         RESTORE BASE                          27100001
+         USING GETPMT,R9          FOR CODE AREA                         27150001
+*        AMODESW SET,DAT=OFF                                   @KY30163 27152201
+         AMODESW SET,DAT=OFF                                   @KY30163 27154401
+         L     R3,SAV1PFTE        GET 1ST PFTE ADDR            @KY30163 27156601
+         NI    S370FLG-PFTE(R3),XFF-PFTERES RESET RESERVED BIT @KY30163 27158801
+         L     R4,SAVLPFTE        GET 2ND PFTE ADDR            @KY30163 27161001
+         NI    S370FLG-PFTE(R4),XFF-PFTERES RESET RESERVED BIT @KY30163 27163201
+*        AMODESW SET,DAT=ON                                    @KY30163 27165401
+         AMODESW SET,DAT=ON                                    @KY30163 27167601
+         LTR   RF,RF              REQUEST SUCCESSFUL                    27170001
+         BZ    GETFRMEX           YES, BRANCH                           27190001
+         BAL   R5,PMRHWERR        NO, HARD-WAIT                         27210001
+GETFRMEX DS    0H                                                       27250001
+         LM    R0,RE,GETPMSV2     RESTORE REGISTERS, EXCEPT RETCODE     27300001
+         BR    RA                 ================> RETURN              27350001
+******  ERROR EXIT *******************************                      27362501
+GETFRMER LA    RF,NORSTOR         INDICATE NOT ENOUGH REAL STOR         27375001
+         B     GETFRMEX           RETURN                                27387501
+         DROP  R6                 DROP SYSPCB BASE (REAL)               27400001
+         EJECT                                                          27450001
+*--------------------------------------------------------------         27500001
+* FUNCTION:                                                             27550001
+*    CALCULATE AREA REQUIRED FOR PMR TABLES FOR A GIVEN SPACE           27600001
+*        INPUT :                                                        27650001
+*           R1 - ADDR OF SCB OF SPACE TO BE HANDLED                     27700001
+*           R6 - SIZE OF SPACE (IN K)                                   27725001
+*           R8 - ADDR OF PAGEMANAGEMENT DATA AREA (PMGMDATA)            27750001
+*           R9 - BASE FOR CODE AREA                                     27800001
+*           RA - RETURN ADDRESS                                         27850001
+*        OUTPUT:                                                        27900001
+*           RB - SIZE OF REQUIRED AREA IN BYTES (MULTIPLE OF PAGES)     27950001
+*--------------------------------------------------------------         28000001
+*        INTERNAL REGISTER USAGE                                        28050001
+*              R3 -  WORK REGISTER                                      28100001
+*              R4 -  WORK REGISTER                                      28150001
+*              R5 -  WORK REGISTER                                      28200001
+*              R6 -  WORK REGISTER                                      28225001
+*              RB -  WORK REGISTER                                      28250001
+*                                                                       28300001
+*--------------------------------------------------------------         28350001
+*SGLINK  CALCPMSP,S,INPUT=(R1,R6,R8,R9,RA),OUTPUT=(RB),                *28366601
+               WORK=(R3,R4,R5,R6),AMODE=31 DATON                        28383201
+CALCPMSP DS    0H                                                       28400001
+         USING SCBADR,R1                                                28450001
+         L     R4,PMSGTSZ         GET SIZE OF SEGMENT TABLE             28500001
+         TM    SCBFLG,SCBDSP      SCB OF A DATA SPACE?         @D52GDWL 28502701
+         BZ    CALCPMS0           NO                           @D52GDWL 28504701
+         SGCOV SGPPMTD,MC=1       DATA SPACE CODE COVERAGE     @D52GDWL 28506401
+         L     R4,SCBPASZ         MAX SIZE OF DATA SPACE IN K  @D52GDWL 28508101
+         SLL   R4,10              SIZE IN BYTES                @D52GDWL 28510801
+         AL    R4,PMSGDIS         * ROUND TO SEGMENT           @D52GDWL 28513501
+         N     R4,PMSGMSK         *       BOUNDARY             @D52GDWL 28516201
+         SRL   R4,SNSHIFT         NUMBER OF SEGMENTS           @D52GDWL 28520201
+         LA    R4,15(,R4)         *                            @D52GDWL 28524301
+         SRL   R4,4               * ROUND TO MULTIPLES OF 16   @D52GDWL 28527001
+         SLL   R4,4               *                            @D52GDWL 28529701
+         SLL   R4,STELNSH         SIZE OF SEGMENT TABLE        @D52GDWL 28532401
+         LA    R4,1023(R4)        *                            @D52GDWL 28535101
+         SRL   R4,10              * ROUND UP TO MULTIPLES      @D52GDWL 28537801
+         SLL   R4,10              *                   OF 1K    @D52GDWL 28540501
+*                                                              @D52GDWL 28543201
+CALCPMS0 ST    R4,ACTSGTSZ        SAVE SIZE OF SGT             @D52GDWL 28553001
+         LR    R5,R6              GET SIZE OF AREA ...                  28562801
+         SLL   R5,10              * IN BYTES                            28572601
+         TM    GETPMFLG,GETRSPID  REQUEST FOR REAL SPACE       @KX40782 28582401
+         BZ    CALCPMS1           NO, SKIP SPECIAL HANDLING    @KX40782 28592201
+* DO SPECIAL HANDLING FOR SPACE R, SINCE THE PRIVATE AREA      @KX40782 28602001
+* DOESN'T START AT SEGMENT BOUNDARY                            @KX40782 28611801
+         L     RB,IJBSMCOM        GET STORAGE MNGMT COMM AREA  @KX40782 28621601
+         USING SMCOM,RB           SET BASE FOR IT              @KX40782 28631401
+         L     RB,SMCRBG2         GET BEGIN OF REAL AREA       @KX40782 28641201
+         DROP  RB                 DROP BASE FOR SMCOM          @KX40782 28651001
+         AR    R5,RB              GET END ADDR OF AREA + 1     @KX40782 28660801
+         N     RB,PMSGMSK         SET BEGIN ADDR ON SEGM. BNDY @KX40782 28670601
+         SR    R5,RB              GET SIZE OF AREA             @KX40782 28680401
+CALCPMS1 A     R5,PMSGDIS         GET SIZE OF AREA IN                   28690201
+         N     R5,PMSGMSK         *      MULTIPLES OF SEGMENTS          28700001
+         LR    R3,R5                                                    28710001
+         SRL   R3,PTSHIFT         GET SIZE OF PAGE-TABLE                28725001
+         ST    R3,ACTPTSZ         SAVE IT FOR LATER USE                 28740001
+         AR    R4,R3              ADD IT TO SGT SIZE                    28750001
+         XC    ACTPTASZ,ACTPTASZ  INITIALIZE ACTUAL SIZE OF PTAS        28760001
+         XC    ACTPOSSZ,ACTPOSSZ  INITIALIZE ACTUAL SIZE OF POSL        28770001
+         TM    GETPMFLG,GETRSPID  REQUEST FOR REAL SPACE                28780001
+         BO    CALCPMS4           YES, --> NO PTAS AND POSL             28790001
+         SRL   R5,PNSHIFT+PNBLSHFT-PTASSHFT GET SIZE OF PTAS            28840001
+         ST    R5,ACTPTASZ        SAVE IT FOR LATER USE                 28975001
+         AR    R4,R5              ADD IT TO SGT AND PT SIZE             29025001
+         TM    SCBFLG,SCBPMRSP    REQUEST FOR PMR ADDRESS SPACE         29203301
+         BO    CALCPMS4           YES, POSL NOT REQUIRED                29206601
+         TM    IJBFLG08,IJBNOPDS  SYSTEM WITHOUT PDS           @D61BDRP 29207701
+         BO    CALCPMS4           YES, NO POSL REQUIRED        @D61BDRP 29208801
+         LR    R5,R6              GET SIZE OF PRIVATE AREA IN K         29210001
+         SRL   R5,5               *   AND CONSIDER  (1 BYTE/32K)        29220001
+         LA    R5,PSLHDLN(,R5)    *      LENGTH                         29230001
+         AR    R4,R5              *           OF POSL                   29240001
+         ST    R5,ACTPOSSZ        SAVE SIZE OF POSL                     29242401
+CALCPMS4 TM    GETPMFLG,GETPMINT  SETTING OF ADDRESSES REQUESTED        29244801
+         BZ    CALCPMS5           NO, BRANCH                            29247201
+         SLR   RB,RB              START AT ZERO                         29249601
+         ST    RB,SCBVSTO         SET PREL. SEGMENT TABLE ADDRESS       29252001
+         A     RB,ACTSGTSZ        GET PREL. PAGE-TABLE ADDRESS          29254401
+         ST    RB,SCBAPT          SET IT IN SCB                         29256801
+         TM    GETPMFLG,GETRSPID  REQUEST FOR REAL SPACE                29257601
+         BO    CALCPMS5           YES, --> NO PTAS AND POSL             29258401
+         A     RB,ACTPTSZ         GET PREL. PTAS ADDRESS                29259201
+         ST    RB,SCBAPTAS        SET IT IN SCB                         29261601
+         TM    SCBFLG,SCBPMRSP    REQUEST FOR PMR ADDRESS SPACE         29262401
+         BO    CALCPMS5           YES, POSL NOT REQUIRED                29263201
+         TM    IJBFLG08,IJBNOPDS  SYSTEM WITHOUT PDS           @D61BDRP 29263401
+         BO    CALCPMS5           YES, NO POSL REQUIRED        @D61BDRP 29263601
+         A     RB,ACTPTASZ        GET PREL. POSL ADDRESS                29264001
+         ST    RB,SCBAPOSL        SET IT IN SCB                         29266401
+CALCPMS5 DS    0H                                                       29268801
+         SLR   RB,RB              SET INITIAL SIZE TO ZERO              29271201
+         LR    R4,RB                                                    29273601
+         LR    R5,RB                                                    29276001
+         LA    R6,GETCALCT        GET ADDR OF CONTROL TABLE             29278401
+         L     R2,4(,R6)          GET BEGIN ADDR ...                    29280801
+         L     R2,SCBADR(R2)      ... OF AREA                           29283201
+         L     R3,0(,R6)          GET END ADDR. +1 ...                  29285601
+         L     R3,0(,R3)          ... OF                                29288001
+         AR    R3,R2              ...    AREA                           29290401
+         N     R2,PMPAGMSK        BEG. ADDRESS TO LOWER PAGE BOUNDARY   29292801
+         A     R3,PMDISMSK        ROUND END ADDRESS TO HIGHER ...       29295201
+         N     R3,PMPAGMSK        ... PAGE BOUNDARY                     29297601
+CALCPMS6 CLI   8(R6),XFF          END OF LIST REACHED                   29300001
+         BE    CALCPMS8           YES, BRANCH                           29302401
+         LA    R6,8(,R6)          GET NEXT LIST ENTRY                   29304801
+         L     R4,4(,R6)          GET BEGIN ADDR ...                    29307201
+         L     R4,SCBADR(R4)      ... OF NEXT AREA                      29309601
+         LTR   R4,R4              IS AREA AVAILABLE                     29310401
+         BZ    CALCPMS6           NO, SKIP THIS ENTRY                   29311201
+         L     R5,0(,R6)          GET END ADDR. +1 ...                  29312001
+         L     R5,0(,R5)          ... OF                                29314401
+         AR    R5,R4              ...    NEXT AREA                      29316801
+         N     R4,PMPAGMSK        BEG. ADDRESS TO LOWER PAGE BOUNDARY   29319201
+         A     R5,PMDISMSK        ROUND END ADDRESS TO HIGHER ...       29321601
+         N     R5,PMPAGMSK        ... PAGE BOUNDARY                     29324001
+         CR    R3,R4              DO AREAS OVERLAP                      29326401
+         BNL   CALCPMS7           YES, BRANCH                           29328801
+         SR    R3,R2              GET SIZE OF AREA                      29331201
+         AR    RB,R3              GET SIZE UP TO NOW                    29333601
+         LR    R2,R4              GET NEW BEGIN ADDR                    29336001
+CALCPMS7 LR    R3,R5              GET NEW END ADDRESS                   29338401
+         B     CALCPMS6           CHECK NEXT AREA                       29340801
+CALCPMS8 SR    R3,R2              GET SIZE OF LAST AREA                 29343201
+         AR    RB,R3              GET FINAL SIZE                        29345601
+         BR    RA                 =============> RETURN                 29350001
+         DROP  R1                 DROP BASE FOR SCB                     29400001
+         DROP  R8                 DROP BASE FOR PMGMDATA                29450001
+         DROP  R9                 FORGET BASE FOR GETPMT                29500001
+         TITLE 'SGPPMT - FREEPMT ROUTINE'                               29550001
+*---------------------------------------------------------------------- 29554101
+*        ROUTINE PROLOGUE: FREEPMT                                      29558201
+*                                                                       29562301
+*        FUNCTION: FREES PAGE MANAGEMENT TABLES FOR A GIVEN SPACE       29566401
+*        ENTRY POINT:                                                   29570501
+*           FREEPMT                                                     29574601
+*        INVOKED BY: STORAGE MANAGEMENT (IJBSSM) AMODE(31),DATON        29578701
+*                      (VIA AMODESW CALL)                               29582801
+*        OPERATION:                                                     29586901
+*          FREES PMR TABLES (SGT, PT AND PTAS) FOR                      29591001
+*          THE SPACE SPECIFIED BY THE SCB.                              29595101
+*--------------------------------------------------------------         29600001
+*        INPUT :                                                        29650001
+*           R1 - ADDR OF SCB OF SPACE TO BE HANDLED                     29700001
+*           R7 - RETURN ADDRESS                                         29750001
+*           R8 - ADDR OF SGPDATA                                        29800001
+*--------------------------------------------------------------         29850001
+*        INTERNAL REGISTER USAGE                                        29900001
+*              R3-R6 - WORK REGISTERS                                   29950001
+*              R7 -    RETURN ADDRESS                                   30000001
+*              R8 -    ADDR OF PAGE MANAGEMENT DATA AREA                30050001
+*              R9 -    BASE ADDR OF THIS CODE                           30100001
+*              RB -    SIZE OF AREA TO BE FREED UP                      30125001
+*                                                                       30150001
+*--------------------------------------------------------------         30200001
+         SPACE 1                                                        30250001
+FREEPMT  DS    0H                                                       30300001
+         USING SCBADR,R1          SET BASE FOR SCB                      30325001
+         L     R8,AFREEPMT        SET BASE FOR ...             @D61RDRP 30366601
+         USING FREEPMT,R8         ... CODE AREA                @D61RDRP 30408201
+         STM   R0,RF,FREPMSV      SAVE CALLERS REGISTERS                30450001
+         DROP  R8                                                       30500001
+         LR    R9,R8              GET BASE FOR                          30550001
+         USING FREEPMT,R9         *  CODE AREA                 @D61RDRP 30600001
+         L     R8,APMGMDAT        GET BASE FOR DATA AREA                30650001
+         USING PMGMDATA,R8                                              30700001
+*  CALCULATE SPACE OF PMR TABLES                                        30750001
+         LM    RA,RB,FREEPML      GET IDENTIFICATION           @D61NDRP 30760001
+         DEBUG ALLREGS,XXDBGMC    CREATE DEBUG ENTRY                    30765001
+         L     R6,SCBPASZ         GET SIZE OF SPACE IN K                30775001
+         L     R9,AGETPMT         ESTABLISH BASE ...           @D61RDRP 30783301
+         USING GETPMT,R9          ... FOR CALCPMSP RTN         @D61RDRP 30791601
+         BAL   RA,CALCPMSP        GET REQUIRED SIZE FOR PMR TAB         30800001
+*SGLINK  CALCPMSP,INPUT=(R1,R6,R8,R9,RA),OUTPUT=(RB),                  *30833301
+               WORK=(R3,R4,R5,R6),AMODE=31 DATON                        30866601
+         L     R9,AFREEPMT        GET BASE BACK ...            @D61RDRP 30877701
+         USING FREEPMT,R9         ... FOR CODE AREA            @D61RDRP 30888801
+         LR    R5,R1              SAVE SCB ADDR                         30900001
+         DROP  R1                 DROP BASE FOR SCB                     30925001
+         USING SCBADR,R5                                                30950001
+         L     R3,SCBAPMRA        GET SCB OF CORRECT PMRAS              31000001
+         L     R2,TIBPTR                                                31020001
+         MVC   SCBAPMRA,TIBSCB-TIBADR(R2) SAVE SCB OF TASK              31040001
+*    SWITCH TO PMRAS                                                    31060001
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          31090001
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          31120001
+         L     R1,SCBVSTO         GET BEGIN ADDRESS OF AREA             31150001
+         LA    R2,FREPMSEX-16     SAVE AREA FOR SFREEVIS                31200001
+*        SFREEVIS LENGTH=(RB),ADDRESS=(1),SAVE=(R2),PMSPACE=YES         31207801
+         SFREEVIS LENGTH=(RB),ADDRESS=(1),SAVE=(R2),PMSPACE=YES         31215601
+*   INVOKE INVPAG2ND TO UNFIX AREA                                      31223401
+         STM   R0,RF,FREPMSEX     SAVE REGISTERS                        31231201
+         L     RD,SCBVSTO         GET BEGIN ADDR OF AREA                31239001
+         LR    R1,RD              GET END ADDR.                         31246801
+         AR    R1,RB                ... OF                              31254601
+         BCTR  R1,0                 ...   AREA                          31262401
+         DROP  R5                 DROP BASE FOR SCB                     31266301
+         SLR   R5,R5              KEY 0 FOR INVPAGE                     31270201
+         L     RE,AINVPSUB        GET ENTRY ADDR FOR INVPAGE            31278001
+*        AMODESW CALL,REGS=(RE,RE)   INVALIDATE SGT AREA                31285801
+*SGLINK  INVP2ND,INPUT=(R1:END,R5,RD:BEG,RE:LINK),OUTPUT=(R0),         *31291001
+               WORK=(R1-RD,RF),AMODE=31 DATON                           31296201
+         AMODESW CALL,REGS=(RE,RE)   INVALIDATE SGT AREA                31301401
+         L     R9,AFREEPMT        RESTORE BASE FOR CODE AREA            31309201
+         LM    R0,RF,FREPMSEX     RESTORE REGISTERS                     31317001
+         USING SCBADR,R5          RESET SCB BASE                        31321001
+         L     R3,SCBAPMRA        GET SCB OF ORIGINAL SPACE             31325001
+         SLR   R4,R4                                                    31350001
+         ST    R4,SCBRSTO         RESET                                 31400001
+         ST    R4,SCBVSTO         .  FIELDS                             31450001
+         ST    R4,SCBAPTAS        ..  IN                                31500001
+         ST    R4,SCBAPT          ...  SCB                              31550001
+         ST    R4,SCBAPMRA        ....  *                               31600001
+         STH   R4,SCBPFIX         ...   *                               31609501
+         STH   R4,SCBPFIX3        ...   *                               31619001
+*    SWITCH BACK TO ORIGINAL SPACE                                      31628501
+*        SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          31657001
+         SGSETUP SETSCB,NEXTSCB=R3,OPTION=NOSAVE,WR1=R4,WR2=R5          31685501
+         SPACE                                                          31685603
+*        DISPMAC FUNC=PTLB        PROPAGATE PTLB ON ALL CPU'S  @DY45958 31685704
+         DISPMAC FUNC=PTLB        PROPAGATE PTLB ON ALL CPU'S  @DY45958 31685804
+         SPACE                                                          31685903
+         LM    RA,RB,FREEPML      GET IDENTIFICATION           @D61NDRP 31696901
+         DEBUG ALLREGS,XXDBGMC    CREATE DEBUG ENTRY                    31702601
+         LM    R0,RF,FREPMSV      RESTORE CALLERS REGISTERS             31714001
+*        AMODESW RETURN,REG=(R7)  RETURN TO CALLER                      31742501
+         AMODESW RETURN,REG=(R7)  RETURN TO CALLER                      31771001
+         DROP  R5                 DROP BASE FOR SCBADR                  31800001
+         DROP  R8                 DROP BASE FOR PMGMDATA                31850001
+         DROP  R9                 FORGET BASE FOR FREEPMT               31861101
+         DS    0F                                                       31872201
+FREEPML  DC    CL8'FREEPMT'                                             31883301
+         SPACE 1                                                        31894401
+*   SAVE AREAS FOR FREEPMT                                              31905501
+         SPACE 1                                                        31916601
+FREPMSV  DS    16F                SAVE AREA FOR FREEPMT        @D61RDRP 31927701
+FREPMSEX DS    16F                SAVE AREA TO CALL EXT. RTNS  @D61RDRP 31938801
+         MEND                                                           31950001

@@ -1,0 +1,619 @@
+         MACRO                                                          00001000
+         SGVTAP                                                         00002000
+         GBLB  &SGVTAP    SGVTAP  PRINT CONTROL SWITCH                  00004000
+         ACTR  200        LOOP CONTROL                                  00005000
+         TITLE 'VSE SUPERVISOR     VTA-TASK   VIRTUAL TAPE PROCESSING ' 00006000
+***************************************************************         00007000
+*                                                                       00008000
+*        LICENSED MATERIALS-PROPERTY OF IBM                             00009000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    00010000
+*        5686-066 (C) COPYRIGHT IBM CORP. 2000, 2005                    00011490
+*        SEE COPYRIGHT INSTRUCTIONS                                     00012000
+*                                                                       00013000
+***************************************************************         00014000
+.* /* START OF SPECIFICATIONS ****                                      00015000
+.*01  MODULE-TYPE = MACRO                                               00016000
+.*02    PROCESSOR = ASSEMBLER                                           00017000
+.*                                                                      00017200
+.*    ERR=196 OR LOST RECORDS IF RUNNING MORE THAN 1 VTAPE     @DY46078 00017400
+.*    VTA-TASK CANCELED (FEC) DUE TO RESVC-EXIT NOT BEING RESET@DY46299 00017600
+.*    SERVICE OWNER NOT RESET AFTER COMPLETED REQUEST          @DY46577 00017700
+.*                                                                      00017800
+.**** END OF SPECIFICATIONS ***/                                        00018000
+         AIF   (NOT &SGVTAP).NPRT010                                    00019000
+         PRINT GEN                ENSURE PRINTING OF SGAOM              00020000
+.NPRT010 ANOP                                                           00021000
+         DC    CL8'SGVTAP  '                                            00022000
+         DC    CL8'DY46577 '      CHANGE ACTIVITY CODE         @DY46577 00023770
+         USING VTAPEPRC,RD        VTA-TASK BASE POINTER                 00024000
+         USING DISP,R6            DISP BASE POINTER                     00025000
+         USING TACNTADR,R2        PARAMETER LIST BASE                   00026000
+.*                                                                      00027390
+.*       IJBTAPE   WILL PASS CONTROL TO VTAPEPRC                        00027780
+.*                 WHENEVER THE VTA-TASK IS TO BE INVOKED               00028170
+.*                 FOR SERVICE COMPLETION (READ/WRITE BUFFER)           00028560
+.*                                                                      00028950
+.*                                                                      00029340
+.*       INPUT REGISTERS MUST BE RETURNED UNCHANGED                     00029730
+.*                                                                      00030120
+VTAPEPRC DS    0H'0'              VIRTUAL TAPE PROCESSOR                00031000
+         ST    RE,TACNRETUR       SAVE RETURN REGISTER                  00035990
+         TM    TACNTFLG,SIM#VSAM+SIM#TCP+SIM#DA SERVER REQUIRED         00039980
+         BNZ   VTARFPRC           YES, REMOTE FILE PROCESSING           00043970
+         BAL   R5,SYSERROR        UNKNOWN REQUEST TYPE                  00048290
+         SPACE 2                                                        00048580
+VTATIMER DS    0H'0'              GIVE OTHER CPU A CHANCE               00049270
+*                                 TO RELEASE THE SEMAPHORE              00049380
+         STM   RE,R1,VTATISAV     SAVE REGISTERS                        00050450
+         LA    R1,200             200/300 SECONDS SHOULD DO             00050940
+         LA    RE,VTALTECB        PROVIDE TECB ADDRESS                  00051430
+         SETIME (1),(14),PREC     WAIT (0 < N < 1/3 SECOND              00051920
+         WAIT  (14)               WAIT                                  00052410
+         L     R1,VTAWTCNT        GET CONFLICT COUNT                    00052900
+         LA    R1,1(,R1)          ADD ONE                               00053390
+         ST    R1,VTAWTCNT        STORE NEW COUNT                       00053880
+         LM    RE,R1,VTATISAV     RESTORE REGISTERS                     00054370
+         BR    RF                 RETRN======================>          00055000
+         SPACE 1                                                        00056000
+VTATISAV DC    4F'0'              REGISTER SAVE AREA                    00056590
+         DC    CL8'VTA-CNT'       TIMER WAIT COUNT                      00056680
+VTAWTCNT DC    F'0'               CONFLICT COUNT                        00056770
+VTALTECB DC    F'0'               TECB FOR SLEEP COMMAND                00057000
+F56664   DC    A(56664)           CONSTANT                              00057100
+RC0404   DC    XL4'00040004'      TAPE VOID                             00057200
+RC0408   DC    XL4'00040008'      TAPE END-OF-FILE                      00057300
+RC040C   DC    XL4'0004000C'      TAPE END-OF-PHYSICAL TAPE             00057400
+RC0810   DC    XL4'00080010'      END OF FILE ON WRITE                  00057500
+.*                                                                      00058000
+.*       REMOTE FILE (VSAM OR TCP/IP OR DA-FILE PROCESSING)             00059490
+.*                                                                      00060000
+         TITLE 'VSE SUPERVISOR     VTA-TASK   REMOTE FILE PROCESSING  ' 00061000
+VTARFPRC DS    0H'0'              REMOTE FILE PROCESSING       @DAOM115 00092280
+         LA    R5,TADMCBLEN       DATA-MNGR CB LEN             @DAOM085 00140072
+         LNR   R5,R5              PROVIDE FOR SUBTRACTION      @DAOM085 00140080
+         AR    R5,R2              DATA-MNGR CONTROL BLOCK ADDR.@DAOM085 00140088
+         USING TADMCBADR,R5       DATA-MNGR BASE POINTER       @DAOM085 00140096
+         XC    TADMOECB,TADMOECB  CLEAR OWNER ECB              @DAOM085 00140104
+         LA    RF,VTATID          GET MY OWN TASK ID           @DAOM115 00140116
+         STH   RF,TADMOTID        PROVIDE OWNER INFORMATION    @DAOM085 00140120
+         XC    TADMCHN(4),TADMCHN MAKE THIS REQ LAST IN CHAIN  @DAOM085 00140132
+         LA    R1,TADMOECB        ADDRESS OF OWNER ECB         @DAOM085 00140136
+         LA    R0,VTAECBNO        NUMBER OF ECB ENTRIES        @DAOM085 00140144
+.*                                                             @DAOM085 00140152
+.*       ENQUEUE REQUEST INTO VTAECBLIST WAIT CHAIN            @DAOM085 00140160
+.*                                                             @DAOM085 00140168
+         LA    RA,VTAECBLIST      GET ECB LIST ADDRESS         @DAOM085 00140176
+VTARF020 OC    0(4,RA),0(RA)      ENTRY OCCUPIED               @DAOM085 00140184
+         BZ    VTARF040           NO, USE THIS ONE             @DAOM085 00140192
+         LA    RA,4(,RA)          ADVANCE ECB-LIST POINTER     @DAOM085 00140200
+         BCT   R0,VTARF020        FIND A FREE SLOT             @DAOM085 00140208
+         B     VTAEREXC           EXCESSIVE VTAPE USAGE        @DAOM085 00140226
+VTARF040 ST    R1,0(RA)           SAVE ADDRESS IN ECB-LIST     @DAOM085 00140248
+         L     RF,TADMBUFF        GET BUFFER ADDRESS           @DAOM085 00140256
+         USING BUFHDR,RF          BUFFER HEADER ADDRESS        @DAOM085 00140264
+         MVC   VTADAT1,TADMCBADR  SAVE REQUEST INFO            @DAOM085 00140272
+         TM    TACNTFLG,SIM#DA    DIRECT ACCESS REQUEST        @DAOM115 00140282
+         BZ    VTARF060           NO,                          @DAOM115 00140284
+         MVC   VTADAT2,VTACNSIM   INDICATE SIMTAPE DATA        @DAOM115 00140286
+         B     VTARF080           YES, TAPESRVR NOT NEEDED     @DAOM115 00140288
+VTARF060 MVC   VTADAT2,BUFFIL#    SAVE BUFFER INFO             @DAOM085 00140290
+VTARF080 MVC   VTADAT2+12(4),TACNFLG1  SAVE FLAG BYTES         @DAOM085 00140292
+         MVC   VTADAT3(32),TACNSNS   PROVIDE SENSE DATA        @DAOM085 00140296
+*        DEBUG USERDATA,XXDBGMC,VTADAT1,VTADAT2,VTADAT3,VTADAT4 DAOM085 00140304
+         DEBUG USERDATA,XXDBGMC,VTADAT1,VTADAT2,VTADAT3,VTADAT4 DAOM085 00140312
+         DROP  RF                 RELEASE BUFHDR BASE          @DAOM085 00140320
+VTARF100 L     R4,IJBSPAVT        SUPVR ADDRESS VECTOR TABLE   @DAOM085 00140352
+         USING SUPAVT,R4          SUPAVT BASE POINTER          @DAOM085 00140360
+         L     R4,ASUPAVTE        ADDRESS OF SUPAVTEX          @DAOM085 00140368
+         USING SUPAVTEX,R4        SUPAVTEX BASE POINTER        @DAOM085 00140376
+         ICM   R8,15,AVTAPANC     COMMUNICATION AREA PRESENT   @DAOM085 00140389
+         BNZ   VTARF120           YES,                         @DAOM085 00140394
+         BAL   R5,SYSERROR        SHOULD NEVER OCCUR           @DAOM085 00140400
+         USING VTAPHDR,R8         VTAPE HEADER BASE POINTER    @DAOM085 00140408
+VTARF120 LA    R9,0(,R8)          RESET EXCLUSIVE USE BIT      @DAOM085 00140418
+         TM    TACNTFLG,SIM#DA    DIRECT ACCESS REQUEST        @DAOM115 00140420
+         BO    VTATDCHN           YES, TAPESRVR NOT NEEDED     @DAOM115 00140422
+         OC    VTAPTIDS,VTAPTIDS  IS TAPESRVR STILL ACTIVE     @DAOM085 00140424
+         BZ    VTAERSRV           NO, SET ERROR CODE           @DAOM085 00140426
+.*                                                             @DAOM115 00140428
+.*       ENQUEUE REQUEST INTO WAIT-CHAIN AND ACTIVATE VTA-TASK @DAOM115 00140430
+.*                                                             @DAOM115 00140432
+VTATDCHN LA    RB,VTAENQWT-(TADMCHN-TADMCBADR) WAIT-Q PNTR BASE@DAOM115 00140434
+         LR    R9,RB              SAVE OLD ENTRY ADDRESS       @DAOM115 00140436
+VTATD020 ICM   RA,15,TADMCHN-TADMCBADR(R9) ANY REQUEST CHAINED @DAOM115 00140438
+         BZ    VTATD060           NO, STORE MY REQUEST         @DAOM115 00140440
+         CLR   RA,R5              OUR REQUEST ALREADY ENQUEUED @DAOM115 00140442
+         BNE   VTATD040           NO,                          @DAOM115 00140444
+         DEBUG STOP,XXDBGMC       STOP IF DEBUG ON             @DAOM115 00140446
+         B     VTATD080           ACTIVATE VTA-TASK            @DAOM115 00140448
+VTATD040 LR    R9,RA              SAVE OLD ENTRY ADDRESS IN R9 @DAOM115 00140450
+         B     VTATD020           FIND LAST IN WAIT-Q          @DAOM115 00140452
+VTATD060 ST    R5,TADMCHN-TADMCBADR(,R9) OURS IS LAST IN WAIT-Q@DAOM115 00140454
+         DROP  R8                 RELEASE VTAHDR BASE          @DAOM115 00140456
+VTATD080 L     R8,AVTATIB         ADDRESS OF VTA TIB           @DAOM115 00140458
+         USING TIBADR,R8          VTA TIB BASE                 @DAOM115 00140460
+         L     RB,TIBTCB          VTA TCB ADDRESS              @DAOM115 00140462
+         USING TCBADR,RB          VTA TCB BASE                 @DAOM115 00140464
+         L     RB,TCBSAVE         ADDRESS OF VTA SAVE AREA     @DAOM115 00140466
+         USING SVEARA,RB          VTA SAVE-AREA BASE           @DAOM115 00140468
+         CLI   TIBRQID,SYSBND     VTA-TASK INACTIVE            @DAOM115 00140470
+         BNE   VTATD100           NO,                          @DAOM115 00140472
+         ST    R6,SVER06          SAVE DISP BASE ADDRESS       @DAOM115 00140474
+         ST    RD,SVER0D          SAVE VTA-TASK BASE ADDRESS   @DAOM115 00140476
+         L     RE,AVTAENTR        ENTRY POINT OF VTA-TASK      @DAOM115 00140478
+         ST    RE,SVEPSW2         RESTORE VTA-TASK ENTRY POINT @DAOM115 00140480
+         DROP  RB                 RELEASE VTA SAVE-AREA BASE   @DAOM115 00140482
+         BAL   RF,POST            MAKE VTA-TASK READY          @DAOM115 00140484
+*SGLINK  POST,INPUT=(R6,R8,RF),WORK=RE                         @DAOM115 00140486
+VTATD100 CLC   TACNDMSV(4),VTAPTERM IS THIS 'VTAPE STOP' REQ.  @DAOM115 00140488
+         BNER  R6                 NO,  ====================>>> @DAOM115 00140490
+         LR    R1,R5              ENSURE CONDITIONAL RWAIT     @DAOM115 00140492
+         DROP  R5                 RLEASE TADMCBADR BASE        @DAOM115 00140494
+         L     R5,ASRQTAB         RESOURCE QUEUE TABLE BASE    @DAOM115 00140496
+         LA    R5,SRQWAIT-SRQTAB(,R5) SET USER I/O BOUND       @DAOM115 00140498
+         BAL   RC,RWAIT           USER NEEDS TO WAIT           @DAOM115 00140500
+*SGLINK  RWAIT,INPUT=(R5,RC)                                   @DAOM115 00140502
+.*                                                             @DAOM115 00140504
+.*       USER NEEDS TO WAIT FOR VTA-TASK TO FINISH WRITING     @DAOM115 00140506
+.*       BUFFERED DATA, THAT HAS NOT YET BEEN WRITTEN.         @DAOM115 00140508
+.*       PROCESSING WILL BE RESUMED RIGHT AFTER THIS RWAIT     @DAOM115 00140510
+.*                                                             @DAOM115 00140512
+         LR    R5,R1              RESTORE TADMCBADR POINTER    @DAOM115 00140514
+         USING TADMCBADR,R5       DATA-MNGR BASE POINTER       @DAOM085 00140516
+         LH    R8,TADMRETC        PROVIDE RETURN CODE          @DAOM115 00140518
+         ICM   R8,12,TADMREAS     PROVIDE REASON CODE          @DAOM115 00140520
+         B     VTA2USER           PROCEED THE USER CODE NOW    @DAOM115 00140522
+         SPACE 1                                               @DAOM115 00140524
+AVTAENTR DC    A(VTARQENQ+X'80000000') VTA-TASK ENTRY          @DAOM115 00140526
+VTACNSIM DC    CL8'SIMTAPE'       SIMTAPE BUFFER INFO          @DAOM115 00140528
+VTACNANY DC    CL8' '                                          @DAOM115 00140530
+VTAPTERM DC    A(2)               TERMINATION REQUEST-ID       @DAOM115 00140532
+         DROP  ,                  RELEASE ALL REGISTERS        @DAOM115 00140534
+         EJECT ,                                               @DAOM115 00140536
+.*                                                             @DAOM115 00140538
+.*       THE FOLLOWING CODE IS THE ENTRY POINT FOR VTA-TASK    @DAOM115 00140540
+.*       AFTER IT HAS BEEN ACTIVATED                           @DAOM115 00140542
+.*                                                             @DAOM115 00140544
+         USING VTAPEPRC,RD        VTA-TASK BASE POINTER        @DAOM115 00140546
+         USING DISP,R6            DISP BASE POINTER            @DAOM115 00140548
+         USING SYSS00,R0          LOWCORE BASE                 @DAOM115 00140550
+VTARQENQ DS    0H'0'              ENQUEUE REQUEST TO TAPESRVR  @DAOM115 00140552
+         L     R4,IJBSPAVT        SUPVR ADDRESS VECTOR TABLE   @DAOM115 00140554
+         USING SUPAVT,R4          SUPAVT BASE POINTER          @DAOM115 00140556
+         L     R4,ASUPAVTE        ADDRESS OF SUPAVTEX          @DAOM115 00140558
+         USING SUPAVTEX,R4        SUPAVTEX BASE POINTER        @DAOM115 00140560
+         L     R8,AVTAPANC        COMMUNICATION AREA PRESENT   @DAOM115 00140562
+         USING VTAPHDR,R8         VTAPE HEADER BASE POINTER    @DAOM115 00140564
+         ICM   R5,15,VTAENQWT     ANY REQUEST WAITING          @DAOM115 00140566
+         BNZ   VTARQ020           YES,                         @DAOM115 00140568
+         DEBUG STOP,XXDBGMC       STOP IF DEBUG IS ON          @DAOM115 00140570
+         B     VTADEACT           STRANGE, BUT PROCEED         @DAOM115 00140572
+         USING TADMCBADR,R5       TADMCDADR BASE               @DAOM115 00140574
+VTARQ020 LA    R2,TADMCBLEN       DATA-MNGR CB LENGTH          @DAOM115 00140576
+         ALR   R2,R5              ADDRESS OF TAPE CONTROL BLOCK@DAOM115 00140578
+         USING TACNTADR,R2        TACNTADR BASE                @DAOM115 00140580
+         TM    TACNTFLG,SIM#DA    DIRECT ACCESS REQUEST        @DAOM115 00140582
+         BZ    VTARQ040           NO, WE NEED EXCLUSIVE USE    @DAOM115 00140584
+         MVC   VTAENQWT(4),TADMCHN MAKE THIS REQ LAST IN CHAIN @DAOM085 00140586
+         XC    TADMCHN,TADMCHN    RESET CHAIN POINTER          @DAOM085 00140588
+         B     VTADAPRC           YES, ======================> @DAOM115 00140590
+         DROP  R2                 RELEASE TACNTADR BASE        @DAOM115 00140592
+VTARQ040 LA    R9,0(,R8)          RESET EXCLUSIVE USE BIT      @DAOM115 00140594
+         LR    RA,R9              COPY ANCHOR ADDRESS          @DAOM115 00140596
+         O     RA,BIT0ON          INDICATE BEING UPDATED       @DAOM115 00140598
+         CS    R9,RA,AVTAPANC     GET EXCLUSIVE USE            @DAOM115 00140600
+         BE    VTARF300           WE GOT IT IN EXCLUSIVE USE   @DAOM115 00140602
+         BAL   RF,VTATIMER        WE HAVE TO WAIT              @DAOM115 00140604
+         B     VTARQENQ           TRY AGAIN                    @DAOM115 00140606
+         DROP  R5                 DROP TADMCBADR PERM BASE     @DAOM085 00140608
+*                                 BUT PRESERVE ITS CONTENT     @DAOM115 00140610
+VTARF300 DS    0H'0'              WE OWN THE SEMAPHORE         @DAOM085 00140612
+         LA    RB,VTAWTODO        ADDR. OF WORK-TO-DO CHAIN    @DAOM085 00140614
+         L     RA,VTAWTODO        NEXT TADMCBADR ADDRESS       @DAOM085 00140640
+VTARF320 LTR   RA,RA              DID WE REACH END OF CHAIN    @DAOM085 00140654
+         BZ    VTARF360           YES, ENQUEUE NEW REQUEST     @DAOM085 00140660
+         USING TADMCBADR,RA       TADMCPADR TEMP BASE          @DAOM085 00140666
+         CR    R5,RA              IS NEW ALREADY IN CHAIN      @DAOM085 00140672
+         BNE   VTARF340           NO,                          @DAOM085 00140686
+         DEBUG STOP,XXDBGMC       YES, STOP IT RIGHT HERE      @DAOM085 00140692
+VTARF340 LA    RB,TADMCHN         SAVE OLD CHAIN PNTR. ADDR.   @DAOM085 00140698
+         L     RA,TADMCHN         GET NEXT CHAIN POINTER       @DAOM085 00140704
+         B     VTARF320           FIND END OF CHAIN            @DAOM085 00140714
+         DROP  RA                 RELEASE TADMCBADR TEMP BASE  @DAOM085 00140716
+         USING TADMCBADR,R5       RESTORE TADMCBADR PERM BASE  @DAOM085 00140718
+VTARF360 DS    0H'0'              ENQUEUE NEW REQUEST AT END   @DAOM085 00140720
+         LA    R2,TADMCBLEN       DATA-MNGR CB LENGTH          @DAOM115 00140722
+         ALR   R2,R5              ADDRESS OF TAPE CONTROL BLOCK@DAOM115 00140724
+         USING TACNTADR,R2        TACNTADR BASE                @DAOM115 00140726
+         CLI   TADMRQID,ZERO      COULD MINE BE A DA-REQUEST   @DAOM115 00140728
+         BNE   VTARF380           NO,                          @DAOM115 00140730
+         TM    TACNTFLG,SIM#DA    IS THIS A DA-FILE REQUEST    @DAOM115 00140732
+         BZ    VTARF380           NO,                          @DAOM115 00140734
+         ST    R5,VTAENQWT        MAKE DA-FILE FIRST IN WAIT-Q @DAOM085 00140736
+         B     VTARF400           GET TAPESRVR TASK POSTED     @DAOM115 00140738
+VTARF380 ST    R5,0(,RB)          ENQUEUE TO SERVER CHAIN      @DAOM085 00140740
+         L     RF,TADMCHN         ANOTHER REQUEST QUEUED       @DAOM085 00140752
+         XC    TADMCHN,TADMCHN    RESET CHAIN POINTER          @DAOM085 00140760
+         LTR   R5,RF              WAS ANOTHER REQUEST QUEUED   @DAOM085 00140768
+         BNZ   VTARF300           YES, VALIDATE ITS QUEUING    @DAOM085 00140782
+         XC    VTAENQWT,VTAENQWT  SET WAIT-Q EMPTY             @DAOM085 00140788
+VTARF400 OI    VTAPECBS+2,TRABIT  POST SERVER ECB              @DAOM085 00140794
+         LH    R0,VTAPTIDS        TID OF TAPESRVR PARTITION    @DAOM085 00140800
+         LR    RE,R9              GET ANCHOR ADDRESS           @DAOM085 00140808
+         O     RE,BIT0ON          INDICATE I HAD IT            @DAOM085 00140816
+         CS    RE,R9,AVTAPANC     RELEASE EXCLUSIVE USE        @DAOM085 00140824
+         BE    VTARF420           THATS WHAT WE EXPECT         @DAOM085 00140838
+         DEBUG STOP,XXDBGMC       STOP IN CASE OF DEBUG        @DAOM115 00140844
+VTARF420 DS    0H                 ACTIVATE SERVER PARTITION    @DAOM085 00140850
+*        TREADY TASK=(0),COND=IO  ACTIVATE SERVER TASK         @DAOM085 00140856
+         TREADY TASK=(0),COND=IO                               @DAOM085 00140864
+         B     VTAWAITM           HAVE VTA-TASK WAIT NOW       @DAOM085 00140872
+         DROP  R2                 RELEASE TACNTADR  BASE       @DAOM115 00140876
+         DROP  R5                 RELEASE TADMCBADR BASE       @DAOM085 00140880
+         DROP  R8                 RELEASE VTAPHDR BASE POINTER @DAOM085 00140888
+VTADAT1  DC    XL16'00'           DEBUG DATA                            00140896
+VTADAT2  DC    XL16'00'           DEBUG DATA                            00140904
+VTADAT3  DC    XL16'00'           DEBUG DATA                            00140912
+VTADAT4  DC    XL16'00'           DEBUG DATA                            00140920
+VTAWAITM L     R1,TIBPTR           GET POINTER TO TIB          @DY46299 00140928
+         USING TIBADR,R1                                       @DY46299 00140936
+         NI    TIBFLAG,XFF-RETRYSVC RESET SVC RETRY EXIT FLAG  @DY46299 00140944
+         DROP  R1                 RELEASE VTA-TIB BASE         @DY46299 00140952
+         LA    R1,VTAECBLIST      GET ECB LIST ADDRESS                  00140960
+         WAITM (1)                WAIT FOR COMPLETION                   00141000
+         DROP  ,                  DROP ALL REGISTERS                    00146000
+         EJECT ,                                                        00146200
+         USING VTAPEPRC,RD        COMMON   BASE (UNCHANGED)             00146500
+         USING DISP,R6            DISP     BASE (UNCHANGED)             00149000
+         USING SYSS00,R0          PAGE-0   BASE (UNCHANGED)             00150490
+         LTR   R1,R1              IS THIS A VALID ECB ADDRESS           00151190
+         BNZ   VTARF500           YES,                                  00151460
+         ST    R1,0               CLEAR LOW CORE                        00151570
+         B     VTAWAITM           GO AND WAIT                           00151760
+VTARF500 DS    0H'0'              DEQUEUE FROM SERVER CHAIN             00152090
+         L     R4,IJBSPAVT        SUPVR ADDRESS VECTOR TABLE            00152180
+         USING SUPAVT,R4          SUPAVT BASE POINTER                   00152270
+         L     R4,ASUPAVTE        ADDRESS OF SUPAVTEX                   00152360
+         USING SUPAVTEX,R4        SUPAVTEX BASE (UNCHANGED)             00152450
+         ICM   R9,15,AVTAPANC     COMMUNICATION AREA PRESENT            00152540
+         BNZ   VTARF510           YES,                                  00152660
+         BAL   R5,SYSERROR                                              00152720
+         USING VTAPHDR,R9         VTAPHDR  BASE (UNCHANGED)             00152810
+VTARF510 LA    R5,TADMOECB-TADMCBADR OFFSET OF ECB IN TADMCBADR         00153890
+         ALR   R5,R1              ADDRESS OF TADMCBADR                  00155380
+         USING TADMCBADR,R5       TADMCBADR BASE POINTER                00155570
+         MVC   VTADAT1(32),TADMCBADR  SAVE TADMCBADR DATA               00156000
+         L     RF,TADMBUFF        GET BUFFER ADDRESS                    00157590
+         USING BUFHDR,RF          BUFFER HEADER ADDRESS                 00158180
+         MVC   VTADAT3(32),BUFFIL# PROVIDE WHAT WE GOT                  00159000
+*        DEBUG USERDATA,XXDBGMC,VTADAT1,VTADAT2,VTADAT3,VTADAT4         00160000
+         DEBUG USERDATA,XXDBGMC,VTADAT1,VTADAT2,VTADAT3,VTADAT4         00161000
+         DROP  RF                 RELEASE BUFHDR BASE                   00163590
+VTARF520 LA    R2,TADMCBLEN       DATA-MNGR CB LEN                      00164180
+         ALR   R2,R5              TACNTADR BASE POINTER                 00164960
+         DROP  R5                 RELEASE TADMCBADR BASE                00165360
+         USING TACNTADR,R2        TACNTADR BASE                         00166000
+         LH    R3,TACNTID         GET OWNERS TID                        00167000
+*        SGSETUP SWOWNER,STASK=VTA,WR1=R3,WR2=RA,OPTION=SETOWNER        00168590
+         SGSETUP SWOWNER,STASK=VTA,WR1=R3,WR2=RA,OPTION=SETOWNER        00169180
+         LR    RA,R9              GET ANCHOR ADDRESS                    00170000
+         O     RA,BIT0ON          INDICATE BEING UPDATED                00171000
+         CS    R9,RA,AVTAPANC     GET EXCLUSIVE USE                     00172000
+         BE    VTARF540           WE GOT EXCLUSIVE USE                  00174370
+         BAL   RF,VTATIMER        OOPS, WE HAVE TO WAIT                 00175360
+         B     VTARF520           NOW TRY AGAIN                         00177380
+VTARF540 LA    RB,VTAWTODO        INITIAL CHAIN POINTER ADDR.           00178070
+         L     RA,VTAWTODO        GET NEXT CB-ADDRESS                   00179000
+VTARF560 LTR   RA,RA              IS THIS END OF CHAIN                  00181380
+         BZ    VTARF600           YES, FREE SEMAPHORE                   00182560
+         USING TADMCBADR,RA       CONTROL BLOCK BASE                    00183000
+VTARF580 LA    RE,TADMOECB        GET ECB ADDRESS                       00184680
+         CR    R1,RE              IS THIS THE RIGHT CB                  00185000
+         BE    VTARF590           YES,                                  00186680
+         LA    RB,TADMCHN         OLD CHAIN POINTER ADDRESS             00187000
+         L     RA,TADMCHN         GET NEXT IN CHAIN                     00188000
+         B     VTARF560           ADVANCE TO NEXT REQUEST               00193580
+VTARF590 L     RE,TADMCHN         GET CHAIN POINTER                     00197570
+         ST    RE,0(RB)           DEQUEUE OURS FROM CHAIN               00204000
+VTARF600 DS    0H'0'              FREE SEMAPHORE               @DAOM115 00205710
+*HERE    WE SHOULD ENQUEUE REQUEST FROM THE WAIT CHAIN         @DAOM115 00205900
+*        AND POST THE SERVER TASK BEFORE FREEING THE           @DAOM115 00206090
+*        SEMAPHORE                                             @DAOM115 00206280
+VTARF620 DS    0H'0'                                           @DAOM115 00206470
+         L     RE,AVTAPANC        GET ANCHOR ADDRESS           @DAOM115 00206660
+         O     RE,BIT0ON          INDICATE EXCLUSIVE USE       @DAOM115 00206850
+         CS    RE,R9,AVTAPANC     DID WE OWN IT                @DAOM115 00207040
+         BE    VTARF700           YES,                         @DAOM115 00207230
+         BAL   R5,SYSERROR        SHOULD NEVER OCCUR           @DAOM115 00207420
+VTARF700 DS    0H'0'              DEQUEUE FROM ECB-LIST        @DAOM115 00207610
+         LA    RE,VTAECBLIST      GET ECB LIST ADDRESS         @DAOM115 00207800
+         LA    R0,VTAECBNO        NUMBER OF ECB ENTRIES        @DAOM115 00207990
+VTARF720 C     R1,0(,RE)          IS THIS OUR ENTRY            @DAOM115 00208180
+         BE    VTARF740           YES,                         @DAOM115 00208370
+         LA    RE,4(,RE)          ADVANCE TO NEXT ECB ADDRESS  @DAOM115 00208560
+         BCT   R0,VTARF720        TRY TO FIND A MATCH          @DAOM115 00208750
+         BAL   R5,SYSERROR        SHOULD NEVER OCCUR           @DAOM115 00208940
+VTARF740 XC    0(4,RE),0(RE)      CLEAR THE ECB ADDRESS        @DAOM115 00209130
+         LH    R8,TADMRETC        PROVIDE RETURN CODE                   00211000
+         ICM   R8,12,TADMREAS     PROVIDE REASON CODE                   00212000
+         B     VTAEX010           JOIN MAIN LINE                        00213000
+         DROP  RA                 RELEASE TADMCBADR BASE                00214000
+         SPACE 1                                                        00215000
+.*                                                             @DAOM085 00215200
+.*       POST ERROR (TAPESRVR HAS BEEN CANCELED)               @DAOM085 00215400
+.*                                                             @DAOM085 00215600
+VTAERSRV DS    0H'0'              SERVER HAD BEEN CANCELED              00216190
+         L     RF,VTARE333        PROVIDE ERROR CODE                    00216460
+         B     VTAERSET                                                 00216570
+.*                                                             @DAOM085 00216810
+.*       POST ERROR (EXCESSIVE VTAPE USAGE)                    @DAOM085 00216860
+.*                                                             @DAOM085 00216910
+VTAEREXC DS    0H'0'              EXCESSIVE VTAPE USAGE                 00216960
+         L     RF,VTARE444        PROVIDE ERROR CODE                    00217010
+*        B     VTAERSET                                                 00217140
+VTAERSET LA    RA,TADMCBLEN       GET DM CONTROL BLOCK LENGTH           00217330
+         LNR   RA,RA              PROVIDE FOR SUBTRACTION               00218000
+         AR    RA,R2              DATA-MNGR CONTROL BLOCK               00219000
+         USING TADMCBADR,RA       DATA-MNGR CONTROL BLOCK               00220000
+         OI    TADMOECB+2,C'V'    CANCELED BY V=SGVTAP         @DAOM085 00221990
+         OI    TADMRSTA,VTSRQCNL  REQUEST HAD BEEN CANCELED    @DAOM085 00222980
+         STH   RF,TADMRETC        SET RETURN CODE                       00224000
+         STCM  RF,12,TADMREAS     PROVIDE REASON CODE          @DAOM085 00225490
+         LH    R3,TACNTID         GET OWNERS TID                        00226000
+*        SGSETUP SWOWNER,STASK=VTA,WR1=R3,WR2=R5,OPTION=SETOWNER        00227000
+         SGSETUP SWOWNER,STASK=VTA,WR1=R3,WR2=R5,OPTION=SETOWNER        00228000
+         LA    R1,TADMOECB        ADDRESS OF OWNER ECB         @DAOM085 00229570
+         B     VTARF700           GO BACK TO CALLER            @DAOM085 00229580
+         DS    0F                                                       00229630
+         DC    XL4'02220111'      CANCELED BY MIH              @DAOM085 00229700
+VTARE333 DC    XL4'03330111'      SERVER NOT UP / CANCELED     @DAOM085 00229770
+VTARE444 DC    XL4'04440111'      VTAPE EXESSIVE USAGE         @DAOM085 00229840
+         DROP  RA                 RELEASE TADMCBADR BASE                00230000
+         DROP  R2                 RELEASE TACNTADR  BASE                00231000
+         DROP  R4                 RELEASE SUPAVTEX BASE                 00232000
+         DROP  R9                 RELEASE VTAPE HEADER BASE             00233000
+         DS    0F'0'              FORCE WORD-BOUNDARY                   00234000
+VTAECBLIST DC  16XL4'00000000',XL4'80000000' ECB-LIST                   00235490
+VTAECBNO   EQU 16                 NUMBER OF ECB ENTRIES                 00236000
+         DROP  ,                  RELEASE ALL REGISTERS                 00236500
+.*                                                                      00237000
+.*       VTAPE READ/WRITE BUFFER PROCESSING                             00238000
+.*                                                                      00239000
+         TITLE 'VSE SUPERVISOR     VTA-TASK   DASD DA     PROCESSING  ' 00240000
+         USING VTAPEPRC,RD        VTA-TASK BASE POINTER                 00241090
+         USING DISP,R6            DISP BASE POINTER                     00241180
+         USING TADMCBADR,R5       DATA-MNGR BASE POINTER                00241270
+         USING TACNTADR,R2        TAPE CONTROL BLOCK BASE               00241360
+         USING SYSS00,R0          LOWCORE BASE                          00241450
+VTADAPRC DS    0H'0'              DASD DIRECT ACCESS PROCESSING         00242000
+         L     RF,TACNV24A        ADDRESS OF 24-BIT GETVIS              00243000
+         USING TACXAREA,RF        I/O BLOCK BASE POINTER                00244000
+         OC    TACXESEK(8),TACXESEK AREA ALREADY INITIALIZED            00245000
+         BNZ   VTADA060           YES, SKIP INITIALISATION              00246490
+         LA    R9,TACXESEK        POINT TO CCW-CHAIN                    00247000
+         MVC   TACXESEK(TACXEND-TACXESEK),VTAXESEK COPY I/O BLK         00248000
+         L     RE,TACNCKDX        GET CKD-PUB INDEX                     00249000
+         STH   RE,TACXECCB+6      SET PUB INDEX IN CCB                  00250000
+         OI    TACXECCB+6,CCBPHYAD INDICATE PHYSICAL ADDRESSING         00251000
+         ST    R9,TACXECCB+8      SET CCW ADDRESS IN CCB                00252000
+         L     RE,TACNCKDX        GET CKD-PUB INDEX                     00253090
+         SLL   RE,PBXISLEN        PBXAREA OFFSET                        00253180
+         A     RE,APBXAREA        ADDRESS OF PUBX ENTRY                 00253270
+         L     RE,0(,RE)          PUBX ADDRESS OF CKD DEVICE            00253360
+         USING PBXADR,RE          PUBX BASE POINTER                     00253450
+         L     RE,PBXVCTE         GET VCTE ADDRESS                      00253540
+         USING VCTEADR,RE         VCTE ENTRY BASE                       00253630
+         SLR   RA,RA              CLEAR REGISTER                        00253720
+         CLI   VCTCFORM,1         FORMULAR-1 DATA                       00253810
+         BNE   VTADA000           NO, ASSUME FORMULAR-2                 00253900
+         ICM   RA,7,VCTCBTRK      MAX. REC-SIZE                         00253990
+         SH    RA,VCTCCF23        SUBTRACT RECORD OVERHEAD              00254080
+         B     VTADA020           PROCEED MAIN LINE                     00254170
+VTADA000 DS    0H'0'              FORMULAR-2 CALCULATION                00254260
+         L     RA,F56664          MAX. REC.SIZE / TRACK                 00254350
+*HERE    WE MAY WANT TO USE THE FORMULAR INSTEAD OF THE CONSTANT        00254440
+         DROP  RE                 RELEASE VCTEADR BASE                  00254530
+VTADA020 STCM  RA,3,TACXEWRT+2    SAVE RECORD LENGTH                    00254620
+         STCM  RA,3,TACXREAD+2    SAVE RECORD LENGTH                    00254710
+         STCM  RA,3,TACXCARG+6    SET LENGTH IN COUNT FIELD             00254800
+         LA    RE,(TACXECCB-TACXESEK)/8 CCW-COUNT                       00257000
+VTADA040 L     RA,4(,R9)          GET ADDRESS                           00258490
+         AR    RA,RF              ADD RELOCATION FACTOR                 00259000
+         ST    RA,4(,R9)          STORE RELOCATED ADDRESS               00260000
+         LA    R9,8(,R9)          ADVANCE CCW POINTER                   00261000
+         BCT   RE,VTADA040        PROCESS NEXT CCW                      00262190
+         L     RE,TADABUFA        GET FIRST EXTENT ENTRY                00262380
+         MVC   8(4,RE),0(RE)      CURRENT CCHH ADDRESS                  00262570
+VTADA060 L     R5,TACNBUFH        GET BUFFER HEADER                     00262760
+         USING BUFHDR,R5          BUFFER HEADER BASE POINTER            00262950
+*        DEBUG STOP,XXDBGMC       STOP FOR TESTING                      00263140
+         ST    R5,TACXEWRT+4      SET BUFFER ADDRESS IN WRITE           00264000
+         ST    R5,TACXREAD+4      SET BUFFER ADDRESS IN READ            00265000
+         L     RE,TADABUFA        FIRST EXTENT ENTRY ADDRESS            00266290
+         LA    RA,TACXECNT        ADDRESS OF WRITE CCW                  00266580
+         MVI   TACXARG+6,0        FORCE RECORD-0 SEARCH                 00267000
+         TM    TACNSFLG,READBUFF  IS THIS A READ REQUEST                00268490
+         BZ    VTADA200           NO, MUST BE WRITE                     00268980
+VTADA100 DS    0H'0'              READ PROCESSING                       00269470
+         LA    RA,TACXREAD        ADDRESS OF READ CHAIN                 00270000
+         MVI   TACXARG+6,1        FORCE RECORD-1 SEARCH                 00271000
+         OC    BUFREC1(4),BUFREC1 USER REQUESTED RECORD ZERO            00272490
+         BNE   VTADA120           NO,                                   00272980
+         MVC   8(4,RE),0(RE)      POINT TO BEGIN OF FILE                00273470
+VTADA120 SLR   R9,R9              SET INCREMENT TO ZERO                 00273960
+         TM    TACNSFLG,READPREV  READING BACKWARDS                     00274450
+         BZ    VTADA140           NO,                                   00274940
+         BCTR  R9,0               PROVIDE FOR SUBTRACTION               00275430
+VTADA140 TM    TACNSFLG,READNEXT  READING FORWARD                       00275920
+         BZ    VTADA300           NO,                                   00276410
+         LA    R9,1               PLUS 1                                00276900
+         B     VTADA300           PROCEED MAIN LINE                     00277390
+.*                                                                      00277490
+.*       WRITE PROCESSING                                               00277590
+.*                                                                      00277690
+VTADA200 DS    0H'0'              WRITE PROCESSING                      00277880
+         SLR   R9,R9              SET INCREMENT TO ZERO                 00278370
+         CLC   BUFREC1,12(RE)     FIRST RECORD > LAST FIRST             00278860
+         BNH   VTADA300           NO,                                   00279350
+         LA    R9,1               PLUS 1                                00279840
+VTADA300 LH    R3,TACNTID         GET OWNERS TID                        00280330
+         AH    R9,8(,RE)          NEXT CYLINDER ADDRESS                 00280820
+         SLL   R9,16              GET CYL IN RIGHT POSITION             00281310
+         CL    R9,0(RE)           SMALLER THAN BEGIN CYL                00281800
+         BL    VTADAERR           YES, INTERNAL ERROR                   00282290
+         CL    R9,4(RE)           GREATER THAN END CYL                  00282780
+         BH    VTADAEOP           YES, END OF PHYSICAL TAPE             00283270
+VTADA320 ST    R9,8(,RE)          CURRENT CCHH ADDRESS                  00283760
+         ST    RA,TACXTIC+4       HAVE TIC POINT TO PROPER CCW          00284250
+         DROP  R5                 DROP, BUT  PRESERVE ADDRESS           00284740
+VTADA500 STCM  R9,15,TACXARG+2    SET ARG  FIELD                        00285230
+         ST    R9,TACXCARG        SET COUNT FIELD                       00285720
+         LA    R1,TACXECCB        GET                                   00288000
+VTADA5SW NOP   VTADA520           FIRST TIME SWITCH                     00289390
+         MVI   VTADA5SW+1,X'F0'   TRAP FIRST I/O ONLY                   00289780
+*        DEBUG STOP,XXDBGMC       STOP FOR TESTING                      00290170
+VTADA520 EXCP  (1)                ISSUE EXCP                            00290560
+         WAIT  (1)                ISSUE WAIT                            00291000
+         TM    2(R1),DISERR       ANY I/O ERROR                         00292000
+         BO    VTADAERR           YES, INTERNAL ERROR                   00293060
+         TM    4(R1),UNITEXCP     END-OF-FILE                           00293120
+         BO    VTADAEOF           YES,                                  00293180
+         TM    5(R1),IL           INCORRECT LENGTH                      00293240
+         BO    VTADAERR           YES, INTERNAL ERROR                   00293300
+         L     R8,TACNBUFH        GET BUFFER ADDRESS                    00293360
+         USING BUFHDR,R8          BUFFER HEADER ADDRESS                 00293420
+         TM    3(R1),NORCDFND     NO RECORD FOUND CONDITION             00293480
+         BZ    VTADA560           NO, NO ERRORS ENCOUNTERED             00293540
+         OC    BUFFIL#(BUFHDRL),BUFFIL# 1ST BUFFER READ                 00293600
+         BNZ   VTADA560           NO,                                   00293668
+         LA    RB,2*8             2*CONTROL RECORD LENGTH               00293676
+         LNR   RB,RB              PROVIDE FOR SUBTRACTION               00293684
+         A     RB,TACNLAST        FIRST CONTROL RECORD ADDRESS          00293692
+         XC    0(2*8,RB),0(RB)    INDICATE BUFFER EMPTY                 00293700
+         B     VTADARC0           YES, ASSUME FILE EMPTY                00293708
+VTADA560 LA    R9,1(,R9)          ADVANCE TO NEXT TRACK                 00293720
+*HERE    WE SHOULD LIMIT THE I/O TO THE BUFFER SIZE                     00293780
+         ST    R9,8(,RE)          SAVE NEXT TRACK ADDRESS               00293840
+         CLM   R9,3,6(RE)         HAVE WE REACHED LAST TRACK            00293900
+         BH    VTADA600           YES, HAS JUST BEEN PROCESSED          00293960
+         SLR   RA,RA              CLEAR REGISTER                        00294020
+         ICM   RA,3,TACXCARG+6    GET RECORD LENGTH                     00294080
+         ALR   R5,RA              UPDATE I/O AREA ADDRESS               00294140
+         ST    R5,TACXEWRT+4      SET BUFFER ADDRESS IN WRITE           00294200
+         ST    R5,TACXREAD+4      SET BUFFER ADDRESS IN READ            00294260
+         B     VTADA500           READ NEXT TRACK                       00294320
+VTADA600 DS    0H'0'              I/O COMPLETE                          00294380
+         MVC   12(4,RE),BUFREC1   SAVE FIRST RECORD NUMBER              00294440
+VTADARC0 SLR   R8,R8              SET RC TO ZERO                        00294860
+         B     VTADAEXT           JOIN MAIN LINE                        00294940
+         DROP  R8                 RELEASE BUFHDR BASE                   00294980
+VTADAERR L     R8,RC0810          INDICATE INTERNAL ERROR               00295040
+         B     VTADAEXT                                                 00295120
+VTADAEOP L     R8,RC040C          END OF PHYSICAL TAPE                  00295160
+         B     VTADAEXT                                                 00295240
+VTADAEOF L     R8,RC0408          END OF FILE                           00295280
+VTADAEXT DS    0H'0'              DA-EXIT PROCESSING                    00295390
+         LA    RA,TADMCBLEN       DATA-MNGR CB LENGTH                   00295440
+         LNR   RA,RA              PROVIDE FOR SUBTRACTION               00295490
+         LA    RA,TACNTADR(RA)    ADDRESS OF DATA-MNGR CB               00295540
+         USING TADMCBADR,RA       TADMCBADR BASE POINTER                00295590
+         STH   R8,TADMRETC        PROVIDE RETURN CODE                   00295640
+         STCM  R8,12,TADMREAS     PROVIDE REASON CODE                   00295690
+         LA    R1,TADMOECB        PROVIDE ECB ADDRESS                   00295740
+         B     VTARF700           JOIN MAIN PATH                        00295790
+         DROP  RA                 RELEASE TADMCBADR BASE                00295840
+         DROP  RF                 RELEASE I/O CONTROL BASE              00296000
+         EJECT ,                                                        00297190
+         USING TADMCBADR,RA       TADMCBADR BASE               @DAOM115 00297970
+VTAEX010 DS    0H'0'              VTA EXIT PROCESSING          @DAOM115 00298560
+         LA    R1,TADMCBADR       CONDITIONAL POSTING          @DAOM115 00299150
+         BAL   R7,RPOSTALL        SET TASK READY NOW           @DAOM115 00299740
+*SGLINK  RPOSTALL,INPUT=(R1,R6,R7),WORK=(R4,RE,RF)             @DAOM115 00300330
+         LA    RF,VTATID          VTA-TID                      @DAOM115 00300920
+         CH    RF,TID             IS VTA TASK ACTIVE           @DAOM115 00301510
+         BNE   VTAEX030           NO,                          @DAOM115 00302100
+         L     RB,TCBPTR          VTA TCB ADDRESS              @DAOM115 00302690
+         USING TCBADR,RB          VTA TCB BASE                          00303280
+         L     RB,TCBSAVE         ADDRESS OF VTA SAVE AREA              00304000
+         USING SVEARA,RB          SAVE AREA BASE POINTER                00305000
+         L     RF,AVTADEAC        DEACTIVATION ROUTINE ADDR.            00306000
+         ST    RF,SVEPSW2         STORE ADDRESS IN PSW                  00307000
+         DROP  RB                 RELEASE SAVE AREA BASE                00308000
+VTAEX030 CLC   TACNDMSV,VTAPTERM  WAS THIS A TERMINATION REQ.  @DAOM115 00309080
+         BNE   VTA2USER           NO                                    00309160
+         BR    R6                 YES, ====================>>> @DAOM115 00309240
+.*                                                             @DAOM115 00309320
+.*       TAPESRVR AND VTA-TASK HAVE NOW COMPLETED THE          @DAOM115 00309400
+.*       DMGRGET / DMGRPUT SERVICE AND WE WILL THUS RETURN     @DAOM115 00309480
+.*       TO THE MAIN-PATH PROCESSING IN $IJBTAPE               @DAOM115 00309560
+.*                                                             @DAOM115 00309640
+VTA2USER L     R3,TACNSUR3        RESTORE PUB POINTER          @DAOM115 00309720
+         LH    RF,TADMRETC        GET RETURN CODE              @DAOM115 00309800
+         ICM   RF,12,TADMREAS     PROVIDE REASON CODE          @DAOM115 00309880
+         BAL   R7,CQDSP           SET UP I/O POINTERS/FIELDS   @DAOM115 00309960
+*SGLINK  CQDSP,INPUT=(R3,R6,R7),OUTPUT=(R1,R4,RA),WORK=R0      @DAOM115 00310040
+         USING CCBADR,R1          CCB BASE POINTER             @DAOM115 00310120
+         USING CHQADR,R4          CHANQ BASE POINTER           @DAOM115 00310200
+         USING PIBADR,RA          PIB BASE POINTER             @DAOM115 00310280
+         DROP  R1                 RELEASE CCB BASE             @DAOM115 00310360
+         DROP  R4                 RELEASE CHANQ BASE           @DAOM115 00310440
+         DROP  RA                 RELEASE PIB BASE             @DAOM115 00310520
+         MVI   RID+1,USERTID      RESTORE RID TO USER          @DAOM115 00310600
+         L     RE,TACNRETUR       RESTORE RETURN REGISTER               00311000
+         BSM   0,RE               RETRN====================>>>          00313000
+*                                 RETURN AND REASON CODES IN RF         00313100
+.*                                RETURN TO DMGRPUT                     00313300
+.*                                    OR TO DMGRGET IN IJBTAPE          00313600
+         SPACE 1                                                        00314490
+.*                                                                      00315000
+.*       NOW DEACTIVATE VTA-TASK                                        00316000
+.*                                                                      00317000
+VTADEACT DS    0H'0'              DEACTIVATION ROUTINE ADDRESS          00318000
+         LA    RF,VTAECBLIST      ADDRESS OF ECB-LIST                   00319000
+         OC    0(VTAECBNO*4,RF),0(RF) ANY REQUEST OUTSTANDING           00320000
+         BZ    VTAUNPST           NO, DEACTIVATE VTA                    00321050
+*        SGSETUP SWOWNER,STASK=VTA,WR1=R4,OPTION=SYSOWNER      @DY46577 00321060
+         SGSETUP SWOWNER,STASK=VTA,WR1=R4,OPTION=SYSOWNER      @DY46577 00321070
+         L     R4,IJBSPAVT        SUPVR ADDRESS VECTOR TABLE   @DAOM115 00321100
+         USING SUPAVT,R4          SUPAVT BASE POINTER          @DAOM115 00321150
+         L     R4,ASUPAVTE        ADDRESS OF SUPAVTEX          @DAOM115 00321200
+         USING SUPAVTEX,R4        SUPAVTEX BASE (UNCHANGED)    @DAOM115 00321250
+         ICM   R8,15,AVTAPANC     COMMUNICATION AREA PRESENT   @DAOM115 00321300
+         BNZ   VTADEA20           YES,                         @DAOM115 00321350
+         BAL   R5,SYSERROR        SYSTEM ERROR                 @DAOM115 00321400
+         USING VTAPHDR,R8         VTAPHDR  BASE (UNCHANGED)    @DAOM115 00321450
+VTADEA20 OC    VTAENQWT,VTAENQWT  NEW REQUEST ENQUEUED         @DAOM115 00321500
+         BNZ   VTARQENQ           YES, ENQUEUE NEW REQUESTS    @DAOM115 00321550
+         DROP  R8                 RELEASE VTAHDR BASE          @DAOM115 00321600
+         B     VTAWAITM           GIVE OTHER TASKS A CHANCE             00321650
+VTAUNPST DS    0H'0'              UNPOST VTA-TASK                       00321700
+*        SGSETUP UNPOST,STASK=VTA,WR1=RB                                00322000
+         SGSETUP UNPOST,STASK=VTA,WR1=RB                                00323000
+         DROP  R2                 RELEASE TACNTADR BASE                 00324000
+         DROP  R6                 RELEASE DISP     BASE                 00325000
+         DROP  RD                 RELEASE VTAPEWRT BASE                 00326000
+AVTADEAC DC    A(VTADEACT+X'80000000')                                  00327000
+         SPACE 2                                                        00328000
+VTAXAREA   DS    0D               I/O CONTROL BLOCK                     00329690
+VTAOLDCCW  DC    D'0'             OLD CCW                               00330380
+VTAWRKCCW  DC    D'0'             CURRENT CCW                           00331070
+VTAWRKCSW  DC    D'0'             CURRENT CSW                           00331760
+VTAXESEK   CCW1  X'07',VTAXARG-VTAXAREA,X'60',6 SEEK                    00332450
+VTAXSRCH   CCW1  X'31',VTAXARG-VTAXAREA+2,X'60',5 SEARCH                00333140
+           CCW1  X'08',VTAXSRCH-VTAXAREA,X'00',0  TIC                   00333830
+VTAXTIC    CCW1  X'08',0,X'00',0             TIC                        00334520
+VTAXECNT   CCW1  X'1D',VTAXCARG-VTAXAREA,X'80',8 WRITE COUNT            00335210
+VTAXEWRT   CCW1  X'1D',0,X'20',0    WRITE DATA                          00335900
+VTAXREAD   CCW1  X'06',0,X'20',0    READ DATA                           00336590
+VTAXECCB   CCB   SYSRDR,VTAXESEK-VTAXAREA,X'1400',CCW=FORMAT1           00337280
+VTAXCARG   DC    XL6'000000000100',AL2(56664)                           00337970
+VTAXARG    DC    XL8'0000000000000000'                                  00338660
+VTAXEND    EQU   *                                                      00339350
+           EJECT ,                                                      00340040
+*        MAPTACN                                                        00341000
+         MAPTACN                                                        00342000
+&SYSECT  CSECT                                                          00343000
+         AIF   (NOT &SGVTAP).NPRT999                                    00344000
+         PRINT NOGEN              SUPPRESS PRINTING                     00345000
+.NPRT999 ANOP                                                           00346000
+         MEND                                                           00347000

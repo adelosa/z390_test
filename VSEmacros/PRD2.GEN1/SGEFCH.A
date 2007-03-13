@@ -1,0 +1,195 @@
+         MACRO                                                          00050000
+         SGEFCH                                                         00100000
+         GBLB  &BGVM                                           @D35NDVB 00150000
+         GBLB  &BGDEBUG                                        @D37ZDVB 00200000
+         GBLB  &BGDSHR                                         @D14CDVB 00250000
+         GBLB  &SGEFCH                                         @D37ZDVB 00300000
+*--------------------------------------------------------------         00350000
+*                                                                       00400000
+.*       IBM DISK OPERATING SYSTEM                                      00450000
+*        SUPERVISOR - SGEFCH - 5686-032-06                     @D148DVB 00500000
+.*                                                                      00550000
+*        LICENSED MATERIALS - PROPERTY OF IBM                  @D51KDMZ 00600000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"           @D31UDMZ 00650000
+*        5686-032 (C) COPYRIGHT IBM CORP. 1977, 1990           @D31UDMZ 00700000
+*        SEE COPYRIGHT INSTRUCTIONS                            @D31UDMZ 00750000
+*                                                                       00800000
+*--------------------------------------------------------------         00850000
+         AIF   (NOT &BGDEBUG OR NOT &SGEFCH).NOPRINT           @D37ZDVB 00900000
+         PRINT GEN                                             @D37ZDVB 00950000
+.NOPRINT ANOP                                                  @D37ZDVB 01000000
+ TITLE 'DOS SUPERVISOR  SGEFCH FETCH_INITIALISATION       **30/11/89**' 01050000
+         SPACE 2                                                        01100000
+.* /* START OF SPECIFICATIONS ***************************************** 01150000
+.*                                                                      01200000
+.*01* MODULE NAME = SGEFCH                                              01250000
+.*                                                                      01300000
+.*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                         01350000
+.*                                                                      01400000
+.*01* DESCRIPTIVE NAME = INITIALISATION OF FETCH SERVICES               01450000
+.*                                                                      01500000
+.*01* CHANGE ACTIVITY = AS FOLLOWS                                      01550000
+.*         NEW MODULE -- FIRST RELEASE 35                               01600000
+.*            E SUPPORT                                        @D35EDVB 01650000
+.*            FBA SUPPORT                                      @D35DDVB 01700000
+.*            370 SUPPORT                                      @D35CDVB 01750000
+.*            VMLE SUPPPORT                                    @D35NDVB 01800000
+.*         AF REL 1.2 ACTIVITIES:                                       01850000
+.*            MORE TASKS                                       @D36IDVB 01900000
+.*            LIBRARY CONCATENATION                            @D36JDVB 01950000
+.*         AF REL 1.3.1 ACTIVITIES                             @D131DVB 02000000
+.*         AF REL 1.4   ACTIVITIES: NLIB SUPPORT               @D14CDVB 02050000
+.*         AF REL 2.1.1                                        @DA33314 02100000
+.*            4K PAGE SIZE FOR /370 AND VM                     @DA33314 02150000
+.*         SOFTWARE RE-IPL                                     @D31QDHB 02200000
+.*         MOVE SGBFCH IN THE NON-PAGEABLE PART OF THE SUPERV. @D51KDMZ 02250000
+.*         ECKD SUPPORT                                        @D51KDMZ 02300000
+.* A000000-999999                                              @D35EDVB 02350000
+.***** END OF SPECIFICATIONS *****************************************/ 02400000
+.*                                                                      02450000
+*-------------------------------------------------------------*@D149DVB 02500000
+*        ROUTINE: RESFTTAB                                              02550000
+*        MACRO:   SGEFCH                                                02600000
+*        FUNCTION:INITIALIZES THE CONTROL TABLES FOR FETCH     @D149DVB 02650000
+*                 SERVICES.                                    @D149DVB 02700000
+*        CALLER:  IPL                                                   02750000
+*        OPERATION:                                                     02800000
+*                 GET ADDRESSES TO LIB_DEF_TAB AND             @D149DVB 02850000
+*                               SYSLIB_DEF_TAB                 @D149DVB 02900000
+*                 PROVIDE LDTELBSZ AND LDTELBCF VALUES         @D149DVB 02950000
+*                 PROVIDE SDTEXLEV,SDTEXRBA AND SDTEDRBA       @D149DVB 03000000
+*                 GET ADDRESS OF EXTENT_DEF_TAB                @D149DVB 03050000
+*                 PROVIDE EDTESTRX VALUE                       @D149DVB 03100000
+*                 PROVIDE DDTEDEV, DDTEPUB, DDTEBLZ ,DDTETRCY  @D149DVB 03150000
+*                                  AND DDTEBLTR                @D149DVB 03200000
+*                 IF DASDSHR_SUPPORT                           @D149DVB 03250000
+*                      THEN INITIALIZE TFIXTAB (SLD_INP AREA)  @D149DVB 03300000
+*                 RETURN;                                      @D14CDVB 03350000
+*        INPUT:   R1 --> ADDRESS OF PARAMETER_LIST             @D149DVB 03400000
+*                        AAVRLIST    A    A(FETCH GETVCE AREA) @D149DVB 03450000
+*                        ARSLDSEC    A    A(SYSLIB_DESCRIPTOR) @D149DVB 03500000
+*                        LBSZLDES    X    LOG_2(LB_LENGTH)     @D149DVB 03550000
+*                        NLBTRK      X    #(LB'S)/TRACK        @D149DVB 03600000
+*                        LBCFLDES    H    LEN(LBCF)            @D149DVB 03650000
+*                        ALIBDESC    F    DISK ADDR OF LB      @D149DVB 03700000
+*                                    X    R VALUE OF DISK ADDR @D149DVB 03750000
+*                        RCGETVCE    X    RETURN_CODE(GETVCE)  @D149DVB 03800000
+*                 RE  --> RETURN ADDRESS                       @D149DVB 03850000
+*                 RF  --> LTA ADDRESS ( = @(ENTRY_POINT) )     @D149DVB 03900000
+*        OUTPUT:  TEMPORARY LIBRARY CONTROL BLOCKS             @D149DVB 03950000
+*                 LIB_DEF_TAB       ...                        @D149DVB 04000000
+*                 SUBLIB_DEF_TAB    ... OF                     @D149DVB 04050000
+*                 EXTENT_DEF_TAB    ... SYSLIB                 @D149DVB 04100000
+*                 DEVICE_DEF_TAB    ...                        @D149DVB 04150000
+*        ERROR EXIT: HARD WAIT X'FFE'                          @D149DVB 04200000
+*        RETURN:  CALLER                                                04250000
+*        CALLING SEQUENCE:                                              04300000
+*                          LA   R1,PARMLIST                    @D149DVB 04350000
+*                          L    RF,IJBLTA                      @D149DVB 04400000
+*                          BALR RE,RF                          @D149DVB 04450000
+*        REFERENCED DATA:                                               04500000
+*                 SYSLIB DESCRIPTOR (READ,EXTERNAL)            @D149DVB 04550000
+*                 PUB (READ, EXTERNAL)                         @D149DVB 04600000
+*        NOTES:                                                         04650000
+*                 THE ROUTINE IS LOCATED IN THE LTA AS TEMPOR-          04700000
+*                 ARY CODE. IT MUST BE EXECUTED BEFORE FETCH            04750000
+*                 HAS BEEN ACTIVATED FOR THE FIRST TIME.                04800000
+*                 REGISTERS 0-14 ARE UNCHANGED BE RESFTTAB     @D149DVB 04850000
+*-------------------------------------------------------------*@D149DVB 04900000
+         SPACE 1                                                        04950000
+RESFTTAB DS    0H                  ENTRY POINT                          05000000
+         USING *,RF                ADDRESSIBILITY              @D14CDVB 05050000
+         STM   R0,RF,FRESLOC       SAVE REGISTERS              @D14CDVB 05100000
+         USING FTCHINIT,R1                                     @D14CDVB 05150000
+         CLI   RCGETVCE,0          GETVCE SUCCESSFULL          @D14CDVB 05200000
+         BNE   FINITERR            NO --->                     @D14CDVB 05250000
+         USING TIBADR,RA                                       @D36IDVB 05300000
+         L     RA,TIBPTR           GET POINTER TO TIB          @D36IDVB 05350000
+         OI    TIBFL,PRIVILEG      INDICATE PRIVILEGED STATE   @D36IDVB 05400000
+         DROP  RA                                                       05450000
+         SPACE 1                                               @D14CDVB 05500000
+*---- ADDRESSIBILITY TO TEMPORARY LIBRARY CONTROL TABLES -----*@D14CDVB 05550000
+         SPACE 1                                               @D14CDVB 05600000
+         L     RB,AFCHDAT                                      @D14CDHD 05650000
+         USING DFCB,RB                                         @D14CDHD 05700000
+         L     R7,DALIBTAB                                     @D14CDVB 05750000
+         DROP  RB                                              @D14CDHD 05800000
+         USING INLCLPT,R7                                      @D14CDVB 05850000
+         L     R8,LPTBSDT          ADDR (SUB_LIB_DEF_TAB)      @D14CDVB 05900000
+         L     R7,LPTBLDT          ADDR (LIB_DEF_TAB)          @D14CDVB 05950000
+         USING INLCLDTE,R7                                     @D14CDVB 06000000
+         USING INLCSDTE,R8                                     @D14CDVB 06050000
+         SPACE 1                                               @D14CDVB 06100000
+*---- LIB_DEF_TAB --------------------------------------------*@D14CDVB 06150000
+         SPACE 1                                               @D14CDVB 06200000
+         MVC   LDTELBSZ,LBSZLDES   LOG_2 (LB_SIZE)             @D14CDVB 06250000
+         MVC   LDTELBCF,LBCFLDES   LENGTH (LBCF)               @D14CDVB 06300000
+         SPACE 1                                               @D14CDVB 06350000
+*---- SUBLIB_DEF_TAB -----------------------------------------*@D14CDVB 06400000
+         SPACE 1                                               @D14CDVB 06450000
+         L     R5,ARSLDESC         ADDRESS (SYSLIB_DEF_TAB)    @D14CDVB 06500000
+         USING INLCSLXE,R5                                     @D14CDVB 06550000
+         MVC   SDTEXLEV,SLXENXLV  NUMBER OF INDEX LEVELS       @D14CDVB 06600000
+         MVC   SDTEXRBA+2(L'SLXEHXBN),SLXEHXBN  RBA(INDEX)     @D14CDVB 06650000
+         MVC   SDTEDRBA+2(L'SLXELXBN),SLXELXBN  RBA(DIRECTORY) @D14CDVB 06700000
+         MVC   SDTEIDEN(L'SLXEIDEN),SLXEIDEN    LIBRARY ID     @D14CDHD 06750000
+         DROP  R5,R8                                           @D14CDVB 06800000
+         SPACE 1                                               @D14CDVB 06850000
+*---- EXTENT_DEFINITION_TABLE  -------------------------------*@D14CDVB 06900000
+         SPACE 1                                               @D14CDVB 06950000
+         L     R7,LDTEEDTX         ADDR (EXTENT_DEF_TAB)       @D14CDVB 07000000
+         USING INLCEDTE,R7                                     @D14CDVB 07050000
+         MVC   EDTESTRX,ALIBDESC   START ADDRESS OF LIBRARY    @D14CDVB 07100000
+         LA    R3,SYSRES*D2                                    @D36JDVB 07150000
+         AH    R3,YLUBTAB          ADDR (SYSRES_LUB)           @D14CDVB 07200000
+         SLR   R8,R8               CLEAR REGISTER              @D51GDAP 07250000
+         ICM   R8,2,ONE(R3)        GET HIGH ORDER BYTE         @D51GDAP 07300000
+         BNM   RESFT100            THIS IS A TWO BYTE INDEX    @D51GDAP 07350000
+         SLR   R8,R8               CLEAR REGISTER              @D51GDAP 07400000
+RESFT100 IC    R8,ZERO(,R3)        GET ONE BYTE PUB INDEX      @D51GDAP 07450000
+         STCM  R8,3,EDTEPUB        SET HIGH ORDER BYTE         @D51GDAP 07500000
+         SPACE 1                                               @D14CDVB 07550000
+*---- DEVICE_DEFINITION_TABLE  -------------------------------*@D14CDVB 07600000
+         SPACE 1                                               @D14CDVB 07650000
+         L     R8,EDTEDDTX         ADDR (DEV_TAB)              @D14CDVB 07700000
+         USING INLCDDTE,R8                                     @D14CDVB 07750000
+         DROP  R7                                              @D14CDVB 07800000
+         L     R3,AAVRLIST         ADDRESS OF AVRLIST          @D14CDVB 07850000
+         USING AVRADR,R3                                       @D14CDVB 07900000
+         SLR   R5,R5                                           @D14CDVB 07950000
+         IC    R5,AVRTYPE          GET DEVICE CHARACTERISTIC   @D14CDVB 08000000
+         CLI   AVRTYPE,AVRECKD     VALID DEVICE TYPE ...       @D51IDMZ 08050000
+         BH    FINITERR            ... NO                      @D51IDMZ 08100000
+         BL    FINITDEV            ... YES                     @D51IDMZ 08150000
+         BCTR  R5,0                TREAT ECKD SAME AS RPS      @D51IDMZ 08200000
+FINITDEV STC   R5,DDTEDEV          DISK_TYPE                   @D14CDVB 08250000
+         CLI   DDTEDEV,AVRFBA      SYSLIB ON FBA DEVICE        @D14CDVB 08300000
+         BE    FINTFBA             YES --->                    @D14CDVB 08350000
+         MVC   DDTEBLTR+1(1),NLBTRK #LB_BLOCKS/TRACK           @D14CDVB 08400000
+         MVC   DDTETRCY,DCTTCYL     # TRACKS/CYLINDER          @D14CDVB 08450000
+         B     FINTGO                                          @D14CDVB 08500000
+FINTFBA  MVC   DDTEBLZ+2(L'DCTMAXR),DCTMAXR FBA BLOCK_LENGTH   @D14CDVB 08550000
+FINTGO   EQU   *                                               @D14CDVB 08600000
+         SPACE 1                                               @D14CDVB 08650000
+*---- ROUTINE EXIT CODE --------------------------------------*@D14CDVB 08700000
+         SPACE 1                                               @D14CDVB 08750000
+         USING TIBADR,RA                                       @D14CDVB 08800000
+         L     RA,TIBPTR                                       @D14CDVB 08850000
+         NI    TIBFL,XFF-PRIVILEG    RESET PRIVILEGED STATE    @D36IDVB 08900000
+         LM    R0,RF,FRESLOC                                   @D14CDVB 08950000
+         BR    RE                  RETURN VIA RE               @D14CDVB 09000000
+         SPACE 1                                                        09050000
+FINITERR DS    0H                  EXIT TO HARDWAIT X'FFE'     @D36IDVB 09100000
+         L     R6,DISPAD                                       @D14CDVB 09150000
+         MVI   HWIDBYTE,HWFCHIO    INDICATE HARDWAIT CODE      @D36IDVB 09200000
+         MVI   IJBHWORG,HWORG004   UNIQUE HARD WAIT ORIGINATOR @D31QDHB 09250000
+         B     HARDWAIT                                        @D36IDVB 09300000
+         SPACE 1                                               @D14CDVB 09350000
+*-------------------------------------------------------------*@D14CDVB 09400000
+         SPACE 1                                               @D14CDVB 09450000
+FRESLOC  DS    16F                                             @D14CDVB 09500000
+         DROP  R1,R3,R8,RA,RF                                  @D14CDVB 09550000
+         AIF   (NOT &BGDEBUG OR NOT &SGEFCH).PRTGEN            @D37ZDVB 09600000
+         PRINT  NOGEN                                          @D377DVB 09650000
+.PRTGEN  ANOP                                                  @D377DVB 09700000
+         MEND                                                           09750000

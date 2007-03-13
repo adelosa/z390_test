@@ -1,0 +1,166 @@
+*/********************************************************************* 00001000
+*    :module                                                          * 00002000
+*       CEEXCALC - Internal macro to convert a numeric suboption of   * 00003000
+*                    the STACK or HEAP (or analogous) option to a DC  * 00004000
+*                    F instruction operand (invoked in CEEXOPT)       * 00005000
+*    :emodule                                                         * 00006000
+*                                                                     * 00007000
+*    :security                                                        * 00008000
+*                                                                     * 00009000
+*      Licensed Materials - Property of IBM                           * 00010000
+*                                                                     * 00011000
+*      5686-094  (C) Copyright IBM Corp. 1991,  1996                  * 00012000
+*      All Rights Reserved.                                           * 00013000
+*                                                                     * 00014000
+*       US Government Users Restricted Rights - Use, duplication or   * 00015000
+*       disclosure restricted by GSA ADP Schedule Contract with IBM   * 00016000
+*       Corp.                                                         * 00017000
+*                                                                     * 00018000
+*                                                                     * 00019000
+*    :esecurity                                                       * 00020000
+*                                                                     * 00021000
+*    :status                                                          * 00022000
+*       LE/VSE Version 1 Release 4 Modification 0                     * 00023000
+*    :estatus                                                         * 00024000
+*                                                                     * 00025000
+*    :function                                                        * 00026000
+*       Nested macro CEEXCALC, used to convert a numeric suboption of * 00027000
+*       the HEAP or STACK (or analogous) option to a numeric charac-  * 00028000
+*       ter equivalent suitable as the operand of a DC F instruction, * 00029000
+*       has a single positional parameter input, assumed to be non-   * 00030000
+*       null:                                                         * 00031000
+*             &SIZE   : the numeric suboption, which should be in one * 00032000
+*                       of the forms                                  * 00033000
+*                              n | nk | nK | nm | nM                  * 00034000
+*                       where n is an integer (optionally negative),  * 00035000
+*                       the literals k or K denote 1024, and the lit- * 00036000
+*                       erals m or M denote 1048576 (2**20, or 1      * 00037000
+*                       meg); its maximum allowed absolute value is   * 00038000
+*                       (2**31) - 1, or 2147483647                    * 00039000
+*       The two global outputs produced are:                          * 00040000
+*             &VALUE  : the resulting DC F operand, e.g., 4096        * 00041000
+*             &CALCOK : binary flag, 0 if &SIZE is detected to lack   * 00042000
+*                       numeric input following a minus sign or pre-  * 00043000
+*                       ceding a final K, k, M, or m, else 1          * 00044000
+*       Note that &CALCOK does not capture all possible input errors. * 00045000
+*       The others, such as input non-numeric or too large in magni-  * 00046000
+*       tude, are caught by the assembler, which causes &VALUE to be  * 00047000
+*       set to a default reported with appropriate message in the     * 00048000
+*       listing (preceded by the invoker's minus sign, if any), and   * 00049000
+*       produces a non-zero return code for the assembly.             * 00050000
+*    :efunction                                                       * 00051000
+*                                                                     * 00052000
+*    :notes                                                           * 00053000
+*       Dependencies - None.                                          * 00054000
+*                                                                     * 00055000
+*       Restrictions - To be invoked only from CEEXOPT.               * 00056000
+*    :enotes                                                          * 00057000
+*                                                                     * 00058000
+*    :regs - Register Conventions                                     * 00059000
+*       (none)                                                        * 00060000
+*    :eregs                                                           * 00061000
+*                                                                     * 00062000
+*    :entry                                                           * 00063000
+*       (none)                                                        * 00064000
+*    :eentry                                                          * 00065000
+*                                                                     * 00066000
+*    :exit                                                            * 00067000
+*       (none)                                                        * 00068000
+*    :eexit                                                           * 00069000
+*                                                                     * 00070000
+*    :retcode                                                         * 00071000
+*       Possible return codes (produced by MNOTE):                    * 00072000
+*          0: no errors detected                                      * 00073000
+*          8: results if any error is detected                        * 00074000
+*    :eretcode                                                        * 00075000
+*                                                                     * 00076000
+*    :external - List of external routines used by this module        * 00077000
+*       (none)                                                        * 00078000
+*    :eexternal                                                       * 00079000
+*                                                                     * 00080000
+*    :data - Major data areas, control blocks, tables, etc.           * 00081000
+*       (none)                                                        * 00082000
+*    :edata                                                           * 00083000
+*                                                                     * 00084000
+*    :macros                                                          * 00085000
+*       Macros defined in this module                                 * 00086000
+*         (none)                                                      * 00087000
+*       Macros used by this module                                    * 00088000
+*         (none)                                                      * 00089000
+*    :emacros                                                         * 00090000
+*                                                                     * 00091000
+*    :include                                                         * 00092000
+*       (none)                                                        * 00093000
+*    :einclude                                                        * 00094000
+*                                                                     * 00095000
+*    :messages                                                        * 00096000
+*       (none)                                                        * 00097000
+*    :emessages                                                       * 00098000
+*                                                                     * 00099000
+*    :history                                                         * 00100000
+*       01/09/90 (DMW) New                                            * 00101000
+*    :ehistory                                                        * 00102000
+*                                                                     * 00103000
+*    :pseudocode                                                      * 00104000
+*       (none)                                                        * 00105000
+*    :epseudocode                                                     * 00106000
+*                                                                     * 00107000
+*    :epls                                                            * 00108000
+**********************************************************************/ 00109000
+         MACRO                                                          00110000
+         CEEXCALC &SIZE                                                 00111000
+.********************************************************************** 00112000
+.*   SET symbols                                                      * 00113000
+.********************************************************************** 00114000
+         LCLA  &FACTOR                 Factor: 1, 1024, or 1048576      00115000
+         LCLA  &NUMBER                 Absolute value of final number   00116000
+.*                                                                      00117000
+         GBLB  &CALCOK                 Flag for error detection         00118000
+.*                                                                      00119000
+         LCLC  &PARM                   Input stripped of minus and K|M  00120000
+         LCLC  &PREFIX                 Either null or minus sign        00121000
+         GBLC  &VALUE                  Final character result           00122000
+.********************************************************************** 00123000
+.*   Initialize &CALCOK to indicate no errors.                        * 00124000
+.*   Capture input parameter and check for trailing K|k|M|m to        * 00125000
+.*   determine proper multiplication factor.                          * 00126000
+.********************************************************************** 00127000
+&CALCOK  SETB 1                        Assume no errors                 00128000
+&PARM    SETC '&SIZE'                  Capture input parameter          00129000
+&PREFIX  SETC ''                       Assume non-negative result       00130000
+         AIF   ('&PARM'(K'&PARM,1) EQ 'K' OR                           X00131000
+               '&PARM'(K'&PARM,1)  EQ 'k').CAL1                         00132000
+         AIF   ('&PARM'(K'&PARM,1) EQ 'M' OR                           X00133000
+               '&PARM'(K'&PARM,1)  EQ 'm').CAL2                         00134000
+&FACTOR  SETA  1                       Multiplicative identity (no K,M) 00135000
+         AGO   .CAL4                   Go check for leading minus       00136000
+.*                                                                      00137000
+.CAL1    ANOP                          Input ended with K or k          00138000
+&FACTOR  SETA  1024                    Factor is 1K (2**10)             00139000
+         AGO   .CAL3                                                    00140000
+.*                                                                      00141000
+.CAL2    ANOP                          Input ended with M or m          00142000
+&FACTOR  SETA  1048576                 Factor is 1 meg (2**20)          00143000
+.*                                                                      00144000
+.CAL3    ANOP                          Strip off trailing K|k|M|m       00145000
+&PARM    SETC  '&PARM'(1,K'&PARM-1)                                     00146000
+         AIF   (K'&PARM GT 0).CAL4     Make sure string not now null    00147000
+         MNOTE 8,'Suboption zeroed -- no numeric value preceded K|M.'   00148000
+&CALCOK  SETB  0                       Indicate error detected          00149000
+         AGO   .CAL6                   Go return 0 as final value       00150000
+.*                                                                      00151000
+.CAL4    ANOP                          Check for leading minus sign     00152000
+         AIF  ('&PARM'(1,1) NE '-').CAL6                                00153000
+&PARM    SETC '&PARM'(2,K'&PARM-1)     Strip off leading minus sign     00154000
+         AIF  (K'&PARM GT 0).CAL5      Make sure string not now null    00155000
+         MNOTE 8,'Suboption zeroed -- no numeric value followed minus.' 00156000
+&CALCOK  SETB  0                       Indicate error detected          00157000
+         AGO   .CAL6                   Go return 0 as final value       00158000
+.*                                                                      00159000
+.CAL5    ANOP                                                           00160000
+&PREFIX  SETC '-'                      Restore leading minus sign       00161000
+.*                                                                      00162000
+.CAL6    ANOP                          Compute final result             00163000
+&NUMBER  SETA &PARM*&FACTOR            Multiply by appropriate factor   00164000
+&VALUE   SETC '&PREFIX'.'&NUMBER'      Prepend minus sign if needed     00165000
+         MEND                                                           00166000

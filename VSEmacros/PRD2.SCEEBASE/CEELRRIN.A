@@ -1,0 +1,109 @@
+         TITLE 'Initialize LE/VSE Library Routine Retention'            00001000
+**********************************************************************  00002000
+*                                                                    *  00003000
+*     LICENSED MATERIALS - PROPERTY OF IBM                           *  00004000
+*                                                                    *  00005000
+*     5686-094  (C) COPYRIGHT IBM CORP. 1995,  1996                  *  00006000
+*     ALL RIGHTS RESERVED.                                           *  00007000
+*                                                                    *  00008000
+*       US Government Users Restricted Rights - Use, duplication or  *  00009000
+*       disclosure restricted by GSA ADP Schedule Contract with IBM  *  00010000
+*       Corp.                                                        *  00011000
+*                                                                    *  00012000
+**********************************************************************  00013000
+*                                                                    *  00014000
+*                                                                    *  00015000
+*                                                                    *  00016000
+*                                                                    *  00017000
+**********************************************************************  00018000
+CEELRRIN CSECT                                                          00019000
+CEELRRIN AMODE  31                                                      00020000
+CEELRRIN RMODE ANY                                                      00021000
+         SAVE  (14,12)            Save callers registers                00022000
+         USING CEELRRIN,11        Establish module base register        00023000
+         LR    11,15                                                    00024000
+         LA    0,WORKALEN         Obtain working storage                00025000
+         GETVIS                                                         00026000
+         LTR   15,15              Storage obtained?                     00027000
+         BZ    BEGIN              Yes ...                               00028000
+         SPLEVEL SET=3                                                  00029000
+         WTO   'CEELRR   Unable to obtain GETVIS storage',             *00030000
+               ROUTCDE=2,DESC=7                                         00031000
+         B     RETURN1                                                  00032000
+BEGIN    EQU   *                                                        00033000
+         ST    13,4(,1)           Chain saveareas backward              00034000
+         ST    1,8(,13)           Chain saveareas forward               00035000
+         LR    13,1               Point to this routines savearea       00036000
+         USING WORKAREA,13        Adressability to work area            00037000
+*********************************************************************** 00038000
+* Use the LEVSE CEELRR macro with ACTION=INIT to                        00039000
+* initialize LEVSE library routine retention.                           00040000
+*********************************************************************** 00041000
+         CEELRR  ACTION=INIT                                            00042000
+*********************************************************************** 00043000
+* Check the return code, and if not zero, write a message to the        00044000
+* operator.                                                             00045000
+*********************************************************************** 00046000
+         LTR   15,15              Return code 0?                        00047000
+         BZ    RETURN             Yes, so return to caller              00048000
+*                                                                       00049000
+* Return code not zero, so write a message                              00050000
+*                                                                       00051000
+         MVC   MSG,MSG1               Move in message                   00052000
+         CVD   15,RCDEC               convert RC to decimal             00053000
+         UNPK  RCCODE,RCDEC+5(3)      unpack it                         00054000
+         OI    RCCODE+7,X'F0'         make it printable                 00055000
+         MVC   MSGRC,RCCODE+4         and move to WTO message           00056000
+         SPLEVEL SET=3                                                  00057000
+         WTO   MF=(E,MSG)                                               00058000
+*********************************************************************** 00059000
+* Return to the caller of this routine.                                 00060000
+*********************************************************************** 00061000
+RETURN   EQU   *                                                        00062000
+         L     8,4(13)            Address of callers savearea           00063000
+         FREEVIS ADDRESS=(13)                                           00064000
+         LR    13,8                                                     00065000
+RETURN1  EQU   *                                                        00066000
+         RETURN (14,12),RC=0                                            00067000
+*********************************************************************** 00068000
+* Constants                                                             00069000
+*********************************************************************** 00070000
+MSG1     DS    0F                                                       00071000
+         DC    AL2(MSG1LEN)             WTO BLOCK LENGTH                00072000
+         DC    B'0100000000000000'      ROUTING CODE                    00073000
+         DC    B'0000001000000000'      DESCRIPTOR CODE                 00074000
+         DC    AL2(0)                   I/O OFFSET                      00075000
+         DC    X'21'                    MESSAGE LINE TYPE               00076000
+         DC    AL2(MSG11L)              MESSAGE LINE LENGTH             00077000
+MSG11S   DC    C'CEELRR   Unexpected return code from '                 00078000
+         DC    C'LE/VSE library routine retention'                      00079000
+MSG11E   DC    X'10'                    MESSAGE LINE TYPE               00080000
+         DC    AL2(MSG12L)              MESSAGE LINE LENGTH             00081000
+MSG12S   DC    C'initialization. RC = '                                 00082000
+MSG12I   DC    C'xxxx'                                                  00083000
+         DC    C'.'                                                     00084000
+*                                                                       00085000
+MSG11L   EQU MSG11E-MSG11S              Length of wto line 1            00086000
+MSG12L   EQU *-MSG12S                   Length of wto line 2            00087000
+MSG12IO  EQU MSG12I-MSG1                Offset to insert for RC         00088000
+MSG1LEN  EQU *-MSG1                     Total wto message length        00089000
+*********************************************************************** 00090000
+* Savearea and variables.                                               00091000
+*********************************************************************** 00092000
+WORKAREA DSECT                                                          00093000
+SAVEAREA DS    18F                                                      00094000
+MSG      DS    CL(MSG1LEN)                                              00095000
+         DS    0D                   Alignment                           00096000
+RCDEC    DS    PL15                 To convert Retcode to decimal       00097000
+         DS    0D                   Alignment                           00098000
+RCCODE   DS    CL8                  To make Retcode printable           00099000
+WORK1    DS    CL4                                                      00100000
+WORK2    DS    CL10                                                     00101000
+PARM1    DS      F                                                      00102000
+WORKALEN EQU *-WORKAREA                                                 00103000
+* Message insert mapping                                                00104000
+MSGMAP   ORG   MSG                                                      00105000
+         DS    CL(MSG12IO)                                              00106000
+MSGRC    DS    CL4                                                      00107000
+*                                                                       00108000
+         END CEELRRIN                                                   00109000

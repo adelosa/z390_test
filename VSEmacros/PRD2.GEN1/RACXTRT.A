@@ -1,0 +1,714 @@
+********************************************************************    00050000
+*                                                                       00100000
+*  $MAC(RACXTRT) COMP(SC1BN) PROD(RACF):                                00150000
+*                                                                       00200000
+*  DESCRIPTIVE NAME:                                                    00250000
+*    INTERFACE TO RACF EXTRACT FUNCTION                            @M2C 00300000
+*                                                                       00350000
+*  **PROPRIETARY_STATEMENT********************************************  00387500
+*                                                                    *  00425000
+*                                                                    *  00462500
+*   LICENSED MATERIALS - PROPERTY OF IBM                             *  00500000
+*   THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                      *  00537500
+*   5655-068 (C) COPYRIGHT IBM CORP. 1976, 1993                      *  00575000
+*   SEE COPYRIGHT INSTRUCTIONS                                       *  00612500
+*                                                                    *  00650000
+*   STATUS= HBB5510                                                  *  00687500
+*                                                                @M4C*  00725000
+*  **END_OF_PROPRIETARY_STATEMENT*************************************  00762500
+*                                                                       00800000
+*  FUNCTION:                                                            00850000
+*    THE RACXTRT MACRO PROVIDES A STANDARD INTERFACE TO                 00900000
+*    THE RACF EXTRACT ROUTINE                                           00950000
+*    (MODULE NAME - IRRRXT00)                                      @M2C 01000000
+*                                                                       01050000
+*  INVOCATION:                                                          01100000
+*    THE RACF EXTRACT ROUTINE IS INVOKED BY THE RACXTRT                 01150000
+*    MACRO VIA SVC 132.                                            @M2C 01200000
+*                                                                       01250000
+*    REQUIREMENTS FOR USE - 1) USER MUST BE AUTHORIZED                  01300000
+*                                                                       01350000
+*  MODULE TYPE = MACRO                                                  01400000
+*                                                                       01450000
+*  CHANGE ACTIVITY:                                                     01500000
+*    $L0=HRF1602,RACF/160,830620,CNTDSD:                                01550000
+*    UZ90283                                                   @ZA90283 01600000
+*    UZ90284                                                   @ZA90284 01650000
+*    UZ90285                                                   @ZA90285 01700000
+*    $L7=HRF1702,RACF/170,841205,CNTDSD:                           @L7A 01750000
+*    OZ93034                                                   @ZA93034 01800000
+*    OZ94352                                                   @ZA94352 01850000
+*    OY08189                                                   @YA06719 01900000
+*    $L8=HRF1802,RACF/180,860820,CNTDSD:                           @L8A 01950000
+*    $P1=JRF1812,RACF/181,870902,CNTDSD: PFG0030                   @P1A 02000000
+*    OY11600                                                   @YA11600 02050000
+*    $M1= SP313   RACF/190 880615 PDPWB1: MVS/SP 3.1.3             @M1A 02100000
+*    $P2= PGU0028 RACF/190 880803 PDPWB1: PGU0028,PGU0029,PGU0030 @P2A  02150000
+*    OY13874 -$M1 INCORPORATES ONE LINE APAR CHANGE            @YA13874 02200000
+*    $M2= VMSFS   RACF/190 881104 PDB_S1: SHARED FILE SYSTEM       @M2A 02250000
+*    OY16140 THIS PROBLEM HAS BEEN FIXED IN 1.9 WITH M2 FLAG   @YA16140 02300000
+*    $P3= PGP0489 RACF/190 890719 PDPWB1: PGP0489                  @P3A 02350000
+*    $P4= PGP0409 RACF/190 890815 PDB_S1: PGP0409                  @P4A 02400000
+*    $P5= PGP0611 RACF/190 890920 PDB_S1: PTM PGP0611              @P5A 02450000
+*    $P6= PGP0615 RACF/190 890920 PDPWB1: PGP0615                  @P6A 02500000
+*    $M3= RELID   RACF/192 900904 PDAHW1: SUPPORT FOR RACF 1.9.2   @M3A 02550000
+*    $P7= PJA0029 RACF/192 910524 PDPSB1: PJA0029                  @P7A 02575000
+*    $M4= OW04015 RACF/210 930427 PDKAF1: SUPPORT FOR RACF 2.1     @M4A 02600000
+*    $M5= OW10709 RACF/220 940510 PDJMV1: SUPPORT FOR RACF 2.2     @M5A 02625000
+*                                                                       02650000
+*  CHANGE DESCRIPTIONS:                                                 02700000
+*   A - ADD SUPPORT FOR BRANCH ENTRY EXTRACT                       @M1A 02750000
+*   A - FLAG BRANCH AND RELEASE AS INVALID WHEN RELEASE < 1.9      @P2A 02800000
+*       INITIALIZE BITS BEFORE SETTING FLAG BYTE ON MF=L           @P2A 02850000
+*       ISSUE CORRECT MNOTE FOR INVALID MATCHGN VALUE              @P2A 02900000
+*   A - SHARED FILE SYSTEM-LONG NAMES, SUPPORT FOR KEYWORD ENTITYX @M2A 02950000
+*   A - INDICATE ENTITYX SPECIFIED WHEN BRANCH NOT SPECIFIED       @P3A 03000000
+*   A - SUPPORT THAT THE PARAMETER FIELDS IS SPECIFIED WITH        @P4A 03050000
+*       SEGDATA IN THE STANDARD MACRO FORM.                        @P4A 03100000
+*   C - '&RELEASE' TO '&RELEASE'(1,3) FOR LOGICAL COMPARISON       @P5A 03150000
+*       WITH '1.9'                                                 @P5A 03200000
+*   A - DO NOT RESET BRANCH BIT OF BRANCH NOT CODED                @P6A 03250000
+*   A - ALLOW RACF RELEASE 1.9.2 TO BE SPECIFIED                   @M3A 03300000
+*   C - STATUS TO CORRECTLY CORRESPOND TO MVS LEVEL                @P7A 03318700
+*   A - ALLOW RACF RELEASE 2.1 TO BE SPECIFIED                     @M4A 03337400
+*   A - ALLOW RACF RELEASE 2.2 TO BE SPECIFIED                     @M5A 03356100
+* @D62CDHH: VSE/ESA COMPATIBILITY WITH MVS/ESA                 @D62CDHH 03375000
+*                                                                       03400000
+********************************************************************    03450000
+         MACRO                                                          03500000
+&NAME    RACXTRT &ACEE=,                                               *03550000
+               &ENCRYPT=,                                              *03600000
+               &ENTITY=,                                               *03650000
+               &ENTITYX=,                                          @M2A*03700000
+               &FIELDS=,                                               *03750000
+               &SUBPOOL=,                                              *03800000
+               &TYPE=,                                                 *03850000
+               &RELEASE=,                                              *03900000
+               &CLASS=,                                            @L8A*03950000
+               &SEGMENT=,                                          @L8A*04000000
+               &SEGDATA=,                                          @L8A*04050000
+               &VOLSER=,                                           @L8A*04100000
+               &GENERIC=,                                          @L8A*04150000
+               &DERIVE=,                                           @P1A*04200000
+               &FLDACC=,                                           @L8A*04250000
+               &BRANCH=,                                           @M1A*04300000
+               &MATCHGN=,                                          @M1A*04350000
+               &MF=S                                                    04400000
+.*  DEFINE LOCAL VARIABLES                                              04450000
+         LCLA  &FN                 USED TO CONTAIN NUMERIC VALUE        04500000
+.*                                 FOR FUNCTION                         04550000
+         LCLA  &VERS               USED TO CONTAIN VERSION NUMBER  @L8A 04600000
+.*                                 TESTS THAT LIST AND EXECUTE FORMS    04650000
+.*                                 HAVE SAME RELEASE NUMBER.            04700000
+         LCLA  &ENC                USED TO CONTAIN ADDRESS OF DATA      04750000
+.*                                 TO BE ENCRYPTED                      04800000
+         LCLA  &DFLTSP             USED TO SET DEFAULT SUBPOOL          04850000
+.*                                 WHEN ENTERED AS A STRING             04900000
+         LCLC  &SEG000             SEGMENT NAME (ADDRS OR CONST)   @L8A 04950000
+         LCLC  &CLS000             SEGMENT NAME (ADDRS OR CONST)   @L8A 05000000
+         LCLA  &GENFLG             GENERIC PROCESSING FLAG         @L8A 05050000
+         LCLA  &DRVFLG             DFP PROCESSING FLAG             @L8A 05100000
+         LCLA  &FLDACF             FLDACC PROCESSING FLAG          @L8A 05150000
+         LCLA  &BIT0,&BIT1,&BIT2,&BIT3,&BIT4,&BIT5,&BIT6,&BIT7     @L8A 05200000
+         LCLA  &BITA0,&BITA1,&BITA2,&BITA3                              05250000
+         LCLA  &BITA4,&BITA5,&BITA6,&BITA7                              05300000
+         LCLB  &RLVLCHK            USED TO CONTROL RELEASE-CHECK   @L7A 05350000
+         LCLC  &METH               USED TO CONTAIN ENCRYPTION METHOD    05400000
+         LCLC  &SP                 USED TO CONTAIN SUBPOOL VALUE        05450000
+         LCLC  &NX                 USED TO CONTAIN SYSNDX FOR LABELS    05500000
+         LCLB  &YCOPENT            0 => ENTITY IS SPECIFIED        @M2A 05550000
+.*                                 1 => ENTITYX IS SPECIFIED       @M2A 05600000
+         LCLC  &CMENTY             COMMON ENTITY VARIABLE          @M2A 05650000
+.*                                                                 @M2A 05700000
+.*  DEFINE GLOBAL VARIABLES                                             05750000
+         GBLC  &ICHL               USED FOR ADDRESS OF EXTRACT PARM     05800000
+         GBLA  &ICHCT              ICHCT - A COUNTER USED TO KEEP       05850000
+.*                                 TRACK OF WHERE IN THE PARAMETER      05900000
+.*                                 LIST THE PARAMETER IS TO BE          05950000
+.*                                 PLACED. ICHCT IS INITIALIZED TO      06000000
+.*                                 THE FIRST FULLWORD IN THE LIST       06050000
+.*                                 TO BE FILLED IN BY ICHMM,            06100000
+.*                                 AND INCREMENTED BY THE INNER         06150000
+.*                                 MACRO (ICHMM).                       06200000
+         GBLB  &ICHRAC             ICHRAC - A FLAG WHICH IS             06250000
+.*                                 INITIALIZED IN THE RACROUTE MACRO    06300000
+.*                                 TO COMMUNICATE TO RACXTRT THAT IT    06350000
+.*                                 IS BEING INVOKED AS AN INNER MACRO   06400000
+.*                                 TO THE RACROUTE MACRO.               06450000
+         GBLB  &ICHLIST            ICHLIST - A FLAG WHICH IS SET TO     06500000
+.*                                 INDICATE THE FORMAT OF THE MACRO.    06550000
+.*                                 FOR LIST FORMAT, ICHLIST IS ON       06600000
+.*                                 FOR EXECUTE FORMAT, ICHLIST IS       06650000
+.*                                 OFF. FOR STANDARD FORMAT, THERE      06700000
+.*                                 ARE TWO PASSES DONE BY THE MACRO     06750000
+.*                                 A LIST PASS AND AN EXECUTE PASS.     06800000
+.*                                 INITIALLY, FOR STANDARD, THE         06850000
+.*                                 FLAG  IS ON - FOR THE LIST PASS.     06900000
+.*                                 IT IS THEN TURNED OFF FOR THE        06950000
+.*                                 EXECUTE PASS.                        07000000
+         GBLB  &ICHNTFY            ICHNTFY - A GLOBAL INDICATOR         07050000
+.*                                 WHICH IS USED TO COMMUNICATE WITH    07100000
+.*                                 ICHMM - THE INNER MACRO. IF ICHNTFY  07150000
+.*                                 IS ON, THE INNER MACRO WILL NOT      07200000
+.*                                 ISSUE ITS OWN MNOTE IF IT FINDS AN   07250000
+.*                                 ERROR-IT WILL MERELY TURN ON THE     07300000
+.*                                 ICHINER FLAG AS NOTIFICATION TO THE  07350000
+.*                                 OUTER MACRO, WHICH WILL TAKE THE     07400000
+.*                                 APPROPRIATE ACTION.                  07450000
+.*                                 IF ICHNTFY IS OFF, THE INNER MACRO   07500000
+.*                                 WILL TAKE ACTION ON ITS OWN,         07550000
+.*                                 IE. ISSUE AN MNOTE WITH A SEVERITY   07600000
+.*                                 CODE OF ITS CHOOSING.                07650000
+         GBLB  &ICHINER            ICHINER - A GLOBAL INDICATOR         07700000
+.*                                 WHICH IS USED BY ICHMM - AN INNER    07750000
+.*                                 MACRO - TO TELL THE OUTER MACRO IF   07800000
+.*                                 AN ERROR HAS BEEN DETECTED IN A      07850000
+.*                                 PARAMETER.  IF ICHINER IS ON, AN     07900000
+.*                                 ERROR HAS BEEN DETECTED.             07950000
+         GBLC  &ICHMF              ICHMF - AN INDICATOR OF THE          08000000
+.*                                 FORMAT - L, E, S OR M           @M1C 08050000
+         GBLC  &ICHRLVL            SYMBOL TO BRANCH TO             @L7A 08100000
+.*                                 WHEN INCOMPATIBLE MACRO LEVEL.  @L7A 08150000
+.* VALIDATE RELEASE PARAMETER                                      @L7A 08200000
+         AIF   (&ICHRAC).RLVL01                                    @L7A 08250000
+         AGO   .ERRVSE             NOT INVOKED BY RACROUTE     @D62CDHH 08275000
+&ICHRLVL SETC  'ICH&SYSNDX.X'      CREATE LABEL FOR SVC BYPASS     @L7A 08300000
+.RLVL01  ANOP                                                      @L7A 08350000
+&VERS    SETA  0                   DEFAULT VERSION NUMBER          @L8A 08400000
+&YCOPENT SETB  0                   ASSUME THAT THE ENTITY IS       @M2A 08450000
+&CMENTY  SETC  '&ENTITY'           SPECIFIED.                      @M2A 08500000
+.*                                                                 @M2A 08550000
+.* VALIDATE THE RELEASE PARAMETER                                  @M2A 08600000
+.*                                                                 @M2A 08650000
+         AIF   (N'&RELEASE GT 2).ERLVL1  INVALID RELEASE PARAMETER @L7A 08700000
+         AIF   ('&RELEASE(1)' EQ '').VLIDREL                       @M2A 08750000
+         AIF   ('&RELEASE(1)' EQ '1.6').VLIDREL                    @M2A 08800000
+         AIF   ('&RELEASE(1)' EQ '1.7').VLIDREL                    @M2A 08850000
+         AIF   ('&RELEASE(1)' EQ '1.8').VLIDREL                    @M2A 08900000
+         AIF   ('&RELEASE(1)' EQ '1.8.1').VLIDREL                  @M2A 08950000
+         AIF   ('&RELEASE(1)' EQ '1.9').VLIDREL                    @M2A 09000000
+         AIF   ('&RELEASE(1)' EQ '1.9.2').VLIDREL                  @M3A 09050000
+         AIF   ('&RELEASE(1)' EQ '2.1').VLIDREL                    @M4A 09066600
+         AIF   ('&RELEASE(1)' EQ '2.2').VLIDREL                    @M5A 09083200
+         AGO   .ERLVL1                                             @M2A 09100000
+.VLIDREL ANOP                                                      @M2A 09150000
+.*                                                                 @M2A 09200000
+.* IF SECOND OPERAND IS SPECIFIED TEST THAT IT IS "CHECK" AND THE  @M2A 09250000
+.* THE MACRO FORMAT IS 'E'                                         @M2A 09300000
+.*                                                                 @M2A 09350000
+         AIF   (N'&RELEASE LE 1).NORLVLC     CHECK NOT SPECIFIED   @L7A 09400000
+         AIF   ('&RELEASE(2)' NE 'CHECK').ERLVL1   INVALID VALUE   @L7A 09450000
+         AIF   ('&MF(1)' NE 'E').ERLVL2     CHECK ONLY WITH MF=E   @L7A 09500000
+&RLVLCHK SETB  1                          ACTIVATE RELEASE-CHECK   @L7A 09550000
+.ERLVL2R ANOP                                                      @L7A 09600000
+.NORLVLC ANOP                                                      @L7A 09650000
+.*                                                                 @M2A 09700000
+.* TEST INCOMPATABILITY OF NEW KEYWORDS.                           @M2A 09750000
+.*                                                                 @M2A 09800000
+         AIF   ('&RELEASE(1)' EQ '').RLCHK16                       @P5A 09850000
+         AIF   ('&RELEASE(1)'(1,3) GE '1.9').RLCHK19               @P5C 09900000
+         AIF   ('&RELEASE(1)' GE '1.8.1').RLCHK18                  @M2A 09950000
+         AIF   ('&RELEASE(1)' GE '1.8').RLCHK18                    @M2A 10000000
+.*                                                                 @M2A 10050000
+.* KEYWORDS INTRODUCED IN RELEASE 1.8 ARE NOT SPECIFIED WITH       @M2A 10100000
+.* PREVIOUS RELEASES.                                              @M2A 10150000
+.*                                                                 @M2A 10200000
+.RLCHK16 ANOP                                                      @P5A 10250000
+         AIF   ('&SEGMENT&SEGDATA&ACEE&VOLSER&GENERIC&FLDACC&CLASS&DERIX10300000
+               VE' NE  '').ERR14                RELEASE IS 1.6/1.7 @M2C 10350000
+.ERTN14  ANOP                                                      @M2C 10400000
+         AIF   ('&TYPE' NE 'EXTRACT' AND '&TYPE' NE '' AND             X10450000
+               '&TYPE' NE 'ENCRYPT').ERR15                         @M2C 10500000
+.ERTN15  ANOP                                                      @M2C 10550000
+.*                                                                 @M2A 10600000
+.* KEYWORDS INTRODUCED IN RELEASE 1.9 ARE NOT SPECIFIED WITH       @M2A 10650000
+.* PREVIOUS RELEASES.                                              @M2A 10700000
+.*                                                                 @M2A 10750000
+.RLCHK18 ANOP                                                      @M2A 10800000
+         AIF   ('&BRANCH&MATCHGN' NE '').ERR14X                    @M2C 10850000
+.ERTN14X ANOP                                                      @M2A 10900000
+         AIF   ('&ENTITYX' NE '').ERR26                            @M2A 10950000
+.ERTN26  ANOP                                                      @M2A 11000000
+.RLCHK19 ANOP                                                      @M2A 11050000
+.*                                                                 @M2A 11100000
+.* UPWARD COMPATBILITY OF THE CODE.                                @M2A 11150000
+.*                                                                 @M2A 11200000
+         AIF  ('&RELEASE' LE '1.7').RL17COD                        @M2A 11250000
+         AIF  ('&RELEASE' EQ '1.8').RL18COD                        @M2A 11300000
+         AIF  ('&RELEASE' EQ '1.8.1').RL18COD                      @M2A 11350000
+         AIF   (NOT &ICHRAC).ERR23       NOT CALLED BY RACROUTE    @M2A 11400000
+.ERTN23  ANOP                            ISSUE MNOTE.              @M2A 11450000
+.************************************************************      @M1A 11500000
+.* VALIDITY CHECK BRANCH KEYWORD                                   @M1A 11550000
+.************************************************************      @M1A 11600000
+         AIF   ('&BRANCH' EQ 'NO' OR '&BRANCH' EQ '').BRCH010      @M1A 11650000
+         AIF   ('&BRANCH' NE 'YES').ERR24                          @M1A 11700000
+         AIF   ('&TYPE' NE 'EXTRACT' AND                               X11750000
+               '&TYPE' NE 'ENCRYPT').ERR22                         @M1A 11800000
+.ERTN22  ANOP                                                      @M1A 11850000
+.BRCH010 ANOP                                                      @M1A 11900000
+.*                                                                 @M2A 11950000
+.* TEST 1. ENTITY AND ENTITYX ARE MUTUALLY EXCLUSIVE.              @M2A 12000000
+.*      2. SET FLAG "YCOPENTY" WHEN ENTITYX IS SPECIFIED.          @M2A 12050000
+.*                                                                 @M2A 12100000
+         AIF   ('&ENTITY' NE '' AND '&ENTITYX' NE '' ).ERR25       @M2A 12150000
+.ERTN25  ANOP                                                      @M2A 12200000
+         AIF   ('&ENTITYX' EQ '').NOCOPY                           @M2A 12250000
+&YCOPENT SETB  1                  SET FLAG AS ENTITYX IS SPECIFIED @M2A 12300000
+&CMENTY  SETC  '&ENTITYX'                                          @M2A 12350000
+.NOCOPY  ANOP                                                      @M2A 12400000
+.RL18COD ANOP                                                      @M2A 12450000
+&VERS    SETA  1                                                   @M2A 12500000
+.RL17COD ANOP                                                      @M2A 12550000
+         AIF   ('&TYPE' NE 'ENCRYPT' AND T'&ENCRYPT NE 'O').ERR16  @M1C 12600000
+.ERLVL1R ANOP                                                      @L7A 12650000
+.************************                                               12700000
+.*   INITIALIZE VARIABLES                                               12750000
+.************************                                               12800000
+.INITVAR ANOP                                                      @L8A 12850000
+&NX      SETC  '&SYSNDX'                                                12900000
+&DFLTSP  SETA  229                 DEFAULT SUBPOOL                      12950000
+&ICHNTFY SETB  0                   WANT ICHMM TO ISSUE ERROR MSGS       13000000
+&ICHINER SETB  0                   INITIALIZE ICHINER TO 0              13050000
+.***********************************                                    13100000
+.*   SET UP INDICATORS FOR MF FORMAT                                    13150000
+.***********************************                                    13200000
+.*  VALIDATE MF PARAMETER                                               13250000
+         AIF   ('&MF' NE 'L' AND '&MF' NE 'S' AND '&MF(1)' NE          *13300000
+               'E' AND '&MF(1)' NE 'M').ERR01                      @M1C 13350000
+&ICHMF   SETC  '&MF(1)'        SET MF TYPE                              13400000
+         AIF   ('&MF(1)' NE 'M').MFLSE                             @M1A 13450000
+         AIF   (NOT &ICHRAC).ERR01  MF=M ONLY ALLOWED VIA RACROUTE @M1A 13500000
+&ICHMF   SETC  'E'             TREAT MF=M SAME AS MF=E             @M1A 13550000
+.MFLSE   ANOP                           MF=L, S OR E               @M1A 13600000
+         AIF   ('&ICHMF' EQ 'E').EXT0030                           @M1C 13650000
+&ICHLIST SETB  1               MF LIST OR STANDARD                      13700000
+         AIF   (T'&SEGMENT EQ 'O').SEG000                          @L8A 13750000
+         AIF   ('&SEGMENT'(1,1) EQ '''').SEGL000                   @L8A 13800000
+.SEG000  ANOP                                                      @L8A 13850000
+&SEG000  SETC  '&SEGMENT'                                          @L8A 13900000
+         AGO   .SEGL999                                            @L8A 13950000
+.SEGL000 ANOP  ,                                                   @L8A 14000000
+&SEG000  SETC  'ICH&NX.S'                                          @L8A 14050000
+.SEGL999 ANOP  ,                                                   @L8A 14100000
+         AIF   (T'&CLASS EQ 'O').CLS000                            @L8A 14150000
+         AIF   ('&CLASS'(1,1) EQ '''').CLSL000                     @L8A 14200000
+.CLS000  ANOP                                                      @L8A 14250000
+&CLS000  SETC  '&CLASS'                                            @L8A 14300000
+         AGO   .CLSL999                                            @L8A 14350000
+.CLSL000 ANOP  ,                                                   @L8A 14400000
+&CLS000  SETC  'ICH&NX.L'                                               14450000
+.CLSL999 ANOP  ,                                                        14500000
+         AGO   .CONT01                                                  14550000
+.EXT0030 ANOP                                                           14600000
+         AIF   ('&MF(2)' EQ '' OR N'&MF NE 2).ERR01                     14650000
+         AIF   (T'&SEGMENT EQ 'O').SEG001                          @L8A 14700000
+         AIF   ('&SEGMENT'(1,1) EQ '''').ERR17                     @L8A 14750000
+&SEG000  SETC  '&SEGMENT'                                          @L8A 14800000
+.ERTN17  ANOP  ,                                                   @L8A 14850000
+.SEG001  AIF   (T'&CLASS EQ 'O').CLS001                            @L8A 14900000
+         AIF   ('&CLASS'(1,1) EQ '''').ERR18                       @L8A 14950000
+&CLS000  SETC  '&CLASS'                                            @L8A 15000000
+.CLS001  ANOP  ,                                                   @L8A 15050000
+.ERTN18  ANOP  ,                                                   @L8A 15100000
+&ICHLIST SETB  0               MF EXECUTE                               15150000
+.****************************************************                   15200000
+.*  DETERMINE FUNCTION SUPPLIED                                         15250000
+.****************************************************                   15300000
+.CONT01  ANOP                                                           15350000
+.TYPECK  ANOP                                                      @L8A 15400000
+         AIF   ('&TYPE' EQ '').ERR07                               @L8A 15450000
+         AIF   ('&TYPE' EQ 'ENCRYPT').EXT0300                      @L8A 15500000
+         AIF   ('&TYPE' EQ 'REPLACE').REP0100                      @L8A 15550000
+         AIF   ('&TYPE' EQ 'EXTRACTN').EXT0200                     @L8A 15600000
+         AIF   ('&TYPE' NE 'EXTRACT').ERR05                        @L8A 15650000
+.****************************************************                   15700000
+.*   VALIDATE PARAMETERS ALLOWABLE WITH                                 15750000
+.*   TYPE=EXTRACT  TYPE=EXTRACTN TYPE=REPLACE                      @L8A 15800000
+.****************************************************                   15850000
+.EXT0100 ANOP                                                      @L8A 15900000
+&FN      SETA  1                         TYPE=EXTRACT              @L8A 15950000
+         AIF   ('&ICHMF' NE 'S').EXCONT1                           @L8A 16000000
+         AIF   ('&SEGDATA' NE '').ERR03                            @L8A 16050000
+         AGO   .EXCONT1                                            @L8A 16100000
+.EXT0200 ANOP                                                      @L8A 16150000
+&FN      SETA  3                         TYPE=EXTRACTN             @L8A 16200000
+         AIF   ('&ICHMF' NE 'S').EXCONT1                           @L8A 16250000
+         AIF   ('&SEGDATA' NE '').ERR03                            @L8A 16300000
+         AGO   .EXCONT1                                            @L8A 16350000
+.REP0100 ANOP                                                      @L8A 16400000
+&FN      SETA  4                         TYPE=REPLACE              @L8A 16450000
+         AIF   ('&MF' NE 'S').EXCONT1                              @L8A 16500000
+         AIF   ('&SEGMENT&SEGDATA' EQ '').ERR19                    @L8A 16550000
+         AIF   ('&SEGDATA' NE '' AND '&FIELDS' EQ '').ERR27        @P4A 16600000
+.ERTN27  ANOP                                                      @P4A 16650000
+.EXCONT1 ANOP                                                      @L8A 16700000
+         AIF   ('&ENCRYPT' NE '').ERR03                            @L8A 16750000
+         AIF   ('&SUBPOOL' EQ '').CONT01A                          @L8A 16800000
+         AIF   (T'&SUBPOOL NE 'N').ERR09  SUBPOOL NON-NUMERIC      @L8A 16850000
+         AIF   (&SUBPOOL LT 0 OR &SUBPOOL GT 255).ERR09            @L8A 16900000
+&SP      SETC  '&SUBPOOL'       COPY SUBPOOL VALUE TO LOCAL AREA   @L8A 16950000
+         AGO   .CONTSP                                             @L8A 17000000
+.CONT01A ANOP  ,                                                        17050000
+         AIF   ('&ICHMF' EQ 'E').CONTSP                            @L8A 17100000
+&SP      SETC  '&DFLTSP'      SET DEFAULT SUBPOOL IN LOCAL AREA    @L8A 17150000
+.CONTSP  ANOP  ,                                                        17200000
+         AIF   ('&GENERIC' EQ '' ).DFP                                  17250000
+         AIF   ('&GENERIC' NE 'ASIS' AND                               X17300000
+               '&GENERIC' NE 'YES').ERR11                          @L8A 17350000
+.DFP     ANOP  ,                                                   @L8A 17400000
+         AIF   ('&DERIVE' EQ '' ).FLDACC                           @P1A 17450000
+         AIF   ('&DERIVE' NE 'YES' AND                                 X17500000
+               '&DERIVE' NE 'NO').ERR12                            @P1A 17550000
+.FLDACC  ANOP  ,                                                   @L8A 17600000
+         AIF   ('&FLDACC' EQ '' ).MATCHG                           @M1C 17650000
+         AIF   ('&FLDACC' NE 'YES' AND                                 X17700000
+                '&FLDACC' NE 'NO').ERR13                           @L8A 17750000
+.MATCHG  ANOP  ,                                                   @M1A 17800000
+         AIF   ('&MATCHGN' EQ '' ).NOFLDA                          @M1A 17850000
+         AIF   ('&MATCHGN' NE 'YES' AND                                X17900000
+                '&MATCHGN' NE 'NO').ERR135                         @P2C 17950000
+.NOFLDA  ANOP                                                      @L8A 18000000
+         AGO   .CONT02                                                  18050000
+.****************************************************                   18100000
+.*   VALIDATE PARAMETERS ALLOWABLE WITH                                 18150000
+.*   TYPE=ENCRYPT                                                       18200000
+.****************************************************                   18250000
+.EXT0300 ANOP                                                           18300000
+&FN      SETA  2                                                        18350000
+         AIF   ('&FIELDS&SUBPOOL' NE '').ERR03                          18400000
+         AIF   ('&ENCRYPT' EQ '').ERR10                                 18450000
+         AIF   ('&ENCRYPT(2)' NE '' AND '&ENCRYPT(2)' NE 'DES' AND     X18500000
+               '&ENCRYPT(2)' NE 'HASH' AND '&ENCRYPT(2)' NE 'STDDES'   X18550000
+               AND '&ENCRYPT(2)' NE 'INST').ERR06                  @M1C 18600000
+.*                                 INVALID ENCRYPTION METHOD       @M1A 18650000
+         AIF   (N'&ENCRYPT GT 2).ERR04  TOO MANY SUBPARAMETERS          18700000
+         AIF   ('&ICHMF' NE 'S').CONT02                                 18750000
+         AIF   ('&ENCRYPT(1)' EQ '' OR '&ENCRYPT(2)' EQ '').ERR08       18800000
+.**************************************************************         18850000
+.*  BEGIN THE PARAMETER LIST AND ESTABLISH ADDRESSABILITY TO IT         18900000
+.**************************************************************         18950000
+.CONT02  ANOP                                                           19000000
+.* SET BITS FOR FLAG BYTE IN COMMON PART OF PLIST (OFFSET 5)       @M1A 19050000
+&BITA0   SETA  1                                                   @M1A 19100000
+&BITA1   SETA  1                                                   @P3C 19150000
+&BITA2   SETA  1                                                   @M1A 19200000
+&BITA3   SETA  1                                                   @M1A 19250000
+&BITA4   SETA  1                                                   @M1A 19300000
+&BITA5   SETA  1                                                   @M1A 19350000
+&BITA6   SETA  1                                                   @M1A 19400000
+&BITA7   SETA  1                                                   @M1A 19450000
+&BIT0    SETA  0                                                   @M1A 19500000
+&BIT1    SETA  0                                                   @P3C 19550000
+&BIT2    SETA  0                                                   @M1A 19600000
+&BIT3    SETA  0                                                   @M1A 19650000
+&BIT4    SETA  0                                                   @M1A 19700000
+&BIT5    SETA  0                                                   @M1A 19750000
+&BIT6    SETA  0                                                   @M1A 19800000
+&BIT7    SETA  0                                                   @M1A 19850000
+         AIF   ('&BRANCH' EQ '').CONT026   DON'T SET BRANCH BIT    @P6A 19900000
+         AIF   ('&BRANCH' EQ 'YES').CONT023                        @M1A 19950000
+&BITA0   SETA  0                           TURN OFF BRANCH BIT     @M1A 20000000
+         AGO   .CONT026                    CONTINUE                @M1A 20050000
+.CONT023 ANOP                              BRANCH=YES SPECIFIED    @M1A 20100000
+&BIT0    SETA  1                           TURN ON BRANCH BIT      @M1A 20150000
+.CONT026 ANOP                                                      @M1A 20200000
+         AIF   ('&ENTITYX' EQ '').CONT027  ENTITYX SPECIFIED?      @P3A 20250000
+&BIT1    SETA  1                           YES, INDICATE ENTITYX   @P3A 20300000
+         AGO   .CONT028                    CONTINUE                @P3A 20350000
+.CONT027 ANOP                                                      @P3A 20400000
+         AIF   ('&ENTITY' EQ '').CONT028   ENTITY SPECIFIED?       @P3A 20450000
+&BITA1   SETA  0                           YES, INDICATE ENTITY    @P3A 20500000
+.CONT028 ANOP                                                      @P3A 20550000
+         AIF   ('&ICHMF' NE 'E').EXT0215                                20600000
+.* MF=E                                                                 20650000
+         AIF   (&ICHRAC).EXT0212                                        20700000
+&NAME    IHBINNRA &MF(2)          POINT R1 AT PARAMETER LIST            20750000
+         AGO   .EXT0214                                                 20800000
+.EXT0212 ANOP                                                           20850000
+&NAME    A     1,36(1)            POINT R1 AT PARAMETER LIST            20900000
+.* IF REQUESTED, CHECK TYPE PARAMETER IN L- VS. E-FORM             @L7A 20950000
+.EXT0214 ANOP                                                      @L7A 21000000
+         AIF   (NOT &RLVLCHK).RLVLX20                              @L7A 21050000
+         AIF   (&FN NE 2).EXT0216                                  @L8A 21100000
+         CLI   3(1),2                                              @L8A 21150000
+         BNE   *+12                                                @L8A 21200000
+         CLI   4(1),&VERS          VERSION SAME FOR L AND E FORM ? @L8A 21250000
+         BE    *+12                YES                             @L8A 21300000
+         LA    15,100              SET INCOMPATIBLE MACROS R.C.    @L7A 21350000
+         B     &ICHRLVL                                            @L7A 21400000
+.EXT0216 AIF   (&FN EQ 2).RLVLX20                                  @L8A 21450000
+         CLI   3(1),2                                              @L8A 21500000
+         BE    *+12                                                @L8A 21550000
+         CLI   4(1),&VERS          VERSION SAME FOR L AND E FORM ? @L8A 21600000
+         BE    *+12                YES                             @L8A 21650000
+         LA    15,100              SET INCOMPATIBLE MACROS R.C.    @L7A 21700000
+         B     &ICHRLVL                                            @L7A 21750000
+.RLVLX20 ANOP                                                      @L7A 21800000
+         AGO   .CONT03                                                  21850000
+.EXT0215 ANOP                                                           21900000
+.* MF=L/S                                                               21950000
+         AIF   ('&MF' EQ 'S').EXT0222                          @YA08189 22000000
+&NAME    DS    0F                                              @YA08189 22050000
+         AIF   ('&MF' EQ 'L').EXT0223                          @ZA94352 22100000
+.* MF=S                                                                 22150000
+.EXT0222 ANOP                                                  @YA08189 22200000
+         CNOP  0,4                                                      22250000
+&NAME    BAL   1,ICH&NX.D         POINT R1 AT PARAMETER LIST   @YA11600 22300000
+.EXT0223 ANOP                                                  @ZA94352 22350000
+         AIF   (NOT &ICHRAC).EXT0224  INVOKER NOT RACROUTE     @ZA94352 22400000
+&ICHL    DS    0F                                              @YA08189 22450000
+.EXT0224 ANOP                                                           22500000
+.* MF=L/S                                                               22550000
+ICH&NX.A DS    0F                                              @YA08189 22600000
+         DC    AL2(ICH&NX.C-ICH&NX.A) LENGTH OF LIST IN BYTES           22650000
+         DC    XL1'82'            FUNCTION CODE FOR ICHRSV00            22700000
+         DC    AL1(&FN)           REQUEST TYPE                          22750000
+         DC    AL1(&VERS)         VERSION NUMBER                   @L8A 22800000
+         DC    B'&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6&BIT7'         @M1A 22850000
+         DC    AL2(ICH&NX.B-ICH&NX.A) OFFSET TO VARIABLE PART OF LIST   22900000
+.CONT03  ANOP                                                           22950000
+         AIF   ('&ICHMF' NE 'E').EXT0230                           @L8A 23000000
+         MVI   3(1),&FN            REQUEST TYPE                         23050000
+         AIF   ('&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6&BIT7' EQ          X23100000
+               '00000000').CONT13                                  @M1A 23150000
+.*                                 TURN ON BITS IN FLAG BYTE       @M1A 23200000
+         OI    5(1),B'&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6&BIT7'    @M1A 23250000
+.CONT13  ANOP  ,                                                   @M1A 23300000
+         AIF   ('&BITA0&BITA1&BITA2&BITA3&BITA4&BITA5&BITA6&BITA7' EQ  X23350000
+               '11111111').EXT0230                                 @M1A 23400000
+.*                                 TURN OFF BITS IN FLAG BYTE      @M1A 23450000
+         NI    5(1),B'&BITA0&BITA1&BITA2&BITA3&BITA4&BITA5&BITA6&BITA7' 23500000
+.EXT0230 ANOP  ,                                                   @L8A 23550000
+&ICHCT   SETA  2               INITIALIZE PARAMETER COUNTER             23600000
+         ICHMM &CMENTY                                            @M2C  23650000
+         AIF   (NOT &ICHLIST).EXT0231                                   23700000
+ICH&NX.B EQU   *                  END OF FIXED PART                     23750000
+.EXT0231 ANOP  ,                                                        23800000
+         AIF   (&FN EQ 2).EXT0310   REQUEST IS ENCRYPT                  23850000
+.***************************                                            23900000
+.* GENERATE LIST FOR                                                    23950000
+.* TYPE=EXTRACT, TYPE=EXTRACTN OR TYPE=REPLACE                     @L8A 24000000
+.***************************                                       @L8A 24050000
+         ICHMM &CLS000         ADDRESS OF CLASS                         24100000
+         ICHMM &SP             SUBPOOL NUMBER                           24150000
+         ICHMM &FIELDS         ADDRESS OF VARIABLE FIELDS          @L8A 24200000
+.EXTSL   ANOP                                                           24250000
+         AIF   (&VERS LT 1 ).CONT04                                @L8A 24300000
+         ICHMM &SEG000         ADDRESS OF SEGMENT                  @L8A 24350000
+         ICHMM &SEGDATA        ADDRESS OF VARIABLE SEGDATA FIELDS  @L8A 24400000
+         ICHMM &ACEE           ADDRESS OF ACEE                     @L8A 24450000
+         ICHMM &VOLSER         ADDRESS OF VOLSER                   @L8A 24500000
+.* INITIALIZE BITS SET VARIABLES                                        24550000
+&BITA0   SETA  1                                                   @L8A 24600000
+&BITA1   SETA  1                                                   @L8A 24650000
+&BITA2   SETA  1                                                   @L8A 24700000
+&BITA3   SETA  1                                                   @L8A 24750000
+&BITA4   SETA  1                                                   @L8A 24800000
+&BITA5   SETA  1                                                   @L8A 24850000
+&BITA6   SETA  1                                                   @L8A 24900000
+&BITA7   SETA  1                                                   @L8A 24950000
+&BIT0    SETA  0                                                   @L8A 25000000
+&BIT1    SETA  0                                                   @L8A 25050000
+&BIT2    SETA  0                                                   @L8A 25100000
+&BIT3    SETA  0                                                   @L8A 25150000
+&BIT4    SETA  0                                                   @L8A 25200000
+&BIT5    SETA  0                                                   @L8A 25250000
+&BIT6    SETA  0                                                   @L8A 25300000
+&BIT7    SETA  0                                                   @L8A 25350000
+         AIF   ('&ICHMF' NE 'E').XTRFL10                           @P2M 25400000
+         AIF   ('&MATCHGN' NE 'NO').XTRGEN                         @M1A 25450000
+&BITA4   SETA  0                                                   @M1A 25500000
+.XTRGEN  ANOP                                                      @M1A 25550000
+         AIF   ('&GENERIC' NE 'ASIS').XTRDFP                       @L8A 25600000
+&BITA5   SETA  0                                                   @L8A 25650000
+.XTRDFP  ANOP                                                      @L8A 25700000
+         AIF   ('&DERIVE' NE 'NO').XTRFLDA                         @P1A 25750000
+&BITA6   SETA  0                                                   @L8A 25800000
+.XTRFLDA ANOP                                                      @L8A 25850000
+         AIF   ('&FLDACC' NE 'NO').XTRFLGS                         @L8A 25900000
+&BITA7   SETA  0                                                   @L8A 25950000
+.XTRFLGS ANOP                                                      @L8A 26000000
+         AIF   ('&BITA1&BITA2&BITA3&BITA4&BITA5&BITA6&BITA7' EQ        X26050000
+               '1111111').XTRFL10 @L8A                                  26100000
+         NI   43(1),B'&BITA0&BITA1&BITA2&BITA3&BITA4&BITA5&BITA6&BITA7' 26150000
+.*  ADD BITA0 TO ABOVE BIT STRING                                  @M1C 26200000
+.XTRFL10 ANOP                                                      @L8A 26250000
+         AIF   ('&MATCHGN' NE 'YES').XTRT050                       @M1A 26300000
+&BIT4    SETA  1                                                   @M1A 26350000
+.XTRT050 ANOP                                                      @M1A 26400000
+         AIF   ('&GENERIC' NE 'YES').XTRT100                       @L8A 26450000
+&BIT5    SETA  1                                                   @L8A 26500000
+.XTRT100 ANOP                                                      @L8A 26550000
+         AIF   ('&DERIVE' NE 'YES').XTRT200                        @P1A 26600000
+&BIT6    SETA  1                                                   @L8A 26650000
+.XTRT200 ANOP                                                      @L8A 26700000
+         AIF   ('&FLDACC' NE 'YES').XTRT300                        @L8A 26750000
+&BIT7    SETA  1                                                   @L8A 26800000
+.XTRT300 ANOP                                                      @L8A 26850000
+         AIF   ('&ICHMF' NE 'E').CONTFLG                           @L8A 26900000
+         AIF   ('&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6&BIT7' EQ          X26950000
+               '00000000').CONTFLG                                 @L8A 27000000
+         OI    43(1),B'&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6&BIT7'   @L8A 27050000
+         AGO   .CONT04                                             @L8A 27100000
+.CONTFLG ANOP  ,                                                   @L8A 27150000
+         AIF   (NOT &ICHLIST).CONT04                               @L8A 27200000
+         DC    AL3(0)          RESERVED                            @L8A 27250000
+         DC    B'&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6&BIT7'         @L8A 27300000
+         AGO   .CONT04                                                  27350000
+.************************************                                   27400000
+.* GENERATE LIST FOR                                                    27450000
+.* TYPE=ENCRYPT                                                         27500000
+.************************************                                   27550000
+.EXT0310 ANOP                                                           27600000
+         ICHMM &ENCRYPT(1)   ADDRESS OF DATA TO BE ENCRYPTED            27650000
+         AIF   ('&ENCRYPT(2)' EQ '').EXT0340                            27700000
+         AIF   ('&ENCRYPT(2)' NE 'DES').EXT0330                         27750000
+&METH    SETC  '1'           DES ENCRYPTION METHOD                      27800000
+         AGO   .EXT0340                                                 27850000
+.EXT0330 ANOP  ,                                                        27900000
+         AIF   ('&ENCRYPT(2)' NE 'HASH').EXT0334                        27950000
+&METH    SETC  '2'           HASHING ENCRYPTION METHOD                  28000000
+         AGO   .EXT0340                                                 28050000
+.EXT0334 ANOP  ,                                                        28100000
+         AIF   ('&ENCRYPT(2)' NE 'INST').EXT0336                   @M1A 28150000
+&METH    SETC  '3'           INSTALLATION-DEFINED METHOD                28200000
+         AGO   .EXT0340                                            @M1A 28250000
+.EXT0336 ANOP  ,                                                   @M1A 28300000
+&METH    SETC  '4'           STANDARD DES ENCRYPTION METHOD        @M1A 28350000
+.EXT0340 ANOP  ,                                                        28400000
+         ICHMM  &METH        ENCRYPTION METHOD                          28450000
+.***************************************************************        28500000
+.*  AT THIS POINT, THE LIST AND EXECUTE FORMS ARE COMPLETED.  IF        28550000
+.*  THE LIST PASS OF THE STANDARD FORM HAS JUST BEEN COMPLETED,         28600000
+.*  RETURN FOR AN EXECUTE PASS.                                         28650000
+.***************************************************************        28700000
+.CONT04  ANOP                                                           28750000
+         AIF   (NOT &ICHLIST).CONT05  SKIP END-OF-LIST LABEL            28800000
+ICH&NX.C DS    0H                 END OF PARAMETER LIST                 28850000
+         AIF   (T'&SEGMENT EQ 'O').SEGM999                         @L8A 28900000
+         AIF   ('&SEGMENT'(1,1) NE '''').SEGM999                   @L8A 28950000
+&SEG000  DC    CL8&SEGMENT                                         @L8A 29000000
+.SEGM999 ANOP  ,                                                        29050000
+         AIF   (T'&CLASS EQ 'O').CLSM999                           @L8A 29100000
+         AIF   ('&CLASS'(1,1) NE '''').CLSM999                     @L8A 29150000
+&CLS000  DC    CL8&CLASS                                                29200000
+.CLSM999 ANOP  ,                                                        29250000
+ICH&NX.D DS    0H                                                       29300000
+.CONT05  ANOP                                                           29350000
+         AIF   ('&ICHMF' NE 'S' OR NOT &ICHLIST).CONT06                 29400000
+&ICHLIST SETB  0                                                        29450000
+         AGO   .CONT03           DO EXECUTE PATH OF STANDARD FORM       29500000
+.*****************************************************                  29550000
+.*  THE SVC INSTRUCTION IS GENERATED IF RACXTRT IS                      29600000
+.*  NOT INVOKED FROM THE RACROUTE MACRO OR IF THIS                      29650000
+.*  IS NOT A LIST PASS.                                                 29700000
+.*****************************************************                  29750000
+.CONT06  ANOP                                                           29800000
+         AIF   (&ICHRAC OR &ICHLIST).EROUTE                             29850000
+         SVC   132                INVOKE EXTRACT ROUTINE                29900000
+         AIF   (NOT &RLVLCHK).RLVLX40                              @L7A 29950000
+&ICHRLVL DS    0H                                                  @L7A 30000000
+.RLVLX40 ANOP                                                      @L7A 30050000
+         AGO   .EROUTE                                                  30100000
+.*****************                                                      30150000
+.*  ERROR MESSAGES                                                      30200000
+.*****************                                                      30250000
+.ERR01   ANOP                                                           30300000
+         MNOTE 12,'*** INVALID VALUE FOR ''MF'' PARAMETER'              30350000
+         AGO   .EROUTE                                                  30400000
+.ERR03   ANOP                                                           30450000
+         MNOTE 12,'*** EXTRANEOUS PARAMETERS SPECIFIED FOR ''TYPE=&TYPEX30500000
+               '''                                                      30550000
+         AGO   .EROUTE                                                  30600000
+.ERR04   ANOP                                                           30650000
+         MNOTE 12,'*** TOO MANY PARAMETERS SPECIFIED FOR ''ENCRYPT'' PAX30700000
+               RAMETER'                                                 30750000
+         AGO   .EROUTE                                                  30800000
+.ERR05   ANOP                                                           30850000
+         MNOTE 12,'*** INVALID VALUE FOR ''TYPE'' PARAMETER'            30900000
+         AGO   .EROUTE                                                  30950000
+.ERR06   ANOP                                                           31000000
+         MNOTE 12,'*** INVALID METHOD SPECIFIED FOR ''ENCRYPT'' PARAMETX31050000
+               ER'                                                      31100000
+         AGO   .EROUTE                                                  31150000
+.ERR07   ANOP                                                           31200000
+         MNOTE 12,'*** REQUIRED PARAMETER ''TYPE'' NOT SPECIFIED'       31250000
+         AGO   .EROUTE                                                  31300000
+.ERR08   ANOP                                                           31350000
+         MNOTE 12,'*** BOTH SUBPARAMETERS MUST BE SPECIFIED FOR ''ENCRYX31400000
+               PT'' PARAMETER'                                          31450000
+         AGO   .EROUTE                                                  31500000
+.ERR09   ANOP                                                           31550000
+         MNOTE 12,'*** INVALID VALUE FOR ''SUBPOOL'' PARAMETER'         31600000
+         AGO   .EROUTE                                                  31650000
+.ERR10   ANOP                                                           31700000
+         MNOTE 12,'*** ''ENCRYPT'' PARAMETER REQUIRED WITH ''TYPE=ENCRYX31750000
+               PT'''                                                    31800000
+         AGO   .EROUTE                                                  31850000
+.ERR11   ANOP                                                           31900000
+         MNOTE 12,'*** INVALID VALUE FOR '' GENERIC '' PARAMETER ' @L8A 31950000
+         AGO   .EROUTE                                                  32000000
+.ERR12   ANOP                                                           32050000
+         MNOTE 12,'*** INVALID VALUE FOR '' DERIVE '' PARAMETER '  @P1A 32100000
+         AGO   .EROUTE                                                  32150000
+.ERR13   ANOP                                                           32200000
+         MNOTE 12,'*** INVALID VALUE FOR '' FLDACC '' PARAMETER '  @L8A 32250000
+         AGO   .EROUTE                                                  32300000
+.ERR135  ANOP                                                           32350000
+         MNOTE 12,'*** INVALID VALUE FOR '' MATCHGN '' PARAMETER ' @P2A 32400000
+         AGO   .EROUTE                                             @P2A 32450000
+.ERR14   MNOTE 4,'*** ''RELEASE'' INCOMPATIBLE WITH SPECIFIED KEYWORD(SX32500000
+               ) ***'                                              @L8A 32550000
+         AGO   .ERTN14                                             @M2C 32600000
+.ERR14X  ANOP                                                      @M2A 32650000
+         MNOTE 4,'*** ''RELEASE'' INCOMPATIBLE WITH SPECIFIED KEYWORD(SX32700000
+               ) ***'                                              @M2A 32750000
+         AGO   .ERTN14X                                            @M2A 32800000
+.ERR15   ANOP                                                           32850000
+         MNOTE 4,'INVALID TYPE FOR SPECIFIED RELEASE   '           @L8A 32900000
+         AGO   .ERTN15                                             @M2C 32950000
+.ERR16   MNOTE 8,'*** ''ENCRYPT'' ONLY ALLOWED WITH TYPE=ENCRYPT'  @L8A 33000000
+         AGO   .EROUTE                                             @L8A 33050000
+.ERR17   MNOTE 8,'*** ''SEGMENT'' FORM NOT ALLOWED WITH MF=E '     @L8A 33100000
+         AGO   .ERTN17                                             @L8A 33150000
+.ERR18   MNOTE 8,'*** ''CLASS'' FORM NOT ALLOWED WITH MF=E       ' @L8A 33200000
+         AGO   .ERTN18                                             @L8A 33250000
+.ERR19   MNOTE 4,'*** TYPE=REPLACE WAS CODED AND SEGMENT/SEGDATA NOT SPX33300000
+               ECIFIED '                                           @L8A 33350000
+         AGO   .EXCONT1                                            @L8A 33400000
+.ERR22   MNOTE 8,'*** BRANCH=YES ONLY ALLOWED WITH TYPE=EXTRACT OR ENCRX33450000
+               YPT ****'                                           @M1A 33500000
+         AGO   .ERTN22                                             @M1A 33550000
+.ERR23   ANOP                                                      @M2C 33600000
+         MNOTE  8,'*** RACXTRT CAN BE INVOKED ONLY THROUGH RACROUTE FORX33650000
+                RELEASE 1.9 AND LATER ***'                         @M2A 33700000
+         AGO   .ERTN23                                             @M1A 33750000
+.ERR24   ANOP                                                      @M1A 33800000
+         MNOTE  8,'*** INVALID VALUE FOR '' BRANCH '' PARAMETER '  @M1A 33850000
+         AGO   .EROUTE                                             @M1A 33900000
+.ERR25   ANOP                                                      @M2A 33950000
+         MNOTE  8,'*** ENTITY AND ENTITYX ARE MUTUALLY EXCLUSIVE KEYWORX34000000
+               DS ***'                                             @M2A 34050000
+         AGO   .ERTN25                                             @M2A 34100000
+.ERR26   ANOP                                                      @M2A 34150000
+         MNOTE  8,'*** ''ENTITYX'' IS SUPPORTED BY RELEASE 1.9 AND LATEX34200000
+               R ONLY, ENTITYX IS IGNORED ***'                     @M2A 34250000
+         AGO   .ERTN26                                             @M2A 34300000
+.ERR27   ANOP                                                      @P4A 34350000
+         MNOTE  8,'*** PARAMETER ''FIELDS'' IS REQUIRED WITH ''SEGDATA'X34400000
+               ' ***'                                              @P4A 34450000
+         AGO   .ERTN27                                             @P4A 34500000
+.ERRVSE  ANOP                                                  @D62CDHH 34510000
+         MNOTE 8,'*** RACXTRT CAN BE INVOKED ONLY VIA RACROUTE FOR VSE/-34520000
+               ESA  ***'                                       @D62CDHH 34530000
+         AGO   .EROUTE                                         @D62CDHH 34540000
+.ERLVL1  MNOTE 8,'*** INCORRECT SPECIFICATION OF ''RELEASE'' ***'  @L7A 34550000
+         AGO   .ERLVL1R                                            @L7A 34600000
+.ERLVL2  MNOTE 4,'*** ''RELEASE-CHECK'' ONLY VALID WITH ''MF=E'' ***'  X34650000
+                                                                   @L7A 34700000
+         AGO   .ERLVL2R                                            @L7A 34750000
+.EROUTE  ANOP                                                           34800000
+.* RESET GLOBALS                                                        34850000
+&ICHL    SETC  ''                                                       34900000
+         MEND                                                           34950000

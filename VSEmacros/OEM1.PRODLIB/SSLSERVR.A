@@ -1,0 +1,2037 @@
+SSLBEGIN CSECT                                                                  
+*                                                                               
+* *                                                                             
+* * This is a sample assembler server that uses the BSD-C and SSL               
+* * api's. It will accept a command and send back a response.                   
+* *                                                                             
+*                                                                               
+MAINNAME DC    CL8'SSLSERVR'                                                    
+COMVERS  DC    CL8'01.00.00'       Version and release                          
+COMADATE DC    CL8'&SYSDATC'       Assembled date                               
+COMATIME DC    CL8'&SYSTIME'       Assembled time                               
+         ENTRY IPERRNO                                                          
+IPERRNO  DS    F                                                                
+         ENTRY IPRETCD                                                          
+IPRETCD  DS    F                                                                
+@TOASCII DC    A(TOASCII)                                                       
+@TOEBCDI DC    A(TOEBCDIC)                                                      
+RECBUFFL DC    F'1024'                                                          
+SNDBUFFL DC    F'1024'                                                          
+@CONORTN DC    A(CONO1000)                                                      
+@CMNDRTN DC    A(X'80000000'+CMND1000)                                          
+@SAMSRV  DS    A                                                                
+MAINECB  DC    F'0'                SUBTASK ACCEPT COMPLETED                     
+SHUTECB  DC    F'0'                TERMINATE REQUESTED ECB                      
+CMNDECB  DC    F'0'                COMMAND ECB                                  
+TIMEECB  DC    F'0'                SETIME ECB                                   
+DUMMYECB DC    F'0'                DUMMY ECB                                    
+MNABRRGS DS    15F                                                              
+MNABRETN DC    A(MAIN9000)         MAIN TASK RETURNS HERE                       
+PARMS    DS    0F                                                               
+PARM1    DS    F                                                                
+PARM2    DS    F                                                                
+PARM3    DS    F                                                                
+PARM4    DS    F                                                                
+PARM5    DS    F                                                                
+PARM6    DS    F                                                                
+SELX@ECB DC    A(X'80000000'+SELXECB)                                           
+SELXECB  DS    F                                                                
+*                                                                               
+* * SSL-C PASSED PARAMETER VALUES                                               
+ENVHAND1 DS    F                   Enviroment handle                            
+ENVHAND2 DS    F                   Enviroment handle                            
+ENVHAND3 DS    F                   Enviroment handle                            
+*                                                                               
+* * BSD-C PASSED PARAMETER VALUES                                               
+BASESOCK DS    F                   SOCKET NUMBER                                
+DOMAIN   DC    F'2'                SOCKET.H AF_INET                             
+TYPE     DC    F'1'                SOCKET.H SOCK_STREAM                         
+PROTOCOL DC    F'2'                SOCKET.H IPPROTO_TCP                         
+*                                                                               
+SOCKADDR DS    0F                  SOCKET.H struct sockaddr_in                  
+         DC    H'2'                SOCKET.H AF_INET                             
+SOCKPORT DC    H'6046'             PORT ADDRESS                                 
+         DS    F'0'                IP ADDRESS                                   
+SOCKADRL DC    F'8'                                                             
+*                                                                               
+BACKLOG  DC    F'3'                MAXIMUM CONNECTIONS                          
+*                                                                               
+COMGVSPL DC    CL6'SAMGVS',XL2'0000'                                            
+OCEXCMND DS    CL64                OPERATOR COMMAND LINE                        
+OCEXCMDL EQU   *-OCEXCMND          LENGTH OF OPERATOR COMMAND LINE              
+BLNKLINE DC    CL80' '             A BLANK LINE                                 
+COMFLAG1 DC    XL1'00'             COMMON FLAG                                  
+MAINSHUT EQU   X'80'               MAIN TASK IS SHUTTING DOWN                   
+CARDACTV EQU   X'40'               CARD COMMANDS BEING PROCESSED                
+CARDDONE EQU   X'20'               CARD READER COMMANDS DONE                    
+INITERR  EQU   X'10'               ERROR OCCURRED DURING INITIALIZATION         
+MAINLIST EQU   X'04'               MAIN TASK LISTEN WAS SUCCESSFUL              
+         SOCKET ID=00,MF=L         SOCKET GLOBAL CONTANTS                       
+CPUID    DS    0D,XL10                                                          
+PPID     DC    CL2' '                                                           
+PARTMBDY MAPEXTR  ID=BDY,DSECT=NO                                               
+SYSTMBDY MAPEXTR  ID=BDY,MODE=SYSP,DSECT=NO,PREFIX=SYS                          
+SVAMAP   MAPEXTR  ID=SVA,DSECT=NO,PREFIX=MAP                                    
+RETCODE  DC    F'99'                                                            
+FWORK    DS    F                                                                
+DWORK    DS    D                                                                
+CMNDTABL DS    0F                                                               
+SHUTDOWN DC    CL8'SHUTDOWN',A(X'80000000'+SHUT1000)                            
+SETPORT  DC    CL8'SETPORT ',A(X'80000000'+SETP1000)                            
+CALLPROG DC    CL8'CALLPROG',A(X'80000000'+CALP1000)                            
+HARTBEAT DC    CL8'HARTBEAT',A(X'80000000'+HART1000)                            
+CDLOAD   DC    CL8'CDLOAD  ',A(X'80000000'+CDLD1000)                            
+CONTROL  DC    CL8'CONTROL ',A(X'80000000'+CONT1000)                            
+ABEND000 DC    CL8'ABEND000',A(0)                                               
+CMNDENTL EQU   12                  LENGTH OF A SINGLE TABLE ENTRY               
+CMNDTCNT EQU   (*-CMNDTABL)/CMNDENTL NUMBER OF COMMANDS IN TABLE                
+*                                                                               
+         SSLVSE INLINE                                                          
+*                                                                               
+WRKAREA1 DS    XL256                                                            
+*                                                                               
+STCKSTRT DS    D                                                                
+STCKCURR DS    D                                                                
+STCKCDAT DS    D                                                                
+STCKLDAT DS    D                                                                
+STCKDATE DS    0CL10                                                            
+STCKCCN  DS    CL2                 CENTURY                                      
+STCKCYR  DS    CL2                 YEAR                                         
+         DC    C'/'                                                             
+STCKCMN  DS    CL2                 MONTH                                        
+         DC    C'/'                                                             
+STCKCDY  DS    CL2                 DAY                                          
+STCKCTIM DS    0CL8                                                             
+STCKCHR  DS    CL2                                                              
+         DC    C':'                                                             
+STCKCMIN DS    CL2                                                              
+         DC    C':'                                                             
+STCKCSEC DS    CL2                                                              
+STCKLTIM DS    CL8                                                              
+*                                                                               
+TSKTABL  DS    0F                  SUBTASK WORKAREAS                            
+@TSK001  DC    A(TSK001)                                                        
+@TSK002  DC    A(TSK002)                                                        
+@TSK003  DC    A(TSK003)                                                        
+TSKTCNT  EQU   (*-TSKTABL)/4                                                    
+HRTAB    DS    0F                                                               
+         DC    C'23',CL8'ELEVEN'                                                
+         DC    C'22',CL8'TEN'                                                   
+         DC    C'21',CL8'NINE'                                                  
+         DC    C'20',CL8'EIGHT'                                                 
+         DC    C'19',CL8'SEVEN'                                                 
+         DC    C'18',CL8'SIX'                                                   
+         DC    C'17',CL8'FIVE'                                                  
+         DC    C'16',CL8'FOUR'                                                  
+         DC    C'15',CL8'THREE'                                                 
+         DC    C'14',CL8'TWO'                                                   
+         DC    C'13',CL8'ONE'                                                   
+         DC    C'12',CL8'NOON'                                                  
+         DC    C'11',CL8'ELEVEN'                                                
+         DC    C'10',CL8'TEN'                                                   
+         DC    C'09',CL8'NINE'                                                  
+         DC    C'08',CL8'EIGHT'                                                 
+         DC    C'07',CL8'SEVEN'                                                 
+         DC    C'06',CL8'SIX'                                                   
+         DC    C'05',CL8'FIVE'                                                  
+         DC    C'04',CL8'FOUR'                                                  
+         DC    C'03',CL8'THREE'                                                 
+         DC    C'02',CL8'TWO'                                                   
+         DC    C'01',CL8'ONE'                                                   
+         DC    C'00',CL8'MIDNIGHT'                                              
+MNTAB    DS    0F                                                               
+         DC    C'01',CL8'JANUARY '                                              
+         DC    C'02',CL8'FEBRUARY'                                              
+         DC    C'03',CL8'MARCH   '                                              
+         DC    C'04',CL8'APRIL   '                                              
+         DC    C'05',CL8'MAY     '                                              
+         DC    C'06',CL8'JUNE    '                                              
+         DC    C'07',CL8'JULY    '                                              
+         DC    C'08',CL8'AUGUST  '                                              
+         DC    C'09',CL8'SEPTMBER'                                              
+         DC    C'10',CL8'OCTOBER '                                              
+         DC    C'11',CL8'NOVEMBER'                                              
+         DC    C'12',CL8'DECEMBER'                                              
+CONOUT   DS    CL64                        OUTPUT BUFFER AREA                   
+CONINPUT EQU   CONOUT                      INPUT BUFFER AREA                    
+LINEOUT  DS    CL121                                                            
+*                                                                               
+* * TRANSLATE TABLE DEFINITIONS                                                 
+         DC       C'0123456789ABCDEF'                                           
+TRTABEN  DS       0X                                                            
+         ORG      *-256                                                         
+TRTAB    DS       0X                                                            
+         ORG      TRTABEN                                                       
+*                                                                               
+* *      EBCDIC TO ASCII                                                        
+*                    0 1 2 3 4 5 6 7 8 9 A B C D E F                            
+TOASCII  DC       X'000102030405060708090A0B0C0D0E0F' 00-0F                     
+         DC       X'10111213140A161718191A1B1C1D1E1F' 10-1F                     
+         DC       X'00000000000000000000000000000000' 20-2F                     
+         DC       X'00000000000000000000000000000000' 30-3F                     
+         DC       X'200000000000000000005B2E3C282B7C' 40-4F                     
+         DC       X'2600000000000000000021242A293B5E' 50-5F                     
+         DC       X'2D2F00000000000000007C2C255F3E3F' 60-6F                     
+         DC       X'000000000000000000603A2340273D22' 70-7F                     
+         DC       X'00616263646566676869008B00000000' 80-8F                     
+         DC       X'006A6B6C6D6E6F707172000000000000' 90-9F                     
+         DC       X'007E737475767778797A000000000000' A0-AF                     
+         DC       X'00000000000000000000000000000000' B0-BF                     
+         DC       X'7B414243444546474849000000000000' C0-CF                     
+         DC       X'7D4A4B4C4D4E4F505152000000000000' D0-DF                     
+         DC       X'5C00535455565758595A000000000000' E0-EF                     
+         DC       X'303132333435363738390000000000FF' F0-FF                     
+*                                                                               
+*        ASCII TO EBCDIC                                                        
+*                    0 1 2 3 4 5 6 7 8 9 A B C D E F                            
+TOEBCDIC DC       X'000102030405060708090A0B0C0D0E0F' 00-0F                     
+         DC       X'101112131415161718191A1B1C1D1E1F' 10-1F                     
+         DC       X'405A7F7B5B6C507D4D5D5C4E6B604B61' 20-2F                     
+         DC       X'F0F1F2F3F4F5F6F7F8F97A5E4C7E6E6F' 30-3F                     
+         DC       X'7CC1C2C3C4C5C6C7C8C9D1D2D3D4D5D6' 40-4F                     
+         DC       X'D7D8D9E2E3E4E5E6E7E8E94AE04F5F6D' 50-5F                     
+         DC       X'79818283848586878889919293949596' 60-6F                     
+         DC       X'979899A2A3A4A5A6A7A8A9C06AD0A100' 70-7F                     
+         DC       X'00000000000000000000000000000000' 80-8F                     
+         DC       X'00000000000000000000000000000000' 90-9F                     
+         DC       X'00000000000000000000000000000000' A0-AF                     
+         DC       X'00000000000000000000000000000000' B0-BF                     
+         DC       X'00000000000000000000000000000000' C0-CF                     
+         DC       X'00000000000000000000000000000000' D0-DF                     
+         DC       X'00000000000000000000000000000000' E0-EF                     
+         DC       X'000000000000000000000000000000FF' F0-FF                     
+*                                                                               
+* * THE FOLLOWING ROUNDS OFF SO WE START ON A PAGE BNDRY                        
+* * WHICH IS NICE FOR TRACING...                                                
+         DS    XL((4096-120-8)-(*-SSLBEGIN))                                    
+         DROP  ,                                                                
+*                                                                               
+         DC    CL8'MAIN1000'                                                    
+SSLSERVR CSECT                                                                  
+SSLSERVR RMODE 24                                                               
+SSLSERVR AMODE 31                                                               
+         ENTRY SSLSERVR                                                         
+*                                                                               
+* * PROGRAM EXECUTION STARTS HERE...                                            
+* * WE SHOULD BE ENTERED IN 31-BIT mode and will go into 24-bit                 
+* * MODE ONLY WHEN USING A SERVICE that requires 24-bit mode...                 
+MAIN1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R12,R15             set 1st base register                        
+         USING SSLSERVR,R12        establish new base register                  
+         ST    R13,MAINSAVE+4      store callers r13                            
+         LA    R13,MAINSAVE        provide savearea                             
+         L     R9,=A(SSLBEGIN)     @ of maintask common area                    
+         USING SSLBEGIN,R9                                                      
+         AMODESW SET,AMODE=24      switch to 24 bit mode for opens              
+         OPEN  CONSOLE,LISTING                                                  
+         AMODESW SET,AMODE=31      switch back to 31-bit mode                   
+         SLR   R8,R8               clear task work area pointer                 
+         ST    R12,@SAMSRV         store our address                            
+         UNPK  BIGWORK1(9),@SAMSRV(5) unpack                                    
+         TR    BIGWORK1(8),TRTAB    translate to hex                            
+         MVC   INITADDR,BIGWORK1   move into the message                        
+         LA    R0,INITMSGL                                                      
+         LA    R1,INITMSG                                                       
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         EXTRACT  ID=CPUID,AREA=CPUID,len=10                                    
+         EXTRACT  ID=BDY,AREA=SYSTMBDY,len=syssylen                             
+         EXTRACT  ID=SVA,AREA=SVAMAP,len=mapsvaln                               
+         L     R2,20               @ of activce comreg                          
+         USING COMREG,R2                                                        
+         MVC   PPID,PID            get our pik                                  
+         EXTRACT  ID=PART,AREA=PARTMBDY,LEN=MBDYLEN,PID=PPID                    
+         DROP  R2                                                               
+         L     R0,=A(MNAB1000)     abend exit routine                           
+         L     R1,=A(MNABSAV1)     abend save area                              
+*        STXIT AB,(0),(1),AMODE=ANY,OPTION=NODUMP                               
+         STM   R0,R14,MNABRRGS     store regs in case of abend                  
+         BAL   R2,TRACEIT                                                       
+         DC    CL8'MAIN1000'                                                    
+MAIN1400 DS    0H                                                               
+         LA    R2,TSKTABL          @ of subtask workareas                       
+         LA    R3,TSKTCNT          number of subtasks in the table              
+         LA    R5,1                named starting with one                      
+*                                                                               
+* * FIRST LETS GO AHEAD AND ATTACH the vse subtasks...                          
+MAIN1500 DS    0H                                                               
+         L     R8,0(R2)            @ of the task work area                      
+         USING TSKWORK,R8          to use during card1000                       
+         L     R0,SNDBUFFL         get this much storage                        
+         GETVIS SPID=COMGVSPL                                                   
+         LTR   R15,R15             did it work                                  
+         BZ    MAIN1700            bif yes                                      
+         BAL   R1,MAIN7000         exit with error reason                       
+         DC    CL8'GETVIS02'                                                    
+MAIN1700 DS    0H                                                               
+         ST    R1,TSK@SEND         store send buffer address                    
+         CVD   R5,DWORK            use this for the task name                   
+         UNPK  FWORK(3),DWORK+6(2) unpack it to printable                       
+         OI    FWORK+2,X'F0'       make the sign right                          
+         MVC   TSKSAVAR+0(6),=C'SSLSRV'                                         
+         MVC   TSKSAVAR+6(2),FWORK+1 subtask name                               
+         L     R11,=A(TASK1000)    entry point                                  
+         ATTACH (R11),             attach a vse subtask                X        
+               SAVE=(S,TSKSAVAR),  vse task save area                  X        
+               ECB=(S,TSKTECB)     post this ecb when this task ends            
+         LTR   R1,R1               did it work?                                 
+         BP    MAIN1800            bif yes                                      
+         BAL   R1,MAIN7000         exit with error reason                       
+         DC    CL8'ATTFAILD'                                                    
+MAIN1800 DS    0H                                                               
+         OI    TSKFLAG1,TSKATTCH   flag task as attached                        
+         LA    R5,1(,R5)           add one here too                             
+         LA    R2,4(,R2)           bump to the next task                        
+         BCT   R3,MAIN1500         do it again                                  
+*                                                                               
+         LA    R1,MAINECB          maintask ecb for subtasks to post            
+         ST    R1,@MAINECB         store it                                     
+         LA    R1,CMNDECB          common terminate ecb                         
+         ST    R1,@CMNDECB         store it                                     
+         LA    R1,TIMEECB          timer ecb                                    
+         ST    R1,@TIMEECB         store it                                     
+         LA    R1,SHUTECB          common terminate ecb                         
+         ST    R1,@SHUTECB         store it                                     
+         LA    R1,DUMMYECB         dummy ecb last in the list                   
+         ST    R1,@DUMBECB         store it                                     
+         OI    @DUMBECB,X'80'      flag as last ecb in the list                 
+         L     R15,=A(CARD1000)    read commands from sysrdr                    
+         BASSM R14,R15                                                          
+MAIN1900 DS    0H                                                               
+         L     R0,=A(OCEX1000)     operator communication exit rtn              
+         L     R1,=A(OCEXSAV1)     oc exit save area                            
+         STXIT OC,(0),(1),MSGDATA=YES,AMODE=ANY                                 
+         MVI      TIMEECB+2,X'80'  post the timer ecb                           
+*                                                                               
+* * NOW STARTS THE MAIN LOOP OF WAIting for something to do                     
+* * SINCE WE ALREADY HAVE THE TASKS attached we set it up so                    
+* * AS SOON AS SOMETHING COMES IN We have a subtask sitting on an               
+* * ACCEPT WHICH IS A WAIT ON THE Passive ecb...                                
+*                                                                               
+* * FIND A FREE SUBTASK...                                                      
+MAIN2000 DS    0H                                                               
+         LA    R2,TSKTABL          @ of subtask workareas                       
+         LA    R3,TSKTCNT          number of subtasks in the table              
+MAIN2100 DS    0H                                                               
+         L     R8,0(R2)            @ of the task work area                      
+         USING TSKWORK,R8                                                       
+         TM    TSKFLAG1,TSKINUSE   is it in use?                                
+         BO    MAIN2130            bif yes skip it                              
+         TM    TSKFLAG1,TSKATTCH   is it attached?                              
+         BO    MAIN2200            bif yes use it                               
+MAIN2130 DS    0H                                                               
+         LA    R2,4(,R2)           bump to the next task                        
+         BCT   R3,MAIN2100         try again                                    
+         BAL   R1,MAIN7000         exit with error reason                       
+         DC    CL8'NOSUBTSK'                                                    
+MAIN2200 DS    0H                                                               
+         ST    R8,@TSKWORK         store the current task work                  
+         OI    TSKFLAG1,TSKINUSE   flag task as in use                          
+         TM    COMFLAG1,MAINLIST   did we already do the listen ?               
+         BO    MAIN2800            bif yes post a subtask to accept..           
+*                                                                               
+* * SSL-C gsk_initialize()...                                                   
+         LA    R0,=C'SSL30'        ssl protocol version                         
+*        LA    R0,=C'TLS31'        tls protocol version                         
+         ST    R0,INI@PROT                                                      
+         LA    R0,INITDATA                                                      
+         ST    R0,PARM1            store it                                     
+         OI    PARM1,X'80'         flag as last parameter                       
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRINIT)    @ ssl-c routine                              
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did it work ?                                
+         BZ    MAIN2220            bif yes                                      
+         BAL   R1,MAIN7600         force exit now                               
+         DC    C'IPCRINIF'                                                      
+MAIN2220 DS    0H                                                               
+*                                                                               
+* * BSD-C SOCKET() CALL INVOKES IPNRSOCK...                                     
+         LA    R1,DOMAIN           @ of domain                                  
+         ST    R1,PARM1            store it                                     
+         LA    R1,TYPE             @ of type                                    
+         ST    R1,PARM2            store it                                     
+         LA    R1,PROTOCOL         @ of protocol                                
+         ST    R1,PARM3            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRSOCK)    @ socket function routine                    
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we get a socket number ?                 
+         BNM   MAIN2400            bif yes                                      
+         BAL   R1,MAIN7600         bsdc function failed                         
+         DC    C'IPNRSOCK'                                                      
+MAIN2400 DS    0H                                                               
+         ST    R15,BASESOCK        store the assigned socket number             
+*                                                                               
+* * BSD-C BIND() CALL INVOKES IPNRBIND...                                       
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,PARM1            store it                                     
+         LA    R1,SOCKADDR         @ of sockaddr_in structure                   
+         ST    R1,PARM2            store it                                     
+         LA    R1,SOCKADRL         @ of length of structure                     
+         ST    R1,PARM3            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRBIND)    @ bind function routine                      
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we bind to the port ?                    
+         BNM   MAIN2500            bif yes                                      
+         BAL   R1,MAIN7600         bsdc function failed                         
+         DC    C'IPNRBIND'                                                      
+MAIN2500 DS    0H                                                               
+*                                                                               
+* * BSD-C LISTEN() CALL INVOKES IPNRLIST...                                     
+* * THIS WILL CAUSE A PASSIVE OPEN to be issued...                              
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,PARM1            store it                                     
+         LA    R1,BACKLOG          @ maximum connections                        
+         ST    R1,PARM2            store it                                     
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPNRLIST)    @ listen function routine                    
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the listen work ?                        
+         BNM   MAIN2700            bif yes                                      
+         BAL   R1,MAIN7600         bsdc function failed                         
+         DC    C'IPNRLIST'                                                      
+*                                                                               
+* * Maintask is now waiting for someone to connect to it...                     
+MAIN2700 DS    0H                                                               
+         OI    COMFLAG1,MAINLIST   flag as initial listen done                  
+MAIN2800 DS    0H                                                               
+         LA    R1,TSKECB1          post this ecb                                
+         LA    R0,TSKSAVAR         of this subtask                              
+         POST  (1),(0)             make vse subtask ready to run                
+MAIN3000 DS    0H                                                               
+         LA    R1,MAINWLST         ecb list to wait on                          
+         WAITM (1)                 wait for something to happen                 
+         STCK  STCKCURR            store the current time                       
+         C     R1,@SHUTECB         should we terminate                          
+         BE    MAIN8000            bif yes                                      
+         XC    0(4,R1),0(R1)       clear the posted ecb                         
+         C     R1,@MAINECB         did a subtask accept a connection ?          
+         BE    MAIN4000            bif yes                                      
+         C     R1,@CMNDECB         was there a command to process?              
+         BE    MAIN5000            bif yes                                      
+         C     R1,@TIMEECB         did setime expire?                           
+         BE    MAIN6000            bif yes                                      
+         BAL   R1,MAIN7000         exit with error reason                       
+         DC    C'BADMECB'                                                       
+*                                                                               
+* * THE SUBTASK HAD A CONNECTION SO lets find a new subtask                     
+* * TO LISTEN ON BASESOCK...                                                    
+MAIN4000 DS    0H                                                               
+         L     R1,CONNECTD         counter of connects processed                
+         LA    R1,1(,R1)           plus 1 more                                  
+         ST    R1,CONNECTD         store updated counter of connects            
+         B     MAIN2000            find a new subtask                           
+CONNECTD DC    F'0'                number of connections                        
+*                                                                               
+MAIN5000 DS    0H                                                               
+         LA    R0,OCEXCMDL                                                      
+         LA    R1,OCEXCMND         @ of operator command                        
+         L     R15,@CMNDRTN        call the command processor                   
+         BASSM R14,R15                                                          
+*                                                                               
+* * ALL COMMANDS GIVE A RESPONSE SO lets display it on the console              
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     MAIN3000            go reissue the waitm                         
+*                                                                               
+MAIN6000 DS    0H                                                               
+         COMRG R2                                                               
+         USING COMREG,R2                                                        
+         LM    R0,R1,STCKCURR      get the current time                         
+         GETIME STANDARD,LOCAL,CLOCK=YES                                        
+         ST    R1,FWORK                                                         
+         STM   R14,R15,STCKCDAT    store the current date                       
+         TM    LTACT,DDMMYY        is this european date format?                
+         BO    MAIN6020            bif yes                                      
+         MVC   STCKCMN,STCKCDAT+0  month                                        
+         MVC   STCKCDY,STCKCDAT+2  day                                          
+         B     MAIN6030                                                         
+MAIN6020 DS    0H                                                               
+         MVC   STCKCDY,STCKCDAT+0  day                                          
+         MVC   STCKCMN,STCKCDAT+2  month                                        
+MAIN6030 DS    0H                                                               
+         MVC   STCKCYR,STCKCDAT+4  year                                         
+         MVC   STCKCCN,STCKCDAT+6  century                                      
+         DROP  R2                                                               
+         UNPK  DWORK,FWORK         unpack                                       
+         OI    DWORK+7,X'F0'       fix the sign                                 
+         MVC   STCKCHR,DWORK+2                                                  
+         MVC   STCKCMIN,DWORK+4                                                 
+         MVC   STCKCSEC,DWORK+6                                                 
+         CLC   STCKCDAT,STCKLDAT           is it a new day?                     
+         BNE   MAIN6100                    bif yes                              
+         CLC   STCKCMIN,STCKLTIM+3         is it a new minute?                  
+         BNE   MAIN6300                    bif yes                              
+         LA    R0,L'TIMEECBX                                                    
+         LA    R1,TIMEECBX         message                                      
+         L     R15,@CONORTN                                                     
+*         BASSM R14,R15                                                         
+         B     MAIN6800            exit                                         
+TIMEECBX DC    CL8'TIMEECBX'                                                    
+MAIN6100 DS    0H                                                               
+         ICM   R0,15,STCKSTRT      is this the first time ever?                 
+         BNZ   MAIN6120            bif no                                       
+         MVC   DATEFDAT,STCKDATE   move in the date                             
+         LA    R0,DATEFRSL         message length                               
+         LA    R1,DATEFRST         message                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         MVC   STCKSTRT,STCKCURR   save the start up store clock                
+         B     MAIN6180            all set                                      
+MAIN6120 DS    0H                                                               
+         LA    R15,12              loop                                         
+         LA    R14,MNTAB           @ table of months                            
+MAIN6130 DS    0H                                                               
+         CLC   0(2,R14),STCKCMN    is it a hit                                  
+         BE    MAIN6140            bif yes                                      
+         LA    R14,10(,R14)        bump                                         
+         BCT   R15,MAIN6130        loop                                         
+MAIN6140 DS    0H                                                               
+         MVC   DATENMON,2(R14)     move in month as a word                      
+         MVC   DATENDY,STCKCDY     move in day                                  
+         MVC   DATENCN,STCKCCN     move in century                              
+         MVC   DATENYR,STCKCYR     move in year                                 
+         LA    R0,DATENDAL         message length                               
+         LA    R1,DATENDAY         message                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+MAIN6180 DS    0H                                                               
+         MVC   STCKLDAT,STCKCDAT   set up for next time                         
+         B     MAIN6800            exit                                         
+MAIN6300 DS    0H                                                               
+         CLC   STCKCMIN,=C'00'     is it this                                   
+         BE    MAIN6360            bif yes                                      
+         CLC   STCKCMIN,=C'15'     is it this                                   
+         BE    MAIN6315            bif yes                                      
+         CLC   STCKCMIN,=C'30'     is it this                                   
+         BE    MAIN6330            bif yes                                      
+         CLC   STCKCMIN,=C'45'     is it this                                   
+         BE    MAIN6345            bif yes                                      
+         MVC   TIMEMNMT,STCKCTIM   move in time it is now                       
+         LA    R0,TIMEMNML         message length                               
+         LA    R1,TIMEMNMN         message                                      
+         L     R15,@CONORTN                                                     
+*         BASSM R14,R15                                                         
+         B     MAIN6800            exit                                         
+MAIN6315 DS    0H                                                               
+         LA    R0,TIMEQAFL         message length                               
+         LA    R1,TIMEQAFH         message                                      
+         LA    R2,TIMEQAHR         put hour here                                
+         B     MAIN6380            issue nice message                           
+MAIN6330 DS    0H                                                               
+         LA    R0,TIMEHAFL         message length                               
+         LA    R1,TIMEHAFH         message                                      
+         LA    R2,TIMEHAHR         put hour here                                
+         B     MAIN6380            issue nice message                           
+MAIN6345 DS    0H                                                               
+         LA    R0,TIMEQTLL         message length                               
+         LA    R1,TIMEQTLH         @ message                                    
+         LA    R2,TIMEQTHR         put hour here                                
+         B     MAIN6380            issue nice message                           
+MAIN6360 DS    0H                                                               
+         LA    R0,TIMENHRL         message length                               
+         LA    R1,TIMENHRM         message                                      
+         LA    R2,TIMENHRH         put hour here                                
+MAIN6380 DS    0H                                                               
+         LA    R15,24              loop                                         
+         LA    R14,HRTAB           @ table of hours                             
+MAIN6382 DS    0H                                                               
+         CLC   0(2,R14),STCKCHR    is it a hit                                  
+         BE    MAIN6384            bif yes                                      
+         LA    R14,10(,R14)        bump                                         
+         BCT   R15,MAIN6382        loop                                         
+MAIN6384 DS    0H                                                               
+         MVC   0(8,R2),2(R14)      move in hour as a word                       
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+MAIN6800 DS    0H                                                               
+         MVC   STCKLTIM,STCKCTIM   set up for next time                         
+         LA    R2,TIMEECB          @ setime ecb                                 
+         LA    R1,30               wake up every 30 seconds                     
+         SETIME (1),(2)            set the timer                                
+         B     MAIN3000            reissue the waitm                            
+*                                                                               
+MAIN7000 DS    0H                                                               
+         LTR   R15,R15             was a return code passed                     
+         BNZ   MAIN7200            bif yes                                      
+         LA    R15,8               set bad return code                          
+MAIN7200 DS    0H                                                               
+         ST    R15,RETCODE         store it                                     
+         MVC   IERRRESN,0(R1)      error message reason                         
+         LA    R0,IERRMSGL         error message length                         
+         LA    R1,IERRMSG          error message text                           
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15             write error reason onto syslst               
+         B     MAIN9000            exit                                         
+*                                                                               
+MAIN7600 DS    0H                                                               
+         LA    R15,9                                                            
+         ST    R15,RETCODE         store it                                     
+         MVC   BSDCNAME,0(R1)      name of program                              
+         UNPK  BIGWORK1(9),IPERRNO(5) unpack                                    
+         TR    BIGWORK1(8),TRTAB    translate to hex                            
+         MVC   BSDCRETC,BIGWORK1   move into the message                        
+         UNPK  BIGWORK1(9),IPRETCD(5) unpack                                    
+         TR    BIGWORK1(8),TRTAB    translate to hex                            
+         MVC   BSDCERRC,BIGWORK1   move into the message                        
+         LA    R0,BSDCEMSL         message length                               
+         LA    R1,BSDCEMSG         message text                                 
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15             write error reason onto syslst               
+         B     MAIN9000            exit                                         
+*                                                                               
+MAIN8000 DS    0H                                                               
+         LA    R2,TIMEECB          @ setime ecb                                 
+         LA    R1,3                wait for this many seconds                   
+         SETIME (1),(2)            set the timer                                
+         LA    R1,TIMEECB          wait for the subtasks to terminate           
+         WAIT  (1)                                                              
+         LA    R15,0               return code is zero                          
+         ST    R15,RETCODE         store the return code                        
+MAIN9000 DS    0H                                                               
+         LA    R15,MAIN9900        if abend occurs restart here                 
+         ST    R15,MNABRETN        store it for stxit ab exit                   
+         TM    COMFLAG1,CARDDONE   did we read the card commands                
+         BO    MAIN9200            bif yes                                      
+         OI    COMFLAG1,INITERR    error must have occurred during init         
+         L     R15,=A(CARD1000)    flush sysrdr                                 
+         BASSM R14,R15                                                          
+MAIN9200 DS    0H                                                               
+         LA    R0,L'SHUTMSG                                                     
+         LA    R1,SHUTMSG                                                       
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+MAIN9900 DS    0H                                                               
+*                                                                               
+* * THE FOLLOWING IS THE SAME AS DOing an eoj macro...                          
+         L     R15,RETCODE         return code                                  
+         L     R13,MAINSAVE+4      restore job controls r13                     
+         LM    R0,R12,20(R13)      restore r0-r12                               
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+*                                                                               
+* *                                                                             
+TRACEIT  DS    0H                                                               
+         LA    R0,8                                                             
+         LTR   R1,R2               @ of trace info                              
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     8(R2)               return                                       
+*                                                                               
+MAINSAVE DS    9D                                                               
+MAINWLST DS    0F                  maintask waitm ecb list                      
+@MAINECB DS    F                                                                
+@CMNDECB DS    F                                                                
+@SHUTECB DS    F                                                                
+@TIMEECB DS    F                                                                
+@DUMBECB DS    F                                                                
+@TSKWORK DS    F                                                                
+BIGWORK1 DS    XL256               big work area                                
+BIGWORK2 DS    XL256               big work area                                
+BIGWORK3 DS    XL256               big work area                                
+BIGWORK4 DS    XL256               big work area                                
+*                                                                               
+INITMSG  DC    C'SSLSERVR='                                                     
+INITADDR DC    CL8'X'                                                           
+INITMSGL EQU   *-INITMSG                                                        
+*                                                                               
+IERRMSG  DS    0H                                                               
+         DC    C'Critical Error Occurred reason='                               
+IERRRESN DC    CL8'XXXXXXXX'                                                    
+IERRMSGL EQU   *-IERRMSG                                                        
+*                                                                               
+BSDCEMSG DS    0H                                                               
+BSDCNAME DS    CL8                                                              
+         DC    C' RETCD='                                                       
+BSDCRETC DC    CL8'XXXXXXXX'                                                    
+         DC    C' ERRCD='                                                       
+BSDCERRC DC    CL8'XXXXXXXX'                                                    
+BSDCEMSL EQU   *-BSDCEMSG                                                       
+*                                                                               
+SHUTMSG  DC    C'SHUTDOWN COMPLETE'                                             
+*                                                                               
+DATEFRST DS    0H                                                               
+         DC    C'STARTUP COMPLETE '                                             
+DATEFDAT DC    CL10'X'                                                          
+DATEFRSL EQU   *-DATEFRST                                                       
+*                                                                               
+DATENDAY DS    0H                                                               
+         DC    C'IT''S A NEW DAY '                                              
+DATENMON DC    CL8'X'                                                           
+         DC    C' '                                                             
+DATENDY  DC    CL2'X'                                                           
+         DC    C', '                                                            
+DATENCN  DC    CL2'X'                                                           
+DATENYR  DC    CL2'X'                                                           
+DATENDAL EQU   *-DATENDAY                                                       
+*                                                                               
+TIMENHRM DS    0H                                                               
+         DC    C'IT IS NOW '                                                    
+TIMENHRH DC    CL8' '                                                           
+         DC    C'O''CLOCK'                                                      
+TIMENHRL EQU   *-TIMENHRM                                                       
+*                                                                               
+TIMEMNMN DS    0H                                                               
+         DC    C'NEW MINUTE AT '                                                
+TIMEMNMT DC    CL8' '                                                           
+TIMEMNML EQU   *-TIMEMNMN                                                       
+*                                                                               
+TIMEQAFH DS    0H                                                               
+         DC    C'IT''S A QUARTER AFter '                                        
+TIMEQAHR DC    CL8' '                                                           
+TIMEQAFL EQU   *-TIMEQAFH                                                       
+*                                                                               
+TIMEHAFH DS    0H                                                               
+         DC    C'IT''S HALF PAST '                                              
+TIMEHAHR DC    CL8' '                                                           
+TIMEHAFL EQU   *-TIMEHAFH                                                       
+*                                                                               
+TIMEQTLH DS    0H                                                               
+         DC    C'IT''S 45 AFTER '                                               
+TIMEQTHR DC    CL8' '                                                           
+TIMEQTLL EQU   *-TIMEQTLH                                                       
+         LTORG ,                                                                
+*                                                                               
+CONSOLE  DTFCN DEVADDR=SYSLOG,             console device address      *        
+               IOAREA1=CONOUT,             i/o area buffers out+in     *        
+               RECFORM=FIXUNB,             fixed unblocked             *        
+               BLKSIZE=64,                 output area size            *        
+               INPSIZE=64,                 input area size             *        
+               TYPEFLE=CMBND               combined input/output                
+*                                                                               
+LISTING  DTFDI    DEVADDR=SYSLST,          define a printer            *        
+               IOAREA1=LINEOUT,            output line                 *        
+               RECSIZE=121                 length of record                     
+*                                                                               
+         LTORG ,                                                                
+         DS    0D                                                               
+         DS    XL(8192-(*-SSLSERVR))                                            
+*                                                                               
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING TASK1000,R11                                                     
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'TASK1000'       core marker                                  
+TASK1000 DS    0D                                                               
+*                                                                               
+* * AFTER THE MAIN TASK ATTACHES A subtask                                      
+* * THE FOLLOWING CODE GETS CONTROL...                                          
+         LA    R13,TSKSAV01        save area for calling routines               
+         ASYSCOM R2                                                             
+         USING SYSCOM,R2                                                        
+         MVC   TSKTID,IJBTIK       save the vse task id                         
+         DROP  R2                                                               
+         BAL   R2,TRACEIT                                                       
+         DC    CL8'TASK1000'                                                    
+         LA    R1,TSKECB1          @ of ecb                                     
+         ST    R1,@TSKECB1                                                      
+         LA    R1,SHUTECB          @ of common termination ecb                  
+         ST    R1,@TSKECB2                                                      
+         LA    R1,DUMMYECB         @ of dummy ecb                               
+         ST    R1,@TSKECB3                                                      
+         OI    @TSKECB3,X'80'      flag as last ecb in the list                 
+TASK2000 DS    0H                                                               
+*                                                                               
+* * NOW WAIT FOR MAINTASK TO POST Us with something to do...                    
+         LA    R1,TSKWAITM         @ of list of ecbs to wait on                 
+         WAITM (1)                 wait for something to happen                 
+         C     R1,@TSKECB2         terminate posted ?                           
+         BE    TASK9000            bif yes                                      
+         C     R1,@TSKECB1         is this ecb1 posted ?                        
+         BE    TASK2100            bif yes                                      
+         DC    H'0'                never should occurr...                       
+TASK2100 DS    0H                                                               
+         XC    TSKECB1,TSKECB1     clear the posted ecb                         
+         LA    R1,IBUFFERL         length of structure                          
+         ST    R1,TSKFWRK1         store it here                                
+*                                                                               
+* * THE MAINTASK HAS POSTED US SO Lets issue a accept.                          
+* * THE ACCEPT WILL ISSUE A VSE WAIt...bsd-c calls this blocking.               
+* * SO THE SUBTASK WILL BE IN A WAIt until a someone connects to it...          
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,TSKPARMS+0       store it                                     
+         LA    R1,IBUFFER          @ of sockaddr_in structure                   
+         ST    R1,TSKPARMS+4       store it                                     
+         LA    R1,TSKFWRK1         @ of length                                  
+         ST    R1,TSKPARMS+8       store it                                     
+         LA    R1,TSKPARMS         @ of paramters to be passed                  
+         L     R15,=V(IPNRACCP)    @ accept function routine                    
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the accept work ?                        
+         BNM   TASK2200            bif yes                                      
+         LA    R0,L'ACCPTERM                                                    
+         LA    R1,ACCPTERM                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     TASK6000            close this connection now                    
+ACCPTERM DC    C'ACCEPT TERMINATED'                                             
+TASK2200 DS    0H                                                               
+         ST    R15,TSKSOCKN        store the new socket number                  
+         OI    TSKFLAG1,TSKCONNX   flag task as connnected                      
+         LA    R1,MAINECB          post the maintask ecb                        
+         POST  (1)                 make vse maintask ready to run               
+*                                                                               
+* * SSL-C gsk_secure_soc_init()...                                              
+* * This actually does the TLS/SSL handshake...                                 
+* * After control is returned here all data encrypted...                        
+         L     R0,TSKSOCKN         get socket number                            
+         ST    R0,SINISOCK         store it                                     
+*                                                                               
+         LA    R0,SINSERVR         gsk_as_server                                
+         ST    R0,SINITYPE         set the application type                     
+*                                                                               
+*        LA    R1,=C'TLS31'        tlsv3.1                                      
+         LA    R1,=C'SSL30'        sslv3.0                                      
+         ST    R1,SIN@PROT         @ of protocal to use                         
+*                                                                               
+         LA    R1,CIPHERXX         use rsa_des_sha ciper list                   
+         ST    R1,SIN@V3CS         @ list of preferred cipher specs             
+*                                                                               
+         L     R1,=A(SOCR1000)     @ of read routine                            
+         ST    R1,SIN@READ         store it                                     
+         L     R1,=A(SOCW1000)     @ of write routine                           
+         ST    R1,SIN@WRIT         store it                                     
+*                                                                               
+         LA    R1,INITDATA         @ of initdata                                
+         ST    R1,SIN@INIT         store it                                     
+*                                                                               
+         LA    R1,SINIDATA                                                      
+         ST    R1,PARM1            store it                                     
+         OI    PARM1,X'80'         flag as last parameter                       
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRSINI)    @ ssl-c routine                              
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did it work ?                                
+         BP    TASK2500            bif yes                                      
+         DC    H'0'                debug                                        
+CIPHERXX DC    X'F0F8F0F9F0C10000'                                              
+TASK2500 DS    0H                                                               
+         ST    R15,TSKFWRK2        store the returned handle                    
+*                                                                               
+* * GET A COMMAND FROM THE TCP STREam...                                        
+TASK3000 DS    0H                                                               
+         BAL   R2,TRACEIT                                                       
+         DC    CL8'TASK3000'                                                    
+         XC    TSKCMND,TSKCMND     clear area to binary zeros                   
+         LA    R0,L'TSKCMND        maximum command length                       
+         LA    R1,TSKCMND          build the command here                       
+         L     R15,=A(RSTR1000)    @ of the stream read routine                 
+         BALR  R14,R15                                                          
+         LTR   R15,R15             did we get a command ?                       
+         BZ    TASK3200            bif yes                                      
+         LA    R0,L'RECVTERM                                                    
+         LA    R1,RECVTERM                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     TASK6000            close the connection now                     
+RECVTERM DC    C'RECEIVE TERMINATED'                                            
+TASK3200 DS    0H                                                               
+         LTR   R2,R0               length of command data                       
+         BP    TASK3300            bif yes                                      
+         DC    H'0'                should never occur                           
+TASK3300 DS    0H                                                               
+         ST    R2,TSKCMNDL         store the actual length                      
+         TM    TSKFLAG1,TSKASCII   is it an ascii command ?                     
+         BNO   TASK3400            bif no                                       
+         BCTR  R2,0                minus 1                                      
+         EX    R2,TASKEBCD         translate data to ebcidic                    
+         LA    R2,1(,R2)           put length back to original                  
+TASK3400 DS    0H                                                               
+         L     R0,TSKCMNDL         length of command to process                 
+         LA    R1,TSKCMND          process this command                         
+         L     R15,@CONORTN        display common on syslst + syslog            
+         BASSM R14,R15                                                          
+         L     R0,TSKCMNDL         length of command to process                 
+         LA    R1,TSKCMND          process this command                         
+         L     R15,@CMNDRTN        @ of the command processor                   
+         BASSM R14,R15             call it                                      
+         L     R3,TSK@SEND         build response here                          
+         LTR   R15,R15             did the command succeed?                     
+         BZ    TASK4000            bif yes                                      
+         MVC   0(4,R3),=C'FAIL'    command failed                               
+         B     TASK4800            fill in the reason                           
+TASK4000 DS    0H                                                               
+         MVC   0(4,R3),=C'GOOD'    command was good                             
+TASK4800 DS    0H                                                               
+         LA    R3,4(,R3)           bump send buffer pointer                     
+         LTR   R2,R0               length of data to send back?                 
+         BZ    TASK5000            bif none                                     
+         BCTR  R2,0                minus 1 for mvc                              
+         EX    R2,TASKMVCS         move reply data into send buffer             
+         LA    R3,1(R2,R3)         bump to end                                  
+TASK5000 DS    0H                                                               
+         L     R1,TSK@SEND         start of send buffer                         
+         MVC   0(4,R3),0(R1)       move in a bookend                            
+         MVI   4(R3),EBCEOL        ebcidic end of line chararacter              
+         LA    R2,5(,R3)           end of send buffer                           
+         SLR   R2,R1               calculate length of data to be sent          
+         ST    R2,TSKSENDL         store it                                     
+         L     R0,TSKSENDL         length of command to process                 
+         L     R1,TSK@SEND         process this command                         
+         L     R15,@CONORTN        display common on syslst + syslog            
+         BASSM R14,R15                                                          
+         TM    TSKFLAG1,TSKASCII   is the client ascii ?                        
+         BNO   TASK5100            bif no                                       
+         BCTR  R2,0                minus 1                                      
+         EX    R2,TASKASCI         translate data to ascii                      
+TASK5100 DS    0H                                                               
+*                                                                               
+* * gsk_secure_soc_write()...                                                   
+         L     R1,TSKFWRK2         secure socket handle                         
+         ST    R1,TSKPARMS+0       store it                                     
+         L     R1,TSK@SEND         @ of data to send                            
+         ST    R1,TSKPARMS+4       store it                                     
+         LA    R1,TSKSENDL         @ of send length                             
+         ST    R1,TSKPARMS+8       store it                                     
+         OI    TSKPARMS+8,X'80'    indicate end of list                         
+         LA    R1,TSKPARMS         @ of paramters to be passed                  
+         L     R15,=V(IPCRSWRT)    @ secure write function                      
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the data get sent ?                      
+         BP    TASK5200            bif yes                                      
+         DC    H'0'                never should occurr...                       
+TASK5200 DS    0H                                                               
+         XC    SESRWLNG,SESRWLNG                                                
+         XC    SESRWADR,SESRWADR                                                
+         B     TASK3000            go wait for another command                  
+*                                                                               
+* * CLOSE THE CONNECTION                                                        
+TASK6000 DS    0H                                                               
+         LA    R0,L'SESSCLOS                                                    
+         LA    R1,SESSCLOS                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     TASK6100                                                         
+SESSCLOS DC    C'SESSION CLOSED'                                                
+TASK6100 DS    0H                                                               
+*                                                                               
+* * BSD-C CLOSE FUNCTION CALL...                                                
+         LA    R1,TSKSOCKN         @ of socket number                           
+         ST    R1,TSKPARMS+0       store it                                     
+         LA    R1,TSKPARMS         @ of paramters to be passed                  
+         L     R15,=V(IPNRCLOS)    @ close function routine                     
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the socket get closed ?                  
+         BNM   TASK6200            bif yes                                      
+         LA    R0,L'CLOSTERM                                                    
+         LA    R1,CLOSTERM                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     TASK6200            ignore the error                             
+CLOSTERM DC    C'CLOSE TERMINATED'                                              
+TASK6200 DS    0H                                                               
+*                                                                               
+* * gsk_secure_soc_close()...                                                   
+         ICM   R1,15,TSKFWRK2      do we have a secure socket handle            
+         BZ    TASK6300            bif no                                       
+         ST    R1,TSKPARMS+0       store it                                     
+         OI    TSKPARMS+0,X'80'    indicate end of list                         
+         LA    R1,TSKPARMS         @ of paramters to be passed                  
+         L     R15,=V(IPCRSCLS)    @ secure socket close function               
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did it get freed ?                           
+         BZ    TASK6300            bif yes                                      
+         DC    H'0'                debug                                        
+TASK6300 DS    0H                                                               
+         NI    TSKFLAG1,X'FF'-TSKINuse flag as no longer in use                 
+         NI    TSKFLAG1,X'FF'-TSKCOnnx flag as no longer connected              
+         XC    SESRWLNG,SESRWLNG                                                
+         XC    SESRWADR,SESRWADR                                                
+         B     TASK2000            go wait for more work                        
+TASK9000 DS    0H                                                               
+         LA    R0,L'TASKTERM                                                    
+         LA    R1,TASKTERM                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         DETACH   ,                                                             
+TASKTERM DC    CL8'TASKTERM'                                                    
+TASKMVCS MVC   0(0,R3),0(R1)       executed instruction                         
+TASKEBCD TR    TSKCMND(0),TOEBCDIC executed instruction                         
+TASKASCI TR    0(0,R1),TOASCII     translate to ascii                           
+         LTORG ,                                                                
+         DS    XL(4088-(*-TASK1000))                                            
+         DROP  ,                                                                
+*                                                                               
+TSK001   DS    XL4096                                                           
+TSK002   DS    XL4096                                                           
+TSK003   DS    XL4096                                                           
+SESFIRST DS    XL4096                                                           
+*                                                                               
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'RSTR1000'                                                    
+RSTR1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING RSTR1000,R11                                                     
+         ST    R13,RSTRSAVE+4                                                   
+         LA    R13,RSTRSAVE                                                     
+         LTR   R5,R1               build command from stream here               
+         LTR   R6,R0               max that can fit in a command                
+         ST    R5,RSTRCADR         store passed command address                 
+         ST    R6,RSTRCLNG         store passed command length                  
+*                                                                               
+* * GET A TELNET RECORD FOR THE CALler                                          
+* * RECORD MEANS GET A STREAM AND Scan until we get a end of line...            
+         ICM   R3,15,SESRWADR      do we have a stream pointer?                 
+         BZ    RSTR1800            bif no get some data                         
+         LA    R1,SESRDATA         start of stream                              
+         L     R2,SESRWLNG         length of stream                             
+         LA    R4,0(R2,R1)         end of stream                                
+         SLR   R4,R3               calculate length left                        
+         B     RSTR3400            pick up here...                              
+RSTR1800 DS    0H                                                               
+         LA    R0,L'SESRDATA       length of receive area                       
+         ST    R0,TSKFWRK1         store it                                     
+*                                                                               
+* * gsk_secure_soc_read()                                                       
+         L     R1,TSKFWRK2         @ of secure socket handle                    
+         ST    R1,TSKPARMS+0       store it                                     
+         LA    R1,SESRDATA         @ of area to receive the data                
+         ST    R1,TSKPARMS+4       store it                                     
+         LA    R1,TSKFWRK1         @ of receive area length                     
+         ST    R1,TSKPARMS+8       store it                                     
+         OI    TSKPARMS+8,X'80'    indicate end of list                         
+         LA    R1,TSKPARMS         @ of paramters to be passed                  
+         L     R15,=V(IPCRSRED)    @ secure socket read routine                 
+         BALR  R14,R15             go for it                                    
+         LTR   R4,R15              did we get any?                              
+         BP    RSTR3000            bif yes                                      
+         LTR   R15,R15             did the read work ?                          
+         BM    RSTR9000            bif no                                       
+         DC    H'0'                debug                                        
+RSTR3000 DS    0H                                                               
+         ST    R4,SESRWLNG         store the length received                    
+         LA    R3,SESRDATA         start address of data received               
+         ST    R3,SESRWADR         store the new pointer                        
+RSTR3400 DS    0H                                                               
+         CLI   0(R3),ASCEOL        is this a ascii end of line ?                
+         BE    RSTR5000            bif yes                                      
+         CLI   0(R3),EBCEOL        is this a ebcidic end of line ?              
+         BE    RSTR6000            bif yes                                      
+         MVC   0(1,R5),0(R3)       move a byte into buffer                      
+         LA    R3,1(,R3)           bump to next in stream                       
+         LA    R5,1(,R5)           bump to next in command                      
+         BCT   R4,RSTR4000         if not zero goto rstr4000                    
+         B     RSTR1800            do a receive for more of stream              
+RSTR4000 DS    0H                                                               
+         BCT   R6,RSTR3400         do it again                                  
+*                                                                               
+* * IF WE FALL THRU THE ABOVE BCT Than we have scanned for 80                   
+* * BYTES AND HAVE NOT HIT A END OF line character...                           
+         DC    H'0'                should never occur                           
+RSTR5000 DS    0H                                                               
+         OI    TSKFLAG1,TSKASCII   tell caller data is ascii                    
+         B     RSTR8000                                                         
+RSTR6000 DS    0H                                                               
+         NI    TSKFLAG1,X'FF'-TSKASCII data is not ascii                        
+         B     RSTR8000                                                         
+RSTR8000 DS    0H                                                               
+         LA    R3,1(,R3)           bump past end of line                        
+         BCT   R4,RSTR8200                                                      
+         SLR   R3,R3               no more data in stream                       
+RSTR8200 DS    0H                                                               
+         ST    R3,SESRWADR         store updated pointer into stream            
+         L     R1,RSTRCADR         r1 = address of the command                  
+         LR    R0,R5               r0 = record length                           
+         SR    R0,R1               calculate the record length                  
+         LA    R15,0               rc = good                                    
+RSTR9000 DS    0H                                                               
+         L     R13,RSTRSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BR    R14                 return to caller                             
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * skread routine called by                                                    
+* * gsk_secure_soc_init and gsk_secure_soc_read...                              
+         DC    CL8'SOCR1000'                                                    
+SOCR1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R12,R15                                                          
+         USING SOCR1000,R12                                                     
+         ST    R13,SOCRSAVE+4                                                   
+         LA    R13,SOCRSAVE                                                     
+         L     R2,0(,R1)           address of socket descriptor                 
+         L     R3,4(,R1)           address of buffer                            
+         L     R4,8(,R1)           address of buffer length                     
+         LTR   R1,R1               @ of parameters                              
+         L     R15,=V(IPNRRECV)    @ receive function                           
+         BALR  R14,R15             go for it                                    
+         L     R13,SOCRSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BR    R14                 return to caller                             
+SOCRSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * skwrite routine called by                                                   
+* * gsk_secure_soc_init and gsk_secure_soc_write                                
+         DC    CL8'SOCW1000'                                                    
+SOCW1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R12,R15                                                          
+         USING SOCW1000,R12                                                     
+         ST    R13,SOCWSAVE+4                                                   
+         LA    R13,SOCWSAVE                                                     
+         L     R2,0(,R1)           address of socket descriptor                 
+         L     R3,4(,R1)           address of data to send                      
+         L     R4,8(,R1)           address of length of data                    
+         LTR   R1,R1               @ of parameters                              
+         L     R15,=V(IPNRSEND)    @ receive function                           
+         BALR  R14,R15             go for it                                    
+         L     R13,SOCWSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BR    R14                 return to caller                             
+SOCWSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * R0 = MESSAGE LENGTH                                                         
+* * R1 = MESSAGE TEXT                                                           
+         USING TSKWORK,R8          to use during card1000                       
+         USING SSLBEGIN,R9                                                      
+         DC    CL8'CONO1000'                                                    
+CONO1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15             get a base register                          
+         USING CONO1000,R11                                                     
+         LR    R4,R0               message length                               
+         LR    R5,R1               message text                                 
+         LOCK  CONOLOCK,FAIL=WAIT  single thread subtasks thru here             
+         ST    R13,CONOSAVE+4      store callers r13                            
+         LA    R13,CONOSAVE        provide savearea                             
+         XC    CONOUT,CONOUT       clear console i/o area                       
+         LTR   R2,R4               is the message length zero                   
+         BNZ   CONO2000            put out invalid message message              
+         LA    R0,L'CONOBAD1                                                    
+         LA    R1,CONOBAD1         put out this message                         
+CONO2000 DS    0H                                                               
+         LA    R0,L'CONOUT                                                      
+         CLR   R2,R0               is it too big                                
+         BL    CONO3000            bif no                                       
+         LR    R2,R0               use the max                                  
+CONO3000 DS    0H                                                               
+         BCTR  R2,0                minus 1 for the execute                      
+         EX    R2,CONOMVC                                                       
+CONO4000 DS    0H                                                               
+         AMODESW SET,AMODE=24                                                   
+         PUT   CONSOLE                                                          
+         WAIT  CONSOLE                                                          
+         AMODESW SET,AMODE=31                                                   
+CONO9000 DS    0H                                                               
+         LA    R15,0               return code                                  
+         L     R13,CONOSAVE+4      restore callers r13                          
+         UNLOCK CONOLOCK           release the lock                             
+         LM    R0,R12,20(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CONOMVC  MVC   CONOUT+0(0),0(R5)   executed instruction                         
+CONOBAD1 DC    C'CONOBAD1'                                                      
+CONOSAVE DS    18F                                                              
+CONOWRK1 DS    XL16                                                             
+CONOLOCK DTL   NAME=SAMSRVLOCKCN,  name of this lock                   X        
+               CONTROL=E,          exclusive use                       X        
+               KEEP=NO,            release at end of step              X        
+               LOCKOPT=1,          no other task allowed               X        
+               OWNER=TASK,         unlocks will be done by this task   X        
+               SCOPE=INT           only for this system                         
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'CARD1000'                                                    
+CARD1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING CARD1000,R11                                                     
+         ST    R13,CARDSAVE+4                                                   
+         LA    R13,CARDSAVE                                                     
+         AMODESW SET,AMODE=24      switch to 24 bit mode for open               
+         OPEN  CARDIN                                                           
+         OI    COMFLAG1,CARDACTV   flag as card routine is active               
+CARD2000 DS    0H                                                               
+         GET   CARDIN                                                           
+         TM    COMFLAG1,INITERR    are we just flushing sysrdr cards?           
+         BO    CARD2000            bif yes                                      
+         LA    R0,L'CARDAREA                                                    
+         LA    R1,CARDAREA         pass card to be a command                    
+         L     R15,@CMNDRTN        call the command processor                   
+         BASSM R14,R15                                                          
+*                                                                               
+* * ALL COMMANDS GIVE A RESPONSE SO lets display it on the console              
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     CARD2000            get next card                                
+CARD9000 DS    0H                                                               
+         CLOSE CARDIN                                                           
+         NI    COMFLAG1,X'FF'-CARDACTV shut off card active flag                
+         OI    COMFLAG1,CARDDONE   set flag for card commands done              
+         LA    R15,0               return code                                  
+         L     R13,CARDSAVE+4                                                   
+         LM    R0,R12,20(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CARDSAVE DS    18F                                                              
+CARDAREA DS    CL80                                                             
+CARDIN   DTFDI IOAREA1=CARDAREA,                                       C        
+               DEVADDR=SYSRDR,                                         C        
+               RECSIZE=80,                                             C        
+               EOFADDR=CARD9000                                                 
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'CMND1000'                                                    
+CMND1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING CMND1000,R11                                                     
+         ST    R13,CMNDSAVE+4                                                   
+         LA    R13,CMNDSAVE                                                     
+*                                                                               
+* * LETS PARSE IT ASSUMING PARMS SEparated by 1 or more blanks                  
+         LTR   R2,R1               @ of passed command line                     
+         LTR   R3,R0               length of command line                       
+         XC    TSKPARMS,TSKPARMS   clear the parm area                          
+         LA    R4,TSKPARMS         parse it here                                
+CMND2000 DS    0H                                                               
+         CLI   0(R2),X'40'         is it a blank?                               
+         BE    CMND2400            bif yes                                      
+         ICM   R5,15,0(R4)         did we have a start address                  
+         BNZ   CMND2600            bif no                                       
+         ST    R2,0(R4)            @ start of parm                              
+         B     CMND2600            bump along                                   
+CMND2400 DS    0H                                                               
+         ICM   R5,15,0(R4)         did we have a start address                  
+         BZ    CMND2600            bif no                                       
+         LR    R1,R2                                                            
+         SR    R1,R5               calculate length of the parm                 
+         ST    R1,4(R4)            store its length                             
+         LA    R4,8(,R4)           bump to set up for next parm                 
+CMND2600 DS    0H                                                               
+         LA    R2,1(,R2)           bump to next byte                            
+         BCT   R3,CMND2000         loop thru whole line                         
+         ICM   R5,15,0(R4)         did this last parm go to the end             
+         BZ    CMND2680            bif no                                       
+         SR    R2,R5               calculate length of last parm                
+         ST    R2,4(R4)            store its length                             
+CMND2680 DS    0H                                                               
+*                                                                               
+* * FIND THE COMMAND TO PROCESS                                                 
+         LA    R2,CMNDTABL         @ of command table                           
+         LA    R3,CMNDTCNT         number of commands in the table              
+         L     R4,TSKPARMS+0       @ of command verb                            
+         L     R5,TSKPARMS+4       length of command verb                       
+         BCTR  R5,0                minus 1 for clc                              
+CMND3000 DS    0H                                                               
+         EX    R5,CMNDCLC          is this the desired command?                 
+         BE    CMND4000            bif yes                                      
+         LA    R2,CMNDENTL(,R2)    bump to the next command                     
+         BCT   R3,CMND3000         try again                                    
+         LA    R0,L'BADCMND                                                     
+         LA    R1,BADCMND                                                       
+         LA    R15,8                                                            
+         B     CMND9000            exit now                                     
+BADCMND  DC    CL8'BADCMND'                                                     
+CMND4000 DS    0H                                                               
+         LA    R1,TSKPARMS         pass the parsed command parms                
+         L     R15,8(R2)           get the command processor rtn                
+         BASSM R14,R15             call the command processor                   
+CMND9000 DS    0H                                                               
+         L     R13,CMNDSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CMNDCLC  CLC   0(0,R2),0(R4)       is this the command?                         
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* *                                                                             
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'SETPORT'                                                     
+SETP1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING SETP1000,R11                                                     
+         ST    R13,SETPSAVE+4                                                   
+         LA    R13,SETPSAVE                                                     
+         LR    R3,R1                                                            
+         USING CMDPARMS,R3                                                      
+         ICM   R5,15,CMDOP1        @ of port to be used                         
+         BNZ   SETP2000                                                         
+         LA    R0,L'SETPNOP                                                     
+         LA    R1,SETPNOP                                                       
+         LA    R15,8                                                            
+         B     SETP9000            exit now                                     
+SETPNOP  DC    CL8'SETPNOP'                                                     
+SETP2000 DS    0H                                                               
+         L     R4,CMDOP1+4         length of operand                            
+         CL    R4,=F'6'            is it less than 6 digits                     
+         BL    SETP3000            bif yes                                      
+         LA    R0,L'SETPBOPL                                                    
+         LA    R1,SETPBOPL                                                      
+         L     R15,8                                                            
+         B     SETP9000            exit now                                     
+SETPBOPL DC    CL8'SETPBOPL'                                                    
+SETP3000 DS    0H                                                               
+         BCTR  R4,0                minus 1 for trt                              
+         L     R6,=A(NUMVTAB)      @ of numeric validation trt table            
+         EX    R4,SETPTRT          validate all numeric with a trt              
+         BZ    SETP4000            number is valid                              
+         LA    R0,L'SETPINVN                                                    
+         LA    R1,SETPINVN                                                      
+         L     R15,8                                                            
+         B     SETP9000            exit now                                     
+SETPINVN DC    CL8'SETPINVN'                                                    
+SETP4000 DS    0H                                                               
+         LA    R2,L'DWORK          8 bytes                                      
+         BCTR  R2,0                minus 1                                      
+         SLL   R2,4                move it over 4 bits                          
+         OR    R2,R4               or in the low-order 4 bit length             
+         EX    R2,SETPPACK         execute the pack instruction                 
+         CVB   R2,DWORK            convert packed to binary                     
+         CL    R2,=F'65536'        is it less than this                         
+         BL    SETP5000            bif yes                                      
+         LA    R0,L'SETPTOOB                                                    
+         LA    R1,SETPTOOB                                                      
+         L     R15,8                                                            
+         B     SETP9000            exit now                                     
+SETPTOOB DC    CL8'SETPTOOB'                                                    
+SETP5000 DS    0H                                                               
+         TM    COMFLAG1,CARDACTV   was command from the card reader             
+         BO    SETP5200            bif yes                                      
+         LA    R0,L'SETPCARD                                                    
+         LA    R1,SETPCARD                                                      
+         L     R15,8                                                            
+         B     SETP9000            exit now                                     
+SETPCARD DC    CL8'SETPCARD'                                                    
+SETP5200 DS    0H                                                               
+         STH   R2,SOCKPORT         store it                                     
+         LA    R0,20                                                            
+         L     R1,CMDVERB                                                       
+         LA    R15,0               return code                                  
+SETP9000 DS    0H                                                               
+         L     R13,SETPSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+SETPSAVE DS    18F                                                              
+SETPPACK PACK  DWORK(0),0(0,R5)    convert zoned decimal to packed              
+SETPTRT  TRT   0(0,R5),0(R6)       executed instrucion                          
+NUMVTAB  DS    0D                                                               
+         DC    240X'FF'                                                         
+         DC    10X'00'             x'f0' - x'f9' are valid                      
+         DC    6X'FF'                                                           
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'SHUT1000'                                                    
+SHUT1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING SHUT1000,R11                                                     
+         ST    R13,SHUTSAVE+4                                                   
+         LA    R13,SHUTSAVE                                                     
+*                                                                               
+* * FIRST LETS CLOSE THE CURRENTLY open passive tcp socket...                   
+*                                                                               
+* * BSD-C CLOSE FUNCTION CALL...                                                
+         LA    R1,BASESOCK         @ of socket number                           
+         ST    R1,TSKPARMS+0       store it                                     
+         LA    R1,TSKPARMS         @ of paramters to be passed                  
+         L     R15,=V(IPNRCLOS)    @ close function routine                     
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did the socket get closed ?                  
+         BZ    SHUT6000            bif yes                                      
+         DC    H'0'                never should occurr...                       
+SHUT6000 DS    0H                                                               
+*                                                                               
+* * SSL-C gsk_uninitialize()...                                                 
+         LA    R1,TSKFWRK1         @ of nothing                                 
+         ST    R1,PARM1            store it                                     
+         OI    PARM1,X'80'         flag as last parameter                       
+         LA    R1,PARMS            @ of paramters to be passed                  
+         L     R15,=V(IPCRUNIN)    @ ssl-c routine                              
+         BALR  R14,R15             go for it                                    
+         LTR   R15,R15             did we get a socket number ?                 
+         BZ    SHUT6200            bif yes                                      
+         DC    H'0'                never should occurr...                       
+SHUT6200 DS    0H                                                               
+         OI    COMFLAG1,MAINSHUT   flag main is shutting down                   
+         LA    R1,SHUTECB          post this ecb                                
+         POST  (1)                 make all tasks ready to run                  
+         LA    R0,L'SHUTDOWN                                                    
+         LA    R1,SHUTDOWN                                                      
+         LA    R15,0               return code                                  
+SHUT9000 DS    0H                                                               
+         L     R13,SHUTSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+SHUTSAVE DS    18F                                                              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'CALP1000'                                                    
+CALP1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING CALP1000,R11                                                     
+         ST    R13,CALPSAVE+4                                                   
+         LA    R13,CALPSAVE                                                     
+         LR    R3,R1                                                            
+         USING CMDPARMS,R3                                                      
+         ICM   R4,15,CMDOP1        @ of phase name to be called                 
+         BNZ   CALP2000                                                         
+         LA    R0,L'CALPNPHS                                                    
+         LA    R1,CALPNPHS                                                      
+         LA    R15,8                                                            
+         B     CALP9000            exit now                                     
+CALPNPHS DC    CL8'CALPNPHS'                                                    
+CALP2000 DS    0H                                                               
+         MVC   CALPPHAS,BLNKLINE   init phase name to blanks                    
+         L     R2,CMDOP1+4         length of phase name                         
+         BCTR  R2,0                minus 1                                      
+         EX    R2,CALPMVC1         move the desired phase name                  
+         LA    R1,CALPPHAS         cdload this phase                            
+         CDLOAD (1),RETPNF=YES                                                  
+         LTR   R15,R15             did it work                                  
+         BZ    CALP3000            bif yes                                      
+         LA    R0,L'CALPCDLF                                                    
+         LA    R1,CALPCDLF                                                      
+         LA    R15,8                                                            
+         B     CALP9000            exit                                         
+CALPCDLF DC    C'CALPCDLF'                                                      
+CALP3000 DS    0H                                                               
+         ST    R0,CALP@LOD         store the phase load point                   
+         ST    R1,CALP@ENT         store the phase entry point                  
+         ST    R14,CALPLPHS        store the length of the phase                
+         LA    R0,CALPMSGL                                                      
+         LA    R1,CALPMSG1                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         L     R0,CMDOP2+4         length of operand 2                          
+         L     R1,CMDOP2+0         @ of operand 2                               
+         L     R15,CALP@ENT        phase to be called                           
+         BASSM R14,R15             go for it                                    
+         LA    R0,L'CALPDONE                                                    
+         LA    R1,CALPDONE                                                      
+         LA    R15,0                                                            
+CALP9000 DS    0H                                                               
+         L     R13,CALPSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CALPDONE DC    C'CALLED PROGRAM DONE'                                           
+CALP@LOD DS    F                   phase load point                             
+CALP@ENT DS    F                   phase entry point                            
+CALPLPHS DS    F                   length of the phase                          
+CALPMSG1 DS    0H                                                               
+         DC    C'CALLING PHASE '                                                
+CALPPHAS DC    CL8'X'                                                           
+CALPMSGL EQU   *-CALPMSG1                                                       
+CALPMVC1 MVC   CALPPHAS(0),0(R4)   executed instruction                         
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'CDLD1000'                                                    
+CDLD1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING CDLD1000,R11                                                     
+         ST    R13,CDLDSAVE+4                                                   
+         LA    R13,CDLDSAVE                                                     
+         LR    R3,R1                                                            
+         USING CMDPARMS,R3                                                      
+         ICM   R4,15,CMDOP1        @ of phase name to be called                 
+         BNZ   CDLD2000                                                         
+         LA    R0,L'CDLDNPHS                                                    
+         LA    R1,CDLDNPHS                                                      
+         LA    R15,8                                                            
+         B     CDLD9000            exit now                                     
+CDLDNPHS DC    CL8'CDLDNPHS'                                                    
+CDLD2000 DS    0H                                                               
+         MVC   CDLDPHAS,BLNKLINE   init phase name to blanks                    
+         L     R2,CMDOP1+4         length of phase name                         
+         BCTR  R2,0                minus 1                                      
+         EX    R2,CDLDMVC1         move the desired phase name                  
+         LA    R1,CDLDPHAS         cdload this phase                            
+         CDLOAD (1),RETPNF=YES                                                  
+         LTR   R15,R15             did it work                                  
+         BZ    CDLD3000            bif yes                                      
+         LA    R0,L'CDLDFAIL                                                    
+         LA    R1,CDLDFAIL                                                      
+         LA    R15,8                                                            
+         B     CDLD9000            exit                                         
+CDLDFAIL DC    C'CDLDFAIL'                                                      
+CDLD3000 DS    0H                                                               
+         ST    R0,CDLD@LOD         store the phase load point                   
+         ST    R1,CDLD@ENT         store the phase entry point                  
+         ST    R14,CDLDLPHS        store the length of the phase                
+         UNPK  CDLDWRK1(9),CDLD@LOD(5) unpack                                   
+         TR    CDLDWRK1(8),TRTAB    translate to hex                            
+         MVC   CDLDMLOD,CDLDWRK1   move into the message                        
+         UNPK  CDLDWRK1(9),CDLDLPHS(5) unpack                                   
+         TR    CDLDWRK1(8),TRTAB    translate to hex                            
+         MVC   CDLDMLNG,CDLDWRK1   move into the message                        
+         LA    R0,CDLDMSGL                                                      
+         LA    R1,CDLDMSG1                                                      
+         LA    R15,0               rc = good                                    
+CDLD9000 DS    0H                                                               
+         L     R13,CDLDSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CDLD@LOD DS    F                   phase load point                             
+CDLD@ENT DS    F                   phase entry point                            
+CDLDLPHS DS    F                   length of the phase                          
+CDLDMSG1 DS    0H                                                               
+         DC    C'PHASE '                                                        
+CDLDPHAS DC    CL8'X'                                                           
+         DC    C' CDLOADED AT '                                                 
+CDLDMLOD DC    CL8'X'                                                           
+         DC    C' LENGTH='                                                      
+CDLDMLNG DC    CL8'X'                                                           
+CDLDMSGL EQU   *-CDLDMSG1                                                       
+CDLDMVC1 MVC   CDLDPHAS(0),0(R4)   executed instruction                         
+CDLDWRK1 DS    XL80                                                             
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'HART1000'                                                    
+*                                                                               
+* * SIMPLE ECHO REPLY TO CALLER...                                              
+HART1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING HART1000,R11                                                     
+         ST    R13,HARTSAVE+4                                                   
+         LA    R13,HARTSAVE                                                     
+         LA    R0,8                length of reply                              
+         LA    R1,HARTBEAT         @ of reply                                   
+         LA    R15,0               rc=good                                      
+HART9000 DS    0H                                                               
+         L     R13,HARTSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'CONT1000'                                                    
+CONT1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING CONT1000,R11                                                     
+         ST    R13,CONTSAVE+4                                                   
+         LA    R13,CONTSAVE                                                     
+         LR    R3,R1                                                            
+         USING CMDPARMS,R3                                                      
+         SOCKET   OPEN,CONTROL,    open the control connection         *        
+               DESC=TSKCDESC,      descriptor                          *        
+               MFG=TSKCMFG,        work area                           *        
+               ECB=TSKCECB         ecb address                                  
+         LTR   R15,R15             did it open                                  
+         BZ    CONT2200            bif yes                                      
+         LA    R0,L'CONTOPNF                                                    
+         LA    R1,CONTOPNF                                                      
+         LA    R15,8                                                            
+         B     CONT9000            exit now                                     
+CONTOPNF DC    CL8'CONTOPNF'                                                    
+CONT2200 DS    0H                                                               
+         LA    R1,TSKCECB          @ of ecb to wait on                          
+         WAIT  (1)                 vse wait                                     
+         USING SRBLOK,R1                                                        
+         CLI   SRCODE,SROPGOOD     was the open clean?                          
+         BE    CONT2400            bif yes                                      
+         DROP  R1                                                               
+         LA    R0,L'CONTOPNB                                                    
+         LA    R1,CONTOPNB                                                      
+         LA    R15,8                                                            
+         B     CONT9000            exit now                                     
+CONTOPNB DC    CL8'CONTOPNB'                                                    
+CONT2400 DS    0H                                                               
+         ICM   R4,15,CMDOP1        @ of control command                         
+         BNZ   CONT2600                                                         
+         LA    R0,L'CONTNCMD                                                    
+         LA    R1,CONTNCMD                                                      
+         LA    R15,8                                                            
+         B     CONT9000            exit now                                     
+CONTNCMD DC    CL8'CONTNCMD'                                                    
+CONT2600 DS    0H                                                               
+*                                                                               
+* * FIND THE REQUESTED CONTROL COMMand                                          
+         LA    R2,CONTTABL         @ of command table                           
+         LA    R0,CONTTCNT         number of commands in the table              
+         L     R5,CMDOP1+4         length of control command                    
+         BCTR  R5,0                minus 1 for clc                              
+CONT3000 DS    0H                                                               
+         EX    R5,CONTCLC          is this the desired command?                 
+         BE    CONT4000            bif yes                                      
+         LA    R2,CONTENTL(,R2)    bump to the next command                     
+         BCT   R0,CONT3000         try again                                    
+         LA    R0,L'CONTBCMD                                                    
+         LA    R1,CONTBCMD                                                      
+         LA    R15,8                                                            
+         B     CONT9000            exit now                                     
+CONTBCMD DC    CL8'CONTBCMD'                                                    
+CONTCLC  CLC   0(0,R2),0(R4)       is this the command?                         
+CONTMVC1 MVC   0(0,R1),0(R4)       executed instruction                         
+CONT4000 DS    0H                                                               
+         MVC   TSKCBUFF,BLNKLINE   init it to blanks                            
+         LA    R1,TSKCBUFF         move stuff to starting here                  
+         EX    R5,CONTMVC1         move the command                             
+         LA    R1,2(R5,R1)         bump to next spot                            
+         L     R15,16(R2)          @ of routine to handle it                    
+         BALR  R14,R15             handle it                                    
+         STM   R15,R1,TSKCR3F      store return code and msg pointer            
+         SOCKET   CLOSE,CONTROL,   close the control session           *        
+               DESC=TSKCDESC,      descriptior                         *        
+               MFG=TSKCMFG,        work area                           *        
+               ECB=TSKCECB         ecb address                                  
+         LTR   R15,R15             did it work ?                                
+         BZ    CONT5200            bif yes                                      
+         LA    R0,L'CONTCLSF                                                    
+         LA    R1,CONTCLSF                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         B     CONT8000                                                         
+CONTCLSF DC    CL8'CONTCLSF'                                                    
+CONT5200 DS    0H                                                               
+         LA    R1,TSKCECB          @ of ecb to wait on                          
+         WAIT  (1)                                                              
+CONT8000 DS    0H                                                               
+         LM    R15,R1,TSKCR3F      restore return code and msg pointer          
+CONT9000 DS    0H                                                               
+         L     R13,CONTSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+CONTTABL DS    0F                                                               
+         DC    CL16'GETHOSTBYNAME   ',A(GETH1000)                               
+CONTENTL EQU   20                  length of a single table entry               
+CONTTCNT EQU   (*-CONTTABL)/CONTENTL number of table items                      
+CONTGOOD DC    CL8'CONTGOOD'                                                    
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING CMDPARMS,R3                                                      
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'GETH1000'                                                    
+GETH1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING GETH1000,R11                                                     
+         ST    R13,GETHSAVE+4                                                   
+         LA    R13,GETHSAVE                                                     
+         ICM   R4,15,CMDOP2        @ of host name                               
+         BNZ   GETH2000                                                         
+         LA    R0,L'GETHNHST                                                    
+         LA    R1,GETHNHST                                                      
+         LA    R15,8                                                            
+         B     GETH9000            exit now                                     
+GETHNHST DC    CL8'GETHNHST'                                                    
+GETH2000 DS    0H                                                               
+         ICM   R2,15,CMDOP2+4      length of host name                          
+         BCTR  R2,0                minus 1 for mvc                              
+         EX    R2,GETHMVC                                                       
+         LA    R1,2(R2,R1)         bump                                         
+         MVI   0(R1),EBCEOL        insert the end of command                    
+         LA    R1,1(,R1)           bump                                         
+         L     R15,=A(SNDR1000)                                                 
+         BALR  R14,R15             issue send/receive                           
+         LTR   R15,R15             did it work                                  
+         BNZ   GETH9000            bif no                                       
+*                                                                               
+*        COPY THE DATA FROM THE BUFfer                                          
+         MVC   GETHIPAD,TSKCBUFF   copy the binary ip address                   
+         MVC   GETHICHR,TSKCBUFF+4 copy the character ip address                
+         LA    R1,TSKCBUFF+4       data to be displayed                         
+         LA    R0,15               length of data to be displayed               
+         LA    R15,0               return code                                  
+GETH9000 DS    0H                                                               
+         L     R13,GETHSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+GETHMVC  MVC   0(0,R1),0(R4)       move host name                               
+GETHIPAD DS    XL4                                                              
+GETHICHR DS    CL15                                                             
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         USING TSKWORK,R8                                                       
+         USING SSLBEGIN,R9                                                      
+         USING SSLSERVR,R12        establish new base register                  
+         DC    CL8'SNDR1000'                                                    
+SNDR1000 DS    0H                                                               
+         STM   R14,R12,12(R13)     save regs                                    
+         LR    R11,R15                                                          
+         USING SNDR1000,R11                                                     
+         ST    R13,SNDRSAVE+4                                                   
+         LA    R13,SNDRSAVE                                                     
+         LR    R3,R1               end of data buffer                           
+         LA    R0,TSKCBUFF         start of buffer                              
+         SR    R3,R0               calculate length of buffer to send           
+         ST    R3,TSKCLEN          length of buffer to send                     
+         LA    R4,TSKCBUFF         @ of buffer to be sent                       
+         ST    R4,TSKCADDR         store it                                     
+         SOCKET   SEND,CONTROL,            send control command        *        
+               DATA=(TSKCADDR,TSKCLEN),    data to be sent             *        
+               DESC=TSKCDESC,              descriptor                  *        
+               MFG=TSKCMFG,                work area                   *        
+               ECB=TSKCECB                 ecb address                          
+         LTR   R15,R15             did it work                                  
+         BZ    SNDR2000            bif yes                                      
+         LA    R0,L'SNDRSNDF                                                    
+         LA    R1,SNDRSNDF                                                      
+         LA    R15,8                                                            
+         B     SNDR9000            exit now                                     
+SNDRSNDF DC    CL8'SNDRSNDF'                                                    
+SNDR2000 DS    0H                                                               
+         LA    R1,TSKCECB          @ of the ecb to wait on                      
+         WAIT  (1)                                                              
+         USING SRBLOK,R1                                                        
+         CLI   SRCODE,SROPGOOD     was it good                                  
+         BE    SNDR3000            bif yes                                      
+         LA    R0,L'SNDRSSRC                                                    
+         LA    R1,SNDRSSRC                                                      
+         LA    R15,8                                                            
+         B     SNDR9000            exit now                                     
+SNDRSSRC DC    CL8'SNDRSSRC'                                                    
+         DROP  R1                                                               
+SNDR3000 DS    0H                                                               
+*                                                                               
+*        LET'S GET THE RESPONSE                                                 
+         MVC      TSKCLEN(4),=F'80' set the receive length                      
+         LA       R4,TSKCBUFF              address the buffer                   
+         ST       R4,TSKCADDR              save the address                     
+         SOCKET   RECEIVE,CONTROL,         receive the response        *        
+               DATA=(TSKCADDR,TSKCLEN),    indentify the data          *        
+               DESC=TSKCDESC,              descriptor                  *        
+               MFG=TSKCMFG,                work area                   *        
+               ECB=TSKCECB                 ecb address                          
+         LTR   R15,R15             did it work                                  
+         BZ    SNDR4000            bif yes                                      
+         LA    R0,L'SNDRRECF                                                    
+         LA    R1,SNDRRECF                                                      
+         LA    R15,8                                                            
+         B     SNDR9000            exit now                                     
+SNDRRECF DC    CL8'SNDRRECF'                                                    
+SNDR4000 DS    0H                                                               
+         LA    R1,TSKCECB          @ of ecb                                     
+         WAIT  (1)                                                              
+         USING SRBLOK,R1                                                        
+         CLI   SRCODE,SROPGOOD     was the open good?                           
+         BE    SNDR4200            bif yes                                      
+         LA    R0,L'SNDRRECB                                                    
+         LA    R1,SNDRRECB                                                      
+         LA    R15,8                                                            
+         B     SNDR9000            exit now                                     
+SNDRRECB DC    CL8'SNDRRECB'                                                    
+SNDR4200 DS    0H                                                               
+         SLR   R0,R0               clear reg                                    
+         ICM   R0,B'0011',SRCOUNT  number of bytes received                     
+         DROP  R1                                                               
+         LA    R15,0               good new return code                         
+SNDR9000 DS    0H                                                               
+         L     R13,SNDRSAVE+4                                                   
+         LM    R2,R12,28(R13)      restore callers r0-r12                       
+         L     R14,12(R13)         restore r14                                  
+         BSM   0,R14               return to caller in called mode              
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+*                                                                               
+         DC    CL8'OCEX1000'                                                    
+OCEX1000 DS    0H                                                               
+         LR    R11,R15                                                          
+         USING OCEX1000,R11                                                     
+         L     R12,=A(SSLSERVR)    main csect                                   
+         USING SSLSERVR,R12                                                     
+         L     R9,=A(SSLBEGIN)     @ of maintask common area                    
+         USING SSLBEGIN,R9                                                      
+         LR    R4,R1               @ of passed mapsavar                         
+         USING SVUARA,R4                                                        
+         LA    R13,OCEXSAV2                                                     
+         MVC   OCEXCMND,BLNKLINE   clear the command line                       
+         CLI   SVUMGADR,X'00'      was data= passed?                            
+         BE    OCEX2000            bif no                                       
+         MVC   OCEXCMND,SVUMGADR   get the data=                                
+         OC    OCEXCMND,BLNKLINE   translate to upper case                      
+         B     OCEX4000            all set                                      
+OCEX2000 DS    0H                                                               
+         MVC   OCEXCMND(8),DOAREADC tell main to read from console              
+OCEX4000 DS    0H                                                               
+         LA    R1,CMNDECB          post this ecb                                
+         POST  (1)                 make maintask ready to run                   
+OCEX9000 DS    0H                                                               
+         EXIT  OC                  return to main task                          
+OCEXSAV1 DS    XL256               stxit oc exit save area                      
+OCEXSAV2 DS    18F                                                              
+DOAREADC DC    C'DOAREADC'                                                      
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+         DC    CL8'MNAB1000'                                                    
+MNAB1000 DS    0H                                                               
+         LR    R11,R15                                                          
+         USING MNAB1000,R11                                                     
+         ST    R0,MNABR0           store the vse abend code                     
+         L     R12,=A(SSLSERVR)    main csect                                   
+         LA    R6,2048(,R12)       set 2nd base reg                             
+         LA    R6,2048(,R6)        "                                            
+         USING SSLSERVR,R12        establish new base register                  
+         L     R9,=A(SSLBEGIN)     @ of maintask common area                    
+         USING SSLBEGIN,R9                                                      
+         LR    R4,R1               @ of passed mapsavar                         
+         USING SVUARA,R4                                                        
+         LA    R13,MNABSAV2                                                     
+         UNPK  MNABWRK1(9),MNABR0(5) unpack                                     
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   MNABCODE,MNABWRK1+6 move into the message                        
+         UNPK  MNABWRK1(9),SVUAPSW(5) unpack                                    
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   MNABPSW1,MNABWRK1   move into the message                        
+         UNPK  MNABWRK1(9),SVUAPSW+4(5) unpack                                  
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   MNABPSW2,MNABWRK1   move into the message                        
+         UNPK  MNABWRK1(9),SVUPSW(5) unpack                                     
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   MNABPINF,MNABWRK1+4 move into the message                        
+         LA    R0,MNABM1L                                                       
+         LA    R1,MNABMSG1                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         LA    R5,4                first do r0 - r3                             
+         LA    R8,SVUR00           start here                                   
+         MVC   MNABREGS+0(7),=C'R0-R3  '                                        
+         LA    R7,MNABREGS+8       build output here                            
+MNAB3000 DS    0H                                                               
+         UNPK  MNABWRK1(9),0(5,R8) unpack                                       
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   0(8,R7),MNABWRK1    move into the message                        
+         LA    R8,4(,R8)           bump to next reg                             
+         LA    R7,9(,R7)           bump                                         
+         BCT   R5,MNAB3000                                                      
+         LA    R0,MNABRL                                                        
+         LA    R1,MNABREGS                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         LA    R5,4                now do r4 - r7                               
+         MVC   MNABREGS+0(7),=C'R4-R7  '                                        
+         LA    R7,MNABREGS+8       build output here                            
+MNAB3100 DS    0H                                                               
+         UNPK  MNABWRK1(9),0(5,R8) unpack                                       
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   0(8,R7),MNABWRK1    move into the message                        
+         LA    R8,4(,R8)           bump to next reg                             
+         LA    R7,9(,R7)           bump                                         
+         BCT   R5,MNAB3100                                                      
+         LA    R0,MNABRL                                                        
+         LA    R1,MNABREGS                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         LA    R5,4                now do r8 - r11                              
+         MVC   MNABREGS+0(7),=C'R8-R11 '                                        
+         LA    R7,MNABREGS+8       build output here                            
+MNAB3200 DS    0H                                                               
+         UNPK  MNABWRK1(9),0(5,R8) unpack                                       
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   0(8,R7),MNABWRK1    move into the message                        
+         LA    R8,4(,R8)           bump to next reg                             
+         LA    R7,9(,R7)           bump                                         
+         BCT   R5,MNAB3200                                                      
+         LA    R0,MNABRL                                                        
+         LA    R1,MNABREGS                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+         LA    R5,4                now do r12 - r15                             
+         MVC   MNABREGS+0(7),=C'R12-R15'                                        
+         LA    R7,MNABREGS+8       build output here                            
+MNAB3300 DS    0H                                                               
+         UNPK  MNABWRK1(9),0(5,R8) unpack                                       
+         TR    MNABWRK1(8),TRTAB   translate to hex                             
+         MVC   0(8,R7),MNABWRK1    move into the message                        
+         LA    R8,4(,R8)           bump to next reg                             
+         LA    R7,9(,R7)           bump                                         
+         BCT   R5,MNAB3300                                                      
+         LA    R0,MNABRL                                                        
+         LA    R1,MNABREGS                                                      
+         L     R15,@CONORTN                                                     
+         BASSM R14,R15                                                          
+*                                                                               
+         LA    R5,MNABDLST         @ of addresses to be dumped                  
+         ST    R9,0(R5)            dump the task save area                      
+         LA    R1,256(,R9)                                                      
+         AL    R1,=F'32000'        plus this much                               
+         ST    R1,4(R5)                                                         
+         LA    R5,8(,R5)           bump to next                                 
+         L     R1,@SAMSRV          @ of code                                    
+         ST    R1,0(R5)            store it                                     
+         LA    R1,4095(,R1)                                                     
+         ST    R1,4(R5)                                                         
+         OI    4(R5),X'80'         flag it as the last in the list              
+         SDUMPX HDR='SSLSERVR MAINTask abend',list=mnabdlst                     
+*                                                                               
+         L     R8,@TSKWORK         @ of main task work area                     
+         USING TSKWORK,R8                                                       
+MNAB4000 DS    0H                                                               
+*                                                                               
+         EXIT  AB                                                               
+         L     R15,MNABR0          get the vse abend code                       
+         ST    R15,RETCODE         store it                                     
+         L     R15,MNABRETN        @ of return address                          
+         LM    R0,R14,MNABRRGS     return with these regs                       
+         BR    R15                 return to here...                            
+MNABR0   DS    F                                                                
+*                                                                               
+MNABSAV1 DS    XL256               stxit ab exit save area                      
+MNABSAV2 DS    18F                                                              
+MNABWRK1 DS    XL32                                                             
+MNABDLST DS    32F                 up to 16 areas                               
+MNABMSG1 DS    0H                                                               
+         DC    C'SSLSERVR ABEND PSW='                                           
+MNABPSW1 DC    CL8'X'                                                           
+         DC    CL1' '                                                           
+MNABPSW2 DC    CL8'X'                                                           
+         DC    C' CANCEL CODE='                                                 
+MNABCODE DC    CL2'A'                                                           
+         DC    C' INT='                                                         
+MNABPINF DC    CL4' '                                                           
+MNABM1L  EQU   *-MNABMSG1                                                       
+MNABREGS DC    CL60' '                                                          
+MNABRL   EQU   *-MNABREGS                                                       
+         LTORG ,                                                                
+         DROP  ,                                                                
+*                                                                               
+* * EQUATES...                                                                  
+EBCEOL   EQU   X'15'               ebcidic end of line indicator                
+ASCEOL   EQU   X'0A'               ascii   end of line indicator                
+*                                                                               
+* * REGISTER EQUATES                                                            
+R0       EQU      0                                                             
+R1       EQU      1                                                             
+R2       EQU      2                                                             
+R3       EQU      3                                                             
+R4       EQU      4                                                             
+R5       EQU      5                                                             
+R6       EQU      6                                                             
+R7       EQU      7                                                             
+R8       EQU      8                                                             
+R9       EQU      9                                                             
+R10      EQU      10                                                            
+R11      EQU      11                                                            
+R12      EQU      12                                                            
+R13      EQU      13                                                            
+R14      EQU      14                                                            
+R15      EQU      15                                                            
+*                                                                               
+CMDPARMS DSECT                                                                  
+CMDVERB  DS    2F                                                               
+CMDOP1   DS    2F                                                               
+CMDOP2   DS    2F                                                               
+CMDOP3   DS    2F                                                               
+CMDOP4   DS    2F                                                               
+CMDOP5   DS    2F                                                               
+CMDOP6   DS    2F                                                               
+CMDOP7   DS    2F                                                               
+CMDOP8   DS    2F                                                               
+*                                                                               
+TSKWORK  DSECT                                                                  
+TSKFLAG1 DS    XL1                 flag 1                                       
+TSKATTCH EQU   X'80'               task is attached                             
+TSKINUSE EQU   X'40'               task is in use                               
+TSKABEND EQU   X'20'               task abended                                 
+TSKASCII EQU   X'10'               task command is in ascii                     
+TSKCONNX EQU   X'08'               task is connected                            
+         DS    XL1                 unused                                       
+TSKTID   DS    H                   vse task id                                  
+TSKSAVAR DS    XL120               vse task save area                           
+TSKSOCKN DS    F                   socket number                                
+TSKRSLT  DS    14F                                                              
+TSKTECB  DS    F                   task termination ecb                         
+TSKIPADR DS    F                                                                
+TSKSAV01 DS    18F                 save area for calling                        
+TSKECB1  DS    F                                                                
+TSKWAITM DS    0F                  waitm ecb list                               
+@TSKECB1 DS    F                                                                
+@TSKECB2 DS    F                                                                
+@TSKECB3 DS    F                                                                
+*                                                                               
+IBUFFER  DS    0D                                                               
+IFAMILY  DS    H                                                                
+IPORT    DS    H                                                                
+IIPADDR  DS    F                                                                
+ICLEAR   DS    CL8                                                              
+IBUFFERL EQU   *-IBUFFER                                                        
+*                                                                               
+TSKFWRK1 DS    D                                                                
+TSKFWRK2 DS    F                                                                
+TSKSENDL DS    F                                                                
+TSK@SEND DS    F                   @ of send buffer                             
+TSKCMNDL DS    F                   actual length of task command                
+TSKCMND  DS    CL80                task command line                            
+         DS    0D                                                               
+TSKPARMS DS    XL256               enough for 32 parms                          
+TSKCMFG  DS    (SOPLEN)X                                                        
+TSKCDESC DS    F                                                                
+TSKCECB  DS    14F                                                              
+TSKCBUFF DS    CL80                                                             
+TSKCADDR DS    F                                                                
+TSKCLEN  DS    F                                                                
+TSKCR3F  DS    3F                                                               
+CMNDSAVE DS    18F                                                              
+CALPSAVE DS    18F                                                              
+CDLDSAVE DS    18F                                                              
+HARTSAVE DS    18F                                                              
+CONTSAVE DS    18F                                                              
+GETHSAVE DS    18F                                                              
+SNDRSAVE DS    18F                                                              
+RSTRSAVE DS    18F                                                              
+SESRWLNG DS    F                                                                
+SESRWADR DS    F                                                                
+RSTRCLNG DS    F                                                                
+RSTRCADR DS    F                                                                
+SESRDATL DS    F                                                                
+SESRDATA DS    XL256                                                            
+         DS    XL(4096-(*-TSKWORK))                                             
+TSKL     EQU   *-TSKWORK           length                                       
+*                                                                               
+COMREG   MAPCOMR  EQU=YES                                                       
+         MAPSAVAR ,                                                             
+SYSCOM   SYSCOM   ,                                                             
+         END   SSLSERVR                                                         

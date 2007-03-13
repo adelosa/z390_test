@@ -1,0 +1,390 @@
+         MACRO                                                          00001000
+&NAME    IPW$IDM &PHASE=,&DO=,&FAIL=,&PHASEAD=                 @D52IDAT 00002000
+.*                                                                      00003000
+.*       PROVIDES INTERFACE TO REQUEST AN IDUMP IN FLIGHT               00004000
+.*                                                                      00005000
+.*       'PHASE' SPECIFIES THE LABEL OF THE STORAGE DESCRIPTOR OF       00006000
+.*       THE VSE/POWER PHASE OR THE LABEL OF THE PHASE NAME OF A        00007000
+.*       USER WRITTEN EXIT ROUTINE.                                     00008000
+.*       'PHASEAD' SPECIFIES THE LABEL OF A 4 BYTE FIELD THAT           00009000
+.*       CONTAINS THE ADDRESS OF A STORAGE DESCRIPTOR OF THE            00010000
+.*       VSE/POWER PHASE OR OF THE PHASE NAME OF A USER EXIT            00011000
+.*       ROUTINE.                                                       00012000
+.*       EITHER 'PHASE' OR 'PHASEAD' IS MANDATORY.                      00013000
+.*                                                                      00014000
+.*       'DO' SPECIFIES, HOW OFTEN THE REQUEST FOR AN IDUMP SHALL       00015000
+.*       BE HONOURED, IF THE CODE IS PROCESSED MORE THAN ONCE.          00016000
+.*       'DO' IS OPTIONAL, ITS DEFAULT IS 'ONCE'.                       00017000
+.*                                                                      00018000
+.*       'FAIL' SPECIFIES, WHETHER A POSSIBLE IDUMP FAILURE             00019000
+.*       INDICATION (REPLIED GENERALLY BY CALLED MODULE IPW$$ID         00020000
+.*       VIA HIGH ORDER BIT OF RB) SHALL BE 'RETURNED' TO THE           00021000
+.*       CALLER OF IPW$IDM, OR WHETHER SUCH FAILURE SHALL BE            00022000
+.*       'IGNORED', WHICH IS THE DEFAULT.                               00023000
+.*                                                                      00024000
+.*       DEPENDING ON THE FOLLOWING GLOBALS, IPW$IDM GENERATES          00025000
+.*       DIFFERENT ENTRY/RETURN CODE INTO/FROM MODULE IPW$$ID:          00026000
+.*       - &$MNSA  ... REFUSES TO GENERATE ENTRY CODE, PROVIDES         00027000
+.*                     MNOTE INSTEAD, BECAUSE CODE AREA MUST            00028000
+.*                     EITHER BE PROTECTED AGAINST RECURSIVE            00029000
+.*                     ENTRY OF IPW$$ID OR DOES NOT ADHERE TO           00030000
+.*                     THE POWER TASK CONVENTIONS                       00031000
+.*       - &$ATSA  ... USING LOCAL IPW$$AT SAVE AREA, BECAUSE           00032000
+.*                     CALLERS ARE SERIALIZED THROUGH LOCKING           00033000
+.*                     OF ATGATE                                        00034000
+.*       - &$STSA  ... USING SAVE AREA LOCAL TO THE REQUESTING          00035000
+.*                     VSE SUBTASK MODULE, BECAUSE SUBTASK CODE         00036000
+.*                     NEED NOT BE RE-ENTRANT                           00037000
+.*       - &$BTSA  ... PROVIDE CODE THAT WILL DETERMINE AT              00038000
+.*                     PROCESSING TIME, WHETHER IT IS EXECUTED          00039000
+.*                     BY A VSE SUBTASK OR A VSE/POWER TASK             00040000
+.*                     AND SELECT THE CORRESPONDING SAVE AREA           00041000
+.*                     THEN                                             00042000
+.*       - &$PWSA  ... USING VSE/POWER TASK TCB AS SAVE AREA            00043000
+.*                     FOR THE MOST COMMON CALL BY A POWER TASK         00044000
+.*                     FROM A GENERAL VSE/POWER MODULE                  00045000
+.*       - &NUSA   ... USING VSE/POWER TASK TCB AS SAVE AREA            00046000
+.*                     FOR THE CALL A BY A POWER TASK FROM IPW$$NU,     00047000
+.*                     BECAUSE &$PWSA IS NOT PROVIDED THROUGH           00048000
+.*                     SECTION DESCRIPTION BY IPW$DSD IN IPW$$NU        00049000
+.*        - -----  ... USING VSE/POWER TASK TCB AS SAVE AREA            00050000
+.*                     FOR THE CALL BY A POWER TASK FROM A              00051000
+.*                     A USER WRITTEN EXIT ROUTINE                      00052000
+.*                                                                      00053000
+.* IBM DISK OPERATING SYSTEM                                            00054000
+.* VSE/POWER - 5686-CF7-03                                              00055000
+.* IPW$IDM MACRO INSTRUCTION - TAKE AN IDUMP IN FLIGHT                  00056000
+.*                                                                      00057000
+         GBLB  &NUSA               IDENTIFY MODULE IPW$$NU              00058000
+         GBLB  &$ATSA              IDENTIFY MODULE IPW$$AT              00059000
+         GBLB  &$STSA              IDENTIFY MODULES PROCESSED           00060000
+.*                                 BY VSE SUBTASKS ONLY                 00061000
+         GBLB  &$BTSA              IDENTIFY MODULES PROCESSED BY        00062000
+.*                                 BOTH POWER TASKS AND VSE SUBTASKS    00063000
+         GBLB  &$MNSA              IDENTIFY MODULES/AREAS WHERE         00064000
+.*                                 MACRO SHOULD NOT BE USED             00065000
+         GBLB  &$PWSA              IDENTIFY ANY OTHER VSE/POWER         00066000
+.*                                 MODULE VERSUS USER EXIT ROUTINE      00067000
+         LCLB  &PHADR              IDENTIFY 'PHASE'/'PHASEAD' OPTION    00068000
+         LCLB  &DOAL               IDENTIFY 'ONCE'/'ALWAYS' OPTION      00069000
+         LCLB  &DOTASK             IDENTIFY 'DO=TASK' OPTION   @DY45554 00069200
+         LCLB  &TASKMN             FLAG FOR MNOTE FOR INVALID  @DY45554 00069400
+.*                                 'DO=TASK' OPTION            @DY45554 00069600
+         LCLB  &FAILR              IDENTIFY 'IGN'/'RETURN' OPTION       00070000
+         AGO   .ZZZ                                                     00071000
+*        LICENSED MATERIALS - PROPERTY OF IBM                           00072000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                    00073000
+*        5686-CF7 (C) COPYRIGHT IBM CORP. 1992, 2004                    00074000
+*        SEE COPYRIGHT INSTRUCTIONS                                     00075000
+.*                                                                      00076000
+.ZZZ     ANOP                                                           00077000
+.*                                                                      00078000
+         SPACE                                                          00079000
+         AIF   (T'&NAME EQ 'O').NONAME                                  00080000
+&NAME    DS    0H                                              @D52IDAT 00081000
+.*                                                                      00082000
+.NONAME  ANOP                                                           00083000
+         AIF   (&$MNSA).IDMN01     DO NOT EXPAND IF RESTRICTED          00084000
+.*                                                                      00085000
+&PHADR   SETB  0                   SET DEFAULT: 'PHASE' PRESENT         00086000
+         AIF   (T'&PHASE NE 'O').ID00   IF 'PHASE' PRESENT, CONTINUE    00087000
+         AIF   (T'&PHASEAD EQ 'O').IDMN02   PHASE ALL OMITTED, BRANCH   00088000
+&PHADR   SETB  1                   SET 'PHASEAD' IS PRESENT             00089000
+.*                                                                      00090000
+.ID00    ANOP                                                           00091000
+&DOAL    SETB  0                   SET DEFAULT: DO IDUMP ONCE           00092000
+&DOTASK  SETB  0                   SET DEFAULT: 1 IDUMP PER TSK@DY45554 00093090
+         AIF   (T'&DO EQ 'O').ID04  USE DEFAULT OF 'DO' OMITTED@DY45554 00093180
+         AIF   ('&DO' EQ 'ONCE').ID04  USE DEFAULT IF 'DO=ONCE'@DY45554 00093270
+         AIF   ('&DO' EQ 'TASK').ID01  CONTINUE DO=TASK        @DY45554 00093360
+         AIF   ('&DO' EQ 'ALWAYS').ID03    CONTINUE DO=ALWAYS  @DY45554 00093450
+         AGO   .IDMN03             ELSE TERMINATE WITH MNOTE 8 @DY45554 00093540
+.*                                                             @DY45554 00093630
+.ID01    ANOP                                                  @DY45554 00093720
+&DOTASK  SETB  1                   SET 'DO=TASK' DESIRED       @DY45554 00093810
+&TASKMN  SETB  0                   SET NO MNOTE FOR DO=TASK    @DY45554 00093900
+         AIF   (&$ATSA).ID02       CALLED IN IPW$$AT, MNOTE    @DY45554 00093990
+         AIF   (&$STSA).ID02       CALLED IN SUBTASK, MNOTE    @DY45554 00094080
+         AIF   (&$BTSA).ID02       CALLED IN HYBRID, MNOTE     @DY45554 00094170
+         AGO   .ID04               ELSE CONTINUE               @DY45554 00094260
+.*                                                             @DY45554 00094350
+.ID02    ANOP                                                  @DY45554 00094440
+&TASKMN  SETB  1                   REQUEST MNOTE FOR DO=TASK   @DY45554 00094530
+         AGO   .ID04               CONTINUE                    @DY45554 00094620
+.*                                                             @DY45554 00094710
+.ID03    ANOP                                                  @DY45554 00094800
+&DOAL    SETB  1                   SET 'DO=ALWAYS' DESIRED              00096000
+.*                                                                      00097000
+.ID04    ANOP                                                  @DY45554 00098490
+&FAILR   SETB  0                   SET DEFAULT: IGNORE FAILURE          00099000
+         AIF   (T'&FAIL EQ 'O').ID05  USE DEFAULT OF 'FAIL' OMITTED     00100000
+         AIF   ('&FAIL' EQ 'IGN').ID05  USE DEFAULT IF 'FAIL=IGN'       00101000
+         AIF   ('&FAIL' NE 'RETURN').IDMN04  TERMINATE WITH MNOTE 8     00102000
+&FAILR   SETB  1                   SET 'FAIL=RETURN' DESIRED            00103000
+.*                                                                      00104000
+.ID05    ANOP                                                           00105000
+         AIF   (&$ATSA).IDAT       IF CALLED IN IPW$$AT, CONTINUE       00106000
+         AIF   (&$STSA).IDST       IF CALLED IN SUBTASK MODULE, GO      00107000
+         AIF   (&$BTSA).IDBT       IF CALLED IN HYBRID MODULE, GO       00108000
+.*                                                                      00109000
+.* **** EXPAND FOR POWER TASK IN VSE/POWER MODULE OR USER EXIT ****     00110000
+.*                                                                      00111000
+         AIF   (&DOTASK).ID25      DO=TASK, CONTINUE           @DY45554 00111500
+         AIF   (&DOAL).ID10        DO=ALWAYS, BYPASS 1ST TIME SWITCH    00112000
+         XI    *,6                 TAKE IDUMP ONLY ONCE, AND   @D52IDAT 00113000
+         AIF   (&NUSA).ID08        IF CALL FROM IPW$$NU, CONTINUE       00114000
+         AIF   (&$PWSA).ID08       IF CALL BY POWER MODULE, CONTINUE    00115000
+         AIF   (&FAILR).ID07       IF FAIL=RETURN, TAKE SHORT JUMP      00116000
+         BC    8,*+38              BYPASS CODE FURTHER TIMES   @D52IDAT 00117000
+         AGO   .ID10               CONTINUE                             00118000
+.ID07    ANOP                                                           00119000
+         BC    8,*+34              BYPASS CODE FURTHER TIMES   @D52IDAT 00120000
+         AGO   .ID10               CONTINUE                             00121000
+.ID08    ANOP                                                           00122000
+         AIF   (&FAILR).ID09       IF FAIL=RETURN, TAKE SHORT JUMP      00123000
+         BC    8,*+28              BYPASS CODE FURTHER TIMES   @D52IDAT 00124000
+         AGO   .ID10               CONTINUE                             00125000
+.ID09    ANOP                                                           00126000
+         BC    8,*+24              BYPASS CODE FURTHER TIMES   @D52IDAT 00127000
+         AGO   .ID10               CONTINUE                             00128000
+.ID10    ANOP                                                           00129000
+         STM   RE,R1,TCIE          SAVE REG. RE-R1 IN TCB AREA @D52IDAT 00130000
+         AIF   (&PHADR).ID11       IF 'PHASEAD' PRESENT, CONTINUE       00131000
+         LA    R1,&PHASE           POINT TO PHASE NAME/SUFFIX  @D52IDAT 00132000
+         AGO   .ID12               CONTINUE                             00133000
+.ID11    ANOP                                                           00134000
+         L     R1,&PHASEAD         GET ADDR. OF PHASE NAME/SUFF@D52IDAT 00135000
+.ID12    ANOP                                                           00136000
+         AIF   (&NUSA).ID15        IF CALL FROM IPW$$NU, CONTINUE       00137000
+         AIF   (&$PWSA).ID15       IF CALL BY POWER MODULE, CONTINUE    00138000
+         ICM   R1,8,*+8            INDICATE: CALL BY USER EXIT @D52IDAT 00139000
+         B     *+6                 GO, BYPASS LOCAL DEFINITION @D52IDAT 00140000
+         DC    XL2'8000'           REGISTER R1 HIGH ORDER FLAG @D52IDAT 00141000
+.ID15    ANOP                                                           00142000
+         L     RF,CAID             GET ENTRY POINT OF IPW$$ID  @D52IDAT 00143000
+         BAL   RE,16(,RF)          TAKE AN IDUMP FROM IPW$$ID  @D52IDAT 00144000
+         LM    RE,R1,TCIE          RESTORE CALLERS REG. RE-R1  @D52IDAT 00145000
+         AIF   (&FAILR).ID20       FAIL=RETURN, BYPASS RB RESETTING     00146000
+         LA    RB,0(,RB)           CLEAR POSSIBLE FAILURE IND. @D52IDAT 00147000
+.ID20    ANOP                                                           00148000
+         SPACE 1                                               @D52IDAT 00149000
+         AGO   .IDEND                                                   00150000
+.*                                                             @DY45554 00150020
+.* **** DO=TASK IN POWER TASK IN VSE/POWER MODULE OR USER EXIT @DY45554 00150040
+.*                                                             @DY45554 00150060
+.ID25    ANOP                                                  @DY45554 00150080
+         TM    TCF18,TCF18I1       TEST IF IDUMP ALREADY ISSUED@DY45554 00150100
+         AIF   (&NUSA).ID28        IF CALL FROM IPW$$NU, CONT. @DY45554 00150120
+         AIF   (&$PWSA).ID28       IF CALL BY POWER MODULE, CNT@DY45554 00150140
+         AIF   (&FAILR).ID27       IF FAIL=RETURN, SHORT JUMP  @DY45554 00150160
+         BO    *+42                BYPASS CODE FURTHER TIMES   @DY45554 00150180
+         AGO   .ID30               CONTINUE                    @DY45554 00150200
+.ID27    ANOP                                                  @DY45554 00150220
+         BO    *+38                BYPASS CODE FURTHER TIMES   @DY45554 00150240
+         AGO   .ID30               CONTINUE                    @DY45554 00150260
+.ID28    ANOP                                                  @DY45554 00150280
+         AIF   (&FAILR).ID29       IF FAIL=RETURN, SHORT JUMP J@DY45554 00150300
+         BO    *+32                BYPASS CODE FURTHER TIMES   @DY45554 00150320
+         AGO   .ID30               CONTINUE                    @DY45554 00150340
+.ID29    ANOP                                                  @DY45554 00150360
+         BO    *+28                BYPASS CODE FURTHER TIMES   @DY45554 00150380
+         AGO   .ID30               CONTINUE                    @DY45554 00150400
+.ID30    ANOP                                                  @DY45554 00150420
+         STM   RE,R1,TCIE          SAVE REG. RE-R1 IN TCB AREA @DY45554 00150440
+         AIF   (&PHADR).ID31       IF 'PHASEAD' PRESENT, CONT. @DY45554 00150460
+         LA    R1,&PHASE           POINT TO PHASE NAME/SUFFIX  @DY45554 00150480
+         AGO   .ID32               CONTINUE                    @DY45554 00150500
+.ID31    ANOP                                                  @DY45554 00150520
+         L     R1,&PHASEAD         GET ADDR. OF PHASE NAME/SUFF@DY45554 00150540
+.ID32    ANOP                                                  @DY45554 00150560
+         AIF   (&NUSA).ID35        IF CALL FROM IPW$$NU, CONT. @DY45554 00150580
+         AIF   (&$PWSA).ID35       IF CALL BY POWER MODULE, CNT@DY45554 00150600
+         ICM   R1,8,*+8            INDICATE: CALL BY USER EXIT @DY45554 00150620
+         B     *+6                 GO, BYPASS LOCAL DEFINITION @DY45554 00150640
+         DC    XL2'8000'           REGISTER R1 HIGH ORDER FLAG @DY45554 00150660
+.ID35    ANOP                                                  @DY45554 00150680
+         L     RF,CAID             GET ENTRY POINT OF IPW$$ID  @DY45554 00150700
+         BAL   RE,16(,RF)          TAKE AN IDUMP FROM IPW$$ID  @DY45554 00150720
+         LM    RE,R1,TCIE          RESTORE CALLERS REG. RE-R1  @DY45554 00150740
+         AIF   (&FAILR).ID40       FAIL=RETURN, BYPASS RB RESET@DY45554 00150760
+         LA    RB,0(,RB)           CLEAR POSSIBLE FAILURE IND. @DY45554 00150780
+.ID40    ANOP                                                  @DY45554 00150800
+         OI    TCF18,TCF18I1       SET IDUMP ISSUED FOR TASK   @DY45554 00150820
+         SPACE 1                                               @DY45554 00150840
+         AGO   .IDEND                                          @DY45554 00150860
+.*                                                                      00151000
+.* **** EXPAND FOR CALL FROM MODULE IPW$$AT (ABN. TERMINATION) ****     00152000
+.*                                                                      00153000
+.IDAT    ANOP                                                           00154000
+         AIF   (&DOAL).IDAT4       DO=ALWAYS, BYPASS 1ST TIME SWITCH    00155000
+         XI    *,6                 TAKE IDUMP ONLY ONCE, AND   @D52IDAT 00156000
+         AIF   (&FAILR).IDAT2      IF FAIL=RETURN, TAKE SHORT JUMP      00157000
+         BC    8,*+36              BYPASS CODE FURTHER TIMES   @D52IDAT 00158000
+         AGO   .IDAT4              CONTINUE                             00159000
+.IDAT2   ANOP                                                           00160000
+         BC    8,*+32              BYPASS CODE FURTHER TIMES   @D52IDAT 00161000
+         AGO   .IDAT4              CONTINUE                             00162000
+.IDAT4   ANOP                                                           00163000
+         STM   RE,R2,AT0E          SAVE RE-R2 IN LOCAL AREA    @D52IDAT 00164000
+         L     R2,ATWASA           POINT TO FAILURE SAVE AREA  @D52IDAT 00165000
+         L     R1,ATWNAME          POINT TO FAILING PHASE NAME @D52IDAT 00166000
+         LA    R0,ATWCCD           POINT TO CANCEL CODE        @D52IDAT 00167000
+         L     RF,CAID             GET ENTRY POINT OF IPW$$ID  @D52IDAT 00168000
+         BAL   RE,20(,RF)          TAKE AN IDUMP FROM IPW$$ID  @D52IDAT 00169000
+         LM    RE,R1,AT0E          RESTORE CALLERS REG. RE-R1  @D52IDAT 00170000
+         AIF   (&FAILR).IDAT8      FAIL=RETURN, BYPASS RB RESETTING     00171000
+         LA    RB,0(,RB)           CLEAR POSSIBLE FAILURE IND. @D52IDAT 00172000
+.IDAT8   ANOP                                                           00173000
+         SPACE 1                                               @D52IDAT 00174000
+         AGO   .IDEND                                                   00175000
+.*                                                                      00176000
+.* **** EXPAND FOR CALL FROM MODULES DRIVEN BY SUBTASK ONLY!   ****     00177000
+.*                                                                      00178000
+.IDST    ANOP                                                           00179000
+         AIF   (&DOAL).IDST4       DO=ALWAYS, BYPASS 1ST TIME SWITCH    00180000
+         XI    *,6                 TAKE IDUMP ONLY ONCE, AND   @D52IDAT 00181000
+         AIF   (&FAILR).IDST2      IF FAIL=RETURN, TAKE SHORT JUMP      00182000
+         BC    8,*+28              BYPASS CODE FURTHER TIMES   @D52IDAT 00183000
+         AGO   .IDST4              CONTINUE                             00184000
+.IDST2   ANOP                                                           00185000
+         BC    8,*+24              BYPASS CODE FURTHER TIMES   @D52IDAT 00186000
+         AGO   .IDST4              CONTINUE                             00187000
+.IDST4   ANOP                                                           00188000
+         STM   RE,R2,0(RC)         SAVE RE-R2 IN LOCAL AREA    @D52IDAT 00189000
+         AIF   (&PHADR).IDST5      IF 'PHASEAD' PRESENT, CONTINUE       00190000
+         LA    R1,&PHASE           POINT TO PHASE NAME/SUFFIX  @D52IDAT 00191000
+         AGO   .IDST6              CONTINUE                             00192000
+.IDST5   ANOP                                                           00193000
+         L     R1,&PHASEAD         GET ADDR. OF PHASE NAME/SUFF@D52IDAT 00194000
+.IDST6   ANOP                                                           00195000
+         L     RF,CAID             GET ENTRY POINT OF IPW$$ID  @D52IDAT 00196000
+         BAL   RE,24(,RF)          TAKE AN IDUMP FROM IPW$$ID  @D52IDAT 00197000
+         LM    RE,R2,0(RC)         RESTORE CALLERS REG. RE-R2, @D52IDAT 00198000
+         AIF   (&FAILR).IDST8      FAIL=RETURN, BYPASS RB RESETTING     00199000
+         LA    RB,0(,RB)           CLEAR POSSIBLE FAILURE IND. @D52IDAT 00200000
+.IDST8   ANOP                                                           00201000
+         SPACE 1                                               @D52IDAT 00202000
+         AGO   .IDEND                                                   00203000
+.*                                                                      00204000
+.* **** EXPAND FOR MODULES DRIVEN BY POWER TASK OR VSE SUBTASK ****     00205000
+.*                                                                      00206000
+.IDBT    ANOP                                                           00207000
+         CLC   *+14(4),24(RC)      VSE SUBTASK-ID PRESENT ?    @D52IDAT 00208000
+         BE    $ST&SYSNDX          ..YES, GO TO HANDLE SUBTASK @D52IDAT 00209000
+         B     $PT&SYSNDX          GO TO HANDLE VSE/POWER TASK @D52IDAT 00210000
+         SPACE 1                                               @D52IDAT 00211000
+         DC    CL4'$IDM'           VSE SUBTASK IDENTIFIER      @D52IDAT 00212000
+         SPACE 2                                               @D52IDAT 00213000
+*        HANDLE CALLER = VSE/POWER TASK                        @D52IDAT 00214000
+         SPACE 1                                               @D52IDAT 00215000
+$PT&SYSNDX DS    0H                                            @D52IDAT 00216000
+         AIF   (&DOAL).BT10        DO=ALWAYS, BYPASS 1ST TIME SWITCH    00217000
+         XI    *,6                 TAKE IDUMP ONLY ONCE, AND   @D52IDAT 00218000
+         AIF   (&FAILR).BT09       IF FAIL=RETURN, TAKE SHORT JUMP      00219000
+         BC    8,*+28              BYPASS CODE FURTHER TIMES   @D52IDAT 00220000
+         AGO   .BT10               CONTINUE                             00221000
+.BT09    ANOP                                                           00222000
+         BC    8,*+24              BYPASS CODE FURTHER TIMES   @D52IDAT 00223000
+         AGO   .BT10               CONTINUE                             00224000
+.BT10    ANOP                                                           00225000
+         STM   RE,R1,TCIE          SAVE REG. RE-R1 IN TCB AREA @D52IDAT 00226000
+         AIF   (&PHADR).BT11       IF 'PHASEAD' PRESENT, CONTINUE       00227000
+         LA    R1,&PHASE           POINT TO PHASE NAME/SUFFIX  @D52IDAT 00228000
+         AGO   .BT12               CONTINUE                             00229000
+.BT11    ANOP                                                           00230000
+         L     R1,&PHASEAD         GET ADDR. OF PHASE NAME/SUFF@D52IDAT 00231000
+.BT12    ANOP                                                           00232000
+         L     RF,CAID             GET ENTRY POINT OF IPW$$ID  @D52IDAT 00233000
+         BAL   RE,16(,RF)          TAKE AN IDUMP FROM IPW$$ID  @D52IDAT 00234000
+         LM    RE,R1,TCIE          RESTORE CALLERS REG. RE-R1  @D52IDAT 00235000
+         AIF   (&FAILR).BT20       FAIL=RETURN, BYPASS RB RESETTING     00236000
+         LA    RB,0(,RB)           CLEAR POSSIBLE FAILURE IND. @D52IDAT 00237000
+.BT20    ANOP                                                           00238000
+         B     $CT&SYSNDX          GO AND CONTINUE             @D52IDAT 00239000
+         SPACE 2                                               @D52IDAT 00240000
+*        HANDLE CALLER = VSE SUBTASK                           @D52IDAT 00241000
+         SPACE 1                                               @D52IDAT 00242000
+$ST&SYSNDX DS    0H                                            @D52IDAT 00243000
+         AIF   (&DOAL).IDBS4       DO=ALWAYS, BYPASS 1ST TIME SWITCH    00244000
+         XI    *,6                 TAKE IDUMP ONLY ONCE, AND   @D52IDAT 00245000
+         AIF   (&FAILR).IDBS2      IF FAIL=RETURN, TAKE SHORT JUMP      00246000
+         BC    8,*+28              BYPASS CODE FURTHER TIMES   @D52IDAT 00247000
+         AGO   .IDBS4              CONTINUE                             00248000
+.IDBS2   ANOP                                                           00249000
+         BC    8,*+24              BYPASS CODE FURTHER TIMES   @D52IDAT 00250000
+         AGO   .IDBS4              CONTINUE                             00251000
+.IDBS4   ANOP                                                           00252000
+         STM   RE,R2,0(RC)         SAVE RE-R2 IN LOCAL AREA    @D52IDAT 00253000
+         AIF   (&PHADR).IDBS5      IF 'PHASEAD' PRESENT, CONTINUE       00254000
+         LA    R1,&PHASE           POINT TO PHASE NAME/SUFFIX  @D52IDAT 00255000
+         AGO   .IDBS6              CONTINUE                             00256000
+.IDBS5   ANOP                                                           00257000
+         L     R1,&PHASEAD         GET ADDR. OF PHASE NAME/SUFF@D52IDAT 00258000
+.IDBS6   ANOP                                                           00259000
+         L     RF,CAID             GET ENTRY POINT OF IPW$$ID  @D52IDAT 00260000
+         BAL   RE,24(,RF)          TAKE AN IDUMP FROM IPW$$ID  @D52IDAT 00261000
+         LM    RE,R2,0(RC)         RESTORE CALLERS REG. RE-R2, @D52IDAT 00262000
+         AIF   (&FAILR).IDBS8      FAIL=RETURN, BYPASS RB RESETTING     00263000
+         LA    RB,0(,RB)           CLEAR POSSIBLE FAILURE IND. @D52IDAT 00264000
+.IDBS8   ANOP                                                           00265000
+         SPACE 2                                               @D52IDAT 00266000
+$CT&SYSNDX DS    0H                                            @D52IDAT 00267000
+         SPACE 1                                               @D52IDAT 00268000
+         AGO   .IDEND                                                   00269000
+.*                                                                      00270000
+.* **** PRESENT MNOTES IF REQUIRED  ****                                00271000
+.*                                                                      00272000
+.IDMN01  ANOP                                                           00273000
+         MNOTE 8,'MACRO IPW$IDM PROHIBITED IN CURRENT MODULE'           00274000
+         SPACE 1                                                        00275000
+         MEXIT                                                          00276000
+.*                                                                      00277000
+.IDMN02  ANOP                                                           00278000
+         MNOTE 8,'PHASE SPECIFICATION MISSING OR WRONG'                 00279000
+         SPACE 1                                                        00280000
+         MEXIT                                                          00281000
+.*                                                                      00282000
+.IDMN03  ANOP                                                           00283000
+         MNOTE 8,'DO OPERAND NEITHER ONCE NOR ALWAYS NOR TASK' @DY45554 00284490
+         SPACE 1                                                        00285000
+         MEXIT                                                          00286000
+.*                                                                      00287000
+.IDMN04  ANOP                                                           00288000
+         MNOTE 8,'FAIL OPERAND NEITHER IGN NOR RETURN'                  00289000
+         SPACE 1                                                        00290000
+         MEXIT                                                          00291000
+.*                                                                      00292000
+.* **** PROVIDE FINAL COMMENTS OF MACRO EXPANSION *****                 00293000
+.*                                                                      00294000
+.IDEND   ANOP                                                           00295000
+*        ALL CALLER REGISTERS HAVE BEEN PRESERVED DURING CALL  @D52IDAT 00296000
+         AIF   (&TASKMN).IDEND0    DO=TASK IGNORED, WRITE MNOTE@DY45554 00296090
+         AGO   .IDEND1             SKIP MNOTE                  @DY45554 00296180
+.*                                                             @DY45554 00296270
+.IDEND0  ANOP                                                  @DY45554 00296360
+         SPACE 1                                               @DY45554 00296450
+         MNOTE 3,'DO=TASK IGNORED, CALLER NO NORMAL VSE/POWER TASK'    C00296540
+                                                               @DY45554 00296630
+         SPACE 1                                               @DY45554 00296720
+.*                                                             @DY45554 00296810
+.IDEND1  ANOP                                                  @DY45554 00296900
+         AIF   (&$ATSA).IDATEND    IF CALLED IN IPW$$AT, CONTINUE       00297000
+         AIF   (&FAILR).IDEND2                                          00298000
+         AGO   .IDEND3                                                  00299000
+.IDEND2  ANOP                                                           00300000
+*        APART FROM RB - IF LEFTMOST BYTE X'80', THEN THE      @D52IDAT 00301000
+*                        IDUMP REQUEST HAS FAILED              @D52IDAT 00302000
+.IDEND3  ANOP                                                           00303000
+         SPACE 1                                               @D52IDAT 00304000
+         AGO   .IDENDF                                                  00305000
+.IDATEND ANOP                                                           00306000
+*        APART FROM R2 - POINTING TO THE IDUMP PARAMETER LIST  @D52IDAT 00307000
+         AIF   (&FAILR).IDATEN2                                         00308000
+         AGO   .IDATEN3                                                 00309000
+.IDATEN2 ANOP                                                           00310000
+*        APART FROM RB - IF LEFTMOST BYTE X'80', THEN THE      @D52IDAT 00311000
+*                        IDUMP REQUEST HAS FAILED              @D52IDAT 00312000
+.IDATEN3 ANOP                                                           00313000
+         SPACE 1                                               @D52IDAT 00314000
+.IDENDF  ANOP                                                           00315000
+         MEND                                                           00316000

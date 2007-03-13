@@ -1,0 +1,183 @@
+         MACRO                                                          00050061
+         SGSATAP                                                        00100061
+***************************************************************         00150061
+*                                                             *         00200061
+.*       IBM DISK OPERATING SYSTEM                            *         00250061
+*        SUPERVISOR - SGSATAP - 5686-066-06                   *         00300061
+.*                                                            *         00350061
+*        LICENSED MATERIALS-PROPERTY OF IBM                   *         00400061
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"          *         00450061
+*        5686-032 (C) COPYRIGHT IBM CORP. 1994                *         00500061
+*        SEE COPYRIGHT INSTRUCTIONS                           *         00550061
+*                                                             *         00600061
+***************************************************************         00650061
+         GBLB  &SGSATAP                                        @D53SAAP 00700061
+         ACTR  200                LOOP COUNTER                          00800061
+.* /* START OF SPECIFICATIONS ***************************************** 00850061
+.*                                                                      00900061
+.*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                         00950061
+.*                                                                      01000061
+.*01* DESCRIPTIVE NAME = RESIDENT SA TAPE RECOVERY                      01050061
+.*                                                                      01100061
+.*01* NOTES = CHANGE ACTIVITY                                           01150061
+.*    NEW MODULE - FIRST RELEASE VSE/ESA 2.1                            01200061
+.**** END OF SPECIFICATIONS ***************************************** / 01250061
+         SPACE 3                                                        01300061
+         AIF   (NOT &SGSATAP).NPRT010                                   01350061
+         PRINT GEN                                                      01400061
+.NPRT010 ANOP                                                           01450061
+         USING PUBADR,R3               PUB      BASE POINTER            01500061
+         USING CHQADR,R4               CHANQ    BASE POINTER            01550061
+         USING ERBLOC,R5               ERBLOC   BASE POINTER            01600061
+         USING DISP,R6                 DISP     BASE POINTER            01650061
+         USING PUB2ADR,R8              PUB2     BASE POINTER            01700061
+         USING *,RB                    ROUTINE  BASE POINTER            01750061
+.*                                                                      01757161
+.* N O T E                                                              01764261
+.*                                                                      01771361
+.*       SINCE THIS MACRO IS BEING EXECUTED WITHIN THE PTA,             01778461
+.*       REMEMBER THE BEGIN ADDRESS WHICH IS PTA+8                      01785561
+.*                                                                      01792661
+         DC    CL8'SGSATAP '                                            01800061
+         DC    XL2'015C'                                                01850061
+         B     SATAPBGN                                                 01900061
+         DC    CL8'AF6.1-12'           CHANGE ACTIVITY                  01950061
+         TITLE 'VSE SUPERVISOR SGSATAP         SA TAPE RECOVERY       ' 02000061
+SATAPBGN DS    0H'0'                                                    02050061
+         TM    ERQSNS1,INTVRQD         INTERVENTION REQUIRED            02100061
+         BZ    SATAP020                NO,                              02150061
+         MVI   ERQMSG1,X'08'           SET MESSAGE CODE                 02175061
+SATAP010 MVC   0(L'MSG08C1),MSG08C1    SET INTERV. REQ.                 02200061
+         MVC   2(2),PUBCHANN           SAVE CUU ADDRESS                 02250061
+         OI    ERQFLG1,OPINT           SET INTERVENTION REQUIRED        02268761
+         B     SATAPEXT                PASS CONTROL TO SGEMSG           02318761
+MSG08C1  DC    XL2'08C1'               SOFT WAIT CODE                   02350061
+         SPACE 1                                                        02400061
+SATAP020 MVI   ERQMSG1,X'31'           SET MESSAGE CODE                 02433361
+         CLI   ERQCSW1+5,X'FE'         DEVICE NOT OPERATIONAL           02466661
+         BE    SATAP010                YES,                             02500061
+         MVI   ERQMSG1,X'20'           MSG = ERR ON RECOVERY            02525061
+         L     R1,ERQCCB1              GET CCB ADDRESS                  02550061
+         USING CCBADR,R1               CCB BASE POINTER                 02600061
+         SLR   R9,R9                   CLEAR CCW POINTER                02650061
+         ICM   R9,7,CCBCCW+1           GET CCW ADDRESS                  02700061
+         USING CCWADR,R9               CCW BASE POINTER                 02750061
+         MVC   ERQCCOD1(1),CCWCODE     SAVE COMMAND CODE                02775061
+         TM    CCWCHAIN,DC+CC          ANY CHAINING                     02800061
+         BZ    SATAPCOM                NO,                              02850061
+SATAPERR NI    ERQFLG1,XFF-RTYERR-IGNERR FORCE CANCEL EXIT              02900061
+SATAPEXT L     RB,AEMSGERB             MESSAGE WRITER BASE              03000061
+         BR    RB                      GIVE MESSAGE                     03050061
+         DROP  R8                      RELEASE PUB2 BASE                03100061
+*                                                                       03150061
+*        INITIATE TAPE RECOVERY ACTIONS                                 03200061
+*                                                                       03250061
+         EJECT ,                                                        03300061
+SATAPCOM DS    0H'0'             TAPE ERROR RECOVERY FOR SA             03350061
+         TM    ERQCSW1+4,UNITCK  IS THIS A UNIT CHECK                   03383361
+         BZ    SATAPERR          NO, PERMANENT ERROR                    03416661
+         CLI   ERQCSW1+4,UNITCK  ERROR AT INITIAL SELECTION             03449961
+         BNE   SATAP200          NO,                                    03483261
+SATAP000 MVC   SATCCWU(8),CCWCODE COPY USER CCW                         03516561
+         LA    R0,SATCCWU        GET CCW ADDRESS                        03550061
+         L     R8,SATCCWU        GET I/O AREA ADDRESS                   03600061
+         LA    R8,0(,R8)         CLEAR HIGH ORDER BYTE                  03650061
+         XC    0(8,R8),0(R8)     CLEAR BLOCK HEADER                     03700061
+         BAL   R8,SATIORTN       RETRY USERS READ UNDER ERP             03727761
+         B     SATAP400        0 END OF FILE ENCOUNTERED                03755461
+         B     SATAPERR        4 PERMANENT ERROR                        03783161
+         BAL   R7,SAPOSRTN     8 POSITION THE TAPE                      03810861
+         B     SATAP300                                                 03838561
+SATAP200 BAL   R7,SAPOSRTN       POSITION THE TAPE                      03866261
+         B     SATAP000          GO AND RETRY USER REQUEST              03893961
+SATAP300 IC    R7,ERQERR1        GET ERROR COUNT                        03921661
+         LA    R7,1(,R7)         ADD ONE TO RETRY COUNT                 03950061
+         CLM   R7,1,H16+1        RETRY LIMIT EXHAUSTED                  04000061
+         BH    SATAPERR          YES,                                   04050061
+         STC   R7,ERQERR1        STORE RETRY COUNTER                    04100061
+         L     R8,CCWBUF         GET I/O AREA ADDRESS                   04150061
+         LA    R8,0(,R8)         CLEAR OP CODE                          04200061
+         XC    0(8,R8),0(R8)     CLEAR HEADER BYTES                     04250061
+         XC    0(4),0            RESET ERROR CODE IN LOW CORE           04275061
+         L     RF,YRETRY         LOAD RETRY EXIT                        04300061
+         L     RE,YERPEXIT       ERP EXIT ADDRESS                       04307161
+         BR    RE                                                       04314261
+         SPACE 1                                                        04321361
+.*                                                                      04328461
+.*       DURING ERP'S RETRY OF USERS READ CCW                           04335561
+.*       WE RECOGNIZED A TAPE MARK, SO WE WILL DO A BSB                 04342661
+.*       AND THEN RETRY THE USERS REQUEST                               04349761
+.*                                                                      04356861
+SATAP400 LA    R0,SATCCWB        LOAD BSB COMMAND                       04363961
+SATAP410 BAL   R8,SATIORTN       DO REPOSITIONING                       04371061
+         B     SATAP300        0 RETRY USER REQUEST NOW                 04378161
+         B     SATAPERR        4 ERROR ON POSITIONING                   04385261
+         B     SATAP300        8 RETRY USER REQUEST NOW                 04392361
+*                                                                       04400061
+*        PERFORM FSB OR BSB UNTIL WE REACH REQUIRED POSITION            04450061
+*                                                                       04500061
+SAPOSRTN DS    0H'0'             CHECK CURRENT TAPE POSITION            04550061
+SAPOS010 L     R8,CCWBUF         GET I/O AREA ADDRESS                   04600061
+         LA    R8,0(,R8)         CLEAR OP CODE                          04650061
+         CLC   IJBSABLK(4),4(R8) POSITION CORRECT                       04700061
+         BE    SAPOSOK           YES,                                   04750061
+         BL    SAPOSBSB          NEED TO DO A BSB                       04800061
+SAPOSFSB L     R0,4(R8)          GET BLOCK NUMBER                       04850061
+         AL    R0,F1             INCREMENT BY ONE                       04900061
+         ST    R0,4(R8)          STORE UPDATED VALUE                    04950061
+         LA    R0,SATCCWF        LOAD FSB COMMAND                       05000061
+         B     SAPOSDIO                                                 05050061
+SAPOSBSB L     R0,4(R8)          GET BLOCK NUMBER                       05100061
+         BCTR  R0,R0             DECREMENT BY ONE                       05150061
+         ST    R0,4(R8)          STORE UPDATED VALUE                    05200061
+         LA    R0,SATCCWB        LOAD BSB COMMAND                       05250061
+SAPOSDIO BAL   R8,SATIORTN       DO REPOSITIONING                       05300061
+         NOP   0               0 END OF FILE ENCOUNTERED                05325061
+         B     SATAPERR        4 ERROR ON POSITIONING                   05350061
+         B     SAPOS010        8 CHECK POSITION NOW                     05375061
+SAPOSOK  BR    R7                RETURN                                 05400061
+         SPACE 2                                                        05450061
+SATIORTN STM   R0,R1,SATIOSR0    SAVE REGISTERS                         05500061
+         LA    R1,SATIOCCB       GET CCB ADDRESS                        05550061
+         OI    SATIOCCB+12,ERRTIN ERP IS OPERATING                      05575061
+         STCM  R0,7,SATIOCCB+9   SAVE CCW ADDRESS                       05600061
+         LR    R0,R3             COPY PUB POINTER                       05650061
+         SH    R0,YPUBTAB        OFFSET IN PUB TABLE                    05700061
+         SRL   R0,3              PUB INDEX                              05750061
+         STH   R0,CCBCLS         SAVE PUB INDEX                         05800061
+         OI    CCBCLS,CCBPHYAD   FORCE PHYSICAL ADDRESSING              05850061
+         LA    R0,10             PROVIDE FOR 10 RETRIES                 05900061
+SATDOIO  XC    SATSENSE,SATSENSE CLEAR SENSE BYTES                      05933361
+         SYSIO (1)               EXECUTE I/O OPERATION                  05966661
+         TM    CCBCOM1,DISERR    DID WE GET ANY ERROR                   06000061
+         BZ    SATIOEXT          NO,                                    06050061
+         CLI   CCBSTA2,X'FE'     IS DEVICE NOT OPERATIONAL              06077661
+         BE    SATAPERR          YES,                                   06083161
+         TM    SATSENSE,X'C0'    PERMANENT I/O ERROR                    06088661
+         BNZ   SATAPERR          YES,                                   06094161
+         BCT   R0,SATDOIO        RETRY IF NOT YET EXHAUSTED             06100061
+         LM    R0,R1,SATIOSR0    RESTORE REGISTERS                      06150061
+         B     4(,R8)            PERMANENT ERROR                        06200061
+SATIOEXT TM    CCBSTA1,UNITEXCP  WAS THIS A TAPE MARK                   06218761
+         BO    SATIOEOF          YES, POST INFO BACK TO CALLER          06237461
+         LM    R0,R1,SATIOSR0    RESTORE REGISTERS                      06256161
+         B     8(,R8)            SUCCESSFUL COMPLETED                   06275061
+SATIOEOF LM    R0,R1,SATIOSR0    RESTORE REGISTERS                      06300061
+         B     0(,R8)            TAPE MARK FOUND                        06325061
+SATCCWU  CCW   0,0,0,0           COPY OF USERS CCW                      06350061
+SATCCWB  CCW   X'27',*,SLI,1     BACKSPACE BLOCK COMMAND                06400061
+SATCCWF  CCW   X'37',*,SLI,1     FORWARD SPACE BLOCK COMMAND            06450061
+SATIOCCB CCB   SYSRDR,SATCCWU,X'1500',SATSENSE                          06483361
+SATSENSE DC    XL4'00'           SENSE DATA                             06516661
+SATIOSR0 DC    2F'0'             SAVE AREA                              06550061
+         DROP  R1                RELEASE CCB     BASE                   06600061
+         DROP  R3                RELEASE PUB     BASE                   06650061
+         DROP  R4                RELEASE CHANQ   BASE                   06700061
+         DROP  R5                RELEASE ERBLOC  BASE                   06750061
+         DROP  R6                RELEASE DISP    BASE                   06800061
+         DROP  R9                RELEASE CCW     BASE                   06850061
+         DROP  RB                RELEASE SGSATAP BASE                   06900061
+         AIF   (NOT &SGSATAP).NPRT030                                   06950061
+         PRINT NOGEN                                                    07000061
+.NPRT030 ANOP                                                           07050061
+         MEND                                                           07100061

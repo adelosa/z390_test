@@ -1,0 +1,2118 @@
+         MACRO                                                          00050000
+         SGACF                                                          00100000
+*********************************************************************** 00150000
+*                                                                     * 00200000
+*        THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                  * 00250000
+*        5686-066 (C) COPYRIGHT IBM CORP. 1993, 2001                  * 00300061
+*        ALL RIGHTS RESERVED                                          * 00350000
+*        LICENSED MATERIALS - PROGRAM PROPERTY OF IBM                 * 00400000
+.*       SEE COPYRIGHT INSTRUCTIONS, G120-2083                        * 00450000
+*                                                                     * 00500000
+*********************************************************************** 00550000
+         GBLB  &BGDEBUG         DEBUG OPTION                   @D37ZDFG 00600000
+         GBLB  &SGACF         COMPONENT NAME FOR PRINT OPTION  @D149DOW 00650000
+.* /* START OF SPECIFICATIONS ***************************************** 00700000
+.*                                                             @D35EDJO 00750000
+.*01* MODULE-TYPE = MACRO                                      @D35EDJO 00800000
+.*                                                             @D35EDJO 00850000
+.*01* DESCRIPTIVE NAME = LOGGER SYSTEM TASK AND RELATED SVC    @D149DOW 00900000
+.*                                                                      00950000
+.*   ENTRY POINTS: SVC108                                      @D35EDJO 01000000
+.*                 SCYSVC                                      @D149DOW 01050000
+.*                 SCYVEND   VENDOR INTERFACE ENTRY            @D52SDPP 01062552
+.*                 SCYEOT    END OF TASK CLEANUP FOR SECURITY  @D52SDPP 01075052
+.*                                                             @D35EDJO 01100000
+.*   CHANGE ACTIVITY                                                    01150000
+.* INHIBIT DTSECTAB LOAD FROM UNPROTECTED LIBRARY              @DA37284 01200000
+.* SPE DY37265                                                 @D31EDOW 01250000
+.* RELOAD BASE REGISTER AFTER RETURN FROM Q-MGR                @DY38268 01300000
+.* ????                                                        @DY40062 01316652
+.* ACLR VS. FETCH/LOAD WORKAREA SHARING VIOLATIONS             @DY40332 01333252
+.* MP SUPPORT (RESOURCE DESCRIPTORS MOVED)                     @D61RDKH 01341661
+.* RACROUTE SUPPORT - SETUP SECURITY SYSTEM TASK               @D64CDCS 01341662
+.* MORE THAN 255 TASKS                                         @D66ODOW 01341662
+.* ENSURE PROPER ADDRESSING OF DSPQPARL IN LOGGER SYSTEM TASK  @DA45787         
+.** END OF SPECIFICATIONS ************************************          01350000
+         AIF   (NOT &BGDEBUG OR NOT &SGACF).NOPRINT            @D14CDOW 01400000
+         PRINT GEN                                             @D37ZDOW 01450000
+.NOPRINT ANOP                                                  @D37ZDOW 01500000
+         DC    CL8'SGACF'                                      @D149DOW 01550000
+         DC    CL8'VERS 2.7'                                            01600000
+         DC    CL8'DA45787 '          LAST APAR                @DA45787 01650052
+         ENTRY SGSVCX2                                         @D14CDOW 01700000
+ TITLE 'DOS SUPERVISOR      SGACF     SUPERVISOR CALL 108'              01750000
+*************************************************************           01800000
+*                                                                       01850000
+*    SECURITY CHECKING ROUTINES                                         01900000
+*                                                                       01950000
+*************************************************************           02000000
+*                                                                       02050000
+*   ENTRY POINTS                                               @D350DOW 02100000
+*         SVC108  ENTRY FROM SVC-INTERRUPT HANDLER             @D350DOW 02130052
+*         SCYSVC  ENTRY FROM FETCH/LOAD                        @D149DOW 02160052
+*         SCYEOT  ENTRY FROM END OF TASK PROCESSING SGAP       @D52SDPP 02190052
+*         SCYVEND ENTRY FROM IJBVEND FOR VENDOR INTERFACE      @D52SDPP 02220052
+*                                                              @D350DOW 02250000
+*   REGISTER ON INPUT                                          @D149DOW 02300000
+*         R1 CONTAINS IN CASE OF SVC 108 THE APL ADDR          @D350DOW 02350000
+*                     IN CASE OF FETCH/LOAD PTR TO PAR-LIST    @D149DOW 02400000
+*         R2 CONTAINS COMREG ADDRESS IN CASE CALL COMES FROM   @D52SDPP 02416652
+*                     AN ETSS PSEUDO PARTITION                 @D52SDPP 02433252
+*         R6 CONTAINS DISPATCHER ADDR                          @D350DOW 02450000
+*         R8 CONTAINS TIB POINTER                              @D149DOW 02500000
+*         RA CONTAINS TCB POINTER                              @D36ZDOW 02550000
+*         RB CONTAINS SAVE AREA ADDR                           @D149DOW 02600000
+*         RC CONTAINS IN CASE OF FETCH THE RETURN ADDR         @D350DOW 02650000
+*         RD BASE REGISTER                                     @D350DOW 02700000
+*   REGISTER ON OUTPUT                                         @D52SDPP 02702752
+*         RF CONTAINS RETURN CODE AS FOLLOWS:                  @D52SDPP 02705452
+*            IN CASE OF AN ACCESS CHECK                        @D52SDPP 02708152
+*               X'00' ACCESS ALLOWED                           @D52SDPP 02710852
+*               X'04' NO ACCESS CONTROL SUPPORT                @D52SDPP 02713552
+*               X'08' ACCESS VIOLATION                         @D52SDPP 02716252
+*               X'0C' IN A PROTECTED LIBRARY: THE SUB-LIBRARY  @D52SDPP 02718952
+*                     PROFILE IS NOT IN THE DTSECTAB           @D52SDPP 02721652
+*                     IN A PROTECTED SUBLIBRARY : THE MEMBER   @D52SDPP 02724352
+*                     PROFILE IS NOT IN THE DTSECTAB           @D52SDPP 02727052
+*               X'10' ACCESS CONTROL PROCESSING ERROR, CANCEL  @D52SDPP 02727952
+*                     CODE IN APCANCD                          @D52SDPP 02728852
+*            IN CASE OF POWER SLI SERVICES                     @D52SDPP 02729752
+*               X'00' SLI PROCESSING SUCCESSFULLY COMPLETED    @D52SDPP 02732452
+*               X'04' NO ACCESS CONTROL SUPPORT                @D52SDPP 02735152
+*               X'08' REQUESTOR IS NOT AUTHORIZED              @D52SDPP 02737852
+*               X'0C' SEQUENCE ERROR                           @D52SDPP 02740552
+*               X'10' PARTITION NOT AVAILABLE                  @D52SDPP 02740952
+*            IN CASE OF POWER DISP=I SUBMISSION, GETUSER       @D52SDPP 02741352
+*               X'00' SLI PROCESSING SUCCESSFULLY COMPLETED    @D52SDPP 02741752
+*               X'04' NO ACCESS CONTROL SUPPORT                @D52SDPP 02742152
+*               X'08' REQUESTOR IS NOT AUTHORIZED              @D52SDPP 02742552
+*               X'10' PARTITION NOT AVAILABLE                  @D52SDPP 02743252
+*            IN CASE OF VENDOR INTERFACE CALL                  @D52SDPP 02743652
+*               X'00' ACCESS ALLOWED, NO LOGGING               @D52SDPP 02744052
+*               X'04' ACCESS ALLOWED, LOGGING DONE             @D52SDPP 02744452
+*               X'08' ACCESS VIOLATION, LOGGING DONE           @D52SDPP 02744852
+*               X'0C' ACCESS VIOLATION, NO LOGGING             @D52SDPP 02745252
+*                                                              @D52SDPP 02745952
+         SPACE 3                                               @D350DOW 02750000
+         USING DISP,R6                                         @D350DOW 02850000
+         USING TCBADR,RA                                       @D36ZDOW 02900000
+         USING SVEARA,RB                                       @D36ZDOW 02950000
+SVC108_TESTAUTH  DS  0H                                        @D61ADKH 02951500
+         BALR  RD,0                                            @D61ADKH 02953000
+         USING *,RD                                            @D61ADKH 02954500
+         L     RF,TCBSAVE                                      @D61ADKH 02956000
+         LM    R0,R1,SVER00                                    @D61ADKH 02957500
+         L     RF,16(0,0)                                      @D61ADKH 02959000
+         L     RF,CVTAPF-CVT(RF,0)                             @D61ADKH 02960500
+         BALR  RE,RF                                           @D61ADKH 02962000
+         LA    R0,4                                            @D61ADKH 02963500
+         CR    RF,R0                                           @D61ADKH 02965000
+         BH    SVC108_ABEND_TESTAUTH                           @D61ADKH 02966500
+         L     RB,TCBSAVE                                      @D61ADKH 02968000
+         ST    RF,SVER0F                                       @D61ADKH 02969500
+         B     DISPMVS                                         @D61ADKH 02971000
+SVC108_ABEND_TESTAUTH  DS  0H                                  @D61ADKH 02972500
+         LA    R1,SVC108_ABEND_DATA                            @D61ADKH 02974000
+         MVI   3(R1),SVC108_ABEND_DATA_LEN PROVIDE LENGTH      @D64CDCS 02975500
+         USING MAPDMPIF,R1                                     @D61ADKH 02977000
+         ST    RF,CANC48AB                                     @D61ADKH 02978500
+*        MVC   CANC48MN,SVC108_MACNAME    MACRO NAME           @D64CDCS 02980000
+         DROP  R1                                              @D61ADKH 02981500
+         L     R6,DISPAD                                       @D61ADKH 02983000
+         L     R6,ADISPSER        BASE OF DISPSERV             @D61ADKH 02984500
+         LA    RB,ERR48E          CANCEL EXIT NUMBER           @D61ADKH 02986000
+         LA    R0,4(,0)           FUNCTION CODE FOR CANCEL     @D61ADKH 02987500
+*        AMODESW CALL,REGS=(R7,R6)                             @D61ADKH 02989000
+         AMODESW CALL,REGS=(R7,R6) =========> CANCEL           @D61ADKH 02990500
+SVC108_ABEND_DATA  DS  0F                                      @D61ADKH 02992000
+*        DC    24X'0'                                          @D64CDCS 02993500
+         DS    4X'0'             LENGTH BUFFER                 @D64CDCS         
+         DS    XL(L'CANC48FX)'0' FIX BUFFER                    @D64CDCS         
+SVC108_MACNAME DC  C'TESTAUTH'                                 @D61ADKH 02995000
+SVC108_ABEND_DATA_LEN  EQU  *-SVC108_ABEND_DATA-4              @D64CDCS         
+         USING SVC108,RD                                       @D61ADKH 02996500
+SVC108   DS    0H                 ENTRY FOR DATA AND LIBRARY   @D350DOW 03000000
+*                                 CHECKING                     @D350DOW 03050000
+SGSVCX2  EQU   SVC108                                          @D14CDOW 03100000
+         SLR   RF,RF              PREPARE RETURN CODE          @D51IDOW 03125052
+         TM    SYSFLAG2,IJBSEC                                 @D14CDOW 03150000
+         BO    SCYSEC8            IPL WITH SECURITY            @D14CDOW 03200000
+         LA    RF,4               GET RET-CODE NO SEC FEATURE  @D14CDOW 03250000
+SCYSEC5  DS    0H                                              @D14CDOW 03300000
+         ST    RF,SVER0F          RET-CODE TO USER REG         @D14CDOW 03350000
+         BR    R6                 NO SECURITY CHECK            @D14CDOW 03400000
+SCYSEC8  DS    0H                                              @D14CDOW 03450000
+         CLM   RF,3,PIK           SYSTEM TASK AND NO OWNER?    @D51IDOW 03500052
+         BE    SCYSEC5            NO SEC CHECKING FOR SYS-TASK @D14CDOW 03550000
+         L     R9,CRADDR          GET COMREG ADDR              @D14CDOW 03550552
+         L     R8,TIBPTR                                       @D14CDOW 03551052
+         USING TIBADR,R8                                       @D14CDOW 03551552
+         TM    TIBFLAG2,ICCFPP    PSEUDO PARTITION REQUEST     @D14CDOW 03552052
+         DROP  R8                                              @D14CDOW 03552552
+         BNO   SCYSEC30                                        @D14CDOW 03553052
+         LR    R9,R2              R2 CONTAINS COMREG ADDR IF   @D14CDOW 03553552
+SCYSEC30 DS    0H                                              @D14CDOW 03554052
+*                                 ETSS-PSEUDO PARTITION        @D149DOW 03554552
+         LR    R3,R1              SAVE DTSAPL POINTER          @D52SDPP 03555552
+         USING DTSAPL,R3                                       @D52SDPP 03561052
+*   VALIDATE DTSAPL ADDRESSES                                  @D52SDPP 03566552
+         LA    R2,APLEN-1(R1)     END OF DTSAPL                @D52SDPP 03572052
+         BAL   RF,SCYVALID        VALIDATE COMMON PART OF APL  @D52SDPP 03577552
+         TM    APOPT,APSLICON+APSLIDSC+APGETUSR    ONE OF POWER@D52SDPP 03583052
+         BM    SCYSRVC            SERVICES ? YES ==> EXECUTE   @D52SDPP 03588552
+*   CHECK IF RACROUTE SUPPORT NEEDED --> ESM ACTIVE?           @D64CDCS 03588553
+*        L     R8,IJBSCTAB        GET SECURITY TABLE ADDRESS   @D64CDCS 03588554
+*        USING SCYVECDS,R8                                     @D64CDCS 03588555
+*        TM    SCYFLGS1,SCYESM    ESM ACTIVE? YES, SYSTEM TASK @D64CDCS 03588556
+*        BNZ   SCYESM5            SKIP GATING                  @D64CDCS 03588557
+*        DROP  R8                                              @D64CDCS 03588558
+*   CHECK SVC 108 GATE                                         @D52SDPP 03594052
+         BAL   R8,SCYGATE         ROUTINE AVAILABLE            @D14CDOW 03600000
+*        B     SCYSEC12           SKIP SYSTEM TASK GATING ?    @D64CDCS 03600100
+SCYESM5  DS    0H                                              @D64CDCS 03600200
+SCYSEC12 DS    0H                                              @D14CDOW 04050000
+         TM    SYSFLAG2,IPLBIT    IS IPL IN PROCESS            @D14CDOW 04350000
+         BNO   SCYSEC3                                         @D14CDOW 04400000
+         TM    APOPT,APIPL        IS ACC CNTRL FORCED          @D14CDOW 04450000
+         BNO   SCYSEC5            NO SEC CHECKING DURING IPL   @D14CDOW 04500000
+SCYSEC3  DS    0H                                              @D14CDOW 04550000
+         TM    APAUT,APBTR        ONLY CHECK FOR B-TRANS RIGHT @D36ZDOW 04600000
+         BO    SCYSEC6            YES SKIP VALIDATION          @D36ZDOW 04650000
+         L     R1,APOBJ           GET OBJ ADDR TO BE VALIDATED @D350DOW 04700000
+         LA    R4,3               LENGTH IF USER               @D14CDOW 04750000
+         CLI   APTYP,APROF        IS IT A USER PROFILE         @D36ZDOW 04800000
+         BE    SCYSEC4            YES THAN VALIDATE            @D36ZDOW 04850000
+         LA    R4,11(R4)          LENGTH IF SUB-LIBRARY        @D14CDOW 04900000
+         CLI   APTYP,APSLIB       IS IT A SUB-LIBRARY          @D14CDOW 04950000
+         BE    SCYSEC4            YES THAN VALIDATE            @D36ZDOW 05000000
+         LA    R4,8(R4)           LENGTH IF PHASE NAME         @D14CDOW 05050000
+         CLI   APTYP,APPGM        IS IT A PHASE NAME           @D14CDOW 05100000
+         BE    SCYSEC4            YES THAN VALIDATE            @D350DOW 05150000
+         LA    R4,27(R4)          LENGTH IF FILE               @D14CDOW 05200000
+         CLI   APTYP,APFIL        IS IT A FILE                 @D14CDOW 05250000
+         BE    SCYSEC4            YES THAN VALIDATE            @D14CDOW 05300000
+         LA    R4,7(R4)           LENGTH IF LIBRARY            @D14CDOW 05350000
+         DROP  R3                                              @D350DOW 05400000
+SCYSEC4  LA    R2,0(R4,R1)        POINT TO END                 @D14CDOW 05450000
+         BAL   RF,SCYVALID        VALIDATE OBJECT              @D14CDOW 05500000
+*   CHECK IF RACROUTE SUPPORT NEEDED --> ESM ACTIVE?           @D64CD.. 05500100
+*        L     R8,IJBSCTAB        GET SECURITY TABLE ADDRESS   @D64CD.. 05500200
+*        USING SCYVECDS,R8                                     @D64CD.. 05500300
+*        TM    SCYFLGS1,SCYESM    ESM ACTIVE? YES, SYSTEM TASK @D64CD.. 05500400
+*        BZ    SCYSEC6            ENQUEUE WORK ELEMENT         @D64CD.. 05500500
+*        DROP  R8                                              @D64CD.. 05500600
+*        LR    R1,R3              RELOAD DTSAPL POINTER        @D64CD.. 05500700
+*        USING DTSAPL,R3          COMPLETE APL                 @D64CD.. 05500701
+*        NI    APSVCOP,APSVC      INDICATION THAT SVC CALL     @D64CD.. 05500702
+*        MVI   APCANCD,X'00'      INITIALIZE NOCANCEL IND      @D64CD.. 05500703
+*        ST    R9,APCOM           SAVE COMREG ADDRESS IN APL   @D64CD.. 05500704
+*        STCK  APTOD              STORE CLOCK INTO APL         @D64CD.. 05500705
+*                                 APL COMPLETE, SAVE IN TCBX   @D64CD.. 05500710
+*                                                              @D64CD.. 05500711
+*        AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D64CD.. 05500712
+*        L     R5,TCBATCBE        GET ADDRESS OF TCB EXTENTION @D64CD.. 05500713
+*        USING TCBXADR,R5                                      @D64CD.. 05500714
+*        MVC   TCBXAPLS(APLEN),0(R3)   APL INFORMATION TO TCBX @D64CD.. 05500715
+*        LR    R1,R3              RELOAD DTSAPL POINTER        @D64CD.. 05500700
+* ****   STM   R0,RE,TCBXSAVT           SAVE REGISTERS IN TCBX @D64CD.. 05500716
+*        TM    TCBXSAUS,TCBXXSAU  TCBXXSA SAVE AREA IN USE?    @D64CD..         
+*        BZ    SCYXSA1            NO, THEN SAVE REGISTERS      @D64CD..         
+*        MVI   IJBHWORG,HWORG252  YES, GO INTO HARD WAIT       @D64CD..         
+*        BAL   R5,SYSERROR        USAGE ERROR                  @D64CD..         
+SCYXSA1  DS    0H                                              @D64CD..         
+*        STM   R0,RE,TCBXXSA      SAVE REGISTERS               @D64CD..         
+*        OI    TCBXSAUS,TCBXXSAU  INDICATE SAVE AREA USED      @D64CD..         
+*        DROP  R3                                              @D64CD.. 05500717
+*        DROP  R5                                              @D64CD.. 05500718
+*        AMODESW SET,AMODE=(4),WR=(15) RESET AMODE             @D64CD.. 05500719
+*        SLR   R15,R15            CODE FOR NO SECURITY VIOL.   @D64CD.. 05500720
+*        L     RD,SCYQBASE        BASE OF SECURITY-Q-MANAGER   @D64CD.. 05500721
+*        USING QMGRSTRT,RD                                     @D64CD.. 05500730
+*        BAL   R8,QSECADD         GO TO SEC-Q-MGR TO PROCESS   @D64CD.. 05500740
+*                                 R5=ADDRESS TCB EXTENTION     @D64CD..         
+*        USING SVC108,RD          NO RETURN TO HERE IF ESM     @D64CD.. 05500750
+*        L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D64CD.. 05500760
+*                                                              @D64CD.. 05500900
+SCYSEC6  DS    0H                 VALIDATE OBJ                 @D350DOW 05550000
+         LR    R1,R3              RELOAD DTSAPL PTR            @D350DOW 05600000
+*                                                              @D350DOW 05650000
+*                                                              @D350DOW 05700000
+         BAL   RC,SCYSEC1         GO TO COMMON ROUTINE         @D350DOW 05750000
+*                                                              @D350DOW 05800000
+*                                                              @D350DOW 05850000
+*   RETURN FROM COMMON ROUTINE IF REQUESTOR IS NOT CANCELLED   @D350DOW 05900000
+*                                                              @D350DOW 05950000
+         SLR   RF,RF              PREPARE CLEAN RETURN CODE    @D368DOW 06000000
+         USING DTSAPL,R1          ADDRESSABILITY FOR APL       @D350DOW 06050000
+         CLI   APCANCD,X'00'                                   @D52SDPP 06058352
+         BE    SCYSEC33                                        @D52SDPP 06066652
+         LA    RF,16                                           @D52SDPP 06074952
+         B     SCYSEC11                                        @D52SDPP 06083252
+SCYSEC33 DS    0H                                              @D52SDPP 06091552
+         CLI   APERR,APNRM        ANY SEC VIOLATION            @D350DOW 06100000
+         BE    SCYSEC11           NO GO TO DISP                @D14CDOW 06150000
+         LA    RF,8               CODE FOR SEC VIOLATION       @D350DOW 06200000
+         CLI   APERR,APNSCTAB     WAS RESOURCE NOT IN TABLE    @D14CDOW 06250000
+         BE    SCYSEC13                                        @DA33314 06300000
+         CLI   APERR,APNFND       LIBRARY NOT IN TABLE         @DA33314 06350000
+         BNE   SCYSEC11                                        @D14CDOW 06400000
+SCYSEC13 LA    RF,12                                           @DA33314 06450000
+SCYSEC11 DS    0H                                              @D14CDOW 06500000
+         ST    RF,SVER0F          RET CODE TO USER REGISTER    @D350DOW 06550000
+         BR    R6                 RETURN                       @D350DOW 06600000
+         SPACE 3                                               @D350DOW 06650000
+SCYVALID DS    0H                                              @D51IDPP 06700000
+         TM    SVEPSWKY,X'F0'     HAS REQUESTOR KEY 0          @D14CDOW 06750000
+         BZ    SCYVAL1            YES, SVA ALSO ALLOWED        @D14CDOW 06800000
+         BAL   R8,VALID           VALIDATE                     @D350DOW 06850000
+*SGLINK VALID,INPUT=(R1,R2,R6,R8),WORK=(R2),OUTPUT=(R5)        @D36ZDOW 06900000
+         BR    RF                 RETURN                       @D14CDOW 06950000
+SCYVAL1  DS    0H                 INSTEAD OF CAPABILITY CHECK  @D51IDPP 07000000
+*                                 (EXEC PROC FROM SEC LIBRARY) @D14CDOW 07050000
+         BAL   R8,VALIDSVA        VALIDATE                     @D14CDOW 07100000
+*SGLINK VALIDSVA,INPUT=(R1,R2,R6,R8),WORK=(R2,R5)              @D14CDOW 07150000
+         BR    RF                 RETURN                       @D14CDOW 07200000
+         SPACE 3                                               @D350DOW 07202252
+************************************************************** @D52SDPP 07204452
+*                                                            * @D52SDPP 07206652
+*                                                            * @D52SDPP 07208852
+* POWER SLI SERVICES                                         * @D52SDPP 07211052
+*                                                            * @D52SDPP 07213252
+*                                                            * @D52SDPP 07215452
+************************************************************** @D52SDPP 07217652
+SCYSRVC  DS    0H                                              @D52SDPP 07219852
+         XR    RF,RF               INITIALIZE RETURN CODE TO   @D52SDPP 07220052
+         L     R8,TIBPTR           USER NOT AUTHORIZED. GET THE@D52SDPP 07220252
+         USING TIBADR,R8           PCB ADDRESS BY EXTRACTING IT@D52SDPP 07220452
+         L     R9,TIBPCB           FROM THE TIB AND CHECK, IF  @D52SDPP 07220652
+         DROP  R8                  THE REQUESTOR IDENTIFIED    @D52SDPP 07220852
+         USING PCBADR,R9           HIMSELF AS BEING POWER.     @D52SDPP 07221052
+         TM    PCBSSFLG,PWR        IF NOT, THE SERVICE IS      @D52SDPP 07221252
+         DROP  R9                  NOT GRANTED.                @D52SDPP 07221452
+         BNO   SCYSLRC2                                        @D52SDPP 07221652
+         TM    APOPT,APSLICON      IS IT SLI CONNECT?          @D52SDPP 07222052
+         BNO   SCYSLIDC                                        @D52SDPP 07224252
+************************************************************** @D149DOW 07226452
+*                                                            * @D21ZDOW 07227552
+* SLI CONNECT                                                * @D21ZDOW 07228652
+*                                                            * @D21ZDOW 07229752
+************************************************************** @D149DOW 07230852
+SCYSLICN DS    0H                                              @D52SDPP 07233052
+         L     R0,TCBUCNTL        SEE IF WE HAVE A JPL LINKED  @D52SDPP 07233252
+         LTR   R0,R0              TO THE TCB OF THE CALLER     @D52SDPP 07233352
+         BNZ   SCYSLRC3           IF SO, ITS A SEQUENCE ERROR  @D52SDPP 07233452
+         ICM   R0,3,APOBJ+2       GET SYSLOGID OUT OF APL      @D52SDPP 07233652
+         L     R2,APCBATAB        AND SCAN ALL THE PCBS FOR THE@D52SDPP 07233752
+         S     R2,F4                                           @D52SDPP 07233852
+SCYSLIC1 DS    0H                                              @D52SDPP 07233952
+         LA    R2,4(,R2)          GET THE ADDRESS OF PCB OUT OF@D52SDPP 07234052
+         ICM   R5,15,0(R2)        PCBATAB ENTRY AND CHECK IF IT@D52SDPP 07234152
+         BZ    SCYSLIC1           EITHER A NON-EXISTING PART   @D52SDPP 07234252
+         BM    SCYSLRC4           OR THE TERMINATOR OF THE     @D52SDPP 07234352
+         USING PCBADR,R5          TABLE                        @D52SDPP 07234452
+         CLM   R0,3,PCELID        PCE WITH THE CORRECT SYSLOGID@D52SDPP 07234652
+         BNE   SCYSLIC1           LOOP UNTIL IT IS FOUND       @D52SDPP 07234752
+SCYSLIC2 DS    0H                                              @D52SDPP 07234852
+         L     R9,PCECOMRA        GET THE COMREG POINTER OUT   @D52SDPP 07235052
+         DROP  R5                 OF THE PCE, CAUSE THE COMREG @D52SDPP 07235152
+         USING COMREG,R9          POINTS TO THE JPL.           @D52SDPP 07235252
+         L     R5,IJBJPL          SO WE TAKE THE JPL ADDRESS   @D52SDPP 07235352
+         DROP  R9                 OUT OF THE COMREG AND STORE  @D52SDPP 07235452
+         ST    R5,TCBUCNTL        AND STORE IT INTO THE TCB.   @D52SDPP 07235552
+         XR    RF,RF              SET RC=X'00' AND THEN        @D52SDPP 07235652
+         B     SCYSEC11           RETURN                       @D52SDPP 07235752
+************************************************************** @D149DOW 07235952
+*                                                            * @D21ZDOW 07236352
+* SLI DISCONNECT                                             * @D21ZDOW 07237452
+*                                                            * @D21ZDOW 07238552
+************************************************************** @D149DOW 07239652
+SCYSLIDC DS    0H                                              @D52SDPP 07241852
+         TM    APOPT,APGETUSR      IS IT GETUSER?              @D52SDPP 07242052
+         BO    SCYGETU                                         @D52SDPP 07242252
+         L     RA,TCBPTR          GET TCB OF THE CURRENT TASK  @D52SDPP 07242452
+         L     R1,TCBUCNTL        AND THE POINTER TO THE JPL   @D52SDPP 07243052
+         LTR   R1,R1              OUT OF IT. IN CASE THERE IS  @D52SDPP 07243652
+         BZ    SCYSLRC3           NONE, ITS A SEQUENCE ERROR.  @D52SDPP 07244252
+         ST    R15,TCBUCNTL       OTHERWISE IT IS CLEARED.     @D52SDPP 07244852
+         B     SCYSEC11           THEN WE RETURN               @D52SDPP 07245452
+************************************************************** @D149DOW 07246052
+*                                                            * @D21ZDOW 07246152
+* GETUSER                                                    * @D21ZDOW 07246252
+*                                                            * @D21ZDOW 07246352
+************************************************************** @D149DOW 07246452
+SCYGETU  DS    0H                                              @D52SDPP 07246552
+         ICM   R0,3,APOBJ+2       GET SYSLOGID OUT OF APL      @D52SDPP 07246652
+         L     R2,APCBATAB        AND SCAN ALL THE PCBS FOR THE@D52SDPP 07246752
+         S     R2,F4                                           @D52SDPP 07246852
+SCYGETU1 DS    0H                                              @D52SDPP 07246952
+         LA    R2,4(,R2)          GET THE ADDRESS OF PCB OUT OF@D52SDPP 07247052
+         ICM   R5,15,0(R2)        PCBATAB ENTRY AND CHECK IF IT@D52SDPP 07247152
+         BZ    SCYGETU1           EITHER A NON-EXISTING PART   @D52SDPP 07247252
+         BM    SCYSLRC4           OR THE TERMINATOR OF THE     @D52SDPP 07247352
+         USING PCBADR,R5          TABLE                        @D52SDPP 07247452
+         CLM   R0,3,PCELID        PCE WITH THE CORRECT SYSLOGID@D52SDPP 07247552
+         BNE   SCYGETU1           LOOP UNTIL IT IS FOUND       @D52SDPP 07247652
+SCYGETU2 DS    0H                                              @D52SDPP 07247752
+         L     R9,PCECOMRA        GET THE COMREG POINTER OUT   @D52SDPP 07247852
+         DROP  R5                 OF THE PCE, CAUSE THE COMREG @D52SDPP 07247952
+         USING COMREG,R9          POINTS TO THE JPL.           @D52SDPP 07248052
+         L     R9,IJBJPL          SO WE TAKE THE JPL ADDRESS   @D52SDPP 07248152
+         DROP  R9                 OUT OF THE COMREG AND STORE  @D52SDPP 07248252
+         USING DTSJPL,R9                                       @D52SDPP 07248352
+         LA    R1,JPUID                                        @D52SDPP 07248452
+         ST    R1,SVER01          RET CODE TO USER REGISTER    @D350DOW 07248552
+         DROP  R9                 OUT OF THE COMREG AND STORE  @D52SDPP 07248652
+         XR    RF,RF              SET RC=X'00' AND THEN        @D52SDPP 07248752
+         B     SCYSEC11           RETURN                       @D52SDPP 07248852
+************************************************************** @D149DOW 07248952
+SCYSLRC4 DS    0H                PARTITION NOT AVAILABLE       @D52SDPP 07249052
+         LA    RF,4(,RF)                                       @D52SDPP 07249152
+SCYSLRC3 DS    0H                SEQUENCE ERROR                @D52SDPP 07249252
+         LA    RF,4(,RF)                                       @D52SDPP 07249352
+SCYSLRC2 DS    0H                REQUESTOR NOT AUTHORIZED      @D52SDPP 07249452
+         LA    RF,4(,RF)                                       @D52SDPP 07249652
+SCYSLRC1 DS    0H                NO ACCESS CONTROL SUPPORT     @D52SDPP 07250252
+         LA    RF,4(,RF)                                       @D52SDPP 07250852
+SCYSLRC0 DS    0H                RETURN CODE X'00' FROM SLI    @D52SDPP 07251452
+         B     SCYSEC11          PROCESSING                    @D52SDPP 07252052
+************************************************************** @D52SDPP 07253352
+*        END OF TASK ENTRY ( BY SGAP )                       * @D52SDPP 07256652
+*           INPUT  R1 = WORK REGISTER                        * @D52SDPP 07259952
+*                  R6 = DISPATCHER ADDRESS                   * @D52SDPP 07263252
+*                  R7 = RETURN ADDRESS                       * @D52SDPP 07266552
+*                  R8 = TIB ADDRESS                          * @D52SDPP 07269852
+*                  RA = TCB ADDRESS                          * @D52SDPP 07273152
+*                  RD = BASE REGISTER OF SCYEOT ROUTINE      * @D52SDPP 07276452
+*                  RE = WORK REGISTER                        * @D52SDPP 07279752
+*                  RF = WORK REGISTER                        * @D52SDPP 07283052
+*           OUTPUT NONE                                      * @D52SDPP 07286352
+************************************************************** @D52SDPP 07289652
+SCYEOT   DS    0H                                              @D52SDPP 07292952
+         XR    R1,R1                                           @D52SDPP 07294052
+         ST    R1,TCBUCNTL                                     @D52SDPP 07295152
+         BR    R7                                              @D52SDPP 07296252
+************************************************************** @D52SDPP 07296352
+*        VENDOR INTERFACE ENTRY ( CALLED BY IJBVEND )        * @D52SDPP 07296452
+*           LINKAGE : AMODESW CALL,AMODE=24,...              * @D52SDPP 07296552
+*                     PRIMARY ASC MODE                       * @D52SDPP 07296652
+*           INPUT  R1 = APL ADDRESS                          * @D52SDPP 07296752
+*                  WITHIN APL, THE FOLLOWING BITS ARE SET:   * @D52SDPP 07296852
+*                     APTYP=APPGM                            * @D52SDPP 07296952
+*                     APAUT=APUPD                            * @D52SDPP 07297052
+*                     APOBJ=A(IJSYSRS.SYSLIB.$IJBVEND)       * @D52SDPP 07297152
+*                  R2 = COMREG ADDRESS                       * @D52SDPP 07297252
+*                  R7 = RETURN ADDRESS                       * @D52SDPP 07297352
+*                  RA = TCB ADDRESS                          * @D64CDCS 07297353
+*           OUTPUT NONE                                      * @D52SDPP 07297452
+*                  RF = RETURN CODE                          * @D52SDPP 07297552
+*                       X'00' ACCESS ALLOWED, NO LOGGING DONE* @D52SDPP 07297652
+*                       X'04' ACCESS ALLOWED, LOGGING DONE   * @D52SDPP 07297752
+*                       X'08' ACCESS DENIED,  LOGGING DONE   * @D52SDPP 07297852
+*                       X'0C' ACCESS DENIED,  NO LOGGING DONE* @D52SDPP 07297952
+************************************************************** @D52SDPP 07298052
+SCYVEND  DS    0H                                              @D52SDPP 07298152
+         L     RD,ASGSVCX2    LOAD SGACF BASE                  @D52SDPP 07298252
+         STM   R0,RE,SGVENRGS SAVE REGISTERS OF SGVEND CALL    @D64CDCS 07298253
+         BAL   R8,SCYGATE     CLOSE THE GATE                   @D52SDPP 07298352
+*   CHECK IF RACROUTE SUPPORT NEEDED --> ESM ACTIVE?           @D64CD.. 07298353
+*        L     R8,IJBSCTAB        GET SECURITY TABLE ADDRESS   @D64CD.. 07298354
+*        USING SCYVECDS,R8                                     @D64CD.. 07298355
+*        TM    SCYFLGS1,SCYESM    ESM ACTIVE? YES, SYSTEM TASK @D64CD.. 07298356
+*        BNZ   SCYESM10           QUEUE, DO GATING             @D64CD.. 07298357
+*        DROP  R8                                              @D64CD.. 07298358
+         B     SCYVEND5       SKIP SYSTEM TASK QUEUEING        @D64CD.. 07298359
+SCYESM10 DS    0H                                              @D64CD.. 07298360
+*                             DON'T SET YET USER TASK SECBOUND @D64CD.. 07298361
+*        LR    R3,R1              LOAD DTSAPL POINTER          @D64CD.. 07298362
+*        USING DTSAPL,R3          COMPLETE APL                 @D64CD.. 07298363
+*        NI    APSVCOP,APSGVEN    INDICATION THAT VENDOR CALL  @D64CD.. 07298364
+*        MVI   APCANCD,X'00'      INITIALIZE NOCANCEL IND      @D64CD.. 07298365
+*        ST    R2,APCOM           SAVE COMREG ADDRESS IN APL   @D64CD.. 07298366
+*        STCK  APTOD              STORE CLOCK INTO APL         @D64CD.. 07298367
+*                                 APL COMPLETE, SAVE IN TCBX   @D64CD.. 07298368
+*                                                              @D64CD.. 07298369
+*        AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D64CD.. 07298370
+*        L     R5,TCBATCBE        GET ADDRESS OF TCB EXTENTION @D64CD.. 07298371
+*        USING TCBXADR,R5                                      @D64CD.. 07298372
+*        MVC   TCBXAPLS(APLEN),0(R3)   APL INFORMATION TO TCBX @D64CD.. 07298373
+*        DROP  R3                                              @D64CD.. 07298374
+* ****   MVC   TCBXSAVT(60),SGVENRGS   SAVE SGVEND REGISTERS   @D64CD.. 07298375
+*        TM    TCBXSAUS,TCBXXSAU  TCBXXSA SAVE AREA IN USE?    @D64CD..         
+*        BZ    SCYXSA2            NO, THEN SAVE REGISTERS      @D64CD..         
+*        MVI   IJBHWORG,HWORG252  YES, GO INTO HARD WAIT       @D64CD..         
+*        BAL   R5,SYSERROR        USAGE ERROR                  @D64CD..         
+SCYXSA2  DS    0H                                              @D64CD..         
+*        MVC   TCBXXSA(60),SGVENRGS SAVE SGVEND REGISTERS      @D64CD..         
+*        OI    TCBXSAUS,TCBXXSAU  INDICATE SAVE AREA USED      @D64CD..         
+*        DROP  R5                                              @D64CD.. 07298376
+*        AMODESW SET,AMODE=(4),WR=(15) RESET AMODE             @D64CD.. 07298377
+*        SLR   R15,R15            CODE FOR NO SECURITY VIOL    @D64CD.. 07298378
+*        L     RD,SCYQBASE        BASE OF SECURITY-Q-MANAGER   @D64CD.. 07298379
+*        USING QMGRSTRT,RD                                     @D64CD.. 07298380
+*        BAL   R8,QSECADD         GO TO SEC-Q-MGR TO PROCESS   @D64CD.. 07298381
+*                                 R5 ADDRESS OF TCB EXTENTION  @D64CD..         
+*        USING SVC108,RD          NO RETURN TO HERE IF ESM     @D64CD.. 07298382
+*        L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D64CD.. 07298383
+SCYVEND5 DS    0H             PROCESSING IF NO ESM             @D64CDCS 07298390
+         LR    R9,R2          PUT THE COMREG POINTER TO R9     @D52SDPP 07298452
+         ST    R7,SCYVER7     SAVE RETURN ADDRESS              @D52SDPP 07298552
+         BAL   RC,SCYSEC1     AND CALL AUTHORIZATION CHECKER   @D52SDPP 07298652
+         L     R7,SCYVER7     NOW RESTORE RETURN ADDRESS       @D52SDPP 07298752
+         MVI   RID+1,REENTRID                                  @D52SDPP 07298852
+*        AMODESW RETURN,REG=(R7) RETURN TO CALLER              @D52SDPP 07298952
+         AMODESW RETURN,REG=(R7) RETURN TO CALLER              @D52SDPP 07299052
+SCYVER7  DC    F'0'           SAVE THE RETURN ADDRESS IN IT    @D52SDPP 07299152
+SGVENRGS DC    15F'0'         REGISTERS SAVE AREA              @D64CDCS 07299153
+************************************************************** @D149DOW 07300000
+*        FETCH/LOAD ENTRY                                    * @D149DOW 07350000
+*           INPUT  R0 = 0 SECURITY CHECK MUST BE PERFORMED   * @D21ZDOW 07400000
+*                     > 0 NOT HANDLED                        * @D21ZDOW 07450000
+*                     < 0 RECORDING DUE TO SECURITY VIOLATION* @D21ZDOW 07500000
+*                  R1 = ADDRESS (PARAMETER LIST)             * @D21ZDOW 07550000
+*                       PARAMETER LIST = < ADDR(LIB.DEF.TAB) * @D21ZDOW 07600000
+*                                         ,ADDR(SLIB.DEF.TAB)* @D21ZDOW 07650000
+*                                         ,ADDR(PHASENAME) > * @D21ZDOW 07700000
+*                       SAVE AREA IS TCBXXSA                 * @D64CDCS 07750000
+*                  RA = TCB ADDRESS OF LOAD REQUESTOR        * @D21ZDOW 07800000
+*                  RC = RETURN ADDRESS                       * @D21ZDOW 07850000
+*                  RD = BASE REGISTER OF SCYSVC ROUTINE      * @D21ZDOW 07900000
+*           OUTPUT RF = RETURN CODE                          * @D21ZDOW 07950000
+************************************************************** @D149DOW 08000000
+SCYSVC   DS    0H                 ENTRY FROM FETCH/LOAD        @D14CDOW 08050000
+         L     RF,TIBPTR                                       @D14CDOW 08051361
+         USING TIBADR,RF                                       @D14CDOW 08052661
+         CLC   TIBRTID,ARTIDH     WAS FETCH CALLED BY A SYSTASK@D66ODOW 08053961
+         BH    SCYSECX3           NO, --->                              08055261
+         DROP  RF                                              @D52SDPP 08056561
+         SLR   RF,RF              CODE FOR NO SEC VIOLATION    @DY40062 08057861
+         AMODESW RETURN,REG=(12)  RETURN TO FETCH              @D64CDCS 08057862
+SCYSECX3 DS    0H                                              @D52SDPP 08060461
+         SLR   RF,RF              CODE FOR NO SEC VIOLATION    @DY40062 08062552
+         LTR   R0,R0              SHOULD SEC-CHECK PERFORMED ? @DY40062 08075052
+         BP    SCYSECEX           NO, EXIT TO FETCH            @D64CDCS 08075053
+         B     SCYSECCO           NO, CONTINUE                 @D64CDCS 08075054
+SCYSECEX AMODESW RETURN,REG=(12)  NO, RETURN TO COMMON ROUTINE @D64CDCS 08087552
+SCYSECCO STM   R0,RE,SAVFREGS     SAVE ALL REGISTERS           @D64CDCS 08100000
+         AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D64CDCS 08100100
+         L     R5,TCBATCBE        GET ADDRESS OF TCB EXTENTION @D64CDCS 08100200
+         USING TCBXADR,R5                                      @D64CDCS 08100300
+*        MVC   TCBXSAVT(60),SAVFREGS   SAVE FETCH  REGISTERS   @D64CDCS 08100600
+         TM    TCBXSAUS,TCBXXSAU  TCBXXSA SAVE AREA IN USE?    @D64CDCS         
+         BZ    SCYXSA3            NO, THEN SAVE REGISTERS      @D64CDCS         
+         MVI   IJBHWORG,HWORG252  YES, GO INTO HARD WAIT       @D64CDCS         
+         BAL   R5,SYSERROR        USAGE ERROR                  @D64CDCS         
+SCYXSA3  MVC   TCBXXSA(60),SAVFREGS SAVE FETCH  REGISTERS      @D64CDCS         
+         OI    TCBXSAUS,TCBXXSAU  INDICATE SAVE AREA USED      @D64CDCS         
+         DROP  R5                                              @D64CDCS 08100610
+         AMODESW SET,AMODE=(4),WR=(15) RESET AMODE             @D64CDCS 08100700
+         SLR   RF,RF              CODE FOR NO SEC VIOLATION    @D64CDCS 08100800
+         L     R9,SCYFTCOM(R1)    GET COMMUNICATION REG ADDR   @D14CDOW 08150000
+         USING COMREG,R9                                       @D350DOW 08200000
+*   CHECK IF RACROUTE SUPPORT NEEDED --> ESM ACTIVE?           @D64CD.. 08400100
+*  ***   L     R8,IJBSCTAB        GET SECURITY TABLE ADDRESS   @D64CD.. 08400200
+*  ***   USING SCYVECDS,R8                                     @D64CD.. 08400300
+*  ***   TM    SCYFLGS1,SCYESM    ESM ACTIVE? YES, SYSTEM TASK @D64CD.. 08400400
+*  ***   BNZ   SCYESM15           QUEUE, DO GATING             @D64CD.. 08400500
+*  ***   DROP  R8                                              @D64CD.. 08400600
+         BAL   R8,SCYGATE         ROUTINE AVAILABLE            @D14CDOW 08400610
+         B     SCYFTCH5       SKIP SYSTEM TASK QUEUEING        @D64CDCS 08400800
+SCYESM15 DS    0H                                              @D64CDCS 08400900
+*                           DON'T SET USER TASK SECURITY BOUND @D64CDCS 08401000
+SCYFTCH5 DS    0H                                              @D64CDCS 08401200
+         L     R2,SCYFTMEM(R1)    ADDR OF MEMBER NAME          @DA37284 08550000
+         CLC   0(8,R2),SCYSCTAB   IS REQUESTED PHASE DTSECTAB  @DA37284 08600000
+         BE    SCYSEC21           YES, DO CHECKING             @DA37284 08650000
+         TM    JCSW5,JCLACTIV     IS JCL ACTIV                 @D350DOW 08700000
+         DROP  R9                                              @D350DOW 08750000
+         BO    SCYSEC22           YES, NO SEC CHECK DURING JCL @D14CDOW 08800000
+SCYSEC21 MVC   SCYMEM,0(R2)       MEMBER NAME                  @DA37284 08850000
+         L     R2,SCYFTLIB(R1)                                 @D14CDOW 08900000
+         MVC   SCYLIB,0(R2)       LIBRARY NAME                 @D14CDOW 08950000
+         L     R2,SCYFTSLB(R1)                                 @D14CDOW 09000000
+         MVC   SCYSLB,0(R2)       SUBLIBRARY NAME              @D14CDOW 09050000
+         LR    R2,R1              SAVE FETCH COM AREA ADDR     @D14CDOW 09100000
+         LA    R1,SCYAPL          GET DTSAPL ADDR              @D14CDOW 09150000
+         LTR   R0,R0                                           @D14CDOW 09200000
+         BM    SCYSEC23           CANCEL DUE INVAL B-TRANS NAME@D14CDOW 09250000
+         NI    APOPT,XFF-APCAN    NO CANCEL REQUEST            @D14CDOW 09300000
+         B     SCYSEC24                                        @D14CDOW 09350000
+SCYSEC23 DS    0H                                              @D14CDOW 09400000
+         OI    APOPT,APCAN        CANCEL USER                  @D14CDOW 09450000
+SCYSEC24 DS    0H                                              @D14CDOW 09500000
+*                                                              @D149DOW 09550000
+*   CHECK IF RACROUTE SUPPORT NEEDED --> ESM ACTIVE?           @D64CD.. 09550010
+*        L     R8,IJBSCTAB        GET SECURITY TABLE ADDRESS   @D64CD.. 09550020
+*        USING SCYVECDS,R8                                     @D64CD.. 09550030
+*        TM    SCYFLGS1,SCYESM    ESM ACTIVE? YES, SYSTEM TASK @D64CD.. 09550040
+*        BZ    SCYESM20           QUEUE, DO PROCESSING         @D64CD.. 09550050
+*        DROP  R8                                              @D64CD.. 09550060
+*        LR    R3,R1              LOAD DTSAPL POINTER          @D64CD.. 09550100
+*        USING DTSAPL,R3          COMPLETE APL                 @D64CD.. 09550200
+*        NI    APSVCOP,APFETCH    INDICATION THAT FETCH  CALL  @D64CD.. 09550300
+*        MVI   APCANCD,X'00'      INITIALIZE NOCANCEL IND      @D64CD.. 09550400
+*        ST    R2,APCOM           SAVE COMREG ADDRESS IN APL   @D64CD.. 09550500
+*        STCK  APTOD              STORE CLOCK INTO APL         @D64CD.. 09550600
+*                                 APL COMPLETE, SAVE IN TCBX   @D64CD.. 09550700
+*                                                              @D64CD.. 09550800
+*        AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D64CD.. 09550900
+*        L     R5,TCBATCBE        GET ADDRESS OF TCB EXTENTION @D64CD.. 09551000
+*        USING TCBXADR,R5                                      @D64CD.. 09551100
+*        MVC   TCBXAPLS(APLEN),0(R3)   APL INFORMATION TO TCBX @D64CD.. 09551200
+*        DROP  R3                                              @D64CD.. 09551300
+*        DROP  R5                                              @D64CD.. 09551310
+*        AMODESW SET,AMODE=(4),WR=(15) RESET AMODE             @D64CD.. 09551400
+*        SLR   R15,R15            CODE FOR NO SECURITY VIOL    @D64CD.. 09551500
+*        L     RD,SCYQBASE        BASE OF SECURITY-Q-MANAGER   @D64CD.. 09551600
+*        USING QMGRSTRT,RD                                     @D64CD.. 09551700
+*        BAL   R8,QSECADD         GO TO SEC-Q-MGR TO PROCESS   @D64CD.. 09551800
+*                                 R5 ADDRESS OF TCB EXTENTION  @D64CD..         
+*        USING SVC108,RD          NO RETURN TO HERE IF ESM     @D64CD.. 09551900
+*        L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D64CD.. 09552000
+SCYESM20 DS    0H                                              @D64CDCS 09552100
+*                                                              @D149DOW 09600000
+         BAL   RC,SCYSEC1         GO TO COMMON ROUTINE         @D14CDOW 09650000
+*                                                              @D149DOW 09700000
+*                                                              @D149DOW 09750000
+*   RETURN FROM COMMON ROUTINE IF REQUESTOR IS NOT CANCELLED   @D149DOW 09800000
+*                                                              @D149DOW 09850000
+         SLR   RF,RF              CODE FOR NO SEC VIOLATION    @D14CDOW 09900000
+         CLI   APCANCD,X'00'                                   @D52SDPP 09908352
+         BE    SCYSEC34                                        @D52SDPP 09916652
+         LA    RF,16                                           @D52SDPP 09924952
+         B     SCYSEC22                                        @D52SDPP 09933252
+SCYSEC34 DS    0H                                              @D52SDPP 09941552
+         CLI   APERR,APNRM        ANY SEC VIOLATION            @D14CDOW 09950000
+         BE    SCYSEC22                                        @D14CDOW 10000000
+         LA    RF,8               CODE FOR SEC VIOLATION       @D14CDOW 10050000
+SCYSEC22 DS    0H                                              @D14CDOW 10100000
+*                                 RESTORE REGISTERS            @D64CDCS 10100100
+         ST    RF,SAVFREGF        SAVE REGISTER 15 VALUE       @D64CDCS 10100110
+         AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D64CDCS 10100200
+         L     R5,TCBATCBE        GET ADDRESS OF TCB EXTENTION @D64CDCS 10100300
+         USING TCBXADR,R5                                      @D64CDCS 10100400
+*        MVC   SAVFREGS(60),TCBXSAVT   RESTORE TCBX REGISTERS  @D64CDCS 10100500
+         MVC   SAVFREGS(60),TCBXXSA    RESTORE TCBX REGISTERS  @D64CDCS         
+         XI    TCBXSAUS,TCBXXSAU       RESET - SAVE AREA USED  @D64CDCS         
+         DROP  R5                                              @D64CDCS 10100510
+         AMODESW SET,AMODE=(4),WR=(15) RESET AMODE             @D64CDCS 10100600
+         LM    R0,RE,SAVFREGS     RESTORE REGISTERS            @DY40062 10150052
+         L     RF,SAVFREGF        RESTORE REGISTER 15          @D64CDCS 10150053
+*        MVI   RID+1,REENTRID     RESTORE OLD RID              @DY40332 10300052
+         MVC   RID+1(1),SCYGRID   RESTORE CALLERS RID          @MZIMMER         
+         AMODESW RETURN,REG=(12)  NO, RETURN TO COMMON ROUTINE @D64CDCS 10300053
+*        BR    RC                 RETURN PREVIOUS DONE         @D14CDOW 10350000
+         SPACE 3                                               @D350DOW 10400000
+************************************************************** @D52SDPP 10408652
+*                                                            * @D52SDPP 10417252
+*        COMMON TO SVC108, FETCH AND VENDOR INTERFACE        * @D52SDPP 10425852
+*                                                            * @D52SDPP 10434452
+*        INPUT REGISTERS:                                    * @D52SDPP 10443052
+*              R0: AS BASE TO SGLOWC, TRIVIAL                * @D52SDPP 10451652
+*              R1: APL                                       * @D52SDPP 10460252
+*              R9: COMREG ADDRESS                            * @D52SDPP 10468852
+*              RC: RETURN ADDRESS                            * @D52SDPP 10477452
+*              RD: SGACF BASE                                * @D52SDPP 10486052
+*        WORK REGISTERS:                                     * @D52SDPP 10494652
+*              R2: ADDRESS OF DSPLLOG ROUTINE (ACLR)         * @D52SDPP 10503252
+*              R6: DISPATCHER BASE                           * @D52SDPP 10511852
+*              R7: PARAMETER LIST TO LOGGER                  * @D52SDPP 10520452
+*              R8: ENTRY OF LOGGER                           * @D52SDPP 10529052
+*              RA: TCB ADDRESS                               * @D52SDPP 10537652
+*              RB: TCB SAVE AREA ADDRESS                     * @D52SDPP 10546252
+*              RD: QUEUE MANAGER BASE                        * @D52SDPP 10554852
+*              RE: SECURITY VECTOR TABLE, SUBROUTINE LINKAGE * @D52SDPP 10563452
+*              RF: ADDRESS OF DTSECSVC, $IJBRCFA             * @D52SDPP 10572052
+*                                                            * @D52SDPP 10580652
+************************************************************** @D52SDPP 10589252
+SCYSEC1  DS    0H                                              @D350DOW 10600000
+         MVI   APCANCD,X'00'                                   @D52SDPP 10625052
+         ST    R9,APCOM           STORE PART COMREG INTO APL   @D350DOW 10650000
+         ST    RC,SCYRCSAV        SAVE RETURN ADDR             @D14CDOW 10700000
+         L     R8,SCYQLOGG        GET ENTRY OF LOGGER IN Q     @D14CDOW 10750000
+         USING QTABSTRT,R8        ADDRESSABILITY TO LOGGER Q   @D14CDOW 10800000
+         L     RE,IJBSCTAB        GET ADDR OF SEC VECTOR TABLE @D14CDOW 10850000
+         USING SCYVECDS,RE                                     @D14CDOW 10900000
+         TM    SYSFLAG2,IPLBIT    IS IPL IN PROCESS            @D14CDOW 10950000
+         BO    SCYSEC20           CHECKING, NO LOGGING         @D14CDOW 11000000
+         TM    QTABFLG1,QTABACT   ACTIVE                       @D14CDOW 11050000
+         BO    SCYSEC20           YES DO CHECKING              @D14CDOW 11100000
+         TM    QTABFLG1,QTABDEA+QTABNAV DEACTIVATED OR NOT     @D14CDOW 11150000
+         BNZ   SCYSEC20           AVAILABLE,CHECK WITHOUT LOG  @D14CDOW 11200000
+         TM    QTABFLG1,QTABINIT  INITIALIZATION STARTED       @D14CDOW 11250000
+         BO    SCYSEC20           YES DO CHECKING              @D14CDOW 11300000
+         MVI   QTABFLG1,QTABINIT  INITIALIZATION STARTED       @D14CDOW 11350000
+         L     R2,SCYLOGGR        GET ADDR OF DSPLLOG MODULE   @D14CDOW 11400000
+         LTR   R2,R2              LOGGER AVAILABLE             @D14CDOW 11450000
+         BNZ   SCYSEC16           YES THATS OK                 @D14CDOW 11500000
+         MVI   QTABFLG1,QTABNAV   LOGGER NOT AVAILABLE         @D14CDOW 11550000
+         B     SCYSEC20           DO CHECKING WITHOUT LOGGING  @D14CDOW 11600000
+SCYSEC16 DS    0H                                              @D51IDPP 11650000
+         ST    R2,QTABMOD         INITIALIZE Q-ENTRY MOD-ADDR  @D14CDOW 11700000
+         DROP  R8                                              @D14CDOW 11750000
+         LA    R7,SCYPARL         GET ADDR OF PARAMETER-LIST   @D14CDOW 11800000
+         L     RD,SCYQBASE        BASE OF Q-MGR                @D14CDOW 11850000
+         USING QMGRSTRT,RD                                     @D14CDOW 11900000
+         BAL   R8,QMGRADD         GO TO Q-MGR TO ADD RECORD    @D14CDOW 11950000
+         USING SVC108,RD                                       @D14CDOW 12000000
+         L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D14CDOW 12050000
+SCYSEC20 DS    0H                                              @D14CDOW 12100000
+         STCK  APTOD              STORE CLOCK INTO APL         @D14CDOW 12150000
+         L     R9,SCYQLOGG        GET ENTRY OF LOGGER IN Q     @D14CDOW 12200000
+         USING QTABSTRT,R9        ADDRESSABILITY TO LOGGER Q   @D14CDOW 12250000
+         IC    R9,QTABFLG1        GET STATUS OF LOGGER         @D14CDOW 12300000
+         DROP  R9                 AVAILABLE                    @D14CDOW 12350000
+         L     RF,SCYRCFA         GET ADDR OF AUTHORIZ CHECKER @D51SMKH 12400052
+         DROP  RE                                              @D31EDOW 12450000
+*                                                              @D350DOW 12500000
+*   GO TO AUTHORIZATIION CHECKER                               @D350DOW 12550000
+*                                                              @D350DOW 12600000
+         BALR  RE,RF              GO TO AUTHORIZATION CHECKER  @D350DOW 12650000
+*                                                              @D350DOW 12700000
+*   RETURN FROM AUTHORIZATION CHECKER                          @D350DOW 12750000
+*        R1 AND RD ARE UNCHANGED                               @D149DOW 12800000
+*        R7 CONTAINS ADDR OF LOGGER RECORD IF LOGGING REQ      @D149DOW 12850000
+         L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D14CDOW 12900000
+         L     R6,DISPAD          RELOAD DISPATCHER ADDR       @D14CDOW 12950000
+         L     RA,TCBPTR          RELOAD TCB POINTER           @D14CDOW 13000000
+         L     RB,TCBSAVE         RELOAD SAVE AREA ADDR        @D14CDOW 13050000
+         B     SCYSEC2(RF)        HANDLE RETURNCODES           @D350DOW 13100000
+*                                                              @D350DOW 13150000
+*        DEFINTION OF ACTIONS     WHAT HAPPENS  |  WHAT HAPPENS@D350DOW 13200000
+*                                 WITH THE      |  WITH THE    @D350DOW 13250000
+*                                 USER TASK     |  LOGGER      @D350DOW 13300000
+SCYSEC2  B     SCYRC00            NORMAL CONT      NO LOGGING  @D350DOW 13350000
+         B     SCYRC04            NORMAL CONT      LOGGING     @D350DOW 13400000
+         B     SCYRC08            CANCEL CODE 0B   LOGGING     @D350DOW 13450000
+         B     SCYRC0C            CANCEL CODE 0B   NO LOGGING  @D31EDOW 13500052
+         B     SCYRC10            RE-SVC           N.A.        @D350DOW 13550000
+         B     SCYRC0A            CANCEL CODE 0A   NO LOGGING  @D350DOW 13600052
+         SPACE 3                                               @D350DOW 13650000
+SCYRC0A  DS    0H                 POST LOGGER AND CANCEL USER  @D350DOW 13651152
+         TM    SYSFLAG2,IPLBIT    IS IPL IN PROCESS            @D52SDPP 13652252
+         BNO   ERR0A                                           @D52SDPP 13653352
+         MVI   APCANCD,X'0A'      PUT CANCEL CODE INTO APL     @D52SDPP 13654452
+         B     SCYRC00                                         @D52SDPP 13655552
+***************************************************************@D52SDPP 13656652
+*                                                              @D350DOW 13658352
+* FOR THE ENTRIES SCYRC08 AND SCYRC0C, THE USER TASK IS        @D52SDPP 13666652
+* CANCELLED WITH RC=0B, MSG 0S20I                              @D52SDPP 13674952
+*                                                              @D350DOW 13683252
+***************************************************************@D52SDPP 13691552
+SCYRC08  DS    0H                 POST LOGGER AND CANCEL USER  @D350DOW 13700000
+*                                 AND ENQ LOGGER RECORD        @D149DOW 13750000
+         L     RD,SCYQBASE        BASE OF Q-MGR                @D14CDOW 13800000
+         USING QMGRSTRT,RD                                     @D14CDOW 13850000
+         BAL   R8,QMGRADD         GO TO Q-MGR TO ADD RECORD    @D14CDOW 13900000
+         USING SVC108,RD                                       @D14CDOW 13950000
+         L     RD,ASGSVCX2        RELOAD BASE REGISTER         @DY38268 14000000
+***************************************************************@D52SDPP 14050052
+SCYRC0C  DS    0H                                              @D51IDPP 14100052
+         ST    R1,SCYR1SAV                                     @D52SDPP 14150052
+         LA    R0,CANCLEN         LENGTH OF PARAMETER LIST     @D52SDPP 14200052
+         L     RD,SCYQBASE        BASE OF Q-MGR                @D62CDCS 14200053
+         USING QMGRSTRT,RD                                     @D62CDCS 14200054
+         LA    R2,QMGRGTSV-16     SAVE-AREA FOR GETVIS         @D52SDPP 14250052
+         USING SVC108,RD                                       @D62CDCS 14250053
+         L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D62CDCS 14250054
+         SGETVIS LENGTH=(0),ADDRESS=(R4),SAVE=(2)              @D52SDPP 14300052
+         LTR   RF,RF              SPACE AVAILABLE              @D52SDPP 14350052
+         BNZ   SCYRC0A            IF NOT, IT IS SECURITY ERROR @D52SDPP 14400052
+         L     R1,SCYR1SAV                                     @D52SDPP 14450052
+         USING MAPDMPIF,R4                                     @D52SDPP 14500052
+         SLR   R7,R7                                           @D31EDOW 14800000
+         IC    R7,APTYP           GET TYPE OF OBJECT           @D31EDOW 14850000
+         SRL   R7,1               DIVIDE WITH 2                @D31EDOW 14900000
+         L     R8,APOBJ           GET OBJECT ADDR              @D31EDOW 14950000
+         B     SCYBRTAB(R7)       GO TO CORRECT MOVE RTN       @D31EDOW 15000000
+SCYBRTAB EQU   *-4                BRANCH TABLE                 @D31EDOW 15050000
+         B     SCYLIBTY           PROCESS LIBRARY              @D31EDOW 15100000
+         B     SCYSLBTY           PROCESS SUB-LIBRARY          @D31EDOW 15150000
+         B     SCYPGMTY           PROCESS MEMBER               @D31EDOW 15200000
+         B     SCYFILTY           PROCESS FILE                 @D31EDOW 15250000
+SCYLIBTY LA    R7,59              CURRENT LENGTH               @D31EDOW 15300000
+         MVI   CANC0BD2,C'.'      FILL CHARACTER               @D52SDPP 15350052
+         MVC   CANC0BL1,50(R8)    LIBRARY NAME                 @D52SDPP 15400052
+         B     SCYFILT5                                        @D31EDOW 15450000
+SCYFILTY LA    R7,51              OBJECT NAME LENGTH           @D31EDOW 15500000
+SCYFILT5 MVC   CANC0BVI,44(R8)    VOLID                        @D52SDPP 15550052
+         MVI   CANC0BD1,C'.'      FILL CHARACTER               @D52SDPP 15600052
+         MVC   CANC0BFI,0(R8)     FILE-ID                      @D52SDPP 15650052
+         B     SCYENDE                                         @D31EDOW 15700000
+SCYPGMTY LA    R7,25              OBJECT NAME LENGTH           @D31EDOW 15750000
+         MVI   CANC0BD4,C'.'      FILL CHARACTER               @D52SDPP 15800052
+         MVC   CANC0BMN,15(R8)    MEMBER                       @D52SDPP 15850052
+         B     SCYSLBT5                                        @D31EDOW 15900000
+SCYSLBTY LA    R7,16              OBJECT NAME LENGTH           @D31EDOW 15950000
+SCYSLBT5 MVC   CANC0BL2,0(R8)     LIBRARY                      @D52SDPP 16000052
+         MVI   CANC0BD3,C'.'      FILL CHARACTER               @D52SDPP 16050052
+         MVC   CANC0BSN,7(R8)     SUBLIBRARY                   @D52SDPP 16100052
+SCYENDE  DS    0H                                              @D52SDPP 16150052
+         DROP  R1                                              @D31EDOW 16250000
+         LA    R1,CANC0BL2        R1 POINTS TO FIRST BYTE IN   @D52SDPP 16251352
+         AR    R7,R1              MESSAGE, R7 POINTS BEHIND IT.@D52SDPP 16252652
+*                                                              @D52SDPP 16253952
+* REMOVE BLANK CHARACTERS OUT OF THE MESSAGE AREA AND CALL     @D52SDPP 16255252
+* CANCEL PROCESSING FOR CANCEL CODE 0B                         @D52SDPP 16256552
+*                                                              @D52SDPP 16257852
+SCYBLKD3 DS    0H                                              @D52SDPP 16259152
+         CR    R1,R7                                           @D52SDPP 16260452
+         BE    SCYBLKD4                                        @D52SDPP 16261752
+         CLI   0(R1),C' '         SEE IF IT IS A BLANK FIELD   @D52SDPP 16263052
+         BNE   SCYBLKD1                                        @D52SDPP 16264352
+         LR    R6,R1                                           @D52SDPP 16265652
+SCYBLKD2 DS    0H                                              @D52SDPP 16266952
+         MVC   0(1,R6),1(R6)      MOVE STRING BACK ONE CHAR    @D52SDPP 16268252
+         LA    R6,1(0,R6)                                      @D52SDPP 16269552
+         CR    R6,R7                                           @D52SDPP 16270852
+         BNE   SCYBLKD2                                        @D52SDPP 16272152
+         BCTR  R7,0               LENGTH OF STRING IS REDUCED  @D52SDPP 16273452
+         MVI   0(R7),C' '                                      @D52SDPP 16274752
+         B     SCYBLKD3                                        @D52SDPP 16276052
+SCYBLKD1 DS    0H                                              @D52SDPP 16277352
+         LA    R1,1(0,R1)         POINT TO THE NEXT CHARACTER  @D52SDPP 16278652
+         B     SCYBLKD3                                        @D52SDPP 16279952
+*                                                              @D52SDPP 16281252
+* PREPARE REGISTERS FOR CALL OF DISPATCHER CANCEL SERVICE      @D52SDPP 16282552
+*                                                              @D52SDPP 16283852
+SCYBLKD4 DS    0H                                              @D52SDPP 16285152
+         LA    R1,CANC0BL2                                     @D52SDPP 16286452
+         SR    R7,R1                                           @D52SDPP 16287752
+         ST    R7,CANC0BLN        LENGTH OF OBJECT NAME        @D31EDOW 16289052
+         LR    R1,R4                                           @D52SDPP 16290352
+         O     R1,BIT0OMSK        SET HIGH ORDER BIT ON        @D52SDPP 16291652
+         LA    R0,4(0,0)          FUNCTION CODE 4 FOR DISP     @D52SDPP 16292952
+         LA    RB,X'0B'(0,0)      PUT THE CANCEL CODE INTO RB  @D52SDPP 16294252
+         L     R6,ADISPSER                                     @D52SDPP 16295552
+         AMODESW CALL,REGS=(R7,R6)     EXIT                    @D61NDKH 16296861
+         DROP  R4                                              @D31EDOW 16298152
+         SPACE 3                                               @D350DOW 16300000
+***************************************************************@D52SDPP 16303552
+*                                                              @D350DOW 16307152
+* FOR THE ENTRIES SCYRC04 AND SCYRC00, THE USER TASK WILL      @D52SDPP 16314252
+* CONTINUE NORMALLY, ACTIONS DEPEND ON THE INFORMATION IN THE  @D52SDPP 16321352
+* APL CONTROL BLOCK                                            @D52SDPP 16328452
+*                                                              @D350DOW 16335552
+***************************************************************@D52SDPP 16342652
+SCYRC04  DS    0H                 POST LOGGER TASK             @D350DOW 16350000
+*                                 AND ENQ LOGGER RECORD        @D149DOW 16400000
+         L     RD,SCYQBASE        BASE OF Q-MGR                @D14CDOW 16450000
+         USING QMGRSTRT,RD                                     @D14CDOW 16500000
+         BAL   R8,QMGRADD         GO TO Q-MGR TO ADD RECORD    @D14CDOW 16550000
+         USING SVC108,RD                                       @D14CDOW 16600000
+         L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D14CDOW 16650000
+         SPACE 3                                                        16800000
+***************************************************************@D52SDPP 16825052
+SCYRC00  L     RC,SCYRCSAV        RESTORE RETURN REGISTER      @D14CDOW 16850000
+         BR    RC                 EXIT                         @D350DOW 16900000
+         SPACE 3                                               @D350DOW 16950000
+***************************************************************@D52SDPP 16954152
+*                                                              @D350DOW 16958252
+* FOR THE ENTRIE SCYRC10, NO RE-SVC IS DONE                    @D52SDPP 16962352
+* INSTEAD, CANCEL CODE 52 IS ISSUED                            @D52SDPP 16966452
+*                                                              @D350DOW 16970552
+***************************************************************@D52SDPP 16975052
+SCYRC10  DS    0H                 GO TO CANCEL                 @D51IDPP 17000000
+         L     R6,DISPAD          GET DISPATCHER ADDRESS       @D51IDPP 17050000
+         LA    RB,52              GO TO DISP                   @D51IDPP 17100000
+         LR    RF,R6                                           @D51IDPP 17150000
+         B     ERRGO                                           @D51IDPP 17200000
+         SPACE 3                                               @D350DOW 17250000
+*************************************************************  @D149DOW 17300000
+*        GATING FOR SVC108                                     @D149DOW 17350000
+*                                                              @D149DOW 17400000
+*        INPUT    R8 : RETURN ADDR                             @D149DOW 17450000
+*        WORK     R5                                           @D149DOW 17500000
+*                 RC                                           @D149DOW 17550000
+*************************************************************  @D149DOW 17600000
+SCYGATE  DS    0H                                              @D14CDOW 17650000
+*DEL     CRSECT END=SCYGATE2                                   @MZIMMER 17700000
+         L     R5,ASRQTAB         GET SRQ TABLE ADDRESS        @D61RDKH 17733361
+         TM    RBG108-SRQTAB(R5),FREEBIT  ROUTINE FREE FOR USE @D66ODOW 17766661
+         BO    SCYGATE1           YES CONTINUE                 @D66ODOW 17800000
+         LA    R5,SRQG108-SRQTAB(,R5) BOUND CONDITION          @D61RDKH 17850061
+         BAL   RC,RWAIT           EXECUTE WAIT                 @D14CDOW 17900000
+*SGLINK RWAIT,INPUT=(R5,RC)                                    @D149DOW 17950000
+         B     SCYGATE            TRY ONCE MORE                @D14CDOW 18000000
+SCYGATE1 DS    0H                                              @D14CDOW 18050000
+         MVC   SCYGRID(1),RID+1   SAVE RID                     @MZIMMER         
+         MVI   RID+1,G108BND      SET ROUTINE SVC108 BOUND     @D14CDOW 18100000
+*CYGATE2 DS    0H                                              @MZIMMER 18150000
+         BR    R8                 RETURN                       @D14CDOW 18200000
+SCYGRID  DC    H'0'                                            @MZIMMER         
+         EJECT                                                 @D350DOW 18250000
+*        DTSAPL AND WORK-AREAS FOR FETCH                       @D149DOW 18300000
+*                                                              @D149DOW 18350000
+SCYAPL   DTSAPL DSECT=NO          DTSAPL FOR FETCH/LOAD        @D14CDOW 18400000
+         ORG   *-APLEN+APTYP-APLID LOCATE OBJECT TYPE          @D14CDOW 18450000
+         DC    AL1(APPGM)         IT IS A MEMBER               @D14CDOW 18500000
+         ORG   ,                                               @D14CDOW 18550000
+         ORG   *-APLEN+APOPT-APLID LOCATE OPTION BYTE          @D14CDOW 18600000
+         DC    AL1(APRET+APRQFTCH) RETURN AND FETCH REQ        @D14CDOW 18650000
+         ORG   ,                                               @D14CDOW 18700000
+         ORG   *-APLEN+APAUT-APLID LOCATE ACCESS RIGTHS        @D14CDOW 18750000
+         DC    AL1(APRRD)         READ IS REQUESTED            @D14CDOW 18800000
+         ORG   ,                                               @D14CDOW 18850000
+         ORG   *-APLEN+APOBJ-APLID LOCATE POINTER ADDR         @D52SDPP 18900052
+         DC    A(SCYLIB)                                       @D52SDPP 18950052
+         ORG   ,                                               @D52SDPP 18975052
+SCYLIB   DS    CL7                TO CONTAIN LIB NAME          @D14CDOW 19000000
+SCYSLB   DS    CL8                TO CONTAIN SUB-LIB NAME      @D14CDOW 19050000
+SCYMEM   DS    CL8                TO CONTAIN MEMBER NAME       @D14CDOW 19100000
+         DS    0F                                              @D14CDOW 19150000
+SAVFREGS DS    15F                REGISTER SAVE AREA           @DY40062 19200052
+SAVFREGF DS    F                  REGISTER 15 SAVE AREA        @D62CDCS 19200053
+SCYRCSAV DS    F                  RETURN ADDR                  @D14CDOW 19250000
+SCYR1SAV DS    F                  RETURN ADDR                  @D14CDOW 19275052
+*                                                              @D149DOW 19300000
+SCYPARL  DS    4F                 PAR-LIST TO Q-MGR FOR INIT   @D14CDOW 19350000
+         ORG   *-16                                            @D14CDOW 19400000
+         DC    F'0'               NO WAIT NECESSARY            @D14CDOW 19450000
+         DC    X'00'              FLAGBYTE                     @D14CDOW 19500000
+         DC    X'00'                                           @D14CDOW 19550000
+         DC    XL2'01'            SVC108 REQUEST               @D14CDOW 19600000
+         DC    X'00'              FLAGBYTE                     @D14CDOW 19650000
+         DC    AL1(QHDINIT)       FUNCTION IS INITIALIZE       @D14CDOW 19700000
+         DC    H'0'               NO DATA                      @D14CDOW 19750000
+         DC    A(0)               NO DATA                      @D14CDOW 19800000
+         SPACE 3                                               @D350DOW 19850000
+*        CONSTANTS                                             @D149DOW 19900000
+*                                                              @D149DOW 19950000
+SCYQBASE DC    A(QMGRSTRT)        BASE ADDR OF Q-MGR           @D14CDOW 20000000
+SCYQLOGG DC    A(QENTLOGG)        Q-ENTRY FOR LOGGER TASK      @D14CDOW 20050000
+*                                                              @D149DOW 20100000
+*                                                              @D149DOW 20100100
+*                                                              @D149DOW 20100400
+SCYSCTAB DC    CL8'DTSECTAB'      ACF-TABLE PHASE NAME         @D14CDOW 20150000
+         DROP  R6,RA,RB,RD                                     @D350DOW 20200000
+         SPACE 3                                               @D350DOW 20250000
+*        EQUATES                                               @D350DOW 20300000
+*                                                              @D350DOW 20350000
+*        LAYOUT OF THE FETCH COMMUNICATION AREA                @D149DOW 20400000
+SCYFTLIB EQU   0                  POINTER TO LIBRARY NAME      @D14CDOW 20450000
+SCYFTSLB EQU   4                  POINTER TO SUB-LIBRARY NAME  @D14CDOW 20500000
+SCYFTMEM EQU   8                  POINTER TO MEMBER NAME       @D14CDOW 20550000
+SCYFTCOM EQU   12                 COMREG ADDR                  @D14CDOW 20600000
+         SPACE 1                                               @D62CDCS 47900000
+ TITLE 'DOS  SUPERVISOR      SGACF     LOGGER SYSTEMTASK'               53550100
+************************************************************** @D149DOW 53550200
+*                                                              @D149DOW 53550300
+*        Q-MANAGER : CONSISTS OF THREE SUBROUTINES             @D149DOW 53550400
+*             THIS 3 SUBROUTINES HANDLE THE ENQ AND DEQ        @D149DOW 53550500
+*             OF RECORDS TO THE 'Q', TO BE PROCESSED BY        @D149DOW 53550600
+*             BY THE LOGGER SYSTEM-TASK.                       @D149DOW 53550700
+*             FURTHER FUNCTIONS ARE:                           @D149DOW 53550800
+*             - ACTIVATE LOGGER SYSTEM TASK                    @D149DOW 53550900
+*             - DO BLOCKING OF INCOMING RECORDS                @D149DOW 53551000
+*             - EXECUTE SFREEVIS                               @D149DOW 53551100
+*             - TREADY TASKS WAITING FOR Q-(SGETVIS)-SPACE     @D149DOW 53551200
+*             - POST SPECIAL TASK READY                        @D149DOW 53551300
+*                                                              @D149DOW 53551400
+************************************************************** @D149DOW 53551500
+         USING QMGRSTRT,RD                                     @D14CDOW 53551600
+QMGRSTRT DS    0H                 BASE ADDR OF Q-MGR           @D14CDOW 53551700
+         SPACE 3                                               @D149DOW 53551800
+*************************************************************  @D149DOW 53551900
+QMGRADD  DS    0H          MOVE RECORD TO I/O AREA             @D149DOW 53552000
+*                          BUILD PARAMETER-LIST                @D149DOW 53552100
+*                          CHAIN RECORD TO Q-CHAIN             @D149DOW 53552200
+*                          ACTIVATE LOGGER SYSTEM-TASK         @D149DOW 53552300
+*    REGISTER USAGE                                            @D149DOW 53552400
+*         INPUT                                                @D149DOW 53552500
+*                 R7  -  ADDR OF PARAMETERLIST TO SVC          @D149DOW 53552600
+*                 R8  -  RETURN ADDRESS                        @D149DOW 53552700
+*                 RD  -  BASE REGISTER                         @D149DOW 53552800
+*         OUTPUT TO SYSTEM TASK                                @D149DOW 53552900
+*                 R9  -  ADDR OF PARAMETERLIST TO SYS-TASK     @D149DOW 53553000
+*                 RE  -  ADDR OF Q-ENTRY                       @D149DOW 53553100
+*         WORK                                                 @D149DOW 53553200
+*                 R4, R5, RC                                   @D149DOW 53553300
+*************************************************************  @D149DOW 53553400
+         BAL   R4,QMGRGATE        DO GATING                    @D14CDOW 53553500
+         STM   R6,R3,QMGRSAVE     SAVE INPUT REGISTERS         @D14CDOW 53553600
+         L     R6,DISPAD                                       @D14CDOW 53553700
+         USING DISP,R6                                         @D14CDOW 53553800
+         LA    RE,QENTSTRT        GET CORRECT Q-ENTRY          @D14CDOW 53553900
+         USING QTABSTRT,RE                                     @D14CDOW 53554000
+         USING QHDCSTRT,R7                                     @D14CDOW 53554100
+         LA    R9,QMGRPARL        ADDRESSABILITY TO PARAM-LIST @D14CDOW 53554200
+         USING DSPQPARL,R9                                     @D14CDOW 53554300
+         TM    QTABFLG2,QSYSACT   SYSTEM TASK ACTIVE           @D14CDOW 53554400
+         BNO   QMGRA02                                         @D14CDOW 53554500
+         BAL   RC,QMGRENQ         ENQ REC TO Q-CHAIN           @D14CDOW 53554600
+         TM    QTABFLG2,QTABRNO   INITIALIZATION REALLY STARTED@D21ZDOW 53554700
+         BNO   QMGRLG1            YES, LEAVE Q-MGR             @D21ZDOW 53554800
+         ASYSCOM R4               GET SYSTEM COMREG ADDR       @D21ZDOW 53554900
+         USING SYSCOM,R4                                       @D21ZDOW 53555000
+         L     R4,RFTABAD         GET ADDR OF RF-TABLE         @D21ZDOW 53555100
+         USING RFTABLE,R4                                      @D21ZDOW 53555200
+         TM    RFFLAGS1,RFREADY   IS RECORDER FILE OPENED      @D21ZDOW 53555300
+         DROP  R4                                              @D21ZDOW 53555400
+         BNO   QMGRLG1            NO , LEAVE Q-MGR             @D21ZDOW 53555500
+         NI    QTABFLG2,XFF-QTABRNO RESET DELAY INDICATOR      @D21ZDOW 53555600
+         B     QMGRA01            ACTIVATE INITIALIZATION      @D21ZDOW 53555700
+QMGRA02  DS    0H                                              @D14CDOW 53555800
+         CLI   QHDFCT,QHDINIT     INIT OR TERM REQUSET         @D14CDOW 53555900
+         BNH   QMGRA07            SKIP DATA MOVEMENT           @D14CDOW 53556000
+         CLI   QHDFCT,QHDWFC      FORCE I/O REQUEST            @D14CDOW 53556100
+         BE    QMGRA07            SKIP DATA MOVEMENT           @D14CDOW 53556200
+         L     R3,QHDREC          GET RECORD ADDR              @D14CDOW 53556300
+         L     R5,DSPAREC         GET ADDR OF I/O AREA         @D14CDOW 53556400
+         LH    R4,QTABRC#         GET # OF BYTES ALREADY IN    @D14CDOW 53556500
+         AR    R5,R4              FREE POSITION IN I/O-AREA    @D14CDOW 53556600
+         LH    RC,QHDDLEN         LENGTH FOR MOVE              @D14CDOW 53556700
+         AR    R4,RC              # OF USED BYTES + REC-LENGTH @D14CDOW 53556800
+         LA    R4,DSPPRXLN(R4)    ADD PREFIX                   @D14CDOW 53556900
+         CH    R4,QRECLNG         ENOUGH ROOM FOR RECORD       @D14CDOW 53557000
+         BNL   QMGRA08                                         @D14CDOW 53557100
+         STH   R4,QTABRC#         NEW # OF BYTES               @D14CDOW 53557200
+         LH    R4,QHDLID          GET INDICATOR FOR REPORTING  @D14CDOW 53557300
+         AR    R4,R4              MULTIPLY BY 4                @D14CDOW 53557400
+         AR    R4,R4                                           @D14CDOW 53557500
+         LA    R4,QLOGIND-4(R4)   ENTRY IN TABLE               @D14CDOW 53557600
+         MVC   0(4,R5),0(R4)      MOVE THE INDICATOR           @D14CDOW 53557700
+         LA    R4,DSPPRXLN(RC)    LENGTH OF LOGGER RECORD      @D14CDOW 53557800
+         STH   R4,4(R5)           RECORD LENGTH TO LOGGER REC  @D14CDOW 53557900
+         BCTR  RC,0                                            @D14CDOW 53558000
+         EX    RC,QMGRMOVE        MOVE DATA TO I/O-AREA        @D14CDOW 53558100
+         NI    QTABFLG2,X'FF'-QIODONE I/O-AREA ON DISK INDICAT @D14CDOW 53558200
+         CLI   QHDFCT,QHDWRC      WRITE WITHOUT FORCE I/O      @D14CDOW 53558300
+         BNE   QMGRA07                                         @D14CDOW 53558400
+         TM    QHDFLG1,QHDFREE  SFREEVIS REQUIRED              @D14CDOW 53558500
+         BZ    QMGRLG1                                         @D14CDOW 53558600
+         LR    R1,R7                                           @D14CDOW 53558700
+         LA    R0,DSPQLEN+QHDCLEN-DSPPRXLN GET LENGTH OF AREA  @D14CDOW 53558800
+         LA    RA,QMGRFVSV-16                                  @D14CDOW 53558900
+         SFREEVIS LENGTH=(0),ADDRESS=(1),SAVE=(RA)             @D14CDOW 53559000
+         B     QMGRLG1            LEAVE Q-MGR AS NO I/O FORCED @D14CDOW 53559100
+QMGRA07  BAL   RC,QMGRENQ         ENQ REC TO Q-CHAIN           @D14CDOW 53559200
+*        R4 CONTAINS ON RETURN THE ADDR OF THE QUEUED ENTRY    @D14CDOW 53559300
+         USING QSPACEDS,R4                                     @D14NDOW 53559400
+         OI    QSPFLAG,QRECOUT    THIS ENTRY IS NOW ON DISK    @D14NDOW 53559500
+         DROP  R4                                              @D14NDOW 53559600
+         MVI   DSPQFCT,DSPQTERM   FCT IS TERMINATION           @D14CDOW 53559700
+         MVI   DSPFLAG1,ZERO      NORMAL TERMINATION           @D14CDOW 53559800
+         CLI   QHDFCT,QHDTERM     TERMINATION REQUEST          @D14CDOW 53559900
+         BE    QMGRA01                                         @D14CDOW 53560000
+         MVI   DSPQFCT,DSPQWCB    FCT IS WRITE RECORD          @D21ZDOW 53560100
+         CLI   QHDFCT,QHDINIT     INITIALIZATION REQUEST       @D14CDOW 53560200
+         BNE   QMGRA01            NO, ACTIVATE LOG SYS TASK    @D21ZDOW 53560300
+         MVI   DSPQFCT,DSPQINIT   FCT IS INITIALIZATION        @D21ZDOW 53560400
+         ASYSCOM R4               GET SYSTEM COMREG ADDR       @D21ZDOW 53560500
+         USING SYSCOM,R4                                       @D21ZDOW 53560600
+         L     R4,RFTABAD         GET ADDR OF RF-TABLE         @D21ZDOW 53560700
+         USING RFTABLE,R4                                      @D21ZDOW 53560800
+         TM    RFFLAGS1,RFREADY   IS RECORDER FILE OPENED      @D21ZDOW 53560900
+         DROP  R4                                              @D21ZDOW 53561000
+         BO    QMGRA01            YES, ACTIVATE LOG SYS TASK   @D21ZDOW 53561100
+         OI    QTABFLG2,QSYSACT+QTABRNO DEALY START OF LOG TASK@D21ZDOW 53561200
+         B     QMGRLG1            LEAVE Q-MGR                  @D21ZDOW 53561300
+QMGRA08  DS    0H                                              @D51IDPP 53561400
+         BAL   RC,QMGRENQ         ENQ REC TO Q-CHAIN           @D14CDOW 53561500
+*        R4 CONTAINS ON RETURN THE ADDR OF THE QUEUED ENTRY    @D14CDOW 53561600
+         MVI   DSPQFCT,DSPQWCB    FCT IS WRITE RECORD          @D14CDOW 53561700
+         OI    QTABFLG2,QIOFULL   I/O-AREA IS FULL             @D14CDOW 53561800
+         TM    QTABFLG2,QIODONE   I/O-AREA ALREADY ON DISK     @D14CDOW 53561900
+         BNO   QMGRA01            ACTIVATE LOGGER SYSTEM TASK  @D14CDOW 53562000
+         MVI   DSPQFCT,DSPQRNB    FCT IS READ NEXT BLOCK       @D14CDOW 53562100
+QMGRA01  DS    0H                                              @D14CDOW 53562200
+         DROP  R9                                              @D14CDOW 53562300
+         OI    QTABFLG2,QIODONE   BUFFER AND PARAMETER LST USED@D14CDOW 53562400
+QMGRA04  DS    0H                                              @D14CDOW 53562500
+         OI    QTABFLG2,QSYSACT   SYSTEM TASK ACTIVE           @D14CDOW 53562600
+         L     R8,ALOGTIB         LOGGER TIB                   @D14CDOW 53562700
+         BAL   RF,POST            ACTIVATE LOGGER SYSTEM TASK  @D14CDOW 53562800
+*SGLINK RPOST,INPUT=(R6,R8,RF),WORK=(RE)                       @D149DOW 53562900
+         B     QMGRLG1                                         @D14CDOW 53563000
+*                                                              @D14CDOW 53563100
+QMGRENQ  DS    0H                 ENQ A RECORD TO Q-CHAIN      @D14CDOW 53563200
+         L     R4,QMGRFLST        GET A FREE Q-SPACE           @D14CDOW 53563300
+         LTR   R4,R4              AVAILABLE                    @D14CDOW 53563400
+         BNZ   QMGRENQ1                                        @D14CDOW 53563500
+         LA    R0,QSPACEL         LENGTH OF PARAMETER LIST     @D14CDOW 53563600
+         LA    R2,QMGRGTSV-16     SAVE-AREA                    @D14CDOW 53563700
+         SGETVIS LENGTH=(0),ADDRESS=(R4),SAVE=(2)              @D14CDOW 53563800
+         LTR   RF,RF              SPACE AVAILABLE              @D14CDOW 53563900
+         BZ    QMGRENQ4           YES CONTINUE                 @D14CDOW 53564000
+         CLI   QMGRENQ4,ZERO      FIX NEXT INSTRUCTIONS        @D14CDOW 53564100
+         L     R5,ASRQTAB                                      @D61RDKH 53564200
+         LA    R5,SRQGQMG-SRQTAB(,R5) POST WAITING TASKS       @D61RDKH 53564300
+         BAL   RF,RPOST                                        @D14CDOW 53564400
+*SGLINK RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                    @D149DOW 53564500
+         L     R5,ASRQTAB                                      @D61RDKH 53564600
+         LA    R5,SRQLQ-SRQTAB(,R5) GATE NO Q-SPACE AVAILAB.   @D61RDKH 53564700
+         B     RESVCX             GO TO RE-SVC                 @D14CDOW 53564800
+QMGRENQ4 DS    0H                                              @D51IDPP 53564900
+         USING QSPACEDS,R4                                     @D14NDOW 53565000
+         MVI   QSPFLAG,QSPSVIS    FREEVIS REQ FOR CHAIN-ELEM   @D14NDOW 53565100
+         DROP  R4                                              @D14NDOW 53565200
+         ST    R4,QMGRFLST        CHAIN TO FREELIST            @D14CDOW 53565300
+QMGRENQ1 DS    0H                                              @D51IDPP 53565400
+         L     R5,QTABEND                                      @D14CDOW 53565500
+         ST    R4,QTABEND         NEW END                      @D14CDOW 53565600
+         LTR   R5,R5              FIRST ENTRY                  @D14CDOW 53565700
+         BNZ   QMGRENQ2                                        @D14CDOW 53565800
+         ST    R4,QTABCBG         BEGIN OF CHAIN               @D14CDOW 53565900
+         B     QMGRENQ3                                        @D14CDOW 53566000
+QMGRENQ2 DS    0H                                              @D51IDPP 53566100
+         ST    R4,0(R5)           INSERT REC AT END OF CHAIN   @D14CDOW 53566200
+QMGRENQ3 DS    0H                                              @D51IDPP 53566300
+         USING QSPACEDS,R4                                     @D14NDOW 53566400
+         ST    R7,QECBPTR         USER'S ECB POINTER           @D14NDOW 53566500
+         MVC   QMGRFLST(4),QSPCPTR NEXT SPACE PTR TO FREE LIST @D14NDOW 53566600
+         MVC   QUSERLST(16),QHDBEG USER PARAMETER LIST         @D14NDOW 53566700
+         XC    QSPCPTR,QSPCPTR    END OF Q-CHAIN               @D14NDOW 53566800
+         BR    RC                                              @D14CDOW 53566900
+         DROP  R4,R6,R7,RE                                     @D14CDOW 53567000
+         SPACE 5                                               @D149DOW 53567100
+*************************************************************  @D149DOW 53567200
+QMGRDEL DS     0H          DELETE FIRST ENTRY IN Q-CHAIN       @D149DOW 53567300
+*                          POST WAITING TASK'S                 @D149DOW 53567400
+*                          DO SFREEVIS                         @D149DOW 53567500
+*        REGISTER USAGE                                        @D149DOW 53567600
+*           INPUT                                              @D149DOW 53567700
+*                 R2  -  ADDR OF Q-ENTRY                       @D149DOW 53567800
+*                 R8  -  RETURN ADDRESS                        @D149DOW 53567900
+*                 R9  -  RETURN CODE                           @D149DOW 53568000
+*                 RB  -  DO NOT REMOVE GATE                    @D149DOW 53568100
+*                 RD  -  BASE REGISTER                         @D149DOW 53568200
+*                 RF  -  TYPE OF RECORD - QHDLID               @D149DOW 53568300
+*           WORK                                               @D149DOW 53568400
+*                 R4, R5, RC                                   @D149DOW 53568500
+*        EXIT                                                  @D149DOW 53568600
+*              TO 0(R8) WHEN Q-CHAIN IS EMPTY                  @D149DOW 53568700
+*              TO 4(R8) WHEN ONE Q-CHAIN-ENTRY DELETED         @D149DOW 53568800
+*************************************************************  @D149DOW 53568900
+         BAL   R4,QMGRGATE        DO GATING                    @D14CDOW 53569000
+         SR    RB,RB                                           @D14CDOW 53569100
+QMGRDEL1 DS    0H                 ENTRY FROM QMGRNEXT          @D51IDPP 53569200
+         STM   R6,R3,QMGRSAVE     SAVE INPUT REGISTERS         @D14CDOW 53569300
+         USING QTABSTRT,R2                                     @D14CDOW 53569400
+         L     R6,QTABCBG         ADDR OF FIRST CHAIN-ELEMENT  @D14NDOW 53569500
+         LTR   R6,R6              Q-CHAIN EMPTY                @D14NDOW 53569600
+         BZ    QMGRLG1B           RETURN                       @D14CDOW 53569700
+         USING QSPACEDS,R6                                     @D14NDOW 53569800
+         LA    R3,QUSERLST        ADDRESS PAR-LIST PART        @D14NDOW 53569900
+         USING QHDCSTRT,R3        PARAMETER LIST IN Q-ENTRY    @D14CDOW 53570000
+         L     R4,QSPCPTR         DELETE RECORD FROM CHAIN     @D14NDOW 53570100
+         ST    R4,QTABCBG                                      @D14CDOW 53570200
+         LTR   R4,R4                                           @D14CDOW 53570300
+         BNZ   QMGRD01                                         @D14CDOW 53570400
+         ST    R4,QTABEND         CHAIN IS EMPTY               @D14CDOW 53570500
+QMGRD01  DS    0H                                              @D14CDOW 53570600
+         SLR   R7,R7              CLEAR INDICATOR              @D14CDOW 53570700
+         TM    QHDFLG1,QHDFREE  SFREEVIS REQUIRED              @D14CDOW 53570800
+         BZ    QMGRD03                                         @D14CDOW 53570900
+         L     R1,QECBPTR         ADDR OF USER PARAMETER LIST  @D14NDOW 53571000
+         LA    R0,DSPQLEN+QHDCLEN-DSPPRXLN GET LENGTH OF AREA  @D14CDOW 53571100
+         LA    RA,QMGRFVSV-16                                  @D14CDOW 53571200
+         SFREEVIS LENGTH=(0),ADDRESS=(1),SAVE=(RA)             @D14CDOW 53571300
+         LA    R7,1               SET INDICATOR                @D14CDOW 53571400
+QMGRD03  DS    0H                                              @D14CDOW 53571500
+         TM    QSPFLAG,QSPSVIS    FREEVIS REQUIRED             @D14NDOW 53571600
+         BZ    QMGRD05                                         @D14CDOW 53571700
+         LR    R1,R6              ADDR OF Q-CHAIN ENTRY        @D14NDOW 53571800
+         LA    R0,QSPACEL         LENGTH OF CHAIN-ELEMENT      @D14CDOW 53571900
+         SFREEVIS LENGTH=(0),ADDRESS=(1),SAVE=(RA)             @D14CDOW 53572000
+         LA    R7,1               SET INDICATOR                @D14CDOW 53572100
+         B     QMGRD06                                         @D14CDOW 53572200
+QMGRD05  DS    0H                                              @D14CDOW 53572300
+         L     R4,QMGRFLST        INSERT ENTRY IN FREELIST     @D14CDOW 53572400
+         ST    R6,QMGRFLST                                     @D14NDOW 53572500
+         ST    R4,0(R6)                                        @D14NDOW 53572600
+         XC    4(QSPACEL-4,R6),4(R6) CLEAR THE CHAIN ENTRY     @D14NDOW 53572700
+QMGRD06  DS    0H                                              @D14CDOW 53572800
+         LTR   R7,R7              FREEVIS EXECUTED             @D14CDOW 53572900
+         BZ    QMGRD13                                         @D14CDOW 53573000
+         TREADY COND=LQ           POST ALL TASKS WAITING FOR   @D14CDOW 53573100
+*                                 SGETVIS STORAGE              @D149DOW 53573200
+QMGRD13  DS    0H                                              @D14CDOW 53573300
+         L     R8,QMGRSR8         SET CORRECT RETURN ADDR      @D14NDOW 53573400
+         LA    R8,4(R8)                                        @D14NDOW 53573500
+         ST    R8,QMGRSR8                                      @D14NDOW 53573600
+QMGRLG1B DS    0H                                              @D14CDOW 53573700
+         LTR   RB,RB              QMGRDEL1 ENTRY?              @D14CDOW 53573800
+         BNZ   QMGRLG1A                                        @D14CDOW 53573900
+QMGRLG1  DS    0H                                              @D14CDOW 53574000
+         L     R6,DISPAD                                       @D14NDOW 53574100
+         USING DISP,R6                                         @D14NDOW 53574200
+         CLI   QMGRLG1X,ZERO      FIX NEXT INSTRUCTIONS        @D14CDOW 53574300
+         L     R5,ASRQTAB                                      @D61RDKH 53574400
+         LA    R5,SRQGQMG-SRQTAB(,R5) POST WAITING TASKS       @D61RDKH 53574500
+         BAL   RF,RPOST                                        @D14CDOW 53574600
+         USING QSPACEDS,R6                                     @D14NDOW 53574700
+*SGLINK RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                    @D149DOW 53574800
+QMGRLG1A DS    0H                                              @D14CDOW 53574900
+         LM    R6,R3,QMGRSAVE     RESTORE REGISTERS            @D14CDOW 53575000
+         BR    R8                 RETURN                       @D14CDOW 53575100
+         DS    0F                                              @D14CDOW 53575200
+QMGRSAVE DS    14F     SAVE AREA QMGRADD AND QMGRDEL           @D14CDOW 53575300
+QMGRSR8  EQU   QMGRSAVE+8                                      @D14CDOW 53575400
+QMGRLG1X DS    0H                                              @D14CDOW 53575500
+         DROP  R2,R3,R6                                        @D14CDOW 53575600
+         SPACE 5                                               @D149DOW 53575700
+*************************************************************  @D149DOW 53575800
+QMGRNEXT DS    0H          MOVE DATA TO I/O-AREA               @D149DOW 53575900
+*                          DELETE Q-ENTRIES BY MEANS OF QMGRDEL@D149DOW 53576000
+*        REGISTER USAGE                                        @D149DOW 53576100
+*           INPUT                                              @D149DOW 53576200
+*                 R2  -  ADDR OF Q-CHAIN ENTRY                 @D149DOW 53576300
+*                 R6  -  RETURN ADDRESS                        @D149DOW 53576400
+*                 RD  -  BASE REGISTER                         @D149DOW 53576500
+*           OUTPUT                                             @D149DOW 53576600
+*                 R4, R5, RC                                   @D149DOW 53576700
+*        EXIT                                                  @D149DOW 53576800
+*              TO 0(R6) WHEN MORE WORK TO DO                   @D149DOW 53576900
+*              TO 4(R6) DEACTIVATE SYSTEM TASK                 @D149DOW 53577000
+*************************************************************  @D149DOW 53577100
+         USING QTABSTRT,R2                                     @D14CDOW 53577200
+         BAL   R4,QMGRGATE        DO GATING                    @D14CDOW 53577300
+         STM   R6,R3,QMGRSNXT     SAVE INPUT REGISTERS         @D14CDOW 53577400
+         LA    RB,1               INPUT FOR QMGRDEL1 ROUTINE   @D14CDOW 53577500
+         LA    RA,QMGRPARL        PARAMETERLIST ADDR           @D14CDOW 53577600
+         USING DSPQPARL,RA                                     @D14CDOW 53577700
+QMGRN010 DS    0H                                              @D51IDPP 53577800
+         L     R6,QTABCBG         GET START OF Q-CHAIN         @D14NDOW 53577900
+QMGRN015 DS    0H                                              @D51IDPP 53578000
+         LTR   R6,R6              EMPTY OR LAST ENTRY ?        @D14NDOW 53578100
+         BZ    QMGRN110           GO TO CHECK IF I/O REQUIRED  @D14CDOW 53578200
+         USING QSPACEDS,R6                                     @D14NDOW 53578300
+         TM    QSPFLAG,QRECOUT    RECORD ALREADY ON DISK       @D14NDOW 53578400
+         BNO   QMGRN016                                        @D14CDOW 53578500
+QMGRN005 DS    0H                                              @D51IDPP 53578600
+         BAL   R8,QMGRDEL1        DELETE FROM Q-CHAIN          @D14CDOW 53578700
+         B     QMGRN010           Q WAS EMPTY                  @D14CDOW 53578800
+         B     QMGRN010           ONE ENTRY DELETED            @D14CDOW 53578900
+QMGRN016 DS    0H                                              @D51IDPP 53579000
+         LA    RE,QUSERLST        ADDR OF SAVED PARAMETER LIST @D14CDOW 53579100
+         USING QHDCSTRT,RE                                     @D14CDOW 53579200
+         L     R3,QHDREC          GET RECORD ADDR              @D14CDOW 53579300
+         MVI   DSPQFCT,DSPQTERM   PREPARE TERMINATION          @D14CDOW 53579400
+         MVI   DSPFLAG1,ZERO      NORMAL TERMINATION           @D14CDOW 53579500
+         CLI   QHDFCT,QHDTERM     TERMINATION REQUEST?         @D14CDOW 53579600
+         BE    QMGRN100           YES EXECUTE IT               @D14CDOW 53579700
+         CLI   QHDFCT,QHDWFC      FORCE I/O REQUEST            @D14CDOW 53579800
+         BNE   QMGRN030                                        @D14CDOW 53579900
+         CLC   QRECDDR,QTABRC#    I/O-AREA EMPTY               @D14CDOW 53580000
+         BE    QMGRN005           YES DEQ THIS ENTRY           @D14CDOW 53580100
+         B     QMGRN050           GO TO NEXT Q-ENTRY           @D14CDOW 53580200
+QMGRN030 DS    0H                                              @D51IDPP 53580300
+         L     R5,DSPAREC         GET ADDR OF I/O-AREA         @D14CDOW 53580400
+         LH    R4,QTABRC#         GET # OF BYTES ALREADY IN    @D14CDOW 53580500
+         AR    R5,R4              FREE POSITION IN I/O-AREA    @D14CDOW 53580600
+         LH    RC,QHDDLEN         LENGTH FOR MOVE              @D14CDOW 53580700
+         AR    R4,RC              # OF USED BYTES + REC-LENGTH @D14CDOW 53580800
+         LA    R4,DSPPRXLN(R4)    ADD PREFIX                   @D14CDOW 53580900
+         CH    R4,QRECLNG         ENOUGH ROOM FOR RECORD       @D14CDOW 53581000
+         BNH   QMGRN040                                        @D14CDOW 53581100
+         OI    QTABFLG2,QIOFULL   I/O AREA FULL                @D14CDOW 53581200
+         B     QMGRN105           RETURN TO DO I/O             @D14CDOW 53581300
+QMGRN040 DS    0H                                              @D51IDPP 53581400
+         STH   R4,QTABRC#         NEW # OF BYTES               @D14CDOW 53581500
+         LH    R4,QHDLID          GET INDICATOR FOR REPORTING  @D14CDOW 53581600
+         AR    R4,R4              MULTIPLY BY 4                @D14CDOW 53581700
+         AR    R4,R4                                           @D14CDOW 53581800
+         LA    R4,QLOGIND-4(R4)   ENTRY IN TABLE               @D14CDOW 53581900
+         MVC   0(4,R5),0(R4)      MOVE THE INDICATOR           @D14CDOW 53582000
+         LA    R4,DSPPRXLN(RC)                                 @D14CDOW 53582100
+         STH   R4,4(R5)           RECORD LENGTH TO LOGGER REC  @D14CDOW 53582200
+         BCTR  RC,0                                            @D14CDOW 53582300
+         EX    RC,QMGRMOVE        MOVE DATA TO I/O-AREA        @D14CDOW 53582400
+         CLI   QHDFCT,QHDWRC      WITHOUT FORCE I/O            @D14CDOW 53582500
+         BE    QMGRN055                                        @D14CDOW 53582600
+QMGRN050 DS    0H                 DELETE THIS Q-CHAIN ENTRY    @D51IDPP 53582700
+         OI    QTABFLG2,QIOFORCE  I/O IS PENDING NOW           @D14CDOW 53582800
+QMGRN055 DS    0H                 DELETE THIS Q-CHAIN ENTRY    @D51IDPP 53582900
+         OI    QSPFLAG,QRECOUT                                 @D14NDOW 53583000
+         TM    QTABFLG2,QIOFORCE  ALREADY A FORCE REQ PENDING  @D14CDOW 53583100
+         BNO   QMGRN005           NO GO TO DEQ THIS Q-ENTRY    @D14CDOW 53583200
+         L     R6,QSPCPTR         YES, LET ENTRY IN Q. DEQ IS  @D14NDOW 53583300
+         DROP  R6                                              @D14NDOW 53583400
+         B     QMGRN015           DONE WHEN I/O IS REALLY DONE @D14CDOW 53583500
+QMGRN110 DS    0H                                              @D51IDPP 53583600
+         TM    QTABFLG2,QIOFORCE  ALREADY A FORCE REQ PENDING  @D14CDOW 53583700
+         BO    QMGRN105           WRITE BUFFER OUT             @D14CDOW 53583800
+         L     R6,QMGRSNXT        SET CORRECT RETURN ADDR      @D14CDOW 53583900
+         LA    R6,4(R6)                                        @D14CDOW 53584000
+         ST    R6,QMGRSNXT                                     @D14CDOW 53584100
+         B     QMGRN100           OPEN GATE                    @D14CDOW 53584200
+QMGRN105 DS    0H                                              @D51IDPP 53584300
+         OI    QTABFLG2,QIODONE   I/O STARTED                  @D14CDOW 53584400
+         NI    QTABFLG2,X'FF'-QIOFORCE REQ I/O IS DONE NOW     @D14CDOW 53584500
+         MVI   DSPQFCT,DSPQWCB    INIT PAR LIST TO WRITE REC   @D14CDOW 53584600
+QMGRN100 DS    0H                                              @D51IDPP 53584700
+         L     R6,DISPAD                                       @D14NDOW 53584800
+         USING DISP,R6                                         @D14NDOW 53584900
+         CLI   QMGRN11X,ZERO      FIX NEXT INSTRUCTIONS        @D14CDOW 53585000
+         L     R5,ASRQTAB                                      @D61RDKH 53585100
+         LA    R5,SRQGQMG-SRQTAB(,R5) POST WAITING TASKS       @D61RDKH 53585200
+         BAL   RF,RPOST                                        @D14CDOW 53585300
+*SGLINK RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                    @D149DOW 53585400
+         DROP  R6                                              @D14CDOW 53585500
+         LM    R6,R3,QMGRSNXT     RESTORE INPUT REGISTERS      @D14CDOW 53585600
+         BR    R6                 RETURN                       @D14CDOW 53585700
+         DS    0F                                              @D14CDOW 53585800
+QMGRSNXT DS    14F     SAVE AREA QMGRNXT                       @D14CDOW 53585900
+QMGRN11X DS    0H                                              @D14CDOW 53586000
+         DROP  R2,RA,RE                                        @D14CDOW 53586100
+         SPACE 3                                               @D14CDOW 53586200
+*************************************************************  @D149DOW 53586300
+*        GATING FOR Q-MGR                                      @D149DOW 53586400
+*                                                              @D149DOW 53586500
+*        INPUT    R4 : RETURN ADDR                             @D149DOW 53586600
+*        WORK     R5                                           @D149DOW 53586700
+*                 RC                                           @D149DOW 53586800
+*************************************************************  @D149DOW 53586900
+QMGRGATE DS    0H                                              @D14CDOW 53587000
+         L     R5,ASRQTAB         GET SRQ TABLE ADDRESS        @D61RDKH 53587200
+         TM    RBGQMG-SRQTAB(R5),FREEBIT      RTN FREE FOR USE @D66ODOW 53587300
+         BNO   QMGRGT10           NO, --->                     @D66ODOW 53587500
+         NI    RBGQMG-SRQTAB(R5),NFREEMSK     CLOSE GATE       @D66ODOW 53587400
+         BR    R4                                              @D66ODOW 53587500
+QMGRGT10 DS    0H                                              @D66ODOW 53587000
+         LA    R5,SRQGQMG-SRQTAB(,R5) GET BOUND CONDITION      @D61RDKH 53587600
+         BAL   RC,RWAIT           EXECUTE WAIT                 @D14CDOW 53587700
+*SGLINK RWAIT,INPUT=(R5,RC)                                    @D149DOW 53587800
+         B     QMGRGATE           TRY ONCE MORE                @D14CDOW 53587900
+****                                                           @D149DOW 53588100
+QMGRMOVE MVC   DSPPRXLN(0,R5),0(R3) MOVE DATA TO I/O-AREA      @D14CDOW 53588200
+         EJECT                                                 @D149DOW 53588300
+ TITLE 'DOS  SUPERVISOR      SGACF     SECURITY SYSTEMTASK'             53588310
+************************************************************** @D62CDCS 53588320
+*                                                              @D62CDCS 53588330
+*  SECURITY Q-MANAGER :   CONSISTS OF THREE SUBROUTINES        @D62CDCS 53588340
+*             THIS 3 SUBROUTINES HANDLE THE ENQ AND DEQ        @D62CDCS 53588350
+*             OF RECORDS TO THE 'Q', TO BE PROCESSED BY        @D62CDCS 53588360
+*             THE SECURITY  SYSTEM-TASK.                       @D62CDCS 53588370
+*             FURTHER FUNCTIONS ARE:                           @D62CDCS 53588380
+*             - ACTIVATE SECURITY SYSTEM TASK                  @D62CDCS 53588390
+*             - EXECUTE SFREEVIS                               @D62CDCS 53588391
+*             - TREADY TASKS WAITING FOR Q-(SGETVIS)-SPACE     @D62CDCS 53588392
+*             - POST SPECIAL TASK READY                        @D62CDCS 53588393
+*                                                              @D62CDCS 53588394
+************************************************************** @D62CDCS 53588395
+         SPACE 3                                               @D62CDCS 53588398
+*************************************************************  @D62CDCS 53588399
+QSECADD  DS    0H          PREPARE WORK ELEMENT                @D62CDCS 53588400
+*                          ENQUEUE WORK ELEMENT IN SECURITY    @D62CDCS 53588401
+*                          QUEUE                               @D62CDCS 53588402
+*                          ACTIVATE SECURITY SYSTEM TASK       @D62CDCS 53588403
+*                          SET USER TASK SECURITY BOUND        @D62CDCS 53588404
+*    REGISTER USAGE                                            @D62CDCS 53588405
+*         INPUT                                                @D62CDCS 53588406
+*                 R5  -  ADDRESS OF TCB EXTENTION              @D62CDCS 53588407
+*                 RD  -  BASE REGISTER                         @D62CDCS 53588409
+*         OUTPUT TO SYSTEM TASK                                @D62CDCS 53588410
+*                 R9  -  ADDR OF PARAMETERLIST TO SYS-TASK     @D62CDCS 53588411
+*                 RE  -  ADDR OF Q-ENTRY                       @D62CDCS 53588412
+*         WORK                                                 @D62CDCS 53588413
+*                 R4, R5, RC,                                  @D62CDCS 53588414
+*************************************************************  @D62CDCS 53588415
+*              DO GATING FOR SYSTEM TASK                       @D62CDCS 53588416
+*              DON'T SAVE INPUT REGISTERS, SAVED IN TCBXXSA    @D62CDCS 53588417
+*              OF USER TCBX                                    @D62CDCS         
+         L     R6,DISPAD                                       @D62CDCS 53588418
+         USING DISP,R6                                         @D62CDCS 53588419
+         LA    RE,QSECSTRT        GET CORRECT Q-ENTRY          @D62CDCS 53588420
+         USING QTABSEC,RE                                      @D62CDCS 53588421
+         LA    R9,QSECPARL        ADDRESSABILITY TO PARAM-LIST @D62CDCS 53588422
+         USING DSPQPARL,R9                                     @D62CDCS 53588423
+         ST    R5,DSPAREC         SAVE TCBX POINTER PARAMETERL @D62CDCS 53588424
+         L     R8,IJBSCTAB        ADDRESS SECURITY VECTOR TBL  @D62CDCS 53588425
+         USING SCYVECDS,R8                                     @D62CDCS 53588426
+         L     RA,SCYSCSVC        GET ADDRESS OF MODULE        @D62CDCS 53588427
+         ST    RA,QSECMOD         STORE ADDRESS MODULE IN QUEUE@D62CDCS 53588428
+         DROP  R8                                              @D62CDCS 53588429
+         BAL   RC,QSECENQ         ENQ REC TO Q-CHAIN           @D62CDCS 53588430
+         DROP  RE                                              @D62CDCS 53588429
+         BAS   R4,QMGRGATE        DO GATING                    @D62CDCS         
+QSECA04  DS    0H                                              @D62CDCS 53588431
+*  SET USER TASK UNDISPATCHEABLE                               @D62CDCS 53588436
+         L     R5,ASRQTAB         GET SRQ TABLE ADDRESS        @D62CDCS 53588437
+         LA    R5,SRQGQMG-SRQTAB(,R5) GET BOUND CONDITION      @D62CDCS 53588438
+         BAL   RF,UNPOST          USER TASK UNDISPATCHEABLE    @D62CDCS 53588439
+*SGLINK UNPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                   @D62CDCS 53588440
+*  ACTIVATE SECURITY (LOGGER) SYSTEM TASK                      @D62CDCS         
+         LA    RE,QSECSTRT        GET CORRECT Q-ENTRY          @D62CDCS 53588420
+         USING QTABSEC,RE                                      @D62CDCS 53588421
+         OI    QSECFLG2,QSECPROC  SYSTEM TASK ACTIVE           @D62CDCS 53588432
+*       SGSETUP ACTIVATE,STASK=LOG,WR1=R3,WR2=R4,OPTION=DIRECT @D62CDCS         
+        SGSETUP ACTIVATE,STASK=LOG,WR1=R3,WR2=R4,OPTION=DIRECT @D62CDCS         
+*                GO TO SECURITY TASK PROCESSING                @D62CDCS         
+         BAS   RC,SECENTN                                      @D62CDCS         
+*************************************************************  @D62CDCS 53588441
+*        RETURN CODE PROCESSING AFTER SECURITY TASK            @D62CDCS 53588442
+*************************************************************  @D62CDCS 53588443
+*                                                              @D62CDCS 53588444
+QSECRC00 DS    0H                                              @D62CDCS         
+         L     RA,TCBPTR          ADDRESS TCB                  @D62CDCS 53588445
+         USING TCBADR,RA                                       @D62CDCS 53588446
+         AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D62CDCS 53588447
+         L     R5,TCBATCBE        ADDRESS TCB EXTENTION        @D62CDCS 53588448
+         USING TCBXADR,R5                                      @D62CDCS 53588449
+         DROP  RA                                              @D62CDCS 53588450
+*        MVC   QSECRGS,TCBXSAVT   SAVE REGISTERS               @D62CDCS 53588451
+*        MVC   QSECR15,TCBXSAVT+60  SAVERETURN CODE            @D62CDCS 53588452
+         MVC   QSECRGS,TCBXXSA   RESTORE TCBX REGISTERS        @D62CDCS         
+         MVC   QSECR15,TCBXXSA+60  SAVE RETURN CODE            @D62CDCS         
+         MVC   QSECAPL,TCBXAPLS   SAVE APL RETURN INFORMATION  @D62CDCS 53588453
+*        L     R8,TCBXSAVT+60                                  @D62CDCS 53588454
+         L     R8,TCBXXSA+60       SAVE RETURN CODE            @D62CDCS         
+         XI    TCBXSAUS,TCBXXSAU   RESET SWITCH SAVE AREA USED @D62CDCS         
+         DROP  R5                                              @D62CDCS 53588455
+         AMODESW SET,AMODE=(4),WR=(15) RESET ADDRESSING MODE   @D62CDCS 53588456
+         LA    R1,QSECAPL         LOAD ADDRESS APL SAVE AREA   @D62CDCS 53588457
+         USING DTSAPL,R1                                       @D62CDCS 53588458
+         B     SECSEC2(R8)        PROCESS RETURN CODE          @D62CDCS 53588459
+SECSEC2  B     SECRC00            NORMAL CONTINUATION          @D62CDCS 53588460
+         B     SECRC00            RC=4 NOT POSSIBLE WITH ESM   @D62CDCS 53588461
+         B     SECRC00            RC=8 NO LOGGING IN ESM ENV   @D62CDCS 53588462
+         B     SECRC0C            CANCEL CODE 0B               @D62CDCS 53588463
+         B     SECRC0C            SHOULD NOT OCCUR             @D62CDCS 53588464
+         B     SECRC0A            CANCEL CODE 0A               @D62CDCS 53588465
+SECRC0A  DS    0H                 CANCEL USER                  @D62CDCS 53588466
+         TM    SYSFLAG2,IPLBIT    IPL IN PROGRESS?             @D62CDCS 53588467
+         BNO   ERR0A                                           @D62CDCS 53588468
+         MVI   APCANCD,X'0A'      CANCEL CODE INTO APL         @D62CDCS 53588469
+         B     SECRC00                                         @D62CDCS 53588470
+SECRC0C  DS    0H                                              @D62CDCS 53588471
+         ST    R1,QSECR01                                      @D62CDCS 53588472
+         LA    R0,CANCLEN         LENGTH OF PARAMETER LIST     @D62CDCS 53588473
+*        L     RD,SCYQBASE        BASE OF Q-MGR                @D62CDCS 53588474
+*        USING QMGRSTRT,RD                                     @D62CDCS 53588475
+         LA    R2,QMGRGTSV-16     SAVE-AREA FOR GETVIS         @D62CDCS 53588476
+*        USING SVC108,RD                                       @D62CDCS 53588477
+*        L     RD,ASGSVCX2        RELOAD BASE REGISTER         @D62CDCS 53588478
+         SGETVIS LENGTH=(0),ADDRESS=(R4),SAVE=(2)              @D62CDCS 53588479
+         LTR   RF,RF              SPACE AVAILABLE              @D62CDCS 53588480
+         BNZ   SECRC0A            IF NOT, IT IS SECURITY ERROR @D62CDCS 53588481
+         L     R1,QSECR01                                      @D62CDCS 53588482
+         USING MAPDMPIF,R4                                     @D62CDCS 53588483
+         SLR   R7,R7                                           @D62CDCS 53588484
+         IC    R7,APTYP           GET TYPE OF OBJECT           @D62CDCS 53588485
+         SRL   R7,1               DIVIDE WITH 2                @D62CDCS 53588486
+         L     R8,APOBJ           GET OBJECT ADDR              @D62CDCS 53588487
+         B     SECBRTAB(R7)       GO TO CORRECT MOVE RTN       @D62CDCS 53588488
+SECBRTAB EQU   *-4                BRANCH TABLE                 @D62CDCS 53588489
+         B     SECLIBTY           PROCESS LIBRARY              @D62CDCS 53588490
+         B     SECSLBTY           PROCESS SUB-LIBRARY          @D62CDCS 53588491
+         B     SECPGMTY           PROCESS MEMBER               @D62CDCS 53588492
+         B     SECFILTY           PROCESS FILE                 @D62CDCS 53588493
+SECLIBTY LA    R7,59              CURRENT LENGTH               @D62CDCS 53588494
+         MVI   CANC0BD2,C'.'      FILL CHARACTER               @D62CDCS 53588495
+         MVC   CANC0BL1,50(R8)    LIBRARY NAME                 @D62CDCS 53588496
+         B     SECFILT5                                        @D62CDCS 53588497
+SECFILTY LA    R7,51              OBJECT NAME LENGTH           @D62CDCS 53588498
+SECFILT5 MVC   CANC0BVI,44(R8)    VOLID                        @D62CDCS 53588499
+         MVI   CANC0BD1,C'.'      FILL CHARACTER               @D62CDCS 53588500
+         MVC   CANC0BFI,0(R8)     FILE-ID                      @D62CDCS 53588501
+         B     SECENDE                                         @D62CDCS 53588502
+SECPGMTY LA    R7,25              OBJECT NAME LENGTH           @D62CDCS 53588503
+         MVI   CANC0BD4,C'.'      FILL CHARACTER               @D62CDCS 53588504
+         MVC   CANC0BMN,15(R8)    MEMBER                       @D62CDCS 53588505
+         B     SECSLBT5                                        @D62CDCS 53588506
+SECSLBTY LA    R7,16              OBJECT NAME LENGTH           @D62CDCS 53588507
+SECSLBT5 MVC   CANC0BL2,0(R8)     LIBRARY                      @D62CDCS 53588508
+         MVI   CANC0BD3,C'.'      FILL CHARACTER               @D62CDCS 53588509
+         MVC   CANC0BSN,7(R8)     SUBLIBRARY                   @D62CDCS 53588510
+SECENDE  DS    0H                                              @D62CDCS 53588511
+         DROP  R1                                              @D62CDCS 53588512
+         LA    R1,CANC0BL2        R1 POINTS TO FIRST BYTE IN   @D62CDCS 53588513
+         AR    R7,R1              MESSAGE, R7 POINTS BEHIND IT.@D62CDCS 53588514
+*                                                              @D62CDCS 53588515
+* REMOVE BLANK CHARACTERS OUT OF THE MESSAGE AREA AND CALL     @D62CDCS 53588516
+* CANCEL PROCESSING FOR CANCEL CODE 0B                         @D62CDCS 53588517
+*                                                              @D62CDCS 53588518
+SECBLKD3 DS    0H                                              @D62CDCS 53588519
+         CR    R1,R7                                           @D62CDCS 53588520
+         BE    SECBLKD4                                        @D62CDCS 53588521
+         CLI   0(R1),C' '         SEE IF IT IS A BLANK FIELD   @D62CDCS 53588522
+         BNE   SECBLKD1                                        @D62CDCS 53588523
+         LR    R6,R1                                           @D62CDCS 53588524
+SECBLKD2 DS    0H                                              @D62CDCS 53588525
+         MVC   0(1,R6),1(R6)      MOVE STRING BACK ONE CHAR    @D62CDCS 53588526
+         LA    R6,1(0,R6)                                      @D62CDCS 53588527
+         CR    R6,R7                                           @D62CDCS 53588528
+         BNE   SECBLKD2                                        @D62CDCS 53588529
+         BCTR  R7,0               LENGTH OF STRING IS REDUCED  @D62CDCS 53588530
+         MVI   0(R7),C' '                                      @D62CDCS 53588531
+         B     SECBLKD3                                        @D62CDCS 53588532
+SECBLKD1 DS    0H                                              @D62CDCS 53588533
+         LA    R1,1(0,R1)         POINT TO THE NEXT CHARACTER  @D62CDCS 53588534
+         B     SECBLKD3                                        @D62CDCS 53588535
+*                                                              @D62CDCS 53588536
+* PREPARE REGISTERS FOR CALL OF DISPATCHER CANCEL SERVICE      @D62CDCS 53588537
+*                                                              @D62CDCS 53588538
+SECBLKD4 DS    0H                                              @D62CDCS 53588539
+         LA    R1,CANC0BL2                                     @D62CDCS 53588540
+         SR    R7,R1                                           @D62CDCS 53588541
+         ST    R7,CANC0BLN        LENGTH OF OBJECT NAME        @D62CDCS 53588542
+         LR    R1,R4                                           @D62CDCS 53588543
+         O     R1,BIT0OMSK        SET HIGH ORDER BIT ON        @D62CDCS 53588544
+         LA    R0,4(0,0)          FUNCTION CODE 4 FOR DISP     @D62CDCS 53588545
+         LA    RB,X'0B'(0,0)      PUT THE CANCEL CODE INTO RB  @D62CDCS 53588546
+         L     R6,ADISPSER                                     @D62CDCS 53588547
+         AMODESW CALL,REGS=(R7,R6)     EXIT                    @D62CDCS 53588548
+         DROP  R4                                              @D62CDCS 53588549
+         SPACE 3                                               @D62CDCS 53588550
+SECRC00  DS    0H                 NORMAL PROCESSING            @D62CDCS 53588551
+         L     R1,QSECR01         STORE APL ADDRESS SAVED      @D62CDCS 53588552
+         USING DTSAPL,R1                                       @D62CDCS 53588553
+         TM    APSVCOP,APFETCH    SECURITY CALLED BY FETCH?    @D62CDCS 53588554
+         BO    SECFTCH            PROCESS FETCH RETURN         @D62CDCS 53588555
+         TM    APSVCOP,APSGVEN    INDICATION VENDOR CALL?      @D62CDCS 53588556
+         BO    SECVEND            PROCESS VENDOR INTERFACE RET @D62CDCS 53588557
+*              ONLY SVC PROCESSING POSSIBLE                    @D62CDCS 53588558
+         SLR   RF,RF              PREPARE CLEAN RETURN CODE    @D62CDCS 53588559
+         CLI   APCANCD,X'00'                                   @D62CDCS 53588561
+         BE    SECSEC33                                        @D62CDCS 53588562
+         LA    RF,16                                           @D62CDCS 53588563
+         B     SECSEC11                                        @D62CDCS 53588564
+SECSEC33 DS    0H                                              @D62CDCS 53588565
+         CLI   APERR,APNRM        ANY SEC VIOLATION            @D62CDCS 53588566
+         BE    SECSEC11           NO GO TO DISP                @D62CDCS 53588567
+         LA    RF,8               CODE FOR SEC VIOLATION       @D62CDCS 53588568
+         CLI   APERR,APNSCTAB     WAS RESOURCE NOT IN TABLE    @D62CDCS 53588569
+         BE    SECSEC13                                        @D62CDCS 53588570
+         CLI   APERR,APNFND       LIBRARY NOT IN TABLE         @D62CDCS 53588571
+         BNE   SECSEC11                                        @D62CDCS 53588572
+SECSEC13 LA    RF,12                                           @D62CDCS 53588573
+SECSEC11 DS    0H                                              @D62CDCS 53588574
+         LM    R0,RE,QSECRGS      RESTORE REGISTERS OF CALLER  @D62CDCS 53588575
+         USING DISP,R6                                         @D62CDCS 53588576
+         USING SVEARA,RB                                       @D62CDCS 53588577
+         MVC   R1(36),QSECAPL     RESTORE APL INFORMATION      @D62CDCS 53588578
+*                                SAVE ALSO APL INFORMATION     @D62CDCS 53588579
+         ST    RF,SVER0F          RET CODE TO USER REGISTER    @D62CDCS 53588580
+         BR    R6                 RETURN                       @D62CDCS 53588581
+         DROP  RB                                              @D62CDCS 53588582
+         SPACE 3                                               @D62CDCS 53588583
+SECVEND  DS    0H                 VENDOR INTERFACE CALL        @D62CDCS 53588584
+         LM    R0,RE,QSECRGS      RESTORE REGISTERS OF CALLER  @D62CDCS 53588585
+         MVI   RID+1,REENTRID                                  @D62CDCS 53588586
+*        AMODESW RETURN,REG=(R7) RETURN TO CALLER              @D62CDCS 53588587
+         AMODESW RETURN,REG=(R7) RETURN TO CALLER              @D62CDCS 53588588
+SECFTCH  DS    0H                 FETCH RETURN CODE PROCESSING @D62CDCS 53588589
+*   RETURN FROM COMMON ROUTINE IF REQUESTOR IS NOT CANCELLED   @D62CDCS 53588590
+*                                                              @D62CDCS 53588591
+         SLR   RF,RF              CODE FOR NO SEC VIOLATION    @D62CDCS 53588592
+         CLI   APCANCD,X'00'                                   @D62CDCS 53588593
+         BE    SECSEC34                                        @D62CDCS 53588594
+         LA    RF,16                                           @D62CDCS 53588595
+         B     SECSEC22                                        @D62CDCS 53588596
+SECSEC34 DS    0H                                              @D62CDCS 53588597
+         CLI   APERR,APNRM        ANY SEC VIOLATION            @D62CDCS 53588598
+         BE    SECSEC22                                        @D62CDCS 53588599
+         LA    RF,8               CODE FOR SEC VIOLATION       @D62CDCS 53588600
+SECSEC22 DS    0H                                              @D62CDCS 53588601
+*                                 RESTORE REGISTERS            @D62CDCS 53588602
+         LM    R0,RE,QSECRGS      RESTORE TCBX REGISTERS       @D62CDCS 53588603
+*        MVI   RID+1,REENTRID     RESTORE OLD RID              @DY40332 53588604
+*        AMODESW RETURN,REG=(12) RETURN TO CALLER              @D62CDCS 53588587
+         AMODESW RETURN,REG=(12)  NO, RETURN TO COMMON ROUTINE @D62CDCS 53588605
+QSECENQ  DS    0H                 ENQ A RECORD TO Q-CHAIN      @D62CDCS 53588606
+         L     R4,QSECFLST        GET A FREE Q-SPACE           @D62CDCS 53588607
+         LTR   R4,R4              AVAILABLE                    @D62CDCS 53588608
+         BNZ   QSECENQ1                                        @D62CDCS 53588609
+         LA    R0,QSECCEL         LENGTH OF PARAMETER LIST     @D62CDCS 53588610
+         LA    R2,QSECGTSV-16     SAVE-AREA                    @D62CDCS 53588611
+         SGETVIS LENGTH=(0),ADDRESS=(R4),SAVE=(2)              @D62CDCS 53588612
+         LTR   RF,RF              SPACE AVAILABLE              @D62CDCS 53588613
+         BZ    QSECENQ4           YES CONTINUE                 @D62CDCS 53588614
+         CLI   QSECENQ4,ZERO      FIX NEXT INSTRUCTIONS        @D62CDCS 53588615
+         L     R5,ASRQTAB                                      @D62CDCS 53588616
+         LA    R5,SRQLQ-SRQTAB(,R5) GATE NO Q-SPACE AVAILAB.   @D62CDCS 53588617
+         B     RESVCX             GO TO RE-SVC                 @D62CDCS 53588618
+QSECENQ4 DS    0H                                              @D62CDCS 53588619
+         USING QSECCEDS,R4                                     @D62CDCS 53588620
+         MVI   QSECCFLG,QSECCFVS  FREEVIS REQ FOR CHAIN-ELEM   @D62CDCS 53588621
+         DROP  R4                                              @D62CDCS 53588622
+         ST    R4,QSECFLST        CHAIN TO FREELIST            @D62CDCS 53588623
+QSECENQ1 DS    0H                                              @D62CDCS 53588624
+         L     R5,QSECEND                                      @D62CDCS 53588625
+         ST    R4,QSECEND         NEW END                      @D62CDCS 53588626
+         LTR   R5,R5              FIRST ENTRY                  @D62CDCS 53588627
+         BNZ   QSECENQ2                                        @D62CDCS 53588628
+         ST    R4,QSECCBG         BEGIN OF CHAIN               @D62CDCS 53588629
+         B     QSECENQ3                                        @D62CDCS 53588630
+QSECENQ2 DS    0H                                              @D62CDCS 53588631
+         ST    R4,0(R5)           INSERT REC AT END OF CHAIN   @D62CDCS 53588632
+QSECENQ3 DS    0H                                              @D62CDCS 53588633
+         USING QSECCEDS,R4                                     @D62CDCS 53588635
+         MVC   QSECFLST(4),QSECCPTR  NEXT SPACE PTR  FREE LIST @D62CDCS 53588636
+         XC    QSECCPTR,QSECCPTR  END OF Q-CHAIN               @D62CDCS 53588637
+         BR    RC                                              @D62CDCS 53588638
+         DROP  R4,R6,RE                                        @D62CDCS 53588639
+         SPACE 5                                               @D62CDCS 53588640
+*************************************************************  @D62CDCS 53588641
+QSECDEL DS     0H          DELETE FIRST ENTRY IN Q-CHAIN       @D62CDCS 53588642
+*                          POST WAITING TASK'S                 @D62CDCS 53588643
+*                          DO SFREEVIS                         @D62CDCS 53588644
+*        REGISTER USAGE                                        @D62CDCS 53588645
+*           INPUT                                              @D62CDCS 53588646
+*                 R2  -  ADDR OF Q-ENTRY                       @D62CDCS 53588647
+*                 R8  -  RETURN ADDRESS                        @D62CDCS 53588648
+*                 R9  -  RETURN CODE                           @D62CDCS 53588649
+*                 RB  -  DO NOT REMOVE GATE - NOT NEEDED       @D62CDCS 53588650
+*                 RD  -  BASE REGISTER                         @D62CDCS 53588651
+*                 RF  -  TYPE OF RECORD - QHDLID               @D62CDCS 53588652
+*           WORK                                               @D62CDCS 53588653
+*                 R4, R5, RC                                   @D62CDCS 53588654
+*        EXIT                                                  @D62CDCS 53588655
+*              TO 0(R8) WHEN Q-CHAIN IS EMPTY                  @D62CDCS 53588656
+*              TO 4(R8) WHEN ONE Q-CHAIN-ENTRY DELETED         @D62CDCS 53588657
+*************************************************************  @D62CDCS 53588658
+*        SR    RB,RB              NOT NEEDED                   @D62CDCS 53588659
+QSECDEL1 DS    0H                 ENTRY FROM QMGRNEXT          @D62CDCS 53588660
+         STM   R6,R3,QSECSAVE     SAVE INPUT REGISTERS         @D62CDCS 53588661
+         USING QTABSEC,R2                                      @D62CDCS 53588662
+         L     R6,QSECCBG         ADDR OF FIRST CHAIN-ELEMENT  @D62CDCS 53588663
+         LTR   R6,R6              Q-CHAIN EMPTY                @D62CDCS 53588664
+         BZ    QSECLG1B           RETURN                       @D62CDCS 53588665
+         USING QSECCEDS,R6                                     @D62CDCS 53588666
+         L     R4,QSECCPTR        DELETE RECORD FROM CHAIN     @D62CDCS 53588667
+         ST    R4,QSECCBG                                      @D62CDCS 53588668
+         LTR   R4,R4                                           @D62CDCS 53588669
+         BNZ   QSECD01                                         @D62CDCS 53588670
+         ST    R4,QSECEND         CHAIN IS EMPTY               @D62CDCS 53588671
+QSECD01  DS    0H                                              @D62CDCS 53588672
+         SLR   R7,R7              NO FREEVIS DONE              @D62CDCS 53588673
+         TM    QSECCFLG,QSECCFVS  FREEVIS REQUIRED             @D62CDCS 53588674
+         BZ    QSECD05                                         @D62CDCS 53588675
+         LR    R1,R6              ADDR OF Q-CHAIN ENTRY        @D62CDCS 53588676
+         LA    R0,QSECCEL         LENGTH OF CHAIN-ELEMENT      @D62CDCS 53588677
+         SFREEVIS LENGTH=(0),ADDRESS=(1),SAVE=(RA)             @D62CDCS 53588678
+         LA    R7,1               SET INDICATOR                @D62CDCS 53588679
+         B     QSECD06                                         @D62CDCS 53588680
+QSECD05  DS    0H                                              @D62CDCS 53588681
+         L     R4,QSECFLST        INSERT ENTRY IN FREELIST     @D62CDCS 53588682
+         ST    R6,QSECFLST                                     @D62CDCS 53588683
+         ST    R4,0(R6)                                        @D62CDCS 53588684
+         XC    4(QSECCEL-4,R6),4(R6) CLEAR THE CHAIN ENTRY     @D62CDCS 53588685
+QSECD06  DS    0H                                              @D62CDCS 53588686
+         LTR   R7,R7              FREEVIS EXECUTED             @D62CDCS 53588687
+         BZ    QSECLG1B                                        @D62CDCS 53588688
+         TREADY COND=LQ           POST ALL TASKS WAITING FOR   @D62CDCS 53588689
+*                                 SGETVIS STORAGE              @D62CDCS 53588690
+QSECLG1B DS    0H                                              @D62CDCS 53588695
+         LM    R6,R3,QSECSAVE     RESTORE REGISTERS            @D62CDCS 53588708
+         BR    R8                 RETURN                       @D62CDCS 53588709
+         DS    0F                                              @D62CDCS 53588710
+QSECRGS  DS    15F     SAVE AREA FOR RETURN OF QSECADD         @D62CDCS 53588711
+QSECR15  DS    F       SAVE AREA FOR REG15                     @D62CDCS 53588712
+QSECR01  EQU   QSECRGS+4                                       @D62CDCS 53588713
+QSECAPL  DS    9F      SAVE AREA FRO APL INFORMATION           @D62CDCS 53588714
+QSECSAVE DS    14F     SAVE AREA QSECDEL                       @D62CDCS 53588715
+QSECSR8  EQU   QSECSAVE+8                                      @D62CDCS 53588716
+QSECLG1X DS    0H                                              @D62CDCS 53588717
+         DROP  R2,R6                                           @D62CDCS 53588718
+         SPACE 5                                               @D62CDCS 53588719
+*************************************************************  @D62CDCS 53588720
+QSECNEXT DS    0H                                              @D62CDCS 53588721
+*                          DELETE Q-ENTRIES BY MEANS OF QSECDEL@D62CDCS 53588722
+*        REGISTER USAGE                                        @D62CDCS 53588723
+*           INPUT                                              @D62CDCS 53588724
+*                 R2  -  ADDR OF Q-CHAIN ENTRY                 @D62CDCS 53588725
+*                 R6  -  RETURN ADDRESS                        @D62CDCS 53588726
+*                 RD  -  BASE REGISTER                         @D62CDCS 53588727
+*           OUTPUT                                             @D62CDCS 53588728
+*                 R4, R5, RC                                   @D62CDCS 53588729
+*        EXIT                                                  @D62CDCS 53588730
+*              TO 0(R6) WHEN MORE WORK TO DO                   @D62CDCS 53588731
+*              TO 4(R6) DEACTIVATE SYSTEM TASK                 @D62CDCS 53588732
+*************************************************************  @D62CDCS 53588733
+         USING QTABSEC,R2                                      @D62CDCS 53588734
+         STM   R6,R3,QSECSNXT     SAVE INPUT REGISTERS         @D62CDCS 53588735
+*        LA    RB,1               INPUT FOR QSECDEL1 ROUTINE   @D62CDCS 53588736
+*                                 NOT NEEDED ANY LONGER        @D62CDCS         
+         LA    RA,QSECPARL        PARAMETERLIST ADDR           @D62CDCS 53588737
+         USING DSPQPARL,RA                                     @D62CDCS 53588738
+QSECN010 DS    0H                                              @D62CDCS 53588739
+         L     R6,QSECCBG         GET START OF Q-CHAIN         @D62CDCS 53588740
+QSECN015 DS    0H                                              @D62CDCS 53588741
+         LTR   R6,R6              EMPTY OR LAST ENTRY ?        @D62CDCS 53588742
+         BZ    QSECN110           RETURN                       @D62CDCS 53588743
+         USING QSECCEDS,R6                                     @D62CDCS 53588744
+QSECN005 DS    0H                                              @D62CDCS 53588745
+         BAL   R8,QSECDEL1        DELETE FROM Q-CHAIN          @D62CDCS 53588746
+QSECN016 DS    0H                                              @D62CDCS 53588747
+QSECN110 DS    0H                                              @D62CDCS 53588748
+*        L     R6,QSECSNXT        SET CORRECT RETURN ADDR      @D62CDCS 53588749
+*        LA    R6,4(R6)           NOT USED ANY LONGER          @D62CDCS 53588750
+*        ST    R6,QSECSNXT        NOT USED ANY LONGER          @D62CDCS 53588751
+         LM    R6,R3,QSECSNXT     RESTORE INPUT REGISTERS      @D62CDCS 53588761
+         BR    R6                 RETURN                       @D62CDCS 53588762
+         DS    0F                                              @D62CDCS 53588763
+QSECSNXT DS    14F     SAVE AREA QSECNXT                       @D62CDCS 53588764
+         DROP  R2,R9,RA                                        @DA45787 53588766
+         SPACE 3                                               @D62CDCS 53588767
+****                                                           @D62CDCS 53588768
+         EJECT                                                 @D62CDCS 53588769
+************************************************************** @D149DOW 53588770
+*                                                              @D149DOW 53588771
+*        LOGGER-SYSTEM-TASK                                    @D149DOW 53588772
+*                                                              @D149DOW 53588780
+************************************************************** @D149DOW 53588800
+LOGENTRY DS    0H                                              @D14CDOW 53588900
+         STXIT AB,LOGABXIT,LOGABSAV,OPTION=NODUMP              @D14CDOW 53589000
+LOGSEC   DS    0H                                              @D64CDCS 53589010
+*        L     R8,IJBSCTAB        GET SECURITY TABLE ADDRESS   @D64CD.. 53589020
+*        USING SCYVECDS,R8                                     @D64CD.. 53589030
+*        TM    SCYFLGS1,SCYESM    ESM ACTIVE? YES SECURITY TSK @D64CD.. 53589040
+*        BNZ   SECENTN            SECURITY SYSTEM TASK PROC    @D64CD.. 53589050
+LOGENTN  DS    0H                                              @D14CDOW 53589100
+         LA    R2,QENTLOGG        ADDR OF Q                    @D14CDOW 53589200
+         USING QTABSTRT,R2                                     @D14CDOW 53589300
+         TM    QTABFLG1,QTABDEA   LOGGER ROUTINE DEACTIVATED   @D14CDOW 53589400
+         BO    LOGG010            YES DEQ ALL ENTRIES          @D14CDOW 53589500
+         LA    R3,QMGRPARL        GET PARAMETER LIST ADDR      @D14CDOW 53589600
+         USING DSPQPARL,R3                                     @D14CDOW 53589700
+LOGG020  DS    0H                                              @D14CDOW 53589800
+         LR    R1,R3              PARAMETER-LIST IS INPUT TO   @D14CDOW 53589900
+*                                 LOGGER                       @D149DOW 53590000
+         L     RF,QTABMOD         GET ADDR OF SELECTED MODULE  @D14CDOW 53590100
+         STOSM PSWMASK,ENABLE     MAKE LOG TASK INTERRUPTABLE  @D14CDOW 53590200
+*                                                              @D149DOW 53590300
+*                                                              @D149DOW 53590400
+         BALR  RE,RF              GO TO SELECTED RTN           @D14CDOW 53590500
+*                                 THIS ROUTINE DOES NOT DESTROY@D149DOW 53590600
+*                                 ANY REG EXCEPT REG 15        @D149DOW 53590700
+*                                                              @D149DOW 53590800
+         STNSM PSWMASK,DISABLE    DISABLE LOG SYSTEM TASK      @D14CDOW 53590900
+         B     LOGGBTAB(RF)       BRANCH DEPENDENT ON RET-CODE @D14CDOW 53591000
+LOGGBTAB B     LOGGRC0            LOGGING EXECUTED SUCCESSFULL @D14CDOW 53591100
+         B     LOGGRC4            LOGGING NOT POSSIBLE IN THE  @D14CDOW 53591200
+*                                 MOMENT, WAIT MUST BE PERFORMD@D149DOW 53591300
+         B     LOGGRC8            TERMINATION EXECUTED         @D14CDOW 53591400
+         B     LOGGRC12           INITIALIZATION COMPLETED     @D14CDOW 53591500
+*                                                              @D149DOW 53591600
+LOGGRC0  DS    0H                 LOGGING EXECUTED SUCCESSFULL @D14CDOW 53591700
+LOGG070  DS    0H                                              @D14CDOW 53591800
+         TM    QTABFLG2,QIOFULL   I/O-AREA IS FULL             @D14CDOW 53591900
+         BNO   LOGG075                                         @D14CDOW 53592000
+         CLI   DSPQFCT,DSPQRNB    LAST EXEC FCT READ NEXT BLK? @D14CDOW 53592100
+         BE    LOGG073                                         @D14CDOW 53592200
+         MVI   DSPQFCT,DSPQRNB    FCT IS READ NEXT BLOCK       @D14CDOW 53592300
+         B     LOGG020            READ NEXT BLOCK              @D14CDOW 53592400
+LOGG073  DS    0H                                              @D14CDOW 53592500
+         NI    QTABFLG2,X'FF'-QIODONE-QIOFULL                  @D14CDOW 53592600
+         LH    R8,QRECDDR         GET BLOCK DESCRIPTOR LENGTH  @D14CDOW 53592700
+         STH   R8,QTABRC#         INIT # OF BYTES IN I/O-AREA  @D14CDOW 53592800
+LOGG075  DS    0H                                              @D14CDOW 53592900
+         BAL   R6,QMGRNEXT        GO TO QMGR TO LOOK FOR MORE  @D14CDOW 53593000
+*                                 WORK                         @D149DOW 53593100
+*        BRANCH TABLE ON RETURN FROM QMGRNEXT                  @D149DOW 53593200
+         B     LOGENTN            ENTRY MORE WORK, PROCESS     @D14CDOW 53593300
+         DS    0H                 ENTRY NO WORK, DEACTIVATE    @D14CDOW 53593400
+*                                 LOGGER SYSTEM TASK           @D149DOW 53593500
+         SPACE 1                                               @D149DOW 53593600
+         NI    QTABFLG2,X'FF'-QSYSACT SYSTEM TASK NOT ACTIVE   @D14CDOW 53593700
+         L     R4,TCBPTR          LOAD TCB POINTER             @D14CDOW 53593800
+         USING TCBADR,R4                                       @D14CDOW 53593900
+         L     RB,TCBSAVE         GET SAVE AREA ADDR           @D14CDOW 53594000
+         DROP  R4                                              @D14CDOW 53594100
+         LA    R4,LOGENTN         ENTRY OF LOGGER SYSTEM TASK  @D14CDOW 53594200
+         USING SVEARA,RB                                       @D14CDOW 53594300
+         STCM  R4,7,SVEPSW+5      STORE IT TO PSW              @D14CDOW 53594400
+         STM   R9,R8,SVER09       INIT REGISTERS               @D14CDOW 53594500
+         DROP  RB                                              @D14CDOW 53594600
+         L     R6,DISPAD         DEACTIVATE LOG-SYSTEM TASK    @D14CDOW 53594700
+         SGSETUP UNPOST,STASK=LOG,WR1=R4                       @D14CDOW 53594800
+         SPACE 3                                               @D149DOW 53594900
+LOGGRC4  DS    0H                 FURTHER LOGGING NOT          @D14CDOW 53595000
+*                                 POSSIBLE IN THE MOMENT,      @D149DOW 53595100
+*                                 WAIT MUST BE PERFORMD        @D149DOW 53595200
+         MVC   QFCSAVE,DSPQFCT    SAVE ORIGINAL FCT-CODE       @D14CDOW 53595300
+         OI    QTABFLG2,QIXWAIT   SYSTEM-TASK NOW IN XWAIT     @D14CDOW 53595400
+         NI    DSPFLAG2,XFF-DSPIOERR INFO CURRENTLY NOT USED   @D14CDOW 53595500
+LOGG040  DS    0H                                              @D14CDOW 53595600
+         L     R1,DSPECB          GET XECB ADDR                @D14CDOW 53595700
+         SLR   R14,R14            POINT-REG ADDR NOT KNOWN     @D14CDOW 53595800
+         XWAIT XECB=(1),POINTRG=(14)                           @D14CDOW 53595900
+         NI    2(R1),X'FF'-TRABIT RESET TRAFFIC BIT            @DA33192 53596000
+         NI    QTABFLG2,X'FF'-QIXWAIT SYSTEM-TASK REACTIVATED  @D14CDOW 53596100
+         SR    R4,R4                                           @D14CDOW 53596200
+         ST    R4,DSPECB          CLEAR XECB ADDR              @D14CDOW 53596300
+         OI    DSPFLAG2,DSPAW     XECB-WAIT PROCEEDED THIS REQ @D14CDOW 53596400
+         MVC   DSPQFCT,QFCSAVE    RESTORE ORIGINAL FCT-CODE    @D14CDOW 53596500
+         CLI   DSPQFCT,DSPQRNB    WAS LAST REQ READ NEXT BLOCK @D14CDOW 53596600
+         BNE   LOGENTN            NO REPEAT LAST FUNCTION      @D14CDOW 53596700
+         B     LOGG070            GO TO QMGR TO LOOK FOR MORE  @D14CDOW 53596800
+*                                 WORK                         @D149DOW 53596900
+         SPACE 3                                               @D149DOW 53597000
+LOGGRC8  DS    0H                 TERMINATION EXECUTED         @D14CDOW 53597100
+         MVI   QTABFLG1,QTABDEA   RTN IS DEACTIVATED NOW       @D14CDOW 53597200
+LOGG010  DS    0H                 ENTRY TO DEQ ALL NOT         @D14CDOW 53597300
+*                                 PROCESSED LOGGER RECORDS     @D149DOW 53597400
+         BAL   R8,QMGRDEL         CLEAR THE Q-CHAIN            @D14CDOW 53597500
+*        BRANCH TABLE ON RETURN FROM QMGRDEL                   @D149DOW 53597600
+         B     LOGG012            Q-CHAIN IS EMPTY             @D14CDOW 53597700
+         B     LOGG010            DELETE NEXT ENTRY            @D14CDOW 53597800
+LOGG012  DS    0H                                              @D14CDOW 53597900
+         NI    QTABFLG2,X'FF'-QSYSACT SYSTEM TASK NOT ACTIVE   @D14CDOW 53598000
+         EOJ                      DEACTIVATE                   @D14CDOW 53598100
+         SPACE 1                                               @D149DOW 53598200
+LOGGRC12 DS    0H                 INITIALIZATION COMPLETED     @D14CDOW 53598300
+         MVI   QTABFLG1,QTABACT   RTN IS ACTIVE NOW            @D14CDOW 53598400
+         B     LOGG070            MORE WORK TO DO              @D14CDOW 53598500
+         DROP  R2,R3                                           @D14CDOW 53598600
+************************************************************** @D62CDCS 53598610
+*                                                              @D62CDCS 53598620
+*        SECURITY-SYSTEM-TASK                                  @D62CDCS 53598630
+*                                                              @D62CDCS 53598640
+************************************************************** @D62CDCS 53598650
+SECENTN  DS    0H                                              @D62CDCS 53598680
+         LA    R2,QENTSEC         ADDR OF Q                    @D62CDCS 53598690
+         USING QTABSEC,R2                                      @D62CDCS 53598691
+         LA    R3,QSECPARL        GET PARAMETER LIST ADDR      @D62CDCS 53598694
+         USING DSPQPARL,R3                                     @D62CDCS 53598695
+SECG020  DS    0H                                              @D62CDCS 53598696
+         LR    R1,R3              PARAMETER-LIST IS INPUT TO   @D62CDCS 53598697
+*                                 SYSTEM TASK                  @D62CDCS 53598698
+         L     RF,QSECMOD         GET ADDR OF SELECTED MODULE  @D62CDCS 53598699
+         STOSM PSWMASK,ENABLE     MAKE SEC TASK INTERRUPTABLE  @D62CDCS 53598700
+*                                                              @D62CDCS 53598701
+*                                                              @D62CDCS 53598702
+         BALR  RE,RF              GO TO SELECTED RTN           @D62CDCS 53598703
+*                                 THIS ROUTINE DOES NOT DESTROY@D62CDCS 53598704
+*                                 ANY REG EXCEPT REG 15        @D62CDCS 53598705
+*                                                              @D62CDCS 53598706
+         STNSM PSWMASK,DISABLE    DISABLE LOG SYSTEM TASK      @D62CDCS 53598707
+         ST    RF,SECSAVRF        SAVE RETURN CODE             @D62CDCS 53598708
+*                               R3 SHOULD CONTAIN PARAMETER LST@D62CDCS 53598709
+         USING DSPQPARL,R3        ADDRESS PARAMETER LIST       @D62CDCS 53598710
+         L     R5,DSPAREC         GET TCBX ADDRESS IN REGISTER @D62CDCS 53598711
+         USING TCBXADR,R5         ADDRESS TCB EXTENTION        @D62CDCS 53598712
+*        AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D62CDCS 53598713
+         AMODESW SET,AMODE=31,SAVE=(4),WR=(15)                 @D62CDCS 53598713
+*        MVC   TCBXSAVT+60,SECSAVRF SAVE RF IN TCBX SAVEAREA   @D62CDCS 53598714
+         MVC   TCBXXSA+60,SECSAVRF  SAVE RF IN TCBX SAVE AREA  @D62CDCS         
+         DROP  R5                 NO ADDRESS TO TCBX           @D62CDCS         
+*        AMODESW SET,AMODE=(4),WR=(15)                         @D62CDCS 53598715
+         AMODESW SET,AMODE=(4),WR=(15)                         @D62CDCS 53598715
+         BAL   R6,QSECNEXT        GO TO QMGR TO DELETE ENTRY   @D62CDCS 53598737
+*                                                              @D62CDCS 53598738
+*        DEACTIVATE SYSTEM TASK                                @D62CDCS 53598739
+*                                                              @D62CDCS 53598740
+         L     R6,DISPAD          PROVIDE ADDR TO DISPATCHER   @D62CDCS         
+         USING DISP,R6                                         @D62CDCS 53588754
+         L     R4,TIBPTR          SYSTEM TASK TIB              @D62CDCS         
+         USING TIBADR,R4                                       @D62CDCS         
+         LH    R0,TIBRTID         REMEMBER REQUESTOR ID        @D62CDCS         
+         DROP  R4                                              @D62CDCS         
+*SGLINK  SYSDEACT,INPUT=(R6,RF),WORK=(R5,RE)                   @D62CDCS         
+         BAL   RF,SYSDEACT        DEACTIVATE SYSTEM TASK       @D62CDCS         
+*      SGSETUP ACTIVATE,STASK=LOG,WR1=R0,WR2=RF,OPTION=USER    @D62CDCS         
+* STASK PARAMETER IS NOT USED BY SERVICE,                      @D62CDCS         
+* ... BUT MANDATORY FOR SYNTAX - LOG MEANS LOG/SECURITY TASK   @D62CDCS         
+       SGSETUP ACTIVATE,STASK=LOG,WR1=R0,WR2=RF,OPTION=USER    @D62CDCS         
+*     POST IS DONE BY SGSETUP ?                                @D62CDCS         
+*                                                              @D62CDCS 53598738
+*        POST USER TASKS                                       @D62CDCS 53598739
+*                                                              @D62CDCS 53598740
+         DROP  R6                                              @D62CDCS         
+QSECN100 DS    0H                                              @D62CDCS 53588752
+         L     R6,DISPAD                                       @D62CDCS 53588753
+         USING DISP,R6                                         @D62CDCS 53588754
+         CLI   QSECN11X,ZERO      FIX NEXT INSTRUCTIONS        @D62CDCS 53588755
+         L     R5,ASRQTAB                                      @D62CDCS 53588756
+         LA    R5,SRQGQMG-SRQTAB(,R5) POST WAITING TASKS       @D62CDCS 53588757
+         BAL   RF,RPOST                                        @D62CDCS 53588758
+*SGLINK RPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                    @D62CDCS 53588759
+         DROP  R6                                              @D62CDCS 53588760
+         BR    RC                 RETURN TO RC PROCESSING      @D62CDCS 53598779
+         DS    0F                 WORD ALIGNMENT FOR SECSAVRF  @D62CDCS 53598780
+SECSAVRF DS    CL4                SAVE AREA FOR RETURN REGISTER@D62CDCS 53598781
+QSECN11X DS    0H                                              @D62CDCS 53588765
+*                                 LOGGER SYSTEM TASK ?         @D62CDCS 53598744
+         SPACE 1                                               @D62CDCS 53598750
+         DROP  R2,R3                                           @D62CDCS 53598782
+         EJECT                                                 @D149DOW 53598790
+************************************************************** @D149DOW 53598800
+*                                                              @D149DOW 53598900
+*        LOGGER-SYSTEM-TASK EXIT ROUTINE'S                     @D149DOW 53599000
+*                                                              @D149DOW 53599100
+************************************************************** @D149DOW 53599200
+LOGABXIT DS    0H                 AB-EXIT                      @D14CDOW 53599300
+         DROP  RD                                              @D14CDOW 53599400
+         STNSM PSWMASK,DISABLE    DISABLE LOG SYSTEM TASK      @D14CDOW 53599500
+         BALR  R4,0               GET BASE OF Q-MGR            @D14CDOW 53599600
+         USING *,R4                                            @D14CDOW 53599700
+         L     RD,LOGGBASE                                     @D14CDOW 53599800
+         DROP  R4                                              @D14CDOW 53599900
+         USING QMGRSTRT,RD                                     @D14CDOW 53599910
+*        L     R8,IJBSCTAB        GET SECURITY VECTOR TABLE    @D64CD.. 53599911
+*        USING SCYVECDS,R8                                     @D64CD.. 53599912
+*        TM    SCYFLGS1,SCYESM    EXTERNAL SECURITY MGR ACT?   @D64CD.. 53599913
+*        BZ    LOGPROCX           PROCESS LOGGER TASK EXIT     @D64CD.. 53599914
+*        MVI   IJBHWORG,HWORG252  HARD WAIT ORIGINATOR CODE    @D64CD.. 53599915
+*        BAL   R5,SYSERROR        GO INTO HARD WAIT FED        @D64CD.. 53599916
+LOGPROCX LA    R5,QMGRPARL        GET ADDR OF PARAMETERLIST    @D14CDOW 53599920
+         USING DSPQPARL,R5                                     @D14CDOW 53599930
+         LA    R2,QENTLOGG        CURRENT Q-ENTRY              @D14CDOW 53599940
+         USING QTABSTRT,R2                                     @D14CDOW 53599950
+         TM    QTABFLG1,QTABEXIT  SECOND ENTRY INTO EXIT       @D14CDOW 53599960
+         BNO   LOGGER10           NO CONTINUE                  @D14CDOW 53599970
+         TM    QTABFLG1,QTABDEA   WAS EMERGENCY DEACT IN PROC? @D14CDOW 53599980
+         BO    LOGG012            YES, THATS SCH...            @D14CDOW 53599990
+         MVI   QTABFLG1,QTABDEA   EMERGENCY LOGGER DEACTIVATION@D14CDOW 53599991
+         UNLOCK ALL               UNLOCK ALL RESOURCES HOLD    @D21ZDOW 53599992
+         LA    R1,LOGGCCB         WRITE EMERGENCY MSG          @D14CDOW 53599993
+         SVC   15                                              @D14CDOW 53599994
+         WAIT  (1)                                             @D14CDOW 53599995
+         LA    R1,QMGRPARL        GET ADDR OF PARAMETERLIST    @D14CDOW 53599996
+         B     LOGG010            DEQ ALL NOT PROCESSED LOG-REC@D14CDOW 53599997
+LOGGER10 DS    0H                 1.ST ENTRY IN LOGGER-EXIT-RTN@D14CDOW 53599998
+         OI    QTABFLG1,QTABEXIT                               @D14CDOW 53599999
+         MVI   DSPQFCT,DSPQTERM   SET FCT-CODE TO TERMINATE    @D14CDOW 53600000
+         STC   R0,DSPFLAG1        CANCEL CODE                  @D14CDOW 53600010
+         EXIT  AB                 LEAVE EXIT                   @D14CDOW 53600020
+         DROP  R2,R5                                           @D14CDOW 53600030
+         B     LOGENTRY           SET UP AB-EXIT AND TERMINATE @D14CDOW 53600040
+         SPACE 5                                               @D149DOW 53600050
+LOGSTADR DS    0H                 ENTRY FROM EOT PROCESSING    @D14CDOW 53600060
+         DROP  RD                                              @D14CDOW 53600070
+         MVI   RID+1,USERTID      SET USER RID                 @D14CDOW 53600080
+         TSTOP  ,                 DEACTIVATE LOGGER TASK       @D14CDOW 53600090
+         BALR  R4,0                                            @D14CDOW 53600091
+         USING *,R4                                            @D14CDOW 53600092
+         L     RD,LOGGBASE        BASE OF Q-MGR                @D14CDOW 53600093
+         DROP  R4                                              @D14CDOW 53600094
+         USING QMGRSTRT,RD                                     @D14CDOW 53600095
+         LA    R6,QENTLOGG        Q-ENTRY FOR LOGGER           @D14CDOW 53600096
+         USING QTABSTRT,R6                                     @D14CDOW 53600097
+         TM    QTABFLG1,QTABDEA   DEACTIVATION RESOLVED        @D14CDOW 53600098
+         BZ    LOGENTRY           TRY TO START LOGGER          @D14CDOW 53600099
+         DROP  R6                                              @D14CDOW 53600100
+         B     LOGSTADR           NO RESTART POSSIBLE          @D14CDOW 53600110
+LOGGBASE DC    A(QMGRSTRT)                                     @D14CDOW 53600120
+         EJECT                                                 @D149DOW 53600130
+*        CONSTANTS AND EQUATES FOR Q-MGR AND LOGGER SYSTEM TASK@D149DOW 53600140
+         SPACE 1                                               @D149DOW 53600150
+         DS    0F                                              @D14CDOW 53600160
+LOGABSAV DS    CL72    AB-EXIT SAVE AREA                       @D14CDOW 53600170
+         SPACE 1                                               @D149DOW 53600180
+         DS    0D                                              @D14CDOW 53600190
+LOGGCCB  CCB   SYSLOG,LOGGCCW,X'1000'                          @D14CDOW 53600191
+LOGGCCW  CCW   WRACR,LOGGEMER,SLI,L'LOGGEMER                   @D14CDOW 53600192
+LOGGEMER DC    C'DSP079I EMERGENCY DEACTIVATION OF LOGGER SYSTEM TASK' X53600193
+                                                               @D14CDOW 53600194
+         SPACE 1                                               @D149DOW 53600195
+         DS    0F      DEFINITION OF THE Q TO WHICH ALL        @D14CDOW 53600196
+*                      RECORDS WILL BE CHAINED, FOR            @D149DOW 53600197
+*                      WHICH A LOGGING-REQUEST IS GIVEN        @D149DOW 53600198
+*                      BY MEANS OF SVC108 OR SVC117.           @D149DOW 53600199
+QENTSTRT EQU   *              START OF Q                       @D14CDOW 53600200
+QENTLOGG DC    AL2(LOGTID)    TID OF AFFECTED SYSTEM TASK:     @D14CDOW 53600210
+*                             LOGGER-SYSTEM-TASK               @D149DOW 53600220
+         DC    X'00'          FLAGBYTE - STATUS OF SYSTEM TASK @D14CDOW 53600230
+         DC    X'00'          FLAGBYTE - STATUS OF I/O-AREA    @D14CDOW 53600240
+         DC    A(0)           ECB                              @D14CDOW 53600250
+         DC    A(0)           A(DSPLLOG) - FILLED IN AT        @D14CDOW 53600260
+*                             INITIALIZATION TIME              @D149DOW 53600270
+         DC    A(0)           PTR TO FIRST ELEMENT IN CHAIN    @D14CDOW 53600280
+         DC    A(0)           PTR TO LAST ELEMENT IN CHAIN     @D14CDOW 53600290
+         DC    H'0'           RESERVED                         @D14CDOW 53600291
+         DC    H'8'           # OF BYTES MOVED TO I/O-AREA     @D14CDOW 53600292
+         DC    H'2041'        LENGTH OF I/O AREA               @D14CDOW 53600293
+         DC    H'8'           LENGTH OF BLOCK-DESCRIPTOR       @D14CDOW 53600294
+         DC    X'FF'          END OF Q                         @D14CDOW 53600295
+         SPACE 1                                               @D149DOW 53600296
+         DS    0F      PARAMETER-LIST DESRIBING INTERFACE      @D14CDOW 53600297
+QMGRPARL DC    3F'0'          BETWEEN LOGGER-SYSTEM-TASK       @D14CDOW 53600298
+*                             AND DSPLLOG-MODULE               @D149DOW 53600299
+         DC    A(LOGABSAV)                                     @D14CDOW 53600300
+         DC    3F'0'                                           @D14CDOW 53600310
+         SPACE 1                                               @D149DOW 53600320
+         DS    0F      FREELIST POINTER AND Q-ENTRIES          @D14CDOW 53600330
+QMGRFLST DC    A(QSPACE)      FREELIST-POINTER                 @D14CDOW 53600340
+*                                                              @D149DOW 53600350
+QSPACE   DC    A(*+28)        CHAIN POINTER                    @D14NDOW 53600360
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600370
+*                                                              @D149DOW 53600380
+         DC    A(*+28)                                         @D14CDOW 53600390
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600391
+*                                                              @D149DOW 53600392
+         DC    A(*+28)                                         @D14CDOW 53600393
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600394
+*                                                              @D149DOW 53600395
+         DC    A(*+28)                                         @D14CDOW 53600396
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600397
+*                                                              @D149DOW 53600398
+         DC    A(*+28)                                         @D14CDOW 53600399
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600400
+*                                                              @D149DOW 53600410
+         DC    A(*+28)                                         @D14CDOW 53600420
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600430
+*                                                              @D149DOW 53600440
+         DC    A(0)           LAST ELEMENT                     @D14CDOW 53600450
+         DC    6F'0'          USER PARAMETER LIST              @D14NDOW 53600460
+         SPACE 1                                               @D149DOW 53600470
+QFCSAVE  DC    X'FF'          SAVE AREA FOR FUNCTION CODE      @D14CDOW 53600480
+         SPACE 1                                               @D149DOW 53600490
+QLOGIND  DC    CL4'ACF '      INDICATOR FOR SVC108             @D14CDOW 53600491
+         DC    CL4'AUDT'      INDICATOR FOR SVC117             @D14CDOW 53600492
+         SPACE 1                                               @D149DOW 53600493
+         DS    0F      Q-MGR SAVE AREA                         @D14CDOW 53600494
+QMGRGTSV DS    16F     SAVE AREA FOR GETVIS                    @D14CDOW 53600495
+QMGRFVSV DS    16F     SAVE AREA FOR FREEVIS                   @D14CDOW 53600496
+*                                                              @D149DOW 53600497
+LOGENDPT DS    0H      END OF LOGGER, ADDR FOR IDUMP           @D14CDOW 53600498
+*        DROP  RD                                              @D62CDCS 53600499
+         EJECT                                                 @D149DOW 53600500
+         DS    0F      DEFINITION OF THE Q TO WHICH ALL        @D62CDCS 53600501
+*                      RECORDS WILL BE CHAINED, FOR            @D62CDCS 53600502
+*                      THE SECURITY SYSTEM TASK IN CASE        @D62CDCS 53600503
+*                      ESM IS ACTIVE SVC108, FETCH, SGVEND     @D62CDCS 53600504
+QSECSTRT EQU   *              START OF SECURITY TASK QUEUE     @D62CDCS 53600505
+QENTSEC  DC    AL2(LOGTID)    TID OF AFFECTED SYSTEM TASK:     @D62CDCS 53600506
+*                             LOGGER-SYSTEM-TASK=SECURITY TASK @D62CDCS 53600507
+         DC    X'00'          FLAGBYTE - STATUS OF SYSTEM TASK @D62CDCS 53600508
+         DC    X'00'          FLAGBYTE - NOT USED FOR SECURITY @D62CDCS 53600509
+         DC    A(0)           ECB                              @D62CDCS 53600510
+         DC    A(0)           A(DTSECESM)- FILLED IN AT        @D62CDCS 53600511
+*                             QSECADD WHEN ADDING A RECORD     @D62CDCS 53600512
+         DC    A(0)           PTR TO FIRST ELEMENT IN CHAIN    @D62CDCS 53600513
+         DC    A(0)           PTR TO LAST ELEMENT IN CHAIN     @D62CDCS 53600514
+         DC    H'0'           RESERVED                         @D62CDCS 53600515
+         DC    H'0'           RESERVED                         @D62CDCS 53600516
+         DC    X'FF'          END OF Q                         @D62CDCS 53600517
+         SPACE 1                                               @D62CDCS 53600518
+         DS    0F      PARAMETER-LIST DESCRIBING INTERFACE     @D62CDCS 53600519
+QSECPARL DC    3F'0'          BETWEEN SECURITY-SYSTEM-TASK     @D62CDCS 53600520
+*                             AND DTSECESM-MODULE              @D62CDCS 53600521
+         DC    A(LOGABSAV)                                     @D62CDCS 53600522
+         DC    3F'0'                                           @D62CDCS 53600523
+         SPACE 1                                               @D62CDCS 53600524
+         DS    0F      FREELIST POINTER AND Q-ENTRIES          @D62CDCS 53600525
+QSECFLST DC    A(QSECAREA)    FREELIST-POINTER                 @D62CDCS 53600526
+*                                                              @D62CDCS 53600527
+QSECAREA DC    A(*+24)        CHAIN POINTER                    @D62CDCS 53600528
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600529
+*                                                              @D62CDCS 53600530
+         DC    A(*+24)                                         @D62CDCS 53600531
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600532
+*                                                              @D62CDCS 53600533
+         DC    A(*+24)                                         @D62CDCS 53600534
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600535
+*                                                              @D62CDCS 53600536
+         DC    A(*+24)                                         @D62CDCS 53600537
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600538
+*                                                              @D62CDCS 53600539
+         DC    A(*+24)                                         @D62CDCS 53600540
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600541
+*                                                              @D62CDCS 53600542
+         DC    A(*+24)                                         @D62CDCS 53600543
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600544
+*                                                              @D62CDCS 53600545
+         DC    A(0)           LAST ELEMENT                     @D62CDCS 53600546
+         DC    6F'0'          USER PARAMETER LIST              @D62CDCS 53600547
+         SPACE 1                                               @D62CDCS 53600548
+         DS    0F      SECURITY-Q-MGR SAVE AREA                @D62CDCS 53600549
+QSECGTSV DS    16F     SAVE AREA FOR GETVIS                    @D62CDCS 53600550
+QSECFVSV DS    16F     SAVE AREA FOR FREEVIS                   @D62CDCS 53600551
+*                                                              @D62CDCS 53600552
+SECENDPT DS    0H      END OF SECURITY SYSTEM TASK, IDUMP ADR  @D62CDCS 53600553
+         DROP  RD                                              @D62CDCS 53600554
+         EJECT                                                 @D62CDCS 53600555
+*************************************************************  @D62CDCS 53600556
+*        LAYOUT OF A SECURITY Q-ENTRY                          @D62CDCS 53600557
+*************************************************************  @D62CDCS 53600558
+*                                                              @D62CDCS 53600559
+QTABSEC  DSECT ,              LAYOUT OF Q ENTRY                @D62CDCS 53600560
+QSECTID  DS    XL2            TID OF AFFECTED SYSTEM TASK      @D62CDCS 53600561
+QSECFLG1 DS    XL1            FLAGBYTE                         @D62CDCS 53600562
+QSECINIT   EQU   X'80'        INITIALIZATION STARTED           @D62CDCS 53600563
+QSECACT    EQU   X'40'        SEC SYSTASK ACTIVE               @D62CDCS 53600564
+QSECDEA    EQU   X'20'        SEC SYSTEM TASK DEACTIVATED      @D62CDCS 53600565
+QSECEXIT   EQU   X'10'        LOG SYSTASK EXIT ENTERED         @D62CDCS 53600566
+QSECFLG2 DS    X'00'          STATUS OF SYSTEM TASK            @D62CDCS 53600567
+QSECPROC   EQU   X'80'        SYSTEM TASK CURRENTLY PROCESSING @D62CDCS 53600568
+*                             WORK ELEMENT                     @D62CDCS 53600569
+QSECWAIT   EQU   X'10'        SYSTEM-TASK IN XWAIT             @D62CDCS 53600570
+*                             UNTIL RECORDER FILE OPENED       @D62CDCS 53600571
+QSECECB  DS    XL4            ECB                              @D62CDCS 53600572
+QSECMOD  DS    XL4            ADDR TO MODULE TO BE SELECTED    @D62CDCS 53600573
+QSECCBG  DS    XL4            PTR TO FIRST ELEMENT IN CHAIN    @D62CDCS 53600574
+QSECEND  DS    XL4            PTR TO LAST ELEMENT IN CHAIN     @D62CDCS 53600575
+         DS    H              RESERVED                         @D62CDCS 53600576
+         DS    H              RESERVED                         @D62CDCS 53600577
+*                                                              @D62CDCS 53600578
+QSECLEN  EQU   *-QTABSEC      LENGTH OF Q-ENTRY                @D62CDCS 53600579
+         SPACE 3                                               @D62CDCS 53600580
+*************************************************************  @D62CDCS 53600581
+*        LAYOUT OF A Q-CHAIN ELEMENT                           @D62CDCS 53600582
+*************************************************************  @D62CDCS 53600583
+*                                                              @D62CDCS 53600584
+QSECCEDS DSECT ,              LAYOUT OF Q-SPACE                @D62CDCS 53600585
+QSECCPTR DS    CL4            CHAIN POINTER                    @D62CDCS 53600586
+QSECCECB DS    CL4            USERS ECB POINTER                @D62CDCS 53600587
+QSECCPIK DS    CL2            PIK OF DATA OWNER                @D62CDCS 53600588
+QSECCFLG DS    CL1            FLAGBYTE                         @D62CDCS 53600589
+QSECCUSD EQU   X'40'          Q-ELEMENT USED (ONLY USED IN     @D62CDCS 53600590
+*                             RESERVED Q-ELEMENT)              @D62CDCS 53600591
+QSECCFVS EQU   X'20'          Q-ELEMENT IN GETVIS AREA         @D62CDCS 53600592
+         DS    CL1            RESERVED                         @D62CDCS 53600593
+QSECCULT DC    4F'0'          USER PARAMETER LIST              @D62CDCS 53600594
+QSECCEL  EQU   *-QSECCPTR     LENGTH OF QSPACE                 @D62CDCS 53600595
+         SPACE 3                                               @D62CDCS 53600596
+*************************************************************  @D149DOW 53600597
+*        LAYOUT OF A Q ENTRY                                   @D149DOW 53600598
+*************************************************************  @D149DOW 53600599
+*                                                              @D350DOW 53600600
+QTABSTRT DSECT ,              LAYOUT OF Q ENTRY                @D14CDOW 53600601
+QTABTID  DS    XL2            TID OF AFFECTED SYSTEM TASK      @D14CDOW 53600602
+QTABFLG1 DS    XL1            FLAGBYTE                         @D14CDOW 53600603
+QTABINIT   EQU   X'80'        INITIALIZATION STARTED           @D14CDOW 53600604
+QTABACT    EQU   X'40'        LOG SYSTASK ACTIVE               @D14CDOW 53600605
+QTABDEA    EQU   X'20'        LOG SYSTEM TASK DEACTIVATED      @D14CDOW 53600606
+*-->  DO NOT CHANGE QTABDEA,  ALSO DEFINED IN MODULE DTSECSVC  @D149DOW 53600607
+QTABEXIT   EQU   X'10'        LOG SYSTASK EXIT ENTERED         @D14CDOW 53600608
+QTABNAV    EQU   X'08'        LOGGER PP NOT INSTALLED          @D14CDOW 53600609
+*-->  DO NOT CHANGE QTABNAV,  ALSO DEFINED IN MODULE DTSECSVC  @D149DOW 53600610
+QTABFLG2 DS    X'00'          STATUS OF I/O AREA               @D14CDOW 53600611
+QSYSACT    EQU   X'80'        SYSTEM TASK CURRENTLY PROCESSING @D14CDOW 53600612
+*                             I/O-AREA                         @D149DOW 53600613
+QIODONE    EQU   X'40'        CURRENT I/O-AREA ALREADY ON DISK @D14CDOW 53600614
+QIOFULL    EQU   X'20'        I/O-AREA IS FULL NOW             @D14CDOW 53600615
+QIXWAIT    EQU   X'10'        SYSTEM-TASK IN XWAIT             @D14CDOW 53600616
+QIOFORCE   EQU   X'08'        FORCE I/O PENDING                @D14CDOW 53600620
+QTABRNO    EQU   X'04'        INITIALIZATION TO BE DELAYED     @D21ZDOW 53600630
+*                             UNTIL RECORDER FILE OPENED       @D149DOW 53600640
+QTABECB  DS    XL4            ECB                              @D14CDOW 53600650
+QTABMOD  DS    XL4            ADDR TO MODULE TO BE SELECTED    @D14CDOW 53600660
+QTABCBG  DS    XL4            PTR TO FIRST ELEMENT IN CHAIN    @D14CDOW 53600670
+QTABEND  DS    XL4            PTR TO LAST ELEMENT IN CHAIN     @D14CDOW 53600680
+         DS    H              RESERVED                         @D14CDOW 53600690
+QTABRC#  DS    H              # OF BYTES MOVED TO I/O-AREA     @D14CDOW 53600691
+QRECLNG  DS    H              LENGTH OF I/O AREA               @D14CDOW 53600692
+QRECDDR  DS    H              LENGTH OF BLOCK-DESCRIPTOR       @D14CDOW 53600693
+*                                                              @D149DOW 53600694
+QTABLEN  EQU   *-QTABSTRT     LENGTH OF Q-ENTRY                @D14CDOW 53600695
+         SPACE 3                                               @D149DOW 53600696
+*************************************************************  @D149DOW 53600697
+*        LAYOUT OF A Q-CHAIN ELEMENT                           @D14NDOW 53600698
+*************************************************************  @D149DOW 53600699
+*                                                              @D350DOW 53600700
+QSPACEDS DSECT ,              LAYOUT OF Q-SPACE                @D14NDOW 53600710
+QSPCPTR  DS    CL4            CHAIN POINTER                    @D14NDOW 53600720
+QECBPTR  DS    CL4            USERS ECB POINTER                @D14NDOW 53600730
+QSPPIK   DS    CL2            PIK OF DATA OWNER                @D14NDOW 53600740
+QSPFLAG  DS    CL1            FLAGBYTE                         @D14NDOW 53600750
+QRECOUT  EQU   X'80'          RECORD CURRENTLY WRITTEN OUT     @D14CDOW 53600760
+QSPUSED  EQU   X'40'          Q-ELEMENT USED (ONLY USED IN     @D14CDOW 53600770
+*                             RESERVED Q-ELEMENT)              @D149DOW 53600780
+QSPSVIS  EQU   X'20'          Q-ELEMENT IN GETVIS AREA         @D14CDOW 53600790
+         DS    CL1            RESERVED                         @D14NDOW 53600791
+QUSERLST DC    4F'0'          USER PARAMETER LIST              @D14NDOW 53600792
+QSPACEL  EQU   *-QSPCPTR      LENGTH OF QSPACE                 @D14NDOW 53600793
+         SPACE 3                                               @D149DOW 53600794
+         DSPLPAR              ,PARAMETER-LIST BETWEEN LOGGER,  @D14CDOW 53600800
+*                             Q-MGR AND SVC108                 @D14CDOW 53650000
+         SPACE 3                                               @D149DOW 53700000
+         DSPLOG               ,LOGGER DATA SET RECORDS         @D14CDOW 53750000
+         SPACE 3                                               @D149DOW 53800000
+&SYSECT  CSECT                                                 @D14CDOW 53850000
+         AIF   (NOT &BGDEBUG OR NOT &SGACF).PRINT              @D149DOW 53900000
+         PRINT NOGEN                                           @D37ZDOW 53950000
+.PRINT   ANOP                                                  @D37ZDOW 54000000
+         MEND                                                           54050000

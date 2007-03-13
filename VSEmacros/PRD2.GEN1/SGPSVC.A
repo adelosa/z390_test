@@ -1,0 +1,1246 @@
+         MACRO                                                          00050000
+         SGPSVC                                                         00100000
+.*************************************************************          00150000
+*                                                            *          00200000
+.*       IBM DISK OPERATING SYSTEM                           *          00250000
+*        SUPERVISOR - SGPSVC - 5686-066-06                   *          00300009
+*                                                            *          00400000
+*        LICENSED MATERIALS - PROPERTY OF IBM                *          00450009
+*        "RESTRICTED MATERIALS OF IBM"                       *          00500009
+*        5686-066                                            *          00550009
+*        (C) COPYRIGHT IBM CORP. 1983, 2001                  *          00560009
+*                                                            *          00650000
+**************************************************************          00700000
+         ACTR  500                                                      00900000
+         EJECT                                                          00950000
+         SPACE 2                                                        01000000
+* /* START OF SPECIFICATIONS **********************************         01050000
+*                                                                       01100000
+*01* MODULE NAME = SGPSVC                                               01150000
+*                                                                       01200000
+*01* MODULE TYPE = SUPERVISOR GENERATION MACRO                          01250000
+*                                                                       01300000
+*01* DESCRIPTIVE NAME = PAGEMANAGEMENT SERVICES                         01350000
+*                                                                       01400000
+*01* CHANGE ACTIVITY = AS FOLLOWS                                       01450000
+*    CHANGE DESCRIPTION                                                 01500000
+*            NEW MACRO -- FIRST RELEASE AF2.1                  @DA33314 01550000
+*              VIO - SUPPORT                                   @D14BDRP 01600000
+*              16 MB REAL STORAGE FOR /370                     @D14ADVB 01650000
+*              VAE SUPPORT                                     @DA33314 01700000
+*              PGM-CHECK PROTECTION EXCEPTION IN $IJBSVIO WHEN @DA35022 01750000
+*              LINKING PROGRAMS OVER 500K IN SIZE.             @DA35022 01800000
+*              POST POWER MASTER ECB                           @DA35279 01850000
+*              HANDLE VIO FILE SIZE OVER 16M CORRECTLY         @DA37768 01900000
+*              MORE PARTITION SUPPORT                          @D51IDIS 01950000
+*              31-BIT REAL AND XA SUPPORT                      @D51GDTP 02000000
+*              REMOVE E-MODE                                   @D51GDRP 02050000
+*              31-BIT ENABLING                                 @D52VDRP 02075001
+*              EXTENDED CONSISTENCY CHECK                      @D61NDVB 02084301
+*              VIOSTSAV SET, EVEN IF VIORB ADDRESS IS INVALID  @DA42963 02093701
+*              MULTI-PROCESSOR SUPPORT                         @D61RDRP 02096801
+*              FORCE VALID VTUSCNT FOR COPIED VIORB            @D64ADVB 02098403
+*              IPTE NEEDS THE PAGE FRAME ADDR IN THE PTE       @DY44241 02098502
+*              HW FF1 DUE TO VIOTABE CROSSING PAGE BOUNDARY    @DY44364 02098606
+*              MORE THAN 255 TASKS                             @D66ODOW 02098709
+*                                                                       02100000
+* A000000-999999                                               @D14BDRP 02150000
+**** END OF SPECIFICATIONS *******************************************/ 02200000
+         SPACE 2                                                        02250000
+         DS    0D                                                       02300000
+         DC    CL8'SGPSVC'                                              02350000
+         DC    CL10'03/05/2001'   LAST DEVELOPMENT CHANGE / APAR FIX    02400008
+SGPSVC   DS    0H                                                       02600000
+         TITLE 'VSE/AF SUPERVISOR      SGPSVC         VIOPOINT-SERVICE' 02650001
+*-------------------------------------------------------------*         02700000
+*     ROUTINE NAME: VIOPOINT                                            02750000
+*     MODULE:       SGPSVC                                              02800000
+*     MODE:         REENTRANT                                           02850000
+*     FUNCTION:     OBTAIN ADDRESSABILITY TO A SINGLE BLOCK OF          02900000
+*                   A VIO WORK AREA.                                    02950000
+*     CALLER:       MACRO VIOPOINT AMODE(24),DATON                      03000001
+*     ENTRY POINT:                                                      03050000
+*            VIOPOINT                                                   03100000
+*     OPERATION:                                                        03150000
+*       IF AREA PROVIDED IN REGISTER 1 IS NOT A VIOTABE                 03200000
+*                         THEN CANCEL USER WITH INVALID ADDR.           03250000
+*       IF TID # VIORTID  THEN CANCEL USER WITH INVALID ADDR.           03300000
+*       RESET ALL BITS IN VIORBCM1 AND VIORBRTC                         03350000
+*       IF REL. BYTE ADDR (RBA) IS TOO HIGH                             03400000
+*                         THEN SET(VIORBEOF) RETURN;                    03450000
+*       EXECUTE GETBLK  TO GET TOTAL-BLKN(TOTBLKN) OUT OF RBA           03500000
+*       IF REQ. BLOCK SAME AS ACTIVE ONE THEN RETURN;                   03550000
+*       EXECUTE VIOFRPAG TO FREE VTABEACT                               03600000
+*       IF ERROR DETECT. IN VIOFRPAG THEN GOTO VIORETFP                 03650000
+*       GET BLKTBE(TOTBLKN)                                             03700000
+*       IF BLKSTAT = PGCON                                              03750000
+*         THEN                                                          03800000
+*           GET VTABE(BLKPAG)                                           03850000
+*           VIORBPNT = BLKPAG                                           03900000
+*           VTUSCNT = VTUSCNT + 1                                       03925000
+*           IF VTUSCNT =0                                               03950000
+*             THEN                                                      04000000
+*               IF PAGSTAT#DISC AND PFSTAT = ADDR                       04050000
+*                 THEN PAGSTAT = ADDR                                   04100000
+*                 ELSE GOTO INCRENQ      * DO IMPLICITE ENQUEUE         04150000
+*             ELSE                                                      04200000
+*               IF  PAGSTAT # ADDR                                      04250000
+*                 THEN GOTO INCRENQ      * DO IMPLICITE ENQUEUE         04300000
+*           ENDIF                                                       04350000
+*           POST TRABIT IN VIORB                                        04450000
+*           RETURN                                                      04500000
+*         ELSE                                                          04550000
+*           EXECUTE VIOGETPG TO GET A FREE VTAB-ENTRY (PAGE VPAG)       04600000
+*           SET VTABE TO INITIAL STATE  (ALL ZERO)                      04650000
+*           VTABEACT = ADDR OF RETURNED VTABE                           04700000
+*           VIORBPNT = VPAG                                             04750000
+*           VTUSCNT = 1                                                 04800000
+*           VTBLKN = TOTBLKN                                            04850000
+*           IF BLKSTAT = COPY THEN PAGSTAT = OSET(COPY)                 04900000
+*           IF BLKSTAT = BLKFRCO                                        04950000
+*             THEN                 * ONLY POSSIBLE FOR /370-MODE        05000000
+*               BLKSTAT = PGCON                                         05050000
+*               PFSTAT = RESET(BLK)                                     05100000
+*               PFPNR = VPAG                                            05150000
+*               IF PFSTAT = ADDR                                        05200000
+*                 THEN                                                  05250000
+*                   POST TRABIT IN VIORB                                05300000
+*                   PAGSTAT=OSET(ADDR)                                  05350000
+*                   PAGFR = BLKPAG  * SET FRAME-ADDR                    05400000
+*                   BLKPAG = VPAG                                       05450000
+*                   RETURN TO DISPATCHER                                05500001
+*               IF PFSTAT = CON                                         05800000
+*                 THEN                                                  05850000
+*                   PAGSTAT = OSET(CON)                                 05900000
+*                   PAGFR = SSK(BLKPAG)  * SET STORAGE KEY IN PTE       05950000
+*                   BLKPAG = VPAG                                       06000000
+*                   GOTO INCRENQ   * DO IMPLICITE ENQUEUE               06050000
+*               ENDIF                                                   06100000
+*           ENDIF                                                       06150000
+*           IF BLKSTAT = DISC                                           06200000
+*             THEN                                                      06250000
+*               SSK(VPAG) = BLKPAG   * SET STORAGE KEY IN PAGE/PTE      06300000
+*               PAGSTAT = OSET(DISC)                                    06350000
+*               BLKPAG = VPAG                                           06400000
+*               BLKSTAT = PGCON                                         06450000
+*               GOTO INCRENQ   * DO IMPLICITE ENQUEUE                   06500000
+*           ENDIF                                                       06550000
+*         ENDIF                                                         06600000
+*         LABEL INCRENQ                                                 06650000
+*         EXECUTE VIOSAVST TO SAVE STATUS AT SVC-TIME                   06800000
+*         VTPFCNT = VTPFCNT + 1                                         06850000
+*         GET ADDR OF VIOTIB AND OTHER INPUT FOR ENQUVIO                06900000
+*         IF  VIOFLAG ¬= ASYNCH                                         06950000
+*           THEN                                                        07000000
+*             EXECUTE UNPOST TO SET TASK IN WAIT FOR COMPL.             07050000
+*                                 OF PAGE I/O.                          07100000
+*         ENDIF                   OF PAGE I/O.                          07150000
+*         GOTO ENQUVIO  TO HANDLE PAGE-REQUEST                          07200000
+*                  * ENQUVIO RETURNS DIRECT TO DISPATCHER               07250000
+*       LABEL VIOPTEOF                                                  07300000
+*       INDICATE END OF FILE IN VIORB                                   07350000
+*       LABEL VIORETFP                                                  07400000
+*       POST VIORB                                                      07450000
+*       LABEL VIORETF                                                   07500000
+*       RESTORE USERS REGISTER, RETURN TO USER                          07550000
+*                                                                       07600000
+*     INPUT:        R0 - RELATIVE BYTE ADDR IN FILE REQUESTED           07650000
+*                   R1 - ADDR OF VIORB OF THE FILE ACCESSED             07700000
+*                   R6 - ADDR OF DISPATCHER                             07750000
+*     OUTPUT:       UPDATED VIORBPNT,VIORBRBA                           07800000
+*     RETURN CODES: 0 - PROCESSING SUCCESSFULL                          07850000
+*                   4 - INCONSISTENT STATE                              07900000
+*     CALLED ROUTINES:                                                  07942801
+*              GETBLK, VIOFRPAG, VIOGETPG, VTAVREM, ENQUVIO,   @D529DRP 07985601
+*              UNPOST             WITH AMODE(31),DATON         @D529DRP 08028401
+*              TINFGENT, VALWRITE WITH AMODE(24),DATON         @D529DRP 08071201
+*     RETURN:       CALLER VIA TINFEXIT AMODE(24),DATON                 08114001
+*     ERROR EXITS:  ERR25 AMODE(24),DATON                               08156801
+*     REFERENCED DATA:                                                  08200000
+*                                                                       08250000
+*     REGISTER USAGE:                                                   08300000
+*                   R1 - ADDR OF VIOTAB-ENTRY                           08350000
+*                   R2 - ADDR OF VTAB-ENTRY                             08400000
+*                   R3 - WORK REGISTER                                  08450000
+*                   R4 - WORK REGISTER                                  08500000
+*                   R5 - WORK REGISTER                                  08550000
+*                   R6 - ADDR OF DISPATCHER                             08600000
+*                   R7 - LINK REGISTER TO 1ST LEVEL                     08650000
+*                   R8 - BASE ADDR OF DATA AREA                         08700000
+*                   R9 - BASE ADDR OF CODE AREA                         08750000
+*                   RA - LINK REGISTER TO 2ND LEVEL                     08800000
+*                   RB - ADDR OF BLOCK-TABLE ENTRY                      08850000
+*                   RC - ADDR OF PTE BEL. TO RD (/370 ONLY)             08900000
+*                   RD - PAGE ADDR BELONGING TO R2                      08950000
+*                   RE - WORK REGISTER                                  09000000
+*-------------------------------------------------------------*         09050000
+         SPACE 2                                                        09100000
+VIOPOINT DS    0H                                                       09150000
+         USING DISP,R6                                                  09200000
+         L     R8,APMGMDAT       GET BASE FOR DATA AREA                 09250000
+         USING PMGMDATA,R8                                              09300000
+         L     R9,ASGPSVC        GET BASE FOR CODE AREA                 09350000
+         USING SGPSVC,R9                                                09400000
+         DROP  R8                                                       09450000
+         SPACE 1                                                        09500000
+*    VALIDATE VIOTAB ENTRY PASSED BY USER                               09550000
+         SPACE 1                                                        09600000
+         LA    R2,VIOTABLN(R1)  GET END OF VIOTAB ENTRY                 09650000
+         SLR   R5,R5             CHECK FOR KEY ZERO                     09700000
+*SGLINK  VALWRITE,INPUT=(R1,R2,R5,R6,R8),WORK=(R2),OUTPUT=(R5)          09750001
+         BAL   R8,VALWRITE       VALIDATE VIOTAB-ENTRY                  09800000
+         B     VIOPTER1          ERROR                                  09850000
+         B     VIOPTER1          ERROR                                  09900000
+         LTR   R5,R5             IS IT REALY KEY ZERO                   09950000
+         BNZ   VIOPTER1          NO, ERROR                              10000000
+*        AMODESW SET,AMODE=31,WR=(R8)                          @D52VDRP 10016601
+         AMODESW SET,AMODE=31,WR=(R8)                          @D52VDRP 10033201
+*   CHECK WETHER VIOTABE IS PFIXED, ERROR IF NOT               @D51GDRP 10100000
+         LRA   R8,0(R1)          IS PAGE IN STORAGE            @D51GDRP 10150000
+         BNZ   VIOPTER1          NO, ERROR INVALID ADDRESS     @D51GDRP 10200000
+         N     R8,PADDRMSK       SET ADDRESS ON PAGE BOUNDARY  @D51GDRP 10250000
+         SRL   R8,PNSHIFT-PNPFTESH GET OFFSET IN PFT           @D51GDRP 10300000
+         A     R8,APFT           POINT TO PFTE                 @D51GDRP 10350000
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 10362501
+         AMODESW SET,DAT=OFF                                   @D52VDRP 10375001
+         USING PFTE,R8                                         @D51GDRP 10400000
+*     GENSERV  TEST,FIELD=PFIXC,REG=(R4),LAB=VIOPTER0,BC=BZ    @D52VDVB 10422201
+      GENSERV  TEST,FIELD=PFIXC,REG=(R4),LAB=VIOPTER0,BC=BZ    @D52VDVB 10444401
+         DROP  R8                                              @D52VDRP 10466601
+*        AMODESW SET,DAT=ON                                    @D52VDRP 10474901
+         AMODESW SET,DAT=ON                                    @D52VDRP 10483201
+         L     R8,APMGMDAT       GET BASE FOR DATA AREA                 10600000
+         USING PMGMDATA,R8                                              10650000
+         USING VIOTABE,R1                                               10700000
+         CLC   VIOTBSID,VIOPLID  IS IT A VIOTABE                        10750000
+         BNE   VIOPTER1          NO, ERROR                              10800000
+         LH    R4,TID                                                   10850000
+         CH    R4,VIORTID        IS REQUESTOR THE OWNER                 10900000
+         BE    VIOPT000          YES, O.K.                              10950000
+         CLC   TID,ARTIDH        IS REQUEST FROM SYSTEM TASK   @D66ODOW 11000009
+         BNL   VIOPTER1          NO, ERROR                              11050000
+         STH   R4,VIORTID        SET SYSTEM TASK-ID AS REQUESTOR        11100000
+VIOPT000 LTR   R0,R0             IS IT A VALID BYTE ADDR.               11650000
+         BM    VIOPTER1          NO, ERROR                              11700000
+         L     RD,VIORBPNT       * DOES A VALID                         11750000
+         LTR   RD,RD             * PAGE EXIST                           11800000
+         BM    VIOPTER1          NO, ERROR INVALID ADDRESS              11850000
+         ICM   RA,B'1111',VIOADRB    UNTOUCHED VIORB           @D64ADVB 11855003
+         BZ    VIOPTER1          NO,  --------->               @D64ADVB 11860003
+         CLR   RA,R1             1ST VIOPOINT OF COPIED VIORB  @D64ADVB 11865003
+         BE    VIOPT002          NO,  --------->               @D64ADVB 11870003
+         OI    VIOFLAG,VIORBCOP  INDICATE COPIED VIORB         @D64ADVB 11875003
+         STCM  R1,B'1111',VIOADRB    REPLACE VIORB ADDR        @D64ADVB 11880003
+         SLR   R5,R5             1ST VIOPOINT                  @D64ADVB 11885003
+         ST    R5,VTABEACT       CLEAR COPIED VTABE ADDR       @D64ADVB 11890003
+VIOPT002 DS    0H                                              @D64ADVB 11895003
+         NI    VIOFLAG,X'FF'-VIOSTSAV RESET STATUS SAVED INDICATION     11900000
+         MVI   VIORBCM1,ZERO     RESET ALL INDICATIONS IN VIORB         11950000
+         MVI   VIORBRTC,ZERO     RESET ALL INDICATIONS IN VIORB         12000000
+         C     R0,VIORBASZ       BYTE ADDR WITHIN ACT. FILE             12050000
+         BNL   VIOPTEOF          NO, INDICATE END OF FILE               12100000
+         N     R0,EPADRMSK       GET ADDR ON BOUNDARY          @DA37768 12150000
+         BAL   RA,GETBLK         GET TOTAL BLOCKNUMBER IN VIO STOR.     12200000
+*SGLINK  GETBLK,INPUT=(R0,R1,R8,R9,RA),OUTPUT=(RB),WORK=(R4,R5),       *12233301
+               AMODE=31 DATON                                           12266601
+         ST    RB,VIOBLKN        SAVE TOTAL BLOCK NUMBER       @D14NDFG 12350000
+         L     R5,VTABEACT       GET ACTIVE VTAB ENTRY                  12400000
+         LTR   R5,R5             1ST VIOPOINT                           12450000
+         BZ    VIOPT005          YES, BRANCH                            12500000
+         USING VTABE,R5                                                 12550000
+         C     RB,VTBLKN         SAME BLOCK AS ALREADY ACTIVE  @D14NDFG 12600000
+         BNE   VIOPT005          NO, BRANCH                             12650000
+         TM    VTFLG,VTPAGERR    IS PAGE IN ERROR                       12700000
+         BO    VIOPTER2          YES, BRANCH                            12750000
+         B     VIORETFP          RETURN TO USER (FAST SVC)              12800000
+         DROP  R5                FORGET BASE FOR VTABE                  12850000
+VIOPT005 BAL   R7,VIOFPG2N       FREE ACTIVE ADDRESS                    12900000
+*SGLINK  VIOFPG2N,INPUT=(R1,R7,R8,R9),OUTPUT=(),WORK=(R2,R4,R5,RD),    *12950001
+               AMODE=31 DATON                                           13000001
+         CLI   VIORBRTC,VIORBINC ERROR DETECTED IN VIOFRPAG             13025001
+         BE    VIORETFP           YES, RETURN                           13050000
+         ST    R0,VIORBRBA       SET REQUESTED BLOCK ADDR.              13150000
+         SLL   RB,BLKOSHFT       GET OFFSET IN BLOCK TABLE     @D51GDTP 13550000
+         A     RB,VIOBLKTB       GET ADDR OF BLOCK-TABLE ENTRY          13600000
+         USING BLKTBE,RB                                                13650000
+         TM    BLKSTAT,BLKFRCO   IS PAGE CONNECTED TO BLOCK             13700000
+         BNZ   VIOPT100          NO, BRANCH                             13750000
+         SPACE 2                                                        13800000
+*   PAGE CONNECTED TO BLOCK                                             13850000
+         SPACE 1                                                        13900000
+         L     RD,BLKPAG         GET ADDRESS OF PAGE           @D51GDTP 14200000
+         N     RD,PADDRMSK       GET ADDR OF CONNECTED PAGE             14300000
+         ST    RD,VIORBPNT       SET IT IN VIORB FOR USER               14350000
+         LR    R2,RD             SAVE PAGE ADDR                         14400000
+         S     R2,AVPBEG         RELATIV TO V-POOL BEGIN       @D14NDFG 14450000
+         SRL   R2,VTOFSHFT                                              14500000
+         A     R2,VIOAVTAB       GET ADDR OF VTAB ENTRY                 14550000
+         ST    R2,VTABEACT       SET ACTIVE VTAB ADDR IN VIOTABE        14600000
+         USING VTABE,R2                                                 14650000
+         CLI   VTUSCNT,ZERO      IS IT SECONDARY POINT                  14700000
+         BH    VIOPT010          YES, BRANCH                            14750000
+         LR    R5,R2             GET VTABE IN CORRECT REGISTER          14800000
+         BAL   RA,VTAVREM        REMOVE ENTRY FROM AVAILABLE QUEUE      14850000
+*SGLINK  VTAVREM,INPUT=(R5,R8,R9,RA),WORK=(R3,R4),AMODE=31 DATON        14900001
+VIOPT010 DS    0H                                                       14950000
+         IC    R4,VTUSCNT        * INCREASE                    @D64ADVB 14975003
+         LA    R4,1(,R4)         * USAGE COUNT                 @D64ADVB 15000003
+         STC   R4,VTUSCNT        * BY ONE                      @D64ADVB 15025003
+         LRA   RD,0(RD)          CHECK PAGE STATUS             @D14NDFG 15050000
+         BC    8,VIORETFP        BRANCH IF ADDRESSABLE         @D64ADVB 15100003
+         USING PTE,RD                                                   15200000
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 15212501
+         AMODESW SET,DAT=OFF                                   @D52VDRP 15225001
+         TM    PTESTAT,PTEPGCO ...                             @D14ADVB 15250000
+         BO    VIOPT012          CONNECTED   --->              @D14ADVB 15300000
+         TM    PTESTAT,PTEINVAD PAGE DISCONNECTED              @D14ADVB 15350000
+         BNO   INCRENQ           YES --->                      @D14ADVB 15400000
+         BAL   R5,PMRHWERR       ERROR, INVALID ADDRESS AREA            15450000
+         SPACE 1                                                        15500000
+*    PAGE CONNECTED TO BLOCK IS IN CONNECTED STATE                      15550000
+         SPACE 1                                                        15600000
+VIOPT012 SR    R4,R4             GET                           @D51GDRP 15650000
+         SGCOV SGPSVC,MC=0       PAGE CONNECTED TO BLOCK       @D52VDRP 15675001
+         ICM   R4,M7,VTFRAM        FRAME #                     @D51GDRP 15700000
+         LR    R5,R4             GET                           @D52VDRP 15750001
+         SLL   R5,PNPFTESH           OFFSET IN PAGE FRAME TABLE@D52VDRP 15800001
+         A     R5,APFT           GET ADDR OF PAGE FRAME TABLE ENTRY     15850001
+         USING PFTE,R5                                                  15900000
+         TM    PFTEFLG,PCBIT     IS FRAME ADDRESSABLE                   15950000
+         DROP  R5                                                       16050000
+         BO    INCRENQ           NO, BRANCH                             16066601
+         SLL   R4,PF4SHIFT       (FRAME#)*16 FOR PTE           @D52VDRP 16083201
+         STCM  R4,7,PTEFRA       SET PAGE ADDRESSABLE(LEAV PDSB@D51GDTP 16450001
+         DROP  RD                FORGET BASE FOR PTE                    16550000
+         B     VIORETFP          POST, RETURN TO CALLER (FAST SVC)      16750000
+         DROP  R2                FORGET BASE FOR VTABE                  16800000
+         SPACE 2                                                        16850000
+*     NO PAGE CONNECTED TO BLOCK                                        16900000
+         SPACE 1                                                        16950000
+VIOPT100 DS    0H                                              @D52VDRP 16972201
+         SGCOV SGPSVC,MC=1       NO PAGE CONNECTED TO BLOCK    @D52VDRP 16994401
+         TM    BLKSTAT,BLKDISC   BLOCK DISCONNECTED                     17016601
+         BZ    VIOPTER2          NO, BRANCH   BLOCK IS IN ERROR         17050000
+         DROP  RB                 FORGET BASE FOR BLKTBE                17100000
+         BAL   R7,VIOGETPG       GET FREE VTAB ENTRY                    17150000
+*SGLINK  VIOGETPG,INPUT=(R1,R6,R7,R8,R9),OUTPUT=(R2,RD),               *17200001
+               WORK=(R3,R4,R5,RA,RB,RC),AMODE=31, DATON                 17250001
+.*   AT THIS POINT THE ONLY VALID REGISTERS HAVE TO BE                  17300000
+.*   R1 - ADDR OF VIOTAB ENTRY                                          17350000
+.*   R2 - ADDR OF VTAB ENTRY                                            17400000
+.*   R8 - BASE ADDR OF DATA AREA   (PMGMDATA)                           17450000
+.*   R9 - BASE ADDR OF CODE        (SGPSVC)                             17500000
+.*   RD - PADDR OF PAGE BELONGING TO VTAB ENTRY                         17550000
+         USING VTABE,R2                                                 17700000
+.*DEL    XC    VTABE(LVTABE),VTABE CLEAR RETURNED ENTRY                 17750000
+         ST    R2,VTABEACT       SET ACTIVE VTABE ADDR                  17800000
+         ST    RD,VIORBPNT       SET PAGE ADDR RETURNED TO USER         17850000
+         MVI   VTUSCNT,1         SET USAGE COUNT TO ONE                 17900000
+         LH    RB,VIOOWNER       GET PART ID OF REQUESTOR               17950000
+         STH   RB,VTOWNER        SET IT IN VTAB ENTRY                   18000000
+         L     RB,VIOBLKN        GET TOTAL BLOCK NUMBER        @D14NDFG 18050000
+         ST    RB,VTBLKN         SET TOTAL BLOCK NUMBER        @D14NDFG 18100000
+         SLL   RB,BLKOSHFT       GET OFFSET IN BLOCK TABLE     @D51GDTP 18150000
+         A     RB,VIOBLKTB       GET ADDR OF BLOCK-TABLE ENTRY          18200000
+         USING BLKTBE,RB                                                18250000
+         L     RE,BLKTBE         GET BLOCK TABLE ENTRY         @D52VDRP 18640001
+         ST    RE,BLKTBSAV       SAVE OLD BLOCK-TABLE ENTRY    @D52VDRP 18680001
+         N     RE,PMPTEMSK       CLEAR OUT BITS                @D51GDTP 18720001
+         SRL   RE,PNSHIFT-PF4SHIFT GET FRAME # *16             @D52VDRP 18760001
+         STCM  RD,14,BLKTBE      SET NEW BLOCK TABLE ENTRY     @D51GDTP 18800000
+         NI    BLKSTAT2,XFF-BLKPDS TURN OFF PDSBIT             @D51GDTP 18850000
+         LA    RB,BLKTBSAV                                              18950000
+         SLR   R4,R4             SET NO COPY ON PDS                     19000000
+.*  THE PTEIBIT HAS TO BE ON IN PTE, THEREFORE THE LRA RETURNS THE      19449801
+.*   REAL PTE ADDRESS (ASSUMING STE IS VALID)                  @D52VDRP 19471201
+*        GENSERV LRADBG,RREG=(RC),VADD=(RD),ERR=NPAGX  GET REAL ADDRESS*19492601
+               OF PTE (PTE HAS TO BE INVALID).                 @D52VDRP 19514001
+         GENSERV LRADBG,RREG=(RC),VADD=(RD),ERR=NPAGX          @D52VDRP 19535401
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 19556801
+         AMODESW SET,DAT=OFF                                   @D52VDRP 19578201
+         USING PTE,RC                                                   19600000
+         NI    PTESTAT2,XFF-PTEPDS SET OFF PDSBIT              @D51GDTP 19700000
+         TM    BLKSTAT2,BLKPDS   WAS PDS BIT ON                @D51GDTP 19750000
+         BNO   VIOPT115          BRANCH IF NOT                 @D51GDTP 19800000
+         OI    PTESTAT2,PTEPDS   TURN IT ON                    @D51GDTP 19850000
+VIOPT115 DS    0H                CONTINUE MAINLINE             @D51GDTP 19900000
+         TM    BLKSTAT,BLKFRCO   FRAME CONNECTED TO BLOCK               20000000
+         BNO   VIOPT130          NO, BRANCH                             20050000
+         SGCOV SGPSVC,MC=2       IND. FRAME CONNECTED TO BLOCK @D52VDRP 20075001
+         LR    R5,RE             SAVE FRAME NR * 2**4                   20100000
+         SRL   RE,PF4SHIFT       GET FRAME #                   @D51GDTP 20150001
+         STCM  RE,M7,VTFRAM      SAVE IT IN VTAB-ENTRY         @D51GDRP 20200000
+         SLL   RE,PNPFTESH       GET OFFSET IN PAGE FRAME TABLE@D52VDRP 20250001
+         A     RE,APFT           GET PFTE ADDR                          20300000
+         USING PFTE,RE                                                  20350000
+         LR    R3,RD             GET PAGE ADDRESS              @D14NDFG 20400000
+         SRL   R3,PNSHIFT        PAGE NUMBER                   @D51GDRP 20550000
+         STCM  R3,M7,PFTEEPA#    SET PAGE NUMBER IN PFTE       @D51GDRP 20600001
+         NI    S370FLG,XFF-PFTEBLK RESET BLOCK CONNECTED TO FRAME       20650000
+*        AMODESW SET,DAT=ON      ENTER VIRTUAL MODE            @D52VDRP 20652701
+         AMODESW SET,DAT=ON                                    @D52VDRP 20655401
+         L     R3,ASCBATAB       GET ADDR OF                   @D52VDRP 20658301
+         USING SCBATAB,R3        *  SCB FOR                    @D52VDRP 20666601
+         L     R3,ASCBS          *      SHARED AREA            @D52VDRP 20674901
+         DROP  R3                                              @D52VDRP 20683201
+*        AMODESW SET,DAT=OFF     ENTER REAL MODE AGAIN         @D52VDRP 20685901
+         AMODESW SET,DAT=OFF                                   @D52VDRP 20688601
+         ST    R3,PFTESCB        SET IT IN PFTE                @D52VDRP 20691501
+         TM    PFTEFLG,PCBIT     FRAME CONNECTED                        20700000
+         DROP  RE                DROP BASE FOR PFTE                     20712501
+         BO    VIOPT120          YES, BRANCH                            20750000
+         STCM  R5,7,PTEFRA       PT-ENTRY IS ADDRESSABLE NOW   @D51GDTP 21050000
+         B     VIORETFP          POST AND RETURN (FAST SVC)    @D64ADVB 21100003
+         SPACE 1                                                        21750000
+VIOPT120 O     R4,PTECON         INDICATE PAGE CONNECTED                21800000
+         SGCOV SGPSVCS,MC=0      FRAME CON. TO BLOCK IS CONNECT@D52VDRP 21825001
+         SLL   R5,PFSHIFT        GET FRAME ADDR                         21850000
+         ISKE  R5,R5             GET KEY FROM FRAME            @D51GDTP 22150000
+         N     R5,ISKFMASK       ... WITHOUT R-, C-BIT                  22300000
+         SLL   R5,8              ... INTO FIRST BYTE           @D14ADVB 22350000
+         OR    R5,R4             BUILD PT-ENTRY                         22400000
+         STCM  R5,7,PTEFRA       AND SET IT                    @D51GDTP 22650000
+         B     INCRENQ                                         @D64ADVB 22700003
+         SPACE 2                                                        22800000
+*   BLOCK IS DISCONNECTED                                               22850000
+*        RE - BLKTBE WITHOUT STATE ( I.E. STORAGE KEY)                  22900000
+         SPACE 1                                                        22950000
+VIOPT130 DS    0H                                                       23000000
+         LA    R4,PTEIBIT(R4)    INDICATE PAGE IS DISCONNECTED          23050000
+         OR    R4,RE             BUILD PT-ENTRY                         23100000
+         STCM  R4,7,PTEFRA       AND SET IT                    @D51GDTP 23350000
+         DROP  RB                DROP BASE FOR BLKTBE                   23466601
+         DROP  RC                 FORGET BASE FOR PTE                   23500000
+         SPACE 2                                                        23550000
+INCRENQ  DS    0H                                              @D52VDRP 23591501
+*        AMODESW SET,DAT=ON                                    @D529DRP 23599801
+         AMODESW SET,DAT=ON                                    @D529DRP 23608101
+*        AMODESW CALL,AMODE=24,ADDRESS=VIOSAVST,REGS=(RA,RA)   @D52VDRP 23750001
+         AMODESW CALL,AMODE=24,ADDRESS=VIOSAVST,REGS=(RA,RA)   @D52VDRP 23775001
+         IC    R5,VTPFCNT         *                            @D51GDRP 23800000
+         LA    R5,1(R5)           * INCREASE COUNTER                    23850000
+         STC   R5,VTPFCNT         * FOR PEND. PAGE-FAULTS      @D51GDRP 23900000
+         DROP  R2                 FORGET BASE FOR VTABE                 23950000
+         LA    RC,VIOTIB         GET ADDR OF TIB FOR VIO-REQ.           24000000
+         LH    RB,VIOOWNER       * GET ADDR                             24050000
+*        GENSERV GETPCB,PIK=(RB),PCB=(RB)  * OF PCB            @D52VDRP 24100001
+         GENSERV GETPCB,PIK=(RB),PCB=(RB)                      @D52VDRP 24150001
+         CLC   VIORTID,ARTIDH    REQUEST FROM SYSTEM TASK      @D66ODOW 24250009
+         BNL   ENQ1              NO, BRANCH                             24300000
+         L     RB,ASYSPCB        YES, HANDLE AS SYSTEM PAGE-FAULT       24350000
+ENQ1     TM    VIOFLAG,ASYNCH    IS IT ASYNCHRONEOUS REQ.               24400000
+         BO    ENQASYN           YES, BRANCH                            24450000
+         L     R5,ASRQTAB        GET SRQ TABLE ADDRESS         @D61RDGL 24483301
+         LA    R5,SRQPMR-SRQTAB(,R5)  RESOURCE QUEUE           @D61RDGL 24516601
+         BAL   RF,UNPOST         SET TASK IN WAIT                       24550000
+*SGLINK  UNPOST,INPUT=(R5,R6,RF),WORK=(R5,RE)                           24600000
+ENQASYN  L     R9,APMRADR        GET BASE FOR PMR CODE                  24650000
+         L     RD,VIORBPNT       GET PAGE ADDR FOR ENQUVIO              24700000
+         B     ENQUVIO-PMRADR(R9) GO TO ENQ. VIO REQ.                   24850000
+*SGLINK  ENQUVIO,INPUT=(R6:ADISP,R8:APMGMDAT,R9:BASE,RB:PCB,RC:VIOTIB,R*24900001
+               D:PAGE),AMODE=31 DATON                                   24950001
+         SPACE 2                                                        25000001
+VIOPTEOF MVI   VIORBRTC,VIORBEOF  INDICATE END OF FILE                  25300000
+         SPACE 2                                                        25350000
+VIORETFP DS    0H                                              @D22ADVB 25370000
+*        AMODESW SET,DAT=ON                                    @D52VDRP 25390000
+         AMODESW SET,DAT=ON                                    @D52VDRP 25410000
+         OI    VIORBCM1,VIORBTRB  POST VIORB                   @D64ADVB 25430003
+         BAL   R8,VIOPSTPW       POST POWER MASTER ECB IF APPL.@DA35279 25450000
+*SGLINK  VIOPSTPW,INPUT=(R1,R8,R9),WORK=(RF),AMODE=31 DATON             25475001
+         L     RC,FSVCBASE        GET BASE FOR FAST SVC'S      @D64ADVB 25512503
+         USING SGTINF,RC                                                25550000
+         L     RD,FSVCBAS2        GET SECOND BASE FOR SGTINF   @D14BDVB 25600000
+         USING SGTINF+X'1000',RD                               @D14BDVB 25650000
+*        AMODESW BRANCH,AMODE=24,ADDRESS=TINFEXIT,REG=(R8)             *25670001
+                                  ===========> RESTORE USERS REGISTERS *25690001
+                                                 AND RETURN    @D52VDRP 25710001
+         AMODESW BRANCH,AMODE=24,ADDRESS=TINFEXIT,REG=(R8)              25720001
+*SGLINK  TINFEXIT,INPUT=(RC,RD),WORK=()                        @D52VDRP 25735001
+         DROP  R1,RC,RD           FORGET BASE FOR VIOTABE,SGTINF        25750000
+         SPACE 1                                                        25800000
+VIOPTER0 DS    0H                                              @D52VDVB 25816601
+*        AMODESW SET,DAT=ON                                    @D52VDRP 25824901
+         AMODESW SET,DAT=ON                                    @D52VDRP 25833201
+VIOPTER1 L     R8,APMGMDAT        RESTORE BASE FOR DATA AREA            25850000
+         OI    VIOSWTCH,VIOERR25  DON'T SET STATUS SAVED       @DA42963 25857501
+*        AMODESW CALL,AMODE=24,ADDRESS=VIOSVST1,REGS=(RA,RA)   @D52VDRP 25865001
+         AMODESW CALL,AMODE=24,ADDRESS=VIOSVST1,REGS=(RA,RA)   @D52VDRP 25880001
+         NI    VIOSWTCH,XFF-VIOERR25 RESET FLAG                @DA42963 25895001
+*        AMODESW BRANCH,AMODE=24,ADDRESS=ERR25,REG=(RA)                *25910001
+                                  ===========> CANCEL USER, INVALID    *25940001
+                                                ADDRESS        @D52VDRP 25970001
+         AMODESW BRANCH,AMODE=24,ADDRESS=ERR25,REG=(RA)                 25985001
+         DROP  R6                 FORGET BASE FOR DISP                  26000000
+         SPACE 1                                                        26007100
+         USING VIOTABE,R1                                      @D64ADVB 26014203
+VIOPTER2 MVI   VIORBRTC,VIORBERR  INDICATE UNREC. ERROR                 26021300
+         SGCOV SGPSVCS,MC=1       INDICATE I/O ERROR           @D52VDRP 26028400
+         B     VIORETFP           RETURN TO USER                        26035500
+         DROP  R1                                              @D64ADVB 26042603
+         SPACE 3                                                        26050000
+*    SAVE USER STATUS AT SVC-TIME IN USER'S SAVE AREA                   26100000
+*    EXECUTES WITH AMODE(24),DATON                             @D52VDRP 26125001
+         USING VIOTABE,R1                                               26150000
+VIOSAVST TM    VIOFLAG,VIOSTSAV   STATUS ALREADY SAVED                  26200000
+         BO    VIOSVST2           YES, RETURN                  @D52VDRP 26250001
+VIOSVST1 STM   R1,RF,PMRSAVE      SAVE ACTUAL REGISTERS                 26300000
+         L     RC,FSVCBASE        GET BASE FOR TEMP. SAVEAREA           26350000
+         USING SGTINF,RC                                                26400000
+         L     RD,FSVCBAS2        GET SECOND BASE FOR SGTINF   @D14BDVB 26450000
+         USING SGTINF+X'1000',RD                               @D14BDVB 26500000
+         BAL   R9,TINFGENT        SAVE STATUS                           26550000
+         DROP  R9                 DROP BASE FOR CODE           @D52VDRP 26575001
+         DROP  RC,RD                                                    26600000
+         L     R8,APMGMDAT                                              26650000
+         LM    R1,RF,PMRSAVE      RESTORE ACTUAL REGISTERS              26700000
+         USING SGPSVC,R9          RESET BASE                   @D52VDRP 26725001
+         TM    VIOSWTCH,VIOERR25  VIORB OK?                    @DA42963 26733301
+         BO    VIOSVST2           NO, BRANCH                   @DA42963 26741601
+         OI    VIOFLAG,VIOSTSAV   INDICATE STATUS SAVED                 26750000
+VIOSVST2 DS    0H                                              @D52VDRP 26775001
+*        AMODESW RETURN,REG=(RA)  ===========> RETURN          @D52VDRP 26800001
+         AMODESW RETURN,REG=(RA)  ===========> RETURN          @D52VDRP 26825001
+*--------------------------------------------------------------@DA35279 26850000
+*     ROUTINE NAME: VIOPSTPW                                   @DA35279 26900000
+*     MODULE:       SGPSVC                                     @DA35279 26950000
+*     MODE:         REENTRANT, AMODE(31),DATON                 @DA35279 27000001
+*     FUNCTION:     POST POWER MASTER ECB ALSO WHEN VIORB IS   @DA35279 27050000
+*                   POSTED                                     @DA35279 27100000
+*     CALLER:       VIOPOINT                                   @DA35279 27150000
+*     CALLED ROUT:  NONE                                       @DA35279 27200000
+*                                                              @DA35279 27250000
+*     INPUT:        R1 ---> VIOTABE                            @DA35279 27300000
+*     OUTPUT:       NONE                                       @DA35279 27350000
+*     WORK:         RF                                         @DA35279 27400000
+*     LINK:         R8                                         @DA35279 27450000
+*--------------------------------------------------------------@DA35279 27500000
+*SGLINK  VIOPSTPW,S,INPUT=(R1,R8,R9),WORK=(RF),AMODE=31 DATON           27525001
+         SPACE 1                                                        27550001
+VIOPSTPW DS    0H                                              @DA35279 27575001
+         L     RF,APOWTB          ADDRESS TO POWER COMM. AREA  @DA35279 27600000
+         LTR   RF,RF              POWER ACTIVE ?               @DA35279 27650000
+         BZR   R8                 NO  ==> RETURN               @DA35279 27700000
+         USING PADS,RF                                         @DA35279 27750000
+         CLC   VIORTID,CATI       POWER OWNER OF THIS REQUEST? @DA35279 27800000
+         BNER  R8                 NO  ==> RETURN               @DA35279 27850000
+         OI    PAEB+2,TRABIT      POST POWER MASTER ECB        @DA35279 27900000
+         BR    R8                 RETURN TO CALLER             @DA35279 27950000
+         DROP  RF                                              @DA35279 28000000
+         DROP  R1                                                       28050000
+         TITLE 'VSE/AF SUPERVISOR   SGPSVC         VIOPOINT-SERVICE    *28150001
+                      VIOGETPG-ROUTINE'                                 28200000
+*-------------------------------------------------------------*         28250000
+*     ROUTINE NAME: VIOGETPG                                            28300000
+*     MODULE:       SGPSVC                                              28350000
+*     MODE:         REENTRANT                                           28400000
+*     FUNCTION:     GET A FREE PAGE OUT OF V-POOL. (I.E. VTUSCNT<0)     28450000
+*                   IF THE FREE QUEUE IS EMPTY A PAGE OUT OF THE        28500000
+*                   AVAILABLE QUEUE HAS TO BE FREED.                    28550000
+*     CALLER:       VIOPOINT WITH AMODE(31),DATON                       28600001
+*     ENTRY POINT:                                                      28650000
+*            VIOGETPG                                                   28700000
+*     OPERATION:                                                        28750000
+*       LABEL VIOGETPG                                                  28800000
+*       IF FREE PAGE QUEUE NOT EMPTY                                    28850000
+*         THEN                                                          28900000
+*           REMOVE 1ST ELEMENT FROM FREE QUEUE                          28950000
+*           VPAGE = ADDR OF VTABE                                       29000000
+*         ELSE                                                          29050000
+*           IF AVAILABLE PAGE QUEUE EMPTY THEN ****ERROR****            29100000
+*           GET 1ST ENTRY FROM AVAILABLE PAGE QUEUE                     29150000
+*           REMOVE VTABE FROM AVAILABLE QUEUE                           29200000
+*           VPAGE = ADDR OF VTABE                                       29250000
+*           IF PAGSTAT = DISC                                           29300000
+*             THEN                                                      29350000
+*               BLKSTAT(VTBLKN)=PAGSTAT                                 29400000
+*               BLKPAG(VTBLKN) = STORAGE KEY OF PAGE                    29450000
+*             ELSE      * PAGSTAT=CON, PFSTAT=ADDR|CON                  29500000
+*               BLKPAG(VTBLKN) = VTFRAM                                 29550000
+*               BLKSTAT(VTBLKN) = BLKFRCO                               29600000
+*               PFPNR(VTFRAM) = VTBLKN                                  29650000
+*               PFSTAT(VTFRAM) = OSET(BLK)                              29700000
+*               PAGSTAT=DISC                                            29750000
+*           ENDIF                                                       29800000
+*       ENDIF                                                           29850000
+*       RETURN TO CALLER WITH AMODE(31),DATON                           29900001
+*                                                                       29950000
+*     INPUT:                                                            30000000
+*                   R1 - ADDR OF VIOTAB ENTRY                           30050000
+*                   R6 - ADDR OF DISPATCHER                             30100000
+*     OUTPUT:       R2 - VPAGE, ADDR OF FREE VTAB-ENTRY                 30150001
+*                   RD - ADDR OF PAGE BELONGING TO VTABE                30200000
+*     RETURN CODES:                                                     30250000
+*                                                                       30300000
+*     CALLED ROUTINE:                                                   30350001
+*     RETURN:       CALLER                                              30400000
+*     ERROR EXITS:  NONE                                                30450000
+*     REFERENCED DATA:                                                  30500000
+*                                                                       30550000
+*     REGISTER USAGE:                                                   30600000
+*                    R0 - UNCHANGED                                     30650000
+*                    R1 - ADDR OF VIOTAB ENTRY                          30700000
+*                    R2 - ADDR OF VTAB ENTRY                            30750000
+*                    R3 - CONTENT OF BLOCK TABLE ENTRY                  30800000
+*                    R4 - WORK REGISTER                                 30850000
+*                    R5 - WORK REGISTER                                 30900000
+*                    R8 - BASE ADDR OF DATA AREA                        30950000
+*                    R9 - BASE ADDR OF CODE AREA (SGPSVC)               31000000
+*                    RA - WORK REGISTER                                 31050000
+*                    RB - ADDR OF BLOCK TABLE ENTRY                     31100000
+*                    RC - WORK REGISTER/ ADDR OF PTE                    31150000
+*                    RD - ADDR OF PAGE BELONGING TO VTAB ENTRY          31200000
+*-------------------------------------------------------------*         31250000
+*SGLINK  VIOGETPG,S,INPUT=(R1,R6,R7,R8,R9),OUTPUT=(R2,RD),             *31266601
+               WORK=(R3,R4,R5,RA,RB,RC),AMODE=31, DATON                 31283201
+         SPACE 1                                                        31300000
+VIOGETPG DS    0H                                                       31350000
+         L     R2,VTFRBEG                                               31450000
+         LTR   R2,R2             FREE QUEUE EMPTY                       31500000
+         BZ    VIOGTPG1          YES, BRANCH                            31550000
+         USING VTABE,R2                                                 31600000
+         SPACE 1                                                        31650000
+*    REMOVE ENTRY FROM TOP OF FREE QUEUE                                31700000
+         SPACE 1                                                        31750000
+         L     R5,VTFPTR                                                31800000
+         ST    R5,VTFRBEG        SET NEW 1ST EL. ADDR.                  31850000
+         SPACE 1                                                        31900000
+*  GET ADDR OF PAGE BELONGING TO VTAB-ENTRY (IN RD)                     31950000
+         SPACE 1                                                        32000000
+         LR    RD,R2                                                    32050000
+         S     RD,VIOAVTAB                                              32100000
+         SLL   RD,VTOFSHFT       BYTE OFFSET IN V-POOL                  32150000
+         A     RD,AVPBEG         PAGE ADDRESS                  @D14NDFG 32200000
+         B     VIOGTPGX          ------------>                 @D64ADVB 32233303
+         SPACE 2                                               @D64ADVB 32266603
+VIOGTPG1 L     R2,VTAVBEG        GET 1ST EL. OF AVAILABLE QUEUE         32300000
+         SGCOV SGPSVC,MC=3       IND. FREE VTAB QUEUE EMPTY    @D52VDRP 32325001
+         LTR   R2,R2             AVAILABLE QUEUE EMPTY                  32350000
+         BNZ   VIOGTPG2          NO, BRANCH                             32400000
+         BAL   R5,PMRHWERR       YES, ERROR                             32450000
+         SPACE 1                                                        32500000
+*  REMOVE ENTRY FROM TOP OF AVAILABLE QUEUE                             32550000
+         SPACE 1                                                        32600000
+VIOGTPG2 L     R5,VTFPTR                                                32650000
+         ST    R5,VTAVBEG        SET NEW 1ST EL. ADDR.                  32700000
+         LTR   R5,R5             LAST ELEMNT REMOVED                    32750000
+         BNZ   VIOGTPG3          NO, BRANCH                             32800000
+         ST    R5,VTAVEND        SET NEW ADDR OF LAST ELEMNT            32850000
+         SPACE 1                                                        32900000
+*  GET ADDR OF BLOCK TABLE ENTRY BELONGING TO VTAB ENTRY (IN RB)        32950000
+         SPACE 1                                                        33000000
+VIOGTPG3 L     RB,VTBLKN                                       @D14NDFG 33050000
+         SLL   RB,BLKOSHFT       GET OFFSET IN BLOCK-TABLE     @D51GDTP 33100000
+         A     RB,VIOBLKTB                                              33150000
+         USING BLKTBE,RB                                                33200000
+         SPACE 1                                                        33250000
+*  GET ADDR OF PAGE BELONGING TO VTAB-ENTRY (IN RD)                     33300000
+         SPACE 1                                                        33350000
+         LR    RD,R2                                                    33400000
+         S     RD,VIOAVTAB        VTABE OFFSET                          33450000
+         SLL   RD,VTOFSHFT        V-POOL OFFSET                         33500000
+         A     RD,AVPBEG          ADDRESS OF V-POOL PAGE       @D14NDFG 33550000
+         SPACE 1                                                        33600000
+*    TEST PAGE STATUS                                                   33650000
+         SPACE 1                                                        33700000
+         LRA   RC,0(RD)                                        @D14NDFG 33800000
+         BC    2,VIOGTPG4        SKIP IF NOT ADDRESSABLE       @D14NDFG 33900000
+         BAL   R5,PMRHWERR       ERROR, PAGE IS ADDRESSABLE             33950000
+VIOGTPG4 DS    0H                                              @D52VDRP 33962501
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 33975001
+         AMODESW SET,DAT=OFF                                   @D52VDRP 33987501
+         USING PTE,RC                                          @D14NDFG 34000000
+         TM    PTESTAT,PTEPGCO PAGE CONNECTED                  @D14ADVB 34050001
+         BO    VIOGTPG5          YES --->                      @D14ADVB 34100000
+         SPACE 1                                                        34150000
+*    PAGE IS DISCONNECTED SET PAGE STATUS AND KEY IN BLOCK-ENTRY        34200000
+         SPACE 1                                                        34250000
+         SLR   R3,R3             CLEAR R3                      @D51GDTP 34550000
+         ICM   R3,7,PTEFRA       GET PTE ADDRESS               @D51GDTP 34600000
+         MVC   BLKTBE(LPTE),PTE  SAVE IN BLKTBE                @D51GDTP 34650000
+         B     VIOGTPGX           LEAVE RTN WITH DAT ON        @D52VDRP 34750001
+         SPACE 1                                                        34800000
+*    PAGE IS CONNECTED, SET CORRECT INFO IN BLOCK-TABLE ENTRY           34850000
+         SPACE 1                                                        34900000
+VIOGTPG5 SR    R3,R3              GET                          @D51GDRP 34950000
+         ICM   R3,M7,VTFRAM        FRAME NUMBER                @D51GDRP 35000000
+         LR    R5,R3             GET                           @D52VDRP 35050001
+         SLL   R5,PNPFTESH           OFFSET IN PAGE FRAME TABLE@D52VDRP 35100001
+         A     R5,APFT           GET ADDR OF FRAME TABLE ENTRY          35150001
+         USING PFTE,R5                                                  35200000
+         OI    S370FLG,PFTEBLK   INDICATE ONLY BLOCK CONNECTED          35250000
+         L     R4,VTBLKN                                       @D14NDFG 35300000
+         STCM  R4,M7,PFTEEPA#    SET BLOCK NUMBER IN PFTE      @D14NDFG 35350001
+         DROP  R5                                                       35400000
+         SLL   R3,PF4SHIFT       (FRAME#)*16 FOR PTE           @D52VDRP 35425001
+         LA    R3,BLKFRCO(R3)     INDICATE FRAME CONNECTED TO BLK       35450000
+         NI    PTESTAT,XFF-PTEPGCO    PAGE = DISCONNECTED      @D14ADVB 35500000
+         NI    BLKSTAT2,XFF-BLKPDS SET PDS BIT OFF             @D51GDTP 35900000
+         TM    PTESTAT2,PTEPDS   IS PDSBIT ON                  @D51GDTP 35950000
+         BNO   VIOGTPG6          BRANCH IF NOT                 @D51GDTP 36000000
+         OI    BLKSTAT2,BLKPDS   SET PDSBIT ON                 @D51GDTP 36050000
+VIOGTPG6 STCM  R3,7,BLKTBE       SET BLOCKTABLE ENTRY          @D51GDTP 36100000
+VIOGTPGX DS    0H                                              @D52VDRP 36166601
+*        AMODESW SET,DAT=ON                                    @D52VDRP 36183201
+         AMODESW SET,DAT=ON                                    @D52VDRP 36199801
+         XC    VTABE(LVTABE),VTABE CLEAR ENTRY                 @D64ADVB 36208203
+         BR    R7                ==========>  RETURN                    36216601
+         DROP  RB,RC             FORGET BASE FOR BLKTBE,PTE             36250000
+         DROP  R2             FORGET BASE FOR BLKTBE,VTABE              36300000
+         TITLE 'VSE/AF SUPERVISOR   SGPSVC         VIOPOINT-SERVICE    *36350001
+                      VIOFRPAG-ROUTINE'                                 36450000
+*-------------------------------------------------------------*         36500000
+*     ROUTINE NAME: VIOFRPAG                                            36550000
+*     MODULE:       SGPSVC                                              36600000
+*     MODE:         REENTRANT                                           36650000
+*     FUNCTION:     REMOVE ADDRESSABILITY FROM PAGE VIORBPNT            36700000
+*                   ENQUEUE VTABE IN AVAILABLE QUEUE                    36750000
+*     CALLER:       VIOPOINT,VIOCLOSE(IJBSVIO,FREVIOSP) WITH            36783301
+*                                 AMODE(31),DATON              @D529DRP 36816601
+*     ENTRY POINT:                                                      36850000
+*            VIOFRPAG                                                   36900000
+*     OPERATION:                                                        36950000
+*       LABEL VIOFRPAG                                                  37000000
+*       IF FIRST VIOPOINT THEN GOTO VIOFRPG6                            37050000
+*       GET VTABE(VTABEACT)                                             37100000
+*       IF VTPFCNT#0 AND VTUSCNT=1 THEN GOTO VIOFRINC                   37150000
+*       VTUSCNT = VTUSCNT - 1                                           37200000
+*       IF VTUSCNT < 0 THEN GOTO VIOFRINC                               37250000
+*       IF VTUSCNT = 0                                                  37300000
+*         THEN                                                          37350000
+*           IF PAGE IN ERROR                                            37400000
+*             THEN                                                      37450000
+*               SET BLOCK IN ERROR                                      37500000
+*               ENQUEUE VTABE ON TOP OF FREE QUEUE                      37550000
+*               RETURN TO CALLER                                        37600000
+*           ENDIF                                                       37650000
+*           IF PAGSTAT = ADDR                                           37700000
+*             THEN                                                      37750000
+*               IF PAGE TFIXED THEN GOTO VIOFRINC                       37800000
+*               PAGSTAT = OSET(CON)                                     37850000
+*               PAGFR = SSK(VTFRAM)  * SET STORAGE KEY IN PTE           37900000
+*           ENDIF                                                       37950000
+*           ENQUEUE VTABE IN AVAILABLE QUEUE                            38000000
+*                                                                       38050000
+*       ENDIF                                                           38100000
+*       SET VIORBPNT TO INVALID                                         38150000
+*       RETURN TO CALLER                                                38200000
+*                                                                       38250000
+*     INPUT:        R1 - ADDR OF VIOTABE                                38300000
+*                   R7 - RETURN ADDR                                    38350000
+*                                                                       38400000
+*     OUTPUT:                                                           38450000
+*        RF IS COMITTED AS UNCHANGED                                    38500000
+*     RETURN CODES:                                                     38550000
+*                                                                       38600000
+*     CALLED ROUTINE:                                                   38650000
+*     RETURN: CALLER  WITH AMODE(CALLER),DATON                          38700001
+*     ERROR EXITS:  VIOPTINC                                            38750000
+*                                                                       38800000
+*     REFERENCED DATA:                                                  38850000
+*         NONE                                                          38900000
+*     REGISTER USAGE:                                                   38950000
+*                    R0 - UNCHANGED                                     39000000
+*                    R1 - ADDR OF VIOTABE                               39050000
+*                    R2 - ADDR OF VTABE BEL. TO PAGE TO BE FREED        39100000
+*                    R4 - ADDR OF PTE BEL. PAGE TO BE FREED (/370-ONLY) 39150000
+*                    R5 - WORK REGISTER                                 39200000
+*                    R7 - RETURN ADDR                                   39250000
+*                    R8 - BASE ADDR OF DATA AREA (PMGMDATA)             39300000
+*                    R9 - BASE ADDR OF CODE AREA ( SGPSVC)              39350000
+*                    RD - ADDR OF PAGE TO BE FREED                      39400000
+*                    RF - COMITTED AS UNCHANGED                         39450000
+*-------------------------------------------------------------*         39500000
+         SPACE 2                                                        39550000
+*SGLINK  VIOFRPAG,S,INPUT=(R1:VIOTABE,R7:LINK),OUTPUT=(),NOMODR=(RF),  *39566601
+               AMODE=31 DATON                                           39583201
+VIOFRPAG DS    0H                                                       39600000
+         L     R8,APMGMDAT       GET BASE FOR DATA AREA                 39650000
+         L     R9,ASGPSVC        GET BASE FOR CODE AREA                 39700000
+.*    VIOFRPG IS CALLED BY VENDOR ROUTINES. ENSURE THAT        @D61NDVB 39709001
+.*    THE CALL IS DONE IN 31-BIT MODE (ESA)                    @D61NDVB 39713501
+         LR    RD,R1             SAVE R1                       @D61NDVB 39718001
+*        AMODESW   QRY           GET ADDRESSING MODE           @D61NDVB 39722501
+         AMODESW   QRY           GET ADDRESSING MODE           @D61NDVB 39727001
+         LTR   R1,R1             31 BIT MODE                   @D61NDVB 39731501
+         BZ    VIOFRPE0          NO, ---------->      HW'FF1'  @D61NDVB 39736001
+         LR    R1,RD             RESET R1                      @D61NDVB 39740501
+         OI    PMRFLAG,VIOCLREQ  INDICATE REQ. FROM VIOCLOSE            39750000
+         B     VIOFRPG0                                                 39800000
+VIOFPG2N DS    0H                ENTRY POINT FOR INT. RTN'S             39850000
+*SGLINK  VIOFPG2N,S,INPUT=(R1,R7,R8,R9),OUTPUT=(),WORK=(R2,R4,R5,RD),  *39866601
+               AMODE=31 DATON                                           39883201
+         NI    PMRFLAG,XFF-VIOCLREQ  RESET VIOCLOSE REQ. IND.           39900000
+         USING VIOTABE,R1                                               39950000
+VIOFRPG0 L     RD,VIORBPNT                                              40000000
+         LTR   RD,RD             FIRST VIOPOINT ?                       40050000
+         BZ    VIOFRPG6          YES, SET VIOPOINT IN PROC.             40100000
+         L     R2,VTABEACT       GET ACTIVE VTAB ENTRY                  40150000
+         USING VTABE,R2                                                 40200000
+.*    CHECK WHETHER VIORB HAS BEEN MANIPULATED AND CONTAINS    @D61NDVB 40205501
+.*    THERAFTER INCONSISTENT STATE                             @D61NDVB 40211001
+         LR    R5,R2                                           @D61NDVB 40216501
+         S     R5,VIOAVTAB       VTABE                         @D61NDVB 40222001
+         SLL   R5,VTOFSHFT       ...  DESCRIBES                @D61NDVB 40227501
+         A     R5,AVPBEG         ...  PASSED PAGE              @D61NDVB 40233001
+         CLR   R5,RD             ...                           @D61NDVB 40238501
+         BNE   VIOFRPE1          NO, ---------->      HW'FF1'  @D61NDVB 40244001
+         TM    VTPFCNT,XFF       PAGE FAULTS PENDING           @D51GDRP 40250000
+         BZ    VIOFRPG1          NO, BRANCH                             40300000
+         CLI   VTUSCNT,1         REQUESTOR ONLY USER                    40350000
+         BE    VIOFRPG9          YES, BRANCH                            40400000
+VIOFRPG1 SLR   R5,R5                                           @D51GDRP 40450000
+         IC    R5,VTUSCNT                                               40500000
+         BCTR  R5,0              DECREASE USAGE COUNT BY ONE            40550000
+         LTR   R5,R5                                                    40600000
+         BM    VIOFRINC          INCONSISTENT STATE                     40650000
+         STC   R5,VTUSCNT         SET NEW USAGE COUNT                   40700000
+         BNZ   VIOFRPG6          PAGE STILL IN USE                      40750000
+         TM    VTFLG,VTPAGERR    IS PAGE IN ERROR                       40800000
+         BO    VIOFRPG8          YES, BRANCH                            40850000
+         L     R5,VIOPFSCB       GET SCB BELONG. TO EPA        @D52VDRP 40887501
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 40925001
+         AMODESW SET,DAT=OFF                                   @D52VDRP 40962501
+*        GENSERV RPTE,EPA=(RD),SCB=(R5),RPTE=(R4),WORKR=(R2,R3,R7)     *41000001
+               GET REAL PTE ADDRESS IN R4                      @D52VDRP 41037501
+         GENSERV RPTE,EPA=(RD),SCB=(R5),RPTE=(R4),WORKR=(R2,R3,R7)     *41075001
+               GET REAL PTE ADDRESS IN R4                      @D52VDRP 41112501
+         USING PTE,R4                                                   41150000
+         TM    PTESTAT,PTEIBIT   IS PAGE ADDRESSABLE                    41200000
+         BO    VIOFRPG3          NO, BRANCH                             41250000
+         L     RD,PTEFRA          GET ADDRESS OF               @D61NDVB 41387501
+         N     RD,PMPTEMSK        *  PAGE FRAME                @D61NDVB 41425001
+         SRL   RD,PNSHIFT         GET FRAME NUMBER             @D61NDVB 41462501
+*    RD CONTAINS NOW FRAME #                                   @D61NDVB 41512501
+         CLM   RD,M7,VTFRAM      VTFRAM SET CORRECT            @D61NDVB 41850001
+         BE    PSVDBG40          YES, BRANCH                            41900000
+         BAL   R5,PMRHWERR        NO, ERROR                             41950000
+PSVDBG40 DS    0H                                                       42000000
+         SR    R5,R5                                           @D51GDRP 42100000
+         ICM   R5,M7,VTFRAM      GET PAGE FRAME #              @D51GDRP 42150000
+         SLL   R5,PNPFTESH       GET OFFSET IN PAGE FRAME TABLE@D51GDRP 42200000
+         LR    RD,R5                                                    42250000
+         A     RD,APFT                 PAGE FRAME TABLE ENTRY           42300000
+         USING PFTE,RD                                                  42350000
+*     GENSERV  TEST,FIELD=FIXC,REG=(RD),LAB=VIOFRIC1,BC=BNZ    @D52VDVB 42400001
+      GENSERV  TEST,FIELD=FIXC,REG=(RD),LAB=VIOFRIC1,BC=BNZ    @D52VDVB 42450001
+         DROP  RD                                                       42500000
+         SLL   R5,PFSHIFT        GET FRAME ADDRESS IN R5       @D51GDRP 42550000
+         ISKE  R5,R5             GET STORAGE KEY OF FRAME      @D51GDTP 42850000
+         N     R5,ISKFMASK       ... WITHOUT R-, C-BIT                  43000000
+         SLL   R5,8              ... AND SET IT INTO 2ND BYTE  @D14ADVB 43050001
+         O     R5,PTECON         ... INDICATE CONNECTED STATE           43100002
+         ST    R5,PMRSVGEN+12    ... AND SAVE                  @DY44241 43110002
+*DEL     PTLB  ,                 PURGE TRANS.L.A. BUFFER                43600001
+*        GENSERV LRADBG,RREG=(R5),VADD=(R1),ERR=NADDR GET REAL ADDRESS *43653301
+                                 OF VIOTABE                    @D61RDRP 43656601
+         GENSERV LRADBG,RREG=(R5),VADD=(R1),ERR=NADDR          @D61RDRP 43659901
+         DROP  R1                DROP BASE FOR VIOTABE         @D61RDRP 43663201
+         USING VIOTABE,R5        BASE FOR VIOTABE, REAL        @D61RDRP 43666501
+         L     RD,VIORBPNT       GET ADDR OF PAGE              @D61RDRP 43669801
+.**  VIORBPNT IS AT DISPL 12, VIOTABE AT 16-BYTE BOUNDARY !!!           43669904
+         DROP  R5                DROP BASE FOR VIOTABE, REAL   @D61RDRP 43670104
+         USING VIOTABE,R1        BASE FOR VIOTABE, VIRT        @DY44364 43671006
+         LA    R5,VIOPFSCB       ADDR(SCB ADDR BEL. TO PAGE)   @DY44364 43673106
+         DROP  R1                DROP BASE FOR VIOTABE, VIRT   @DY44364 43676406
+*        GENSERV LRADBG,RREG=(R5),VADD=(R5),ERR=NADDR                   43676504
+         GENSERV LRADBG,RREG=(R5),VADD=(R5),ERR=NADDR          @DY44364 43676706
+         L     R5,0(,R5)         GET THE SCB ADDR              @DY44364 43676906
+*        GENSERV LRADBG,RREG=(R5),VADD=(R5),ERR=NADDR GET REAL ADDRESS *43679701
+                                 OF SCB                        @D61RDRP 43683001
+         GENSERV LRADBG,RREG=(R5),VADD=(R5),ERR=NADDR          @D61RDRP 43686301
+*        GENSERV IPTE,VADD=(RD),SCB=(R5),WORKR=(R3,R4)         @D61RDRP 43689601
+*                                 DO IPTE                      @D61RDRP 43692901
+         GENSERV IPTE,VADD=(RD),SCB=(R5),WORKR=(R3,R4)         @D61RDRP 43696201
+         L     R5,PMRSVGEN+12    GET SAVED PTE CONTENT         @DY44241 43696302
+         STCM  R5,B'0111',PTEFRA SETUP NEW PTE (LEAVE PDSBIT)  @DY44241 43696402
+         DROP  R4                FORGET BASE FOR PTE           @DY44241 43696502
+         SPACE 2                                                        43700000
+*    ENQUEUE VTABE AT THE END OF THE AVAILABLE QUEUE                    43750000
+         SPACE 1                                                        43800000
+VIOFRPG3 DS    0H                                              @D52VDRP 43820001
+*        AMODESW SET,DAT=ON                                    @D52VDRP 43840001
+         AMODESW SET,DAT=ON                                    @D52VDRP 43860001
+         USING VIOTABE,R1        BASE FOR VIOTABE, VIRTUAL     @D61RDRP 43860501
+.*    THE LRA INSTRUCTION CHECKS THE STATE OF PAGE AND SEGMNET @D61NDVB 43862901
+.*    TABLES: (1) TO VERIFY THAT VM IS WORKING AS ARCHITECTED  @D61NDVB 43865301
+.*            (2) TO VERIFY THAT VENDOR INTERCEPTS             @D61NDVB 43867701
+.*                DOES NOT PASS AROUND THE VIO LOGIC           @D61NDVB 43870101
+         L     RD,VIORBPNT                                     @D61NDVB 43872501
+         LRA   R5,0(RD)          TEST PAGE STATUS              @D61NDVB 43874901
+         BC    13,VIOFRPE2       ERROR IN PT OR ST -------> HW @D61NDVB 43877301
+         L     R5,VTAVEND        GET LAST ELEMENT IN CHAIN              43880001
+         ST    R2,VTAVEND        SET NEW LAST EL. ADDR                  43900000
+         LTR   R5,R5             WAS QUEUE EMPTY BEFORE                 43950000
+         BNZ   VIOFRPG4          NO, BRANCH                             44000000
+         ST    R2,VTAVBEG        SET NEW 1ST ELEMNT IN QUEUE            44050000
+         B     VIOFRPG5                                                 44100000
+VIOFRPG4 ST    R2,VTFPTR-VTABE(R5) ENQUEUE LAST EL. ON PREV. ONE        44150000
+         SLR   R5,R5                                                    44200000
+VIOFRPG5 ST    R5,VTFPTR         INDICATE LAST EL. IN CHAIN             44250000
+         SPACE 1                                                        44300000
+*    SET VIOPOINT IN PROCESS OR NO ACTIVE VIOPOINT                      44350000
+         SPACE 1                                                        44400000
+VIOFRPG6 SLR   R5,R5                                                    44450000
+         TM    PMRFLAG,VIOCLREQ  REQ. FROM VIOCLOSE                     44500000
+         BO    VIOFRPG7          YES, INDICATE NO ACTIVE VIOPOINT       44550000
+         BCTR  R5,0              NO, INDICATE VIOPOINT IN PROCESS       44600000
+VIOFRPG7 ST    R5,VIORBPNT       INDICATE NO ACTIVE VIOPOINT            44650000
+*        AMODESW RETURN,REG=(R7)  ===========> RETURN          @D52VDRP 44675001
+         AMODESW RETURN,REG=(R7)  ===========> RETURN          @D52VDRP 44700001
+         SPACE 1                                                        44750000
+*    SET BLOCK IN ERROR, ENQUEUE VTABE ON TOP OF FREE QUEUE             44800000
+         SPACE 1                                                        44850000
+VIOFRPG8 L     R5,VTBLKN          GET                          @D14NDFG 44900000
+         SLL   R5,BLKOSHFT           ADDR                      @D51GDTP 44950000
+         A     R5,VIOBLKTB                OF BLOCK TABLE ENTRY          45000000
+         USING BLKTBE,R5                                                45050000
+         MVI   BLKSTAT,BLKERR     INDICATE BLOCK IN ERROR               45100000
+         DROP  R5                                                       45150000
+         L     R5,VTFRBEG                                               45200000
+         ST    R2,VTFRBEG         SET NEW BEGIN OF QUEUE                45250000
+         ST    R5,VTFPTR          CHAIN NEW ELEMENT                     45300000
+         MVI   VTUSCNT,XFF        INDICATE PAGE IS FREE                 45350000
+*        AMODESW RETURN,REG=(R7)  ===========> RETURN          @D52VDRP 45375001
+         AMODESW RETURN,REG=(R7)  ===========> RETURN          @D52VDRP 45400001
+         SPACE 2                                                        45450000
+VIOFRPG9 TM    PMRFLAG,VIOCLREQ  REQ. FROM VIOCLOSE                     45500000
+         BNO   VIOFRINC          NO,  INDICATE INCONSISTENT STATE       45550000
+         SGCOV SGPSVCS,MC=2      IND. VIO FREE AND PAGE-FAULT  @D52VDRP 45600001
+         CLI   0(RD),ZERO        REFERENCE PAGE TO WAIT FOR COMPL.      45700000
+*                                OF PAGE FAULT HANDLING                 45750000
+         OI    PMRFLAG,VIOCLREQ  INDICATE REQ. FROM VIOCLOSE            45800000
+         B     VIOFRPG0          TRY IT ONCE MORE                       45900000
+         DROP  R1                FORGET BASE FOR VIOTABE                45925001
+         DROP  R2                FORGET BASE FOR VTABE                  45950000
+         SPACE 2                                                        45960001
+VIOFRPE0 BAL   R5,PMRHWERR        HARDWAIT FF1: NOT 31-BIT ADDR@D61NDVB 45970001
+VIOFRPE1 BAL   R5,PMRHWERR        HARDWAIT FF1: VTABE VS PAGE  @D61NDVB 45980001
+VIOFRPE2 BAL   R5,PMRHWERR        HARDWAIT FF1: PAGE ADDRESSABL@D61NDVB 45990001
+         TITLE 'VSE/AF SUPERVISOR   SGPSVC         VIOPOINT-SERVICE    *46200001
+                      GETBLK-ROUTINE'                                   46250000
+*-------------------------------------------------------------*         46300000
+*     ROUTINE NAME: GETBLK                                              46350000
+*     MODULE:       SGPSVC                                              46400000
+*     MODE:         REENTRANT                                           46450000
+*     FUNCTION:     GET TOTAL BLOCKNUMBER OUT OF RELATIVE               46500000
+*                   BLOCKNUMBER, USING FILSEGTB FROM THE FILE           46550000
+*                   IDENTIFIED BY VIORB ADDRESS.                        46600000
+*     CALLER:       VIOPOINT WITH AMODE(31),DATON                       46650001
+*     ENTRY POINT:                                                      46700000
+*            GETBLK                                                     46750000
+*                                                                       46800000
+*     INPUT:        R0 - RELATIVE BYTE ADDR IN FILE ( ON BLOCK BNDRY)   46850000
+*                   R1 - ADDR OF VIOTAB ENTRY                           46900000
+*                   RA - RETURN ADDR                                    46950000
+*                                                                       47000000
+*     OUTPUT:       RB - TOTBLKN  *TOTAL BLOCKNUMBER                    47050000
+*     RETURN CODES:                                                     47100000
+*                                                                       47150000
+*     CALLED ROUTINE: NONE                                              47200000
+*     RETURN:       CALLER WITH AMODE(31),DATON                         47250001
+*     ERROR EXITS:  NONE                                                47300000
+*     REFERENCED DATA:                                                  47350000
+*         NONE                                                          47400000
+*     REGISTER USAGE:                                                   47450000
+*                    R0 - NOT CHANGED                                   47500000
+*                    R1 - ADDR OF VIOTAB-ENTRY                          47550000
+*                    R4 - WORK REGISTER                                 47600000
+*                    R5 - WORK REGISTER                                 47650000
+*                    RB - WORK REGISTER/ABSOLUTE BLOCK NUMBER           47700000
+*-------------------------------------------------------------*         47750000
+*SGLINK  GETBLK,S,INPUT=(R0,R1,R8,R9,RA),OUTPUT=(RB),WORK=(R4,R5),     *47762501
+               AMODE=31 DATON                                           47775001
+         SPACE 1                                                        47787501
+GETBLK   DS    0H                                                       47800000
+         USING VIOTABE,R1                                               47850000
+         LR    RB,R0                                                    47900000
+         SRL   RB,PNSHIFT         GET RELATIVE BLOCK NUMBER             47950000
+         LR    R5,RB              SAVE IT FOR LATER                     48000000
+         L     R4,AFLSEGTB        GET ADDR OF 1ST SEGMENT BLOCK         48050000
+GETBLK1  CH    RB,SBLKSIZE        BLOCK# IN THIS SEGMENT BLOCK          48100000
+         BL    GETBLK2            YES, BRANCH                  @DA35022 48150000
+         USING FLSEGTBE,R4                                              48200000
+         L     R4,NFLSEGTB        GET ADDR OF NEXT SEGMENT BLOCK        48250000
+         SH    RB,SBLKSIZE        DECREASE RELATIVE BLOCK NUMBER        48300000
+         B     GETBLK1            SEE WHETHER BLOCK IS IN SEGM.         48350000
+GETBLK2  SRL   RB,RSGMSHFT        GET RELATIVE SEGMENT NUMBER           48400000
+         SLL   RB,SGMOSHFT        GET OFFSET IN SEGMENT BLOCK           48450000
+         LH    RB,0(R4,RB)        GET NUMBER OF 1ST BLOCK IN SEGM.      48500000
+         N     RB,FWHWMASK        GET BLOCK NUMBER ALONE                48550000
+         N     R5,BLKINMSK        GET BLOCK INDEX                       48600000
+         AR    RB,R5              GET TOTAL BLOCK NUMBER                48650000
+         BR    RA                 RETURN                                48700000
+         DROP  R1,R4              FORGET BASE FOR VIOTABE,FLSEGTBE      48750000
+         TITLE 'VSE/AF SUPERVISOR   SGPSVC         VIOPOINT-SERVICE    *48850001
+                      SEVERAL SUBROUTINES'                              48900000
+*-------------------------------------------------------------*         48950000
+*                                                                       49000000
+*     FUNCTION:     SEARCH VTAB-ENTRY POINTED TO BY R5 IN AVAILABLE     49050000
+*                   QUEUE AND REMOVE IT FROM QUEUE                      49100000
+*        CALLED BY:                                            @D529DRP 49116601
+*              VIOPOINT, VIOFRBLK WITH AMODE(31),DATON         @D529DRP 49133201
+*         INPUT:    R5 - ADDR OF VTAB ENTRY                             49150000
+*                   RA - RETURN ADDR                                    49200000
+*                                                                       49250000
+*-------------------------------------------------------------*         49300000
+*SGLINK  VTAVREM,S,INPUT=(R5,R8,R9,RA),WORK=(R3,R4),AMODE=31 DATON      49350001
+         SPACE 2                                                        49400000
+*  SCAN AVAILABLE QUEUE TO FIND ENTRY                                   49450000
+VTAVREM  LA    R3,VTAVBEG-(VTFPTR-VTABE) GET ADDR OF PREV. EL.          49500000
+         USING VTABE,R3                                                 49550000
+VTAVREM1 L     R4,VTFPTR          GET ADDR OF NEXT ELEMENT              49600000
+         CR    R4,R5              ENTRY FOUND                           49650000
+         BE    VTAVREM2           YES, BRANCH                           49700000
+         LR    R3,R4              SAVE ADDR OF PREVIOUS EL.             49750000
+         LTR   R3,R3              END OF QUEUE REACHED                  49800000
+         BNZ   VTAVREM1           NO,  CHECK NEXT ENTRY                 49850000
+         BAL   R5,PMRHWERR        YES, ERROR                            49900000
+         DROP  R3                                                       49950000
+*  ENTRY FOUND IN AVAILABLE QUEUE, REMOVE IT FROM QUEUE                 50000000
+         USING VTABE,R4                                                 50050000
+VTAVREM2 L     R4,VTFPTR          GET NEXT ELEMENT                      50100000
+         DROP  R4                                                       50150000
+         USING VTABE,R3                                                 50200000
+         ST    R4,VTFPTR          ENQUEUE IT ON PREV. ONE               50250000
+         DROP  R3                                                       50300000
+         LTR   R4,R4              LAST ELEMENT DEQUEUED                 50350000
+         BNZR  RA                 NO, RETURN                            50400000
+         ST    R3,VTAVEND         SET NEW END ELEMENT                   50450000
+         BR    RA                 RETURN                                50500000
+         DROP  R8,R9              FORGET BASE FOR DATA AND CODE         50550000
+         TITLE 'VSE/AF SUPERVISOR   SGPSVC         VIOPOINT-SERVICE    *50650001
+                      VIOFRBLK-ROUTINE'                                 50700000
+*-------------------------------------------------------------*         50750000
+*     ROUTINE NAME: VIOFRBLK                                            50800000
+*     MODULE:       SGPSVC                                              50850000
+*     MODE:         REENTRANT                                           50900000
+*     FUNCTION:     GIVES AREA FREE INDICATED BY LOWER AND UPPER        50950000
+*                   BLOCKNUMBER PROVIDED IN REGISTERS R0,R2             51000000
+*     CALLER:       VIOCLOSE(IJBSVIO,FREVIOSP) WITH AMODE(31),DATON     51050001
+*     ENTRY POINT:                                                      51100000
+*            VIOFRBLK                                                   51150000
+*     OPERATION:                                                        51200000
+*       LABEL VIOFRBLK                                                  51250000
+*       DO WHILE LOWER BLOCK NUMBER NOT GREATER UPPER BLOCK NUMBER      51300000
+*         GET BLKTBE                                                    51550000
+*         LABEL VIOFRB00                                                51600000
+*         IF BLKSTAT=PGCON                                              51650000
+*           THEN                                                        51700000
+*             IF VTPFCNT(BLKPAG)>0 THEN SET(VIORBINC) AND RETURN        51750000
+*             IF VTUSCNT#0 THEN SET(VIORBINC) AND RETURN                51800000
+*             IF PAGSTAT=ADDR THEN SET(VIORBINC) AND RETURN             51850000
+*             IF PAGSTAT=CON                                            51900000
+*                THEN                                                   51950000
+*                  IF PFSTAT=ADDR                                       52000000
+*                    THEN                                               52050000
+*                      PAGSTAT=DISC                                     52100000
+*                      EXECUTE CLEARPF TO INVALIDATE PAGE FRAME         52150000
+*                    ELSE                                               52200000
+*                      WAIT FOR COMPLETION OF PAGE-OUT                  52250000
+*                      GOTO VIOFRB00                                    52300000
+*                  ENDIF                                                52350000
+*             ENDIF                                                     52400000
+*             DEQUEUE VTABE(BLKPAG) FROM AVAILABLE QUEUE                52450000
+*             ENQUEUE VTABE(BLKPAG) IN FREE QUEUE                       52500000
+*             INDICATE VTABE IN FREE QUEUE (VTUSCNT=-1)                 52550000
+*         ENDIF                                                         52600000
+*         IF BLKSTAT=BLKFRCO                                            52650000
+*           THEN               * /370 MODE ONLY                         52700000
+*             IF PFSTAT=ADDR                                            52750000
+*               THEN                                                    52800000
+*                  EXECUTE CLEARPF TO INVALIDATE PAGE FRAME             52850000
+*               ELSE                                                    52900000
+*                  WAIT FOR COMPLETION OF PAGE-OUT                      52950000
+*                  GOTO VIOFRB00                                        53000000
+*             ENDIF                                                     53050000
+*         ENDIF                                                         53100000
+*         BLKPAG=ZERO                                                   53150000
+*         BLKSTAT=DISC                                                  53200000
+*         BLKSTAT=RESET(COPY)                                           53250000
+*         INCREASE LOWER BLOCK ADDR BY BLOCK-SIZE                       53350000
+*       ENDDO                                                           53400000
+*                                                                       53450000
+*     INPUT:        R0 - LOWER TOTAL BLOCK NUM. OF AREA TO BE HANDL.    53500000
+*                   R1 - ADDR OF VIOTABE                                53550000
+*                   R2 - UPPER BLOCK TOTAL NUM. OF AREA TO BE HANDL.    53600000
+*                   R7 - RETURN ADDR                                    53650000
+*        ENTRY CONDITION: IF PAGE CONNECTED TO BLOCK, VTUSCNT HAS       53700000
+*                   TO BE ZERO. I.E NO PAGE MAY BE ACTIVE FOR THE       53750000
+*                   AREA.                                               53800000
+*                                                                       53850000
+*     OUTPUT:                                                           53900000
+*        RF IS COMITTED AS UNCHANGED                                    53950000
+*     RETURN CODES:                                                     54000000
+*                                                                       54050000
+*     CALLED ROUTINES:                                                  54080001
+*        PMRREMOV,CLEARPF,SCNPGQO WITH AMODE(31),DATOFF        @D529DRP 54110001
+*        VTAVREM, RWAIT           WITH AMODE(31),DATON         @D529DRP 54140001
+*     RETURN:       CALLER WITH AMODE(CALLER),DATON                     54170001
+*     ERROR EXITS:                                                      54200000
+*     REFERENCED DATA:                                                  54250000
+*         BLKTBE - BLOCK TABLE ENTRY                                    54300000
+*         VTABE  -                                                      54350000
+*     REGISTER USAGE:                                                   54400000
+*                    R0 - ACTUAL TOTAL BLOCK NUM. TO BE HANDLED         54450000
+*                    R1 - ADDR OF VIOTAB-ENTRY                          54500000
+*                    R2 - UPPER TOTAL BLOCK NUM. TO BE HANDLED          54550000
+*                    R3 - WORK REGISTER                                 54600000
+*                    R4 - WORK REGISTER                                 54650000
+*                    R5 - WORK REGISTER                                 54700000
+*                    R7 - RETURN ADDR TO CALLER                         54750000
+*                    R8 - BASE ADDR OF DATA AREA                        54800000
+*                    R9 - BASE ADDR OF CODE AREA                        54850000
+*                    RA - WORK REGISTER                                 54900000
+*                    RB - ADDR OF VTAB ENTRY IF AVAILABLE, ZERO ELSE    54950000
+*                    RC - ADDR OF PFTE BELONGING TO BLOCK               55000000
+*                    RD - ADDR OF BLKTBE BELONGING TO BLOCK             55050000
+*                    RE - ADDR OF PAGE OR FRAME CONNECTED TO BLOCK      55100000
+*                    RF - COMITTED AS UNCHANGED                         55150000
+*-------------------------------------------------------------*         55200000
+*SGLINK  VIOFRBLK,S,INPUT=(R0:LOWADDR,R1:VIOTABE,R2:HIGHADDR,R7:LINK), *55212501
+               OUTPUT=(),NOMODR=(RF),AMODE=31 DATON                     55225001
+         SPACE 1                                                        55237501
+VIOFRBLK DS    0H                                                       55250000
+         L     R8,APMGMDAT        GET BASE FOR DATA AREA                55300000
+         USING PMGMDATA,R8                                              55350000
+         L     R9,ASGPSVC         GET BASE FOR CODE AREA                55400000
+         USING SGPSVC,R9                                                55450000
+         SPACE 1                                                        55550000
+VIOFRBLP CR    R0,R2              ALL BLOCKS HANDLED                    55600000
+         BH    VIOFRRET           ===========> YES, RETURN              55650001
+         LR    RD,R0                                                    55700000
+         A     R0,F1              GET NEXT BLOCK NUMBER                 55750000
+         SLL   RD,BLKOSHFT        GET OFFSET IN BLOCK-TABLE    @D51GDTP 55850000
+         A     RD,VIOBLKTB        GET ADDR OF BLKTBE                    55900000
+         USING BLKTBE,RD                                                55950000
+VIOFRB00 L     RE,BLKPAG          * GET ADDR OF CONNECTED      @D51GDTP 56200000
+         N     RE,PADDRMSK        * PAGE/ PAGEFRAME                     56300000
+         TM    BLKSTAT,BLKFRCO    PAGE CONNECTED TO BLOCK               56350000
+         BNZ   VIOFRB20           NO,  BRANCH                           56400000
+         SPACE 1                                                        56450000
+*    PAGE IS CONNECTED TO BLOCK                                         56500000
+         SPACE 1                                                        56550000
+         LR    RB,RE              PAGE ADDRESS                          56600000
+         S     RB,AVPBEG          RELATIV TO V-POOL BEGIN      @D14NDFG 56650000
+         SRL   RB,VTOFSHFT                                              56700000
+         A     RB,VIOAVTAB        GET ADDR OF VTAB-ENTRY                56750000
+         USING VTABE,RB                                                 56800000
+         TM    VTPFCNT,XFF        PAGE-FAULT PENDING           @D51GDRP 56850000
+         BNZ   VIOFRINC           YES, ERROR                            56900000
+         CLI   VTUSCNT,ZERO       PAGE STILL IN USE                     56950000
+         BNE   VIOFRINC           YES, ERROR                            57000000
+         LRA   R4,0(RE)           CHECK PAGE STATUS            @D14NDFG 57100000
+         BC    2,VIOFRB01         SKIP IF NOT ADDRESSABLE      @D14NDFG 57200000
+         BAL   R5,PMRHWERR        ERROR IF ADDRESSABLE         @D14ADVB 57250000
+         USING PTE,R4                                          @D14NDFG 57300000
+VIOFRB01 DS    0H                                              @D52VDRP 57316601
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 57333201
+         AMODESW SET,DAT=OFF                                   @D52VDRP 57349801
+         TM    PTESTAT,PTEPGCO    PTE = CONNECTED              @D14ADVB 57366601
+         BZ    VIOFRB10           NO --->                      @D14ADVB 57400000
+         SPACE 1                                                        57450000
+*   PAGE CONNECTED TO BLOCK IS IN CONNECTED STATE                       57500000
+         SPACE 1                                                        57550000
+         SR    RE,RE                                           @D51GDRP 57600000
+         ICM   RE,M7,VTFRAM       GET FRAME-NR                 @D51GDRP 57650000
+         SLL   RE,PNPFTESH        GET OFFS. IN PAGE FRAME TABLE@D51GDRP 57700000
+         LR    RC,RE                                                    57750000
+         SLL   RE,PFSHIFT         GET ADDR OF PAGE FRAME       @D51GDRP 57800000
+VIOFRB02 A     RC,APFT            * PAGE-FRAME TABLE ENTRY              57850000
+         USING PFTE,RC                                                  57900000
+         TM    PFTEFLG,PCBIT+POABIT PAGE I/O ACTIVE ON FRAME            57950000
+         BNZ   VIOFRB15           YES, BRANCH                           58000000
+         LTR   RB,RB              PAGE AVAILABLE                        58050000
+         BZ    VIOFRNP            NO, BRANCH                            58100000
+         LA    R5,PTEIBIT*256     SET PAGE TO DISCONNECTED     @D51GDTP 58400000
+         ST    R5,PTEFRA           AND NO COPY ON EXT STORAGE  @D51GDTP 58450000
+         DROP  R4                 FORGET BASE FOR PTE                   58550000
+VIOFRNP  DS    0H                                                       58600000
+.**DEL   TM    PFTEFLG,POEBIT     ENTRY IN PAGE-OUT QUEUE               58650001
+.**DEL   BZ    VIOFRB03           NO, BRANCH                            58700001
+.**DEL   L     RA,ASCNPGQO        GET ENTRY ADDR FOR SCNPGQO RTN        58750001
+.**DEL   BALR  RA,RA              REMOVE ENTRY FROM PAGE-OUT QUEUE      58800001
+VIOFRB03 BAL   RA,PMRREMOV        REMOVE ENTRY FROM PSQ                 58850000
+         ST    R7,PMRSAVE         SAVE RETURN ADDR                      58900000
+         LR    R3,RB              SAVE VTABE ADDR                       58950000
+         BAL   R7,CLEARPF                                               59000000
+*SGLINK  CLEARPF,INPUT=(R7,R8,RC,RE),WORK=(R4,R5,RA,RB),AMODE=31       *59033301
+               AMODE=31   DATOFF                                        59066601
+         L     R7,PMRSAVE         RESTORE RETURN ADDR                   59100000
+         DROP  RC                 DROP BASE FOR PFTE (REAL)    @D52VDRP 59112501
+* RC HAS STILL TO CONTAINS ADDRESS OF PFTE                     @D52VDRP 59125001
+*        AMODESW SET,DAT=ON                                    @D52VDRP 59131201
+         AMODESW SET,DAT=ON                                    @D52VDRP 59137501
+         LTR   RB,R3              VTAB ENTRY AVAILABLE                  59150000
+         BZ    VIOFRB30           NO, BRANCH                            59200000
+         SPACE 1                                                        59250000
+*  REMOVE ENTRY FROM AVAILABLE QUEUE                                    59300000
+         SPACE 1                                                        59350000
+VIOFRB10 DS    0H                                                       59400000
+*        AMODESW SET,DAT=ON                                    @D52VDRP 59412501
+         AMODESW SET,DAT=ON                                    @D52VDRP 59425001
+         LR    R5,RB              GET VTABE ADDR IN CORRECT REG.        59450000
+         BAL   RA,VTAVREM         REMOVE VTABE FROM AVAILABLE QUEUE     59500000
+*SGLINK  VTAVREM,INPUT=(R5,R8,R9,RA),WORK=(R3,R4),AMODE=31 DATON        59550001
+         SPACE 1                                                        59600000
+*  ENQUEUE VTAB ENTRY ON TOP OF FREE QUEUE                              59650000
+         SPACE 1                                                        59700000
+         L     R5,VTFRBEG                                               59750000
+         ST    RB,VTFRBEG         SET NEW BEGIN OF QUEUE                59800000
+         ST    R5,VTFPTR          CHAIN NEW ELEMENT                     59850000
+         MVI   VTUSCNT,XFF        INDICATE PAGE IS FREE                 59900000
+         B     VIOFRB30           HANDLE BLOCK TABLE ENTRY              59950000
+         SPACE 1                                                        60000000
+* FRAME IS IN CONNECTED STATE WAIT FOR COMPLETION OF PAGE-OUT           60050000
+         SPACE 1                                                        60100000
+VIOFRB15 DS    0H                                              @D52VDRP 60116601
+*        AMODESW SET,DAT=ON                                    @D52VDRP 60133201
+         AMODESW SET,DAT=ON                                    @D52VDRP 60149801
+         SGCOV SGPSVCS,MC=3       IND. I/O ACTIVE ON FRAME     @D52VDRP 60158201
+         LR    R4,R1              SAVE VIOTABE ADDR                     60166601
+         LR    R1,RC              GET ADDR OF PFTE                      60200000
+         L     R5,ASRQTAB         SRQ TABLE ADDRESS            @D61RDGL 60233301
+         LA    R5,SRQPGIO-SRQTAB(,R5) P.TO PAGE I/O WAIT QUEUE @D61RDGL 60266601
+         BAL   RC,RWAIT           WAIT FOR COMPL. OF I/O                60300000
+*SGLINK  RWAIT,INPUT=(R1,R5,RC)                                         60337501
+* RWAIT RETURNS WITH DAT ON                                    @D52VDRP 60375001
+         LR    R1,R4              RESTORE VIOTABE ADDR                  60400000
+         B     VIOFRB00           TRY IT ONCE MORE                      60450000
+         DROP  RB                 FORGET BASE FOR VTABE                 60500001
+         SPACE 2                                                        60550000
+VIOFRB20 DS    0H                                                       60600000
+         BNO   VIOFRB30           BRANCH IF NO FRAME CON. TO BLOCK      60650000
+         LR    RC,RE                                                    60700000
+         SRL   RC,PFSHIFT         GET OFFSET IN PAGE FRAME TABLE        60750000
+         SLR   RB,RB              INDICATE NO VTABE AVAILABLE           60800000
+*        AMODESW SET,DAT=OFF                                   @D52VDRP 60812501
+         AMODESW SET,DAT=OFF                                   @D52VDRP 60825001
+         B     VIOFRB02           HANDLE PAGE FRAME TABLE ENTRY         60850000
+VIOFRB30 LA    R4,BLKDISC         * SET BLOCK TO DISCONNECTED           60900000
+         STCM  R4,7,BLKPAG        * SET BITS AND               @D51GDTP 61150000
+         NI    BLKSTAT2,XFF-BLKPDS * NO COPY ON EXT STORAGE    @D51GDTP 61200000
+         DROP  RD                 FORGET BASE FOR BLKTBE                61300000
+         B     VIOFRBLP           HANDLE NEXT BLOCK                     62000000
+         SPACE 3                                                        62016601
+*-------------------------------------------------------------*         62033201
+*        GENERAL ERROR EXIT                                   *         62049801
+*-------------------------------------------------------------*         62066401
+         SPACE 1                                                        62083001
+         USING VTABE,R2                                                 62100000
+VIOFRIC1 DS    0H                                              @D52VDRP 62120001
+*        AMODESW SET,DAT=ON                                    @D52VDRP 62140001
+         AMODESW SET,DAT=ON                                    @D52VDRP 62160001
+         IC    R5,VTUSCNT         RESTORE                               62180001
+         LA    R5,1(R5)              OLD                                62200000
+         STC   R5,VTUSCNT             USAGE COUNT                       62250000
+         DROP  R2                                                       62300000
+         USING VIOTABE,R1                                      @D52VDRP 62325001
+VIOFRINC MVI   VIORBRTC,VIORBINC  INDICATE INCONSISTENT STATE           62350000
+VIOFRRET DS    0H                                              @D52VDRP 62375001
+*        AMODESW RETURN,REG=(R7)  ============> RETURN         @D52VDRP 62400001
+         AMODESW RETURN,REG=(R7)  ============> RETURN         @D52VDRP 62425001
+         DROP  R1                 FORGET BASE FOR VIOTABE               62450000
+         DROP  R8,R9              FORGET BASE FOR DATA AND CODE         62500000
+         SPACE 2                                                        62650000
+         MEND                                                           62700000

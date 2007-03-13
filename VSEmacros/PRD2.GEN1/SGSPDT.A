@@ -1,0 +1,508 @@
+         MACRO                                                          00001000
+         SGSPDT &DSECT=YES                                              00002000
+         GBLB   &BGDEBUG                                                00003000
+         GBLB   &SGSPDT                                                 00004000
+         LCLC   &DI                                                     00005000
+         LCLC   &CS                                                     00006000
+         LCLC   &BL                                                     00007000
+.*       IBM DISK OPERATING SYSTEM                            *         00008000
+***************************************************************         00009000
+*        SUPERVISOR - SGSPDT- 5686-066-06                     *         00010000
+*                                                             *         00011000
+*        LICENSED MATERIALS - PROPERTY OF IBM                 *         00012000
+*        "RESTRICTED MATERIALS OF IBM"                        *         00013000
+*        5686-066                                             *         00014000
+*        (C) COPYRIGHT IBM CORP. 1990, 2001                   *         00015000
+***************************************************************         00016000
+         SPACE 4                                                        00017000
+.**** START OF SPECIFICATIONS ***************************************** 00018000
+.*                                                                      00019000
+.*01* MODULE-TYPE = MACRO                                               00020000
+.*                                                                      00021000
+.*01* DESCRIPTIVE NAME = A) MAPPING OF SPDTTAB, DSECT=YES               00022000
+.*                       B) MAPPING AND INLINE CODE OF SGSPDT, DSECT=NO 00023000
+.*                                                                      00024000
+.*  STATUS           =  NEW MACRO - FIRST RELEASE AF 4.1.2              00025000
+.*                      SCLP FACILITIES  VSE/ESA 1.2.0         @D52NDFH 00026000
+.*                      CONSOLE INTEGRATION VSE/ESA 2.1.0      @D61CDFH 00027000
+.*                                                                      00028000
+.*  FUNCTION         =  SHOW LAYOUT OF SGSPDT TABLE                     00029000
+.*  NOTES            =  NONE                                            00030000
+.*  DEPENDENCIES     =  NONE                                            00031000
+.*  RESTRICTIONS     =  NONE                                            00032000
+.*  REGISTER CONVENT.=  NONE                                            00033000
+.*  PATCH LABEL      =  NONE                                            00034000
+.*  MACRO TYPE       =  ASSEMBLER                                       00035000
+.*  PROCESSOR        =  ASM                                             00036000
+.*  MACRO SIZE       =  SEE OUTPUT                                      00037000
+.*  ATTRIBUTES       =  MAPPING DSECT AND/OR INLINE CODE                00038000
+.*  ENTRY POINT      =  &NAME OR A(SGSPDTTB)                            00039000
+.*  PURPOSE          =  SEE FUNCTION                                    00040000
+.*  LINKAGE          =  SEE INPUT                                       00041000
+.*  CALLER           =                                                  00042000
+.*  INPUT            =  SEE MACRO PARAMETER                             00043000
+.*                                                                      00044000
+.*  OUTPUT           =  DSECT OR INLINE CODE OF SGSPDT                  00045000
+.*                                                                      00046000
+.*  EXIT NORMAL      =  MACRO EXPANSION                                 00047000
+.*                                                                      00048000
+.*  EXIT ERROR       =  NONE                                            00049000
+.*                                                                      00050000
+.*  EXTERNAL REFEREN.=  NONE                                            00051000
+.*  ROUTINES         =  NONE                                            00052000
+.*  DATA AREAS       =  NONE                                            00053000
+.*  CONTROL BLOCKS   =  NONE                                            00054000
+.*  TABLES           =  NONE                                            00055000
+.*  MACROS           =  NONE                                            00056000
+.*  CHANGE ACTIVITIES=  NEW MACRO   FIRST RELEASE AF 4.1.2              00057000
+.*  MODIFIED REGISTER=  NONE                                            00058000
+.*                                                                      00059000
+.*                                                                      00060000
+.* CHANGE ACTIVITY=                                                     00061000
+.*       - MORE THAN 255 TASKS                                 @D66ODOW 00062000
+.*                                                                      00063000
+.** END OF SPECICATIONS *********************************************** 00064000
+.*                                                                      00065000
+.PARMOK  ANOP                                                           00066000
+         AIF (NOT &SGSPDT OR NOT &BGDEBUG).SPTNOPR                      00067000
+         PRINT GEN                                                      00068000
+.SPTNOPR ANOP                                                           00069000
+         AIF ('&DSECT' EQ 'YES').DSECT  GENERATE SGSPDT TABLE           00070000
+         AIF ('&DSECT' EQ 'NO').INLINE  GENERATE SGSPDT INLINE          00071000
+         MNOTE 4,'INVALID DSECT OPERAND SPECIFIED, DSECT=YES ASSUMED'   00072000
+.DSECT   ANOP                                                           00073000
+&DI      SETC  'DSECT'                                                  00074000
+         AGO   .MSS1        CONTINUE WITH SGSPDT DSECT                  00075000
+.INLINE  ANOP                                                           00076000
+&DI      SETC  'CSECT'                                                  00077000
+&CS      SETC  'C'                                                      00078000
+&BL      SETC  ''                                                       00079000
+**********************************************************************  00080000
+*      SPDT ROUTINES                                                    00081000
+**********************************************************************  00082000
+*      FUNCTIONS:                                                       00083000
+*        1) INITIALIZATION OF THE SPDT SUPPORT                          00084000
+*        2) SPDT SVC 119 (ACCEPTED FROM APPLICATION AND FROM EOT)       00085000
+*        3) INTERFACE FROM SMICR (SERVICE SIGNAL EXTERNAL INTERRUPTS)   00086000
+*        4) INTERFACE FROM SMICR (VMCF EXTERNAL INTERRUPTS)    @D61CDFH 00087000
+*                                                                       00088000
+*      ENTRY POINTS: SPSGINIT - INITIALIZATION OF SPDT SUPPORT          00089000
+*                    SVC119   - SPDT SVC                                00090000
+*                    SPTSSIH  - SERVICE SIGNAL INTERRUPT HANDLING       00091000
+*                    SPTVMCF  - VMCF INTERRUPT HANDLING                 00092000
+*                                                                       00093000
+*      REGISTER USAGE:                                                  00094000
+*        R9 - BASE REGISTER FOR SGSPDT INCLUDING SPDTTAB                00095000
+*        RC - BASE REGISTER AT ENTRY FOR 2)                             00096000
+**********************************************************************  00097000
+         DC    CL8'SGSPDT'      MACRO NAME                              00098000
+         DC    CL10'07/10/2006' DATE OF LAST CHANGE            @DY46544 00099680
+         EJECT ,                                                        00100000
+**********************************************************************  00101000
+         USING SPDTTAB,R9                                               00102000
+SPDTTAB  DS    0F                                                       00103000
+SPSGINIT B     SPTINIT            BRANCH TO INITIALIZATION              00104000
+         AGO   .INL1                                                    00105000
+.MSS1    ANOP                                                           00106000
+*******************************************************************     00107000
+* SGSPDT   - DSECT, SPDT  SYSTEM CONTROL BLOCK                          00108000
+*            (IN FIXED STORAGE LOCATION)                                00109000
+*******************************************************************     00110000
+SPDTTAB  DSECT                                                          00111000
+SPSGINIT DS    A (0)              ENTRY SPDT INITIALIZATION    @D61CDFH 00112000
+&CS      SETC  'S'                                                      00113000
+&BL      SETC  ' '                                                      00114000
+.INL1    ANOP                                                           00115000
+SPSGMOVE D&CS  A&BL.(SPTMOVE)     A(MOVE REAL ROUTINE, DAT = OFF)       00116000
+SPSGWAIT D&CS  A&BL.(SPTWAIT)     A(SET TASK IN WAIT)                   00117000
+SPSGPOST D&CS  A&BL.(SPTPOST)     A(POST A WAITING TASK)                00118000
+SPSGSCBO D&CS  A&BL.(0)           A(REAL, ORIGINAL SCCB, SET BY IPL)    00119000
+SPSGSCCB D&CS  A&BL.(0)           A(REAL, CURRENT SCCB, SAVED FOR RAS)  00120000
+SPSGXIPT D&CS  A&BL.(0)           A(EXT. IRPT PARM WORD SAVE TEMP)      00121000
+SPSGVTAB D&CS  A&BL.(0)           A($IJBSPDT)                           00122000
+SPSGTTAB D&CS  F&BL.'0'           A(TRACE TABLE)               @D61CDFH 00123000
+SPSGECB  D&CS  F&BL.'0'           WOE ECB                               00124000
+SPSGSTID D&CS  AL2&BL.(SPTTID)    TASK ID OF SPDT SYSTEM TASK           00125000
+SPSGSPB  D&CS  AL1&BL.(SPDTBND)   SPDT BOUND STATUS            @D61CDFH 00126000
+*------- IPL <==> SPDT SPECIAL COMMUNICATION -----------------*@D61CDFH 00127000
+SPSGIPLC D&CS  X&BL.'00'          IPL COMMUNICATION INDICATORS @D61CDFH 00128000
+SPSGISCS EQU   X'80'                 0 SERVICE CALL SUPPORTED  @D61CDFH 00129000
+SPSGITST EQU   X'40'                 1 SPDT IN TEST MODE       @D61CDFH 00130000
+*                                    2-7 NOT USED              @D61CDFH 00131000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00132000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00133000
+*------- CODES IN CASE OF NO ACCESS TO SPDT ANYMORE-----------*         00134000
+SPSGCODE DS    0CL8               CODES IN CASE IN NO ACCESS TO SPDT    00135000
+SPSGRESC D&CS  H&BL.'0'              SCCB RESPONSE CODE                 00136000
+SPSGEC   D&CS  H&BL.'0'              ERROR CODE                         00137000
+SPSGRC   D&CS  X&BL.'00'             RETURN CODE                        00138000
+SPSGSEVC D&CS  X&BL.'00'             SEVERITY CODE                      00139000
+SPSGCONC D&CS  X&BL.'00'             CONNECTS-AFFECTED CODE             00140000
+SPSGREBC D&CS  X&BL.'00'             RETURN EVENT BUFFER CODE           00141000
+         SPACE                                                          00142000
+*------- WAIT ON EVENT CONDITIONS ----------------------------*         00143000
+SPSGWOE  DS    0XL3               WAIT ON EVENT CONDITIONS     @D81VDAV 00144490
+SPSGWOEX D&CS  X&BL.'00'          WAIT ON EVENT CONDITIONS X            00145000
+SPSGWOE0 EQU   X'80'                 0  RAS STORAGE ERROR ON SCCB       00146000
+SPSGWOE1 EQU   X'40'                 1  RAS SP DAMAGED MACHINE CHECK    00147000
+SPSGWOEY D&CS  X&BL.'00'          WAIT ON EVENT CONDITIONS Y            00148000
+SPSGWOEZ D&CS  X&BL.'00'          WAIT ON EVENT CONDITIONS Z   @D81VDAV 00148500
+         SPACE                                                          00149000
+*------- STAGES, STATES, CONDITIONS, ERRORS ------------------*@D61CDFH 00150000
+SPSGFLG0 D&CS  X&BL.'00'          STAGES OF INITIALIZATION     @D61CDFH 00151000
+SPSGPI2  EQU   X'80'                 0  INVOCATION IPL STAGE 2 @D61CDFH 00152000
+SPSGPI3  EQU   X'40'                 1  INVOCATION IPL STAGE 3 @D61CDFH 00153000
+SPSGXI3  EQU   X'20'                 2  SWITCH OVER STAGE 2-3  @D61CDFH 00154000
+*                                    3 - 7 NOT USED            @D61CDFH 00155000
+*-------                                                                00156000
+SPSGFLG1 D&CS  X&BL.'00'          STATES OF THE SPDT SUPPORT            00157000
+SPSGACTV EQU   X'80'                 0  INITIALIZED & ACTIVE            00158000
+SPSGINCM EQU   X'40'                 1  INIT COMPLETE                   00159000
+SPSGINPR EQU   X'20'                 2  INIT IN PROGRESS                00160000
+SPSGINRS EQU   X'10'                 3  INIT IN RESUMPTION              00161000
+*                                    4 - 7 NOT USED            @D61CDFH 00162000
+*-------                                                                00163000
+SPSGFLG2 D&CS  X&BL.'00'          CONDITIONS OF THE SPDT SUPPORT        00164000
+SPSGSTIX EQU   X'80'                 0  SPDT SYSTEM TASK IN EXECUTION   00165000
+SPSGSSIX EQU   X'40'                 1  SERVICE SIGNAL ITRPTS ACCEPTED  00166000
+SPSGDIPL EQU   X'20'                 2  DELAY SOFTWARE INITIATED IPL    00167000
+SPSGERAS EQU   X'10'                 3  ENABLED FOR BEING POSTED BY RAS 00168000
+SPSGEXAB EQU   X'08'                 4  ENABLED FOR EXIT AB RECOVERY    00169000
+*                                    5 - 7 NOT USED                     00170000
+*-------                                                                00171000
+SPSGFLG3 D&CS  X&BL.'00'          VARIOUS SPDT/SCLP ERRORS              00172000
+SPSGPDAM EQU   X'80'                 0  SERVICE PROCESSOR DAMAGED       00173000
+SPSGSTER EQU   X'40'                 1  STORAGE ERROR ON SCCB FRAME     00174000
+SPSGHARD EQU   X'20'                 2  'HARD' ERROR ENCOUNTERED        00175000
+SPSGLOST EQU   X'10'                 3  LOST SERVICE COMPLETION         00176000
+SPSGSSUX EQU   X'08'                 4  SERVICE SIGNAL UNEXPECTED       00177000
+*                                    5 - 7 NOT USED                     00178000
+         SPACE                                                          00179000
+*------- CONSOLE INTEGRATION SUPPORT -------------------------*@D61CDFH 00180000
+SPSGCNAM D&CS  CL8&BL.'IC'        CI MCSOPER CONSOLE NAME      @D61CDFH 00181000
+SPSGCID  D&CS  F&BL.'0'           CI MCSOPER CONSOLE ID        @D61CDFH 00182000
+SPSGECBM D&CS  F&BL.'0'           CI MCSOPER SEND MESSAGE ECB  @D61CDFH 00183000
+SPSGECBA D&CS  F&BL.'0'           CI MCSOPER ALERT ECB         @D61CDFH 00184000
+SPSGCSA  D&CS  A&BL.(0)           CI MCSOPER CSA ADDRESS       @D61CDFH 00185000
+SPSGCSAA D&CS  A&BL.(0)           CI MCSOPER CSA ALET ADDRESS  @D61CDFH 00186000
+SPSGCFLG D&CS  X&BL.'00'          CI INDICATORS                @D61CDFH 00187000
+SPSGCIA  EQU   X'80'                 0  CI ACTIVE              @D61CDFH 00188000
+SPSGC1XF EQU   X'40'                 1  SWITCH OVER IND SAVE   @D61CDFH 00189000
+*                                    2-7 NOT USED              @D61CDFH 00190000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00191000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00192000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00193000
+         SPACE                                                          00194000
+*------- VMCF  PROCESSING ------------------------------------*@D61CDFH 00195000
+SPSGVECB D&CS  F&BL.'0'           VMCF ECB                     @D61CDFH 00196000
+SPSGVINI EQU   X'00'              VMCF INITIALIZATION TO PROC. @D68NFAV 00196200
+SPSGVINT EQU   X'01'              VMCF INTERRUPT TO PROCESS    @D68NFAV 00196400
+SPSGVTER EQU   X'02'              VMCF TERMINATION TO PROCESS  @D68NFAV 00196600
+SPSGVARC EQU   X'80'              VMCF CALLED BY AR            @DY46544 00196800
+SPSGVFLG D&CS  X&BL.'00'          VMCF INDICATORS              @D61CDFH 00197000
+SPSGVSUP EQU   X'80'                 0 VMCF SUPPORTED          @D61CDFH 00198000
+SPSGVINP EQU   X'40'                 1 VMCF IN PROGRESS        @D61CDFH 00199000
+*                                    2-7 NOT USED              @D61CDFH 00200000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00201000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00202000
+         D&CS  X&BL.'00'          NOT USED                     @D61CDFH 00203000
+         SPACE                                                          00204000
+*------- AR OPERATE COMMAND SYNCHRONIZATION ------------------*@D61CDFH 00205000
+SPSGAECB D&CS  F&BL.'0'           ATTENTION ROUTINE ECB        @D61CDFH 00206000
+         SPACE                                                          00207000
+*------- INTERNAL --------------------------------------------*@D61CDFH 00208000
+SPSGINT2 D&CS  F&BL.'0'           INTERNALLY USED              @D61CDFH 00209000
+SPSGINT3 D&CS  F&BL.'0'           INTERNALLY USED              @D61CDFH 00210000
+SPSGINT4 D&CS  F&BL.'0'           INTERNALLY USED              @D61CDFH 00211000
+SPSGINT5 D&CS  F&BL.'0'           INTERNALLY USED              @D61CDFH 00212000
+SPSGINT6 D&CS  F&BL.'0'           INTERNALLY USED              @D61CDFH 00213000
+         SPACE                                                          00214000
+*------- SAVE AREAS ------------------------------------------*@D61CDFH 00215000
+SPSGSAVE D&CS  16F&BL.'0'         SAVE AREA                             00216000
+SPSGXSAV D&CS  18F&BL.'0'         EXIT SAVE AREA               @D61CDFH 00217000
+         AIF ('&DI' EQ 'CSECT').NOLEN   LENGTH FOR DSECT ONLY           00218000
+SPSGLENQ EQU   *-SPDTTAB    EQUATE FOR SPDTTAB LENGTH                   00219000
+.NOLEN   ANOP                                                           00220000
+*------- END OF SPDTTAB --------------------------------------*         00221000
+         AIF ('&DI' EQ 'DSECT').END     GENERATE CODE SECT              00222000
+         EJECT                                                          00223000
+*-------------------------------------------------------------*         00224000
+*        HANDLE THE INITIALIZATION OF THE SPDT SUPPORT WHICH  *         00225000
+*        IS PERFORMED UNDER CONTROL OF THE SPDT SYSTEM TASK.  *         00226000
+*                                                             *         00227000
+*        THE SPDT SYSTEM TASK'S SAVE AREA IS SETUP BY THE     *         00228000
+*        SYSTEM INITIALLY IN ORDER TO INVOKE THE SPDT SUPPORT *         00229000
+*        INITIALIZATION AS SOON AS THE SPDT SYSTEM TASK GETS  *         00230000
+*        CONTROL THE FIRST TIME.                              *         00231000
+*        THERE ARE 3 KINDS OF INITIALIZATION PROCESSING TO    *         00232000
+*        BE CONSIDERED ACCORDING TO:                          *         00233000
+*        1) PRIMARY INVOCATION (TREADY) UNDER IPL STAGE 2     *         00234000
+*        2) PRIMARY INVOCATION (TREADY) UNDER IPL STAGE 3     *         00235000
+*        3) SWITCH OVER FROM SPDT SUPPORT IN V=R STORAGE      *         00236000
+*           (STAGE 2) TO SPDT SUPPORT IN SVA-HIGH (STAGE 3)   *         00237000
+*                                                             *         00238000
+*        SGSPDT PASSES CONTROL TO $IJBSPDT IN ORDER TO        *         00239000
+*        CONTINUE WITH THE INITIALIZATION.                    *         00240000
+*                                                             *         00241000
+*        AT COMPLETION OF AN INITIALIZATION THE SPDT          *         00242000
+*        SYSTEM TASK ENTERS WAIT.                             *         00243000
+*-------------------------------------------------------------*         00244000
+         USING SVASVDL,R2          ADDRESSABILITY: DIRECTORY   @D61CDFH 00245000
+SPTINIT  DS    0H                                                       00246000
+         XC    SPSGWOE,SPSGWOE     RESET:                      @D61CDFH 00247000
+         MVI   SPSGFLG1,X'00'      RESET:                      @D61CDFH 00248000
+         MVI   SPSGFLG2,X'00'      RESET:                      @D61CDFH 00249000
+         MVI   SPSGFLG3,X'00'      RESET:                      @D61CDFH 00250000
+         SPACE                                                          00251000
+         OC    SPSGVTAB,SPSGVTAB   IS IT A(IJBSPDT) SAVED      @D61CDFH 00252000
+         BZ    SPTIPI3             NO, INVOCATION IPL STAGE 3  @D61CDFH 00253000
+         SPACE                                                          00254000
+         CLI   SPSGFLG0,SPSGPI2    IS IT STAGE 2 IN PROGRESS   @D61CDFH 00255000
+         BE    SPTIXI3             YES, SWITCH OVER TO STAGE 3 @D61CDFH 00256000
+         SPACE                                                          00257000
+         MVI   SPSGFLG0,SPSGPI2    IND: INVOCATION IPL STAGE 2 @D61CDFH 00258000
+         B     SPTIPI              CONTINUE                    @D61CDFH 00259000
+SPTIPI3  DS    0H                                              @D61CDFH 00260000
+         MVI   SPSGFLG0,SPSGPI3    IND: INVOCATION IPL STAGE 3 @D61CDFH 00261000
+         B     SPTIPI              CONTINUE                    @D61CDFH 00262000
+SPTIXI3  DS    0H                                              @D61CDFH 00263000
+         MVI   SPSGFLG0,SPSGXI3    IND: SWITCH OVER TO STAGE 3 @D61CDFH 00264000
+         XC    SPSGVTAB,SPSGVTAB   RESET: A(IJBSPDT)           @D61CDFH 00265000
+         B     SPTIXI              SKIP STXIT AB               @D61CDFH 00266000
+         SPACE                                                          00267000
+SPTIPI   DS    0H                                              @D61CDFH 00268000
+         STXIT AB,SPTEXIT,SPSGXSAV,OPTION=NODUMP                        00269000
+         CLI   SPSGFLG0,SPSGPI2    IS IT INVOCATION STAGE 2    @D61CDFH 00270000
+         BE    SPTIXX              YES, SKIP LOAD              @D61CDFH 00271000
+         SPACE                                                          00272000
+SPTIXI   DS    0H                                              @D61CDFH 00273000
+         L     R2,ASVASVDL         R2*=A(SVASVDL)              @D61CDFH 00274000
+         L     R1,AIJBSPDT         R1*=A($IJBSPDT)             @D61CDFH 00275000
+         LTR   R1,R1               IS IT ADDRESS PRESENT       @D61CDFH 00276000
+         BZ    SPTPWAIT            NO, ENTER PERMANENT WAIT    @D61CDFH 00277000
+         ST    R1,SPSGVTAB         SAVE A($IJBSPDT) IN SPDTTAB          00278000
+SPTIXX   DS    0H                                              @D61CDFH 00279000
+         L     RA,SPSGVTAB         RA*=A($IJBSPDT)             @D61CDFH 00280000
+         LA    R0,SPTOINIT         R0*=OFFSET TO SPDT INITIALIZATION    00281000
+         AMODESW RETURN,REG=(RA)   ENTER $IJBSPDT              @D61CDFH 00282000
+         SPACE                                                          00283000
+         DROP  R2                  RELEASE: DIRECTORY ENTRY    @D52NDFH 00284000
+         SPACE                                                          00285000
+*-----------------------------------------------------------*           00286000
+*        INVOCATION OF SPDT REQUEST HANDLING                *           00287000
+*        THE SPDT REQUESTS EXPAND TO SVC119 (X'77')         *           00288000
+*        THE DIFFERRENT REQUESTS ARE REPRESENTED BY         *           00289000
+*        DIFFERRENT FUNCTION CODES.                         *           00290000
+*        INPUT FROM APPLICATION                             *           00291000
+*               R0  BYTE0  FUNCTION                         *           00292000
+*                   BYTE1  EVENT / FACILITY                 *           00293000
+*                   BYTE2  OPTIONS                          *           00294000
+*                   BYTE3  VERSION                          *           00295000
+*               R1  A(SPDTRPL)                              *           00296000
+*        OUTPUT TO APPLICATION                              *           00297000
+*               R0  ERROR CODE                              *           00298000
+*               R15 RETURN CODE                             *           00299000
+*-----------------------------------------------------------*           00300000
+         USING SVEARA,R4           ADDRESSABILITY: TASK'S SAVE AREA     00301000
+         USING DISP,R6             ADDRESSABILITY: DISPATCHER           00302000
+         USING TCBADR,R7           ADDRESSABILITY: TCB                  00303000
+         USING TIBADR,R8           ADDRESSABILITY: TIB                  00304000
+SVC119   DS    0H                                                       00305000
+         L     R9,SPTSDIF(,RC)     GET OUR BASE BACK AGAIN              00306000
+         STM   R0,RF,SPSGSAVE      SAVE REGISTERS R0-R15                00307000
+         L     R7,TCBPTR           R7*=A(TCB)                           00308000
+         LH    R8,IJBTIK           R0*=TIK OF TASK                      00309000
+         SLL   R8,2                INDEX INTO TIBATAB          @D66ODOW 00310000
+         AL    R8,ATIBATAB         ADDR OF TIB TABLE ENTRY     @D66ODOW 00311000
+         L     R8,0(,R8)           R8*=A(TIB)                  @D66ODOW 00312000
+         TM    TIBFLAG1,EOTACT     IS IT EOT IN PROGRESS                00313000
+         BO    SVC119X             YES, ==>                             00314000
+         CLI   SPSGSAVE,X'FF'      IS IT INTERNAL REQUEST      @D51EMFH 00315000
+         BNE   SVC119C             NO, ==>                     @D51EMFH 00316000
+         L     R0,SPSGTTAB         R0*=A(TRACETAB)             @D61CDFH 00317000
+         XR    RF,RF               INIT                        @D51EMFH 00318000
+         B     SVC119R             RETURN                      @D51EMFH 00319000
+SVC119C  DS    0H                                              @D51EMFH 00320000
+         TM    SPSGFLG1,SPSGACTV   IS IT SPDT SUPPORT ACTIVE            00321000
+         BZ    SVC119F             NO, CAN'T PROCESS REQUESTS           00322000
+         OI    TCBSPTFL,TCBSPTCA   IND: SPDT CONNECTION ACTIVE          00323000
+         L     RA,SPSGVTAB         RA*=A($IJBSPDT)                      00324000
+         LA    R0,SPTOSVC          R0*=OFFSET TO SPDT SVC PROCESSING    00325000
+         AMODESW CALL,REGS=(RE,RA) ENTER $IJBSPDT              @D61CDFH 00326000
+         L     R7,TCBPTR           R7*=A(TCB)                           00327000
+         B     SVC119R             RETURN TO APPLICATION                00328000
+         SPACE 1                                                        00329000
+SVC119F  DS    0H                                                       00330000
+         LA    R0,SPTEC599         R0*=EC, SPDT SUPPORT NOT AVAILABLE   00331000
+         LA    RF,16               R15*=RETURN CODE                     00332000
+         TM    SPSGFLG1,SPSGINCM+SPSGINRS  WAS SPDT EVER INITIALIZED    00333000
+         BZ    SVC119R             NO, ==>                              00334000
+         LH    R0,SPSGEC           R0*=ERROR CODE AS SET BY THE SPDT    00335000
+         XR    RF,RF               INIT                                 00336000
+         IC    RF,SPSGRC           R15*=RETURN CODE AS SET UP BY SPDT   00337000
+SVC119R  DS    0H                                                       00338000
+         L     R4,TCBSAVE          R4*=A(TASK'S SAVE AREA)              00339000
+         ST    R0,SVER00           SAVE ERROR CODE FOR USER             00340000
+         ST    RF,SVER0F           SAVE RETURN CODE FOR USER            00341000
+         B     SVC119Z             RETURN                               00342000
+         SPACE                                                          00343000
+         DROP  R4                  RELEASE: TASK'S SAVE AREA            00344000
+         SPACE 2                                                        00345000
+*-----------------------------------------------------------*           00346000
+*        EOT PROCESSING FOR APPLICATION'S TASK              *           00347000
+*-----------------------------------------------------------*           00348000
+SVC119X  DS    0H                                                       00349000
+         TM    SPSGFLG1,SPSGACTV   IS IT SPDT SUPPORT ACTIVE            00350000
+         BZ    SVC119Y             NO, RETURN                           00351000
+         TM    TCBSPTFL,TCBSPTCA   IS IT SPDT CONNECTION ACTIVE         00352000
+         BZ    SVC119Z             NO, RETURN                           00353000
+         L     RA,SPSGVTAB         RA*=A($IJBSPDT)                      00354000
+         LA    R0,SPTOEOT          R0*=OFFSET TO SPDT EOT PROCESSING    00355000
+         AMODESW CALL,REGS=(RE,RA) ENTER $IJBSPDT              @D61CDFH 00356000
+         L     R7,TCBPTR           R7*=A(TCB)                           00357000
+SVC119Y  DS    0H                                                       00358000
+         NI    TCBSPTFL,X'FF'-TCBSPTCA   IND: NO SPDT CONNECTION ACTIVE 00359000
+SVC119Z  DS    0H                                                       00360000
+         L     R6,DISPAD           R6*=A(DISPATCHER)                    00361000
+         BR    R6                  RETURN TO DISPATCHER                 00362000
+         SPACE 2                                                        00363000
+*-----------------------------------------------------------*           00364000
+*        PROCESS THE SERVICE SIGNAL EXTERNAL INTERRUPTS     *           00365000
+*-----------------------------------------------------------*           00366000
+SPTSSIH  DS    0H                                                       00367000
+         NI    SPSGFLG2,X'FF'-SPSGDIPL  IND: IPL DO BE DELAYED = OFF    00368000
+         TM    SPSGFLG2,SPSGSSIX   IS IT SERVICE SIGNAL INTRPT ACCEPTED 00369000
+         BZR   R6                  NO, RETURN TO DISPATCHER             00370000
+         ST    RA,SPSGXIPT         SAVE EXT. INTERRPT PARM WORD@D61CDFH 00371000
+         L     RA,SPSGVTAB         RA*=A($IJBSPDT)                      00372000
+         LA    R0,SPTOSSIH         R0*=OFFSET TO SERVICE SIGNAL HANDLNG 00373000
+         AMODESW CALL,REGS=(RE,RA) ENTER $IJBSPDT              @D61CDFH 00374000
+         L     R6,DISPAD           R6*=A(DISPATCHER)                    00375000
+         BR    R6                  RETURN TO DISPATCHER                 00376000
+         SPACE 2                                                        00377000
+*-----------------------------------------------------------*  @D61CDFH 00378000
+*        PROCESS THE VMCF EXTERNAL INTERRUPTS               *  @D61CDFH 00379000
+*-----------------------------------------------------------*  @D61CDFH 00380000
+SPTVMCF  DS    0H                                              @D61CDFH 00381000
+         TM    SPSGVFLG,SPSGVSUP   IS IT VMCF SUPPORTED        @D61CDFH 00382000
+         BZR   R6                  NO, RETURN TO DISPATCHER    @D61CDFH 00383000
+         L     RA,SPSGVTAB         RA*=A($IJBSPDT)             @D61CDFH 00384000
+         LA    R0,SPTOVMCF         R0*=OFFSET TO VMCF          @D61CDFH 00385000
+         AMODESW CALL,REGS=(RE,RA) ENTER $IJBSPDT              @D61CDFH 00386000
+         L     R6,DISPAD           R6*=A(DISPATCHER)           @D61CDFH 00387000
+         BR    R6                  RETURN TO DISPATCHER        @D61CDFH 00388000
+         SPACE 2                                                        00389000
+*-----------------------------------------------------------*           00390000
+*        THE SPDT SYSTEM TASK'S AB EXIT ROUTINE             *           00391000
+*-----------------------------------------------------------*           00392000
+SPTEXIT  DS    0H                                                       00393000
+         L     R9,SPTXDIF(,RF)     GET OUR BASE BACK AGAIN              00394000
+         TM    SPSGFLG2,SPSGEXAB   IS IT SPDT ENABLED FOR EXIT AB       00395000
+         BZ    SPTPWAIT            NO, ENTER PERMANENT WAIT    @D61CDFH 00396000
+         L     RA,SPSGVTAB         RA*=A($IJBSPDT)                      00397000
+         LA    R0,SPTOEXIT         R0*=OFFSET TO AB EXIT RTN EXTENSION  00398000
+         AMODESW CALL,REGS=(RE,RA) ENTER $IJBSPDT              @D61CDFH 00399000
+         SPACE 2                                                        00400000
+*-----------------------------------------------------------*  @D61CDFH 00401000
+*        FORCE SPDT TASK INTO A PERM WAIT ON SPT RESOURCE   *  @D61CDFH 00402000
+*-----------------------------------------------------------*  @D61CDFH 00403000
+SPTPWAIT DS    0H                                              @D61CDFH 00404000
+         XC    SPSGSTID,SPSGSTID   IND: NO MORE POSTING        @D61CDFH 00405000
+         L     R6,DISPAD           R6*=A(DISPATCHER)           @D61CDFH 00406000
+         L     RC,DISPAD           RC*=A(DISPATCHER)           @D61CDFH 00407000
+         L     R5,ASRQTAB          R5*=A(SRQTAB)               @D61CDFH 00408000
+         LA    R5,SRQSPDT-SRQTAB(,R5)  R5*=RESOURCE DESCRIPTOR @D61CDFH 00409000
+         B     RWAIT               ENTER WAIT ON SPT RESOURCE  @D61CDFH 00410000
+         SPACE                                                          00411000
+*SGLINK RWAIT,INPUT=(R5,RC)                                    @D61CDFH 00412000
+         SPACE 2                                                        00413000
+*-----------------------------------------------------------*           00414000
+*        MOVE REAL ROUTINE, DAT = OFF                       *           00415000
+*        INPUT  R0*=TARGET OF MOVE                          *           00416000
+*               R1*=LENGTH OF MOVE                          *           00417000
+*               R2*=SOURCE OF MOVE                          *           00418000
+*               R3*=LENGTH OF MOVE                          *           00419000
+*               R7*=A(RETURN)                               *           00420000
+*-----------------------------------------------------------*           00421000
+SPTMOVE  DS    0H                                                       00422000
+         STNSM SPTMASK,X'FF'-SPTDAT  DAT = OFF TO SUPPORT MOVE REAL     00423000
+         MVCL  R0,R2               MOVE REAL                            00424000
+         XR    R3,R3               WORK                                 00425000
+         IC    R3,SPTMASK          R3*=SYSTEM MASK                      00426000
+         EX    R3,SPTSTOSM         RESTORE ORIGINAL SYSTEM MASK         00427000
+         BR    R7                  RETURN                               00428000
+         SPACE                                                          00429000
+*-----------------------------------------------------------*           00430000
+*        I/F TO FORCE TASK INTO WAIT (APPLICATION)          *           00431000
+*        INPUT  R12*=A(RETURN)                              *           00432000
+*-----------------------------------------------------------*           00433000
+SPTWAIT  DS    0H                                                       00434000
+         L     R5,ASRQTAB          R5*=A(SRQTAB)               @D61CDFH 00435000
+         LA    R5,SRQSPDT-SRQTAB(,R5)  R5*=RESOURCE DESCRIPTOR @D61CDFH 00436000
+         B     RWAIT               ENTER WAIT ON RESOURCE DESCRIPTOR    00437000
+         SPACE                                                          00438000
+*SGLINK RWAIT,INPUT=(R5,RC)                                             00439000
+         SPACE 2                                                        00440000
+*-----------------------------------------------------------*           00441000
+*        I/F TO REMOVE SPECIFIED TASK FROM WAIT             *           00442000
+*               (APPLICATION OR SPDT SYSTEM TASK)           *           00443000
+*        INPUT  R0*=TID                                     *           00444000
+*               R15*=A(RETURN)                              *           00445000
+*-----------------------------------------------------------*           00446000
+SPTPOST  DS    0H                                                       00447000
+         LTR   R8,R0               R8*=TID OF TASK TO BE POSTED         00448000
+         BZR   R15                 RETURN, TASK IS NOT ALIVE ANYMORE    00449000
+         SLL   R8,2                INDEX INTO TIBATAB          @D66ODOW 00450000
+         AL    R8,ATIBATAB         ADDR OF TIB TABLE ENTRY     @D66ODOW 00451000
+         L     R8,0(,R8)           R8*=A(TIB)                  @D66ODOW 00452000
+         L     R6,DISPAD           R6*=A(DISPATCHER)                    00453000
+         B     POST                POST THE SPECIFIED TASK              00454000
+         SPACE                                                          00455000
+*SGLINK POST,INPUT=(R6,R8,RF),WORK=(RE)                                 00456000
+         DROP  R6                  RELEASE: DISPATCHER         @D52NDFH 00457000
+         DROP  R7                  RELEASE: TCB                @D52NDFH 00458000
+         DROP  R8                  RELEASE: TIB                @D52NDFH 00459000
+         SPACE 2                                                        00460000
+*-----------------------------------------------------------*           00461000
+*        SPTSTADR - SPDT END OF SYSTEM TASK ROUTINE         *           00462000
+*        CALLED AFTER END-OF-TASK ROUTINE IN ORDER TO       *           00463000
+*        DEACTIVATE THE SYSTEM TASK                         *           00464000
+*-----------------------------------------------------------*           00465000
+SPTSTADR DS    0H                                                       00466000
+         MVI   RID+1,USERTID       SET USER RID                         00467000
+         TSTOP ,                   DEACTIVATE SYSTEM TASK               00468000
+         SPACE 2                                                        00469000
+*-----------------------------------------------------------*           00470000
+*        SYSTEM MASK HANDLING                               *           00471000
+*-----------------------------------------------------------*           00472000
+         SPACE                                                          00473000
+SPTSTOSM STOSM SPTMASK,*-*                                              00474000
+SPTMASK  DC    X'0'                SYSTEM MASK SAVE AREA                00475000
+SPTEXMSK EQU   X'01'               EXT. INTERRUPT MASK         @D51EMFH 00476000
+SPTIOMSK EQU   X'02'               IO INTERRUPT MASK           @D51EMFH 00477000
+SPTDAT   EQU   X'04'               DAT BIT                              00478000
+         DS    0H                  ALIGNMENT                            00479000
+         SPACE 2                                                        00480000
+*-----------------------------------------------------------*           00481000
+*        TO GET BASE BACK AGAIN                             *           00482000
+*-----------------------------------------------------------*           00483000
+         SPACE                                                          00484000
+         CNOP  0,4                                                      00485000
+SPTXDIF  EQU   *-SPTEXIT                                                00486000
+SPTSDIF  EQU   *-SVC119                                                 00487000
+SPTBASE  DC    A(SPDTTAB)          BASE ADDRESS                         00488000
+         SPACE 2                                                        00489000
+*-----------------------------------------------------------*           00490000
+*        OFFSETS TO THE ADDRESSES OF THE VARIOUS EXTENSION  *           00491000
+*        ROUTINES CONTAINED IN THE PHASE $IJBSPDT           *           00492000
+*-----------------------------------------------------------*           00493000
+SPTOINIT EQU   04                 OFFSET TO A(INITALIZATION)            00494000
+SPTOSVC  EQU   08                 OFFSET TO A(SVC HANDLER)              00495000
+SPTOEOT  EQU   12                 OFFSET TO A(EOT HANDLER)              00496000
+SPTOSSIH EQU   16                 OFFSET TO A(SERVICE SIGNAL HANDLER)   00497000
+SPTOEXIT EQU   20                 OFFSET TO A(AB EXIT ROUTINE)          00498000
+SPTOVMCF EQU   24                 OFFSET TO A(VMCF INTERRUPT)  @D61CDFH 00499000
+*-----------------------------------------------------------*           00500000
+SPTEC599 EQU   599                                                      00501000
+.END     ANOP                                                           00502000
+         MEND                                                           00503000

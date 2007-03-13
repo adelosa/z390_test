@@ -1,0 +1,79 @@
+         TITLE 'PSEUDO CONVERSATIONAL TSSPGM02 SAMPLE'                  TSS00010
+*********************************************************************** TSS00020
+*                              .EXIT TSSPGM02 EXIT MAY BE DRIVEN      * TSS00030
+*   AS A PSEUDO-CONV PROGRAM UNDER CICS/23 AND ABOVE                  * TSS00040
+*                                                                     * TSS00050
+*   A NEW FLAG BYTE IN THE COMMAREA (WPFLAG) IS USED TO DETERMINE     * TSS00060
+*   WHETHER READ OR SEND FUNCTIONS SHOULD BE PERFORMED.               * TSS00070
+*   IF THIS FLAG BYTE IS NOT SET TO EITHER READ OR SEND, THE EXIT     * TSS00080
+*   SHOULD PERFORM A CONVERSATIONAL SEND/RECEIVE SEQUENCE.            * TSS00090
+*   THE SAMPLE PROVIDED HERE, WILL ALSO FUNCTION ON BACK LEVEL        * TSS00100
+*   VERSIONS OF CA-CICS/SECURITY WHERE THE PSEUDO-CONV PROTOCOL IS    * TSS00110
+*   NOT SUPPORTED.                                                    * TSS00120
+*                                                                     * TSS00130
+* 1) IF RUNNING CICS/TS , THIS EXIT MUST RUN AMODE(31)                * TSS00140
+* 2) DEFINE A PPT ENTRY FOR TSSPGM02                                  * TSS00150
+* 3) DEFINE A MAPSET ENTRY FOR TSSMAP2                                * TSS00160
+*                                                                     * TSS00170
+*********************************************************************** TSS00180
+DFHEISTG DSECT                                                          TSS00190
+         COPY  TSSMAP2                                                  TSS00200
+R4       EQU   4                                                        TSS00210
+WPARMLST DSECT                     PARAMETER LIST.                      TSS00220
+WMGAREA  DS    0XL79               MESSAGE AREA                         TSS00230
+WMSGLN   DS    H                   MESSAGE LENGTH.                      TSS00240
+         DS    H                   RESERVED.                            TSS00250
+WMESSAGE DS    CL75                MESSAGE AREA.                        TSS00260
+WPFLAG   DS    0XL1                EXIT REQUEST FLAG            DK0620  TSS00270
+WPSEND   EQU   X'FF'               PSEUDO-CONVERSIONAL SEND     DK0620  TSS00280
+WPRECV   EQU   X'FE'               PSEUDO-CONVERSIONAL RECEIVE  DK0620  TSS00290
+WPPWAREA DS    0XL8                PASSWORD AREA.                       TSS00300
+WPSWD    DS    CL8                 PASSWORD.                            TSS00310
+WPLSTLN  EQU   *-WPARMLST          PARAMETER LIST LENGTH                TSS00320
+TSSPGM02 CSECT                                                          TSS00330
+         USING WPARMLST,R4         COMMAREA BASE REGISTER.              TSS00340
+         ICM   R4,15,DFHEICAP      ADDRESS COMMAREA.                    TSS00350
+         BNZ   OK                                                       TSS00360
+         EXEC  CICS SEND FROM(MSG01) LENGTH(80) ERASE WAIT              TSS00370
+         B     EXIT                                                     TSS00380
+OK       DS    0H                                                       TSS00390
+         CLI   WPFLAG,WPSEND      PSEUDO-SEND ?                 DK0620  TSS00400
+         BE    SEND                                                     TSS00410
+         CLI   WPFLAG,WPRECV      PSEUDO-RECV ?                 DK0620  TSS00420
+         BE    RECV                                                     TSS00430
+*                                                                       TSS00440
+* ============================================================          TSS00450
+* THE USER IS RESPONSIBLE FOR MAINTAINING THE LIST OF MESSAGES          TSS00460
+* BELOW FOR WHICH PASSWORD CHECKING WILL BE INVOKED.  MESSAGES          TSS00470
+* TSS7016A, TSS7197A AND TSS7198A WILL ONLY GO THROUGH THE OLD          TSS00480
+* CONVERSATIONAL PART OF TSSPGM02.                                      TSS00490
+* ============================================================          TSS00500
+OLDCICS  DS    0H                                                       TSS00510
+         CLC   WMESSAGE(7),=C'TSS7016'                                  TSS00520
+         BE    OLDSEND                                                  TSS00530
+         CLC   WMESSAGE(7),=C'TSS7197'                                  TSS00540
+         BE    OLDSEND                                                  TSS00550
+         CLC   WMESSAGE(7),=C'TSS7198'                                  TSS00560
+         BE    OLDSEND                                                  TSS00570
+         CLC   WMESSAGE(7),=C'TSS7199'                                  TSS00580
+         BNE   EXIT                                                     TSS00590
+OLDSEND  EXEC  CICS IGNORE CONDITION LENGERR                            TSS00600
+         EXEC  CICS SEND FROM(MSG02) LENGTH(80) ERASE WAIT              TSS00610
+         EXEC  CICS RECEIVE INTO(PASSW) MAXLENGTH(8)                    TSS00620
+         MVC   WPSWD(8),PASSW                                           TSS00630
+         B     EXIT                                                     TSS00640
+SEND     DS    0H                                                       TSS00650
+         CLC   WMESSAGE(7),=C'TSS7199'                                  TSS00660
+         BNE   EXIT                                                     TSS00670
+SEND2    EXEC  CICS SEND MAP('TSSMAP2') MAPSET('TSSMAP2') ERASE         TSS00680
+         B     EXIT                                                     TSS00690
+*                                                                       TSS00700
+RECV     DS    0H                                                       TSS00710
+         EXEC  CICS IGNORE CONDITION MAPFAIL LENGERR                    TSS00720
+         EXEC  CICS RECEIVE MAP('TSSMAP2') MAPSET('TSSMAP2')            TSS00730
+         MVC   WPSWD(8),TSSPWI                                          TSS00740
+EXIT     EXEC  CICS RETURN                                              TSS00750
+MSG01    DC    CL80'TSSPGM02: NO COMMAREA PASSED.'                      TSS00760
+MSG02    DC    CL80'TSSPGM02: PLEASE ERASE EOF + TYPE YOUR PASSWORD'    TSS00770
+PASSW    DS    CL8                                                      TSS00780
+         END                                                            TSS00790

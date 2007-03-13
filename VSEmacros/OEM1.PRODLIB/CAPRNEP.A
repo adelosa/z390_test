@@ -1,0 +1,167 @@
+         EJECT                                                          00001000
+*********************************************************************** 00002000
+*               CA-RAPS NODE ERROR PROGRAM (NEP)                      * 00003000
+*********************************************************************** 00004000
+         LTORG                                                          00005000
+DCACBAR  EQU   0    REMOVE THIS STATEMENT IF DCACBAR PREVIOUSLY DEFINED 00006000
+         EJECT                                                          00007000
+*                                                                       00008000
+*        RAPS NODE ERROR PROGRAM LOGIC FOR PRINTER ERROR RECOVERY       00009000
+*             (RAPS CONTROLLED CICS PRINTERS UNDER VTAM)                00010000
+*                                                                       00011000
+         DFHSNEP TYPE=ERRPROC,GROUP=1,CODE=(D9,DC,DD)                   00012000
+         STM   R14,R11,TWAEPRS         SAVE REGS                        00013000
+         BALR  R5,0                    ESTABLISH ADDRESSABILITY         00014000
+         USING *,R5                                                     00015000
+         SPACE ,                                                        00016000
+*********************************************************************** 00017000
+*        VERSION IDENTIFYING HEADER                                   * 00018000
+*********************************************************************** 00019000
+CAPRNEP0 DS    0H                                                       00020000
+         B     *+(CAPRNEP1-CAPRNEP0)   BRANCH AROUND HEADER             00021000
+         DC    CL8'CAPRNEP '           PROGRAM ID                       00022000
+         DC    CL7'VM=5.0 '            VERSION                          00023000
+         DC    CL11'CA-RAPS/VSE'       PRODUCT                          00024000
+CAPRNEP1 DS    0H                      ALIGNMENT                        00025000
+*********************************************************************** 00026000
+         SPACE ,                                                        00027000
+*                                                                       00028000
+*        ACQUIRE WORKING STORAGE                                        00029000
+*                                                                       00030000
+         LA     R4,288                                                  00031000
+         STH    R4,TCASCNB             STORE LENGTH FOR GETMAIN         00032000
+         DFHSC TYPE=GETMAIN,INITIMG=00,CLASS=USER                       00033000
+         L     R4,TCASCSA              LOAD ADDRESS OF STORAGE          00034000
+         LTR   R4,R4                   ABLE TO GET ANY ?                00035000
+         BZ    CAPRNEPX                NO, EXIT IMMEDIATELY             00036000
+         LA    R4,8(,R4)               BUMP PAST SAA                    00037000
+         EJECT                                                          00038000
+         DFHPC TYPE=LOAD,PROGRAM=CAPRLOC8                               00039000
+         L     R15,TCAPCLA             STORE ADDRESS FOR LATER          00040000
+         EJECT                                                          00041000
+         DFHIC TYPE=STOPTIME,CLASS=RUNAWAY    AVOID AICA                00042000
+         LR    R6,R13                  SAVE ADDRESS OF CSA              00043000
+         LR    R7,R1                   SAVE NET BASE REGISTER           00044000
+         SPACE ,                                                        00045000
+         LA    R1,TCTTETI              R1 => ADDR OF PRINTER ID         00046000
+         ST    R1,264(,R4)             ADR TCTTETI IN PARAMETER LIST    00047000
+         ST    R13,268(,R4)            ADR CSA IN PARAMETER LIST        00048000
+         SPACE ,                                                        00049000
+         LA    R1,264(,R4)             R1  => PARAMETER LIST            00050000
+         LA    R13,0(,R4)              R13 => SAVEAREA FOR CAPRLOC8     00051000
+         BALR  R14,R15                 CHECK IF A RAPS PRINTER          00052000
+         B     CAPREXT1                +0 NOT A RAPS PRINTER            00053000
+         B     CAPRCVR                 +4 RAPS PRINTER                  00054000
+         EJECT                                                          00055000
+*                                                                       00056000
+CAPRCVR  DS    0H                                                       00057000
+         LR    R1,R7                       RESTORE NET ADDR             00058000
+         LR    R13,R6                      RESTORE CSA ADDRESS          00059000
+         OI    TWAOPT2,TWAOAS              ABORT VTAM SEND              00060000
+         NI    TWAOPT2,255-(TWAOAT)        DO NOT ABEND TASK            00061000
+         NI    TWAOPT3,255-(TWAOOS+TWAOCN) OR SET NODE OUT OF SERVICE   00062000
+         ICM   R15,B'1111',X'0C'(R15)      ADCON RPCB EXTENSIONCO79860  00063000
+         BZ    CAPREXT2                    ..NO JO ACTIVE      CO79860  00064000
+         OI    X'38'(R15),X'01'            ATTEMPT AUTO RECOV  CO79860  00065000
+         B     SENDMSG                                                  00066000
+         EJECT                                                          00067000
+*                                                                       00068000
+*   SEND CONSOLE MSG NOTIFYING THAT ERROR RECOVERY HAS BEEN ENTERED     00069000
+*                                                                       00070000
+SENDMSG  DS    0H                                                       00071000
+         LA    R7,152(,R4)             R7 => CCB/CCW ADDR IN WRKSTOR    00072000
+         MVC   0(24,R7),LOGMSG         MOVE CCB/CCW TO WRKSTG           00073000
+         MVC   72(80,R4),CAPRMSG1      MOVE ERR MSG TO WRKSTG           00074000
+         MVC   118(4,R4),TCTTETI       MOVE TERMID TO MSG               00075000
+         LA    R6,72(,R4)              POINT TO WHERE MSG IS            00076000
+         STCM  R6,7,17(R7)             STORE ADDR INTO THE CCW          00077000
+         LA    R6,16(,R7)              GET ADDR OF THE CCW              00078000
+         STCM  R6,7,9(R7)              STORE IT IN THE CCB              00079000
+         LR    R6,R1                   SAVE NET BASE REGISTER           00080000
+         LA    R1,0(,R7)               POINT AT CCB                     00081000
+         EXCP  (1)                     ISSUE THE MESSAGE                00082000
+         WAIT  (1)                     WAIT FOR I/O TO COMPLETE         00083000
+         LR    R1,R6                   RESTORE NET BASE REGISTER        00084000
+         B     CAPREXT2                                                 00085000
+         EJECT                                                          00086000
+CAPREXT1 DS    0H                                                       00087000
+         LR    R1,R7                   RESTORE NET ADDR                 00088000
+         LR    R13,R6                  RESTORE CSA ADDRESS              00089000
+CAPREXT2 DS    0H                                                       00090000
+*                                                                       00091000
+*        FREE STORAGE ACQUIRED                                          00092000
+*                                                                       00093000
+         SH    R4,=H'8'                ADJUST BACK                      00094000
+         ST    R4,TCASCSA              STORE ADDRESS OF STORAGE         00095000
+         DFHSC TYPE=FREEMAIN           RELEASE THE STORAGE              00096000
+         SPACE 2                                                        00097000
+         EJECT                                                          00098000
+*                                                                       00099000
+*        RETURN                                                         00100000
+*                                                                       00101000
+CAPRNEPX DS    0H                                                       00102000
+         LM    R14,R11,TWAEPRS         RESTORE REGS                     00103000
+*********************************************************************** 00104000
+*        INSERT NON-RAPS ERROR RECOVERY LOGIC HERE IF DESIRED.        * 00105000
+*********************************************************************** 00106000
+         BR    R14                     AND RETURN                       00107000
+         EJECT                                                          00108000
+         LTORG                                                          00109000
+*                             1         2         3         4           00110000
+*                   01234567890123456789012345678901234567890123456789  00111000
+CAPRMSG1 DC    CL80'CA-RAPS NODE ERROR PROGRAM ACTIVE FOR PRINTER XXXX' 00112000
+         DS    0D                                                       00113000
+LOGMSG   CCB   SYSLOG,LOGCCW1,X'9400'                                   00114000
+LOGCCW1  CCW   X'09',CAPRMSG1,X'00',80                                  00115000
+         DROP R5                                                        00116000
+         EJECT                                                          00117000
+*********************************************************************** 00118000
+*        RAPS NODE ERROR PROGRAM LOGIC FOR HARCOPY FEATURE            * 00119000
+*               (RAPS VTAM-SCREEN TO POWER QUEUE ROUTINE)             * 00120000
+*********************************************************************** 00121000
+         DFHSNEP TYPE=ERRPROC,GROUP=2,CODE=(42)                         00122000
+         STM   R14,R11,TWAEPRS         SAVE REGS                        00123000
+         BALR  R5,0               LOAD BASE REGISTER                    00124000
+         USING *,R5               ESTABLISH ADDRESSABILITY              00125000
+         SPACE                                                          00126000
+         L     R3,TCTTEDA         LOAD TIOA ADDRESS                     00127000
+         LH    R2,2(,R3)          LOAD TIOA LENGTH                      00128000
+         LA    R2,14(,R2)         BUMP LENGTH FOR LLBB,TERMID,SIZE      00129000
+         STH   R2,TCASCNB         STORE LENGTH FOR GETMAIN              00130000
+         DFHSC TYPE=GETMAIN,INITIMG=00,CLASS=USER                       00131000
+         L     R4,TCASCSA         LOAD ADDRESS OF STORAGE               00132000
+         LTR   R4,R4              ABLE TO GET ANY ?                     00133000
+         BZ    SCREXIT            NO, EXIT IMMEDIATELY                  00134000
+         LA    R4,8(,R4)          POINT TO USER STORAGE                 00135000
+         STH   R2,0(,R4)          STORE LENGTH OF IC DATA               00136000
+         MVI   4(R4),X'FF'        SET FLAG                              00137000
+         MVC   5(1,R4),TCTEDSCL   SET DEFAULT NUMBER OF LINES           00138000
+         MVC   6(1,R4),TCTEDSCC   SET DEFAULT NUMBER OF COLUMNS         00139000
+         TM    TCTE32SF,TCTEALW+TCTELEWA  IS ALT ON?                    00140000
+         BZ    MOVE0000           ...NO-BRANCH,USE DEFAULTS             00141000
+         MVC   5(1,R4),TCTEASCL   SET ALT NUMBER OF LINES               00142000
+         MVC   6(1,R4),TCTEASCC   SET ALT NUMBER OF COLUMNS             00143000
+         SPACE                                                          00144000
+MOVE0000 DS    0H                                                       00145000
+         MVC   7(4,R4),TCTTETI    SET TERM ID                           00146000
+         MVC   11(3,R4),TCTTEOI   SET OP ID                             00147000
+         SPACE                                                          00148000
+         LR    R6,R3              COPY LIOA ADDR FOR MVCL               00149000
+         LH    R7,2(R3)           LOAD LIOA LENGTH FOR MVCL             00150000
+         LA    R8,14(,R4)         LOAD TO ADDRESS FOR MVCL              00151000
+         LR    R9,R7              COPY LENGTH FOR MVCL                  00152000
+         MVCL  R8,R6              COPY LIOA TO IC DATA                  00153000
+         SPACE                                                          00154000
+         ST    R4,TCAICDA         STORE IC DATA ADDRESS                 00155000
+         DFHIC TYPE=PUT,TRANSID=RSCN,ICDADDR=YES                        00156000
+         SH    R4,=H'8'           POINT TO SAA                          00157000
+         ST    R4,TCASCSA         STORE ADDR FOR FREEMAIN               00158000
+         DFHSC TYPE=FREEMAIN      RELEASE STORAGE                       00159000
+         MVC   TWAPRNT,=F'-1'     INDICATE DATA DISPOSED/RESTORE KBD    00160000
+         SPACE                                                          00161000
+SCREXIT  DS    0H                                                       00162000
+         LM    R14,R11,TWAEPRS         RESTORE REGS                     00163000
+         BR    R14                     AND RETURN                       00164000
+         LTORG                                                          00165000
+         DROP R5                                                        00166000
+         EJECT                                                          00167000

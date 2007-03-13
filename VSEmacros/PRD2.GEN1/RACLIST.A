@@ -1,0 +1,724 @@
+*                                                                       00050000
+* $MAC(RACLIST) COMP(SC1BN) PROD(RACF):                                 00100000
+*                                                                       00150000
+* DESCRIPTIVE_NAME:  AUTHORIZATION CHECKING INTERFACE                   00200000
+*                                                                       00250000
+*  **PROPRIETARY_STATEMENT********************************************* 00287500
+*                                                                     * 00325000
+*                                                                     * 00362500
+*   LICENSED MATERIALS - PROPERTY OF IBM                              * 00400000
+*   THIS MACRO IS "RESTRICTED MATERIALS OF IBM"                       * 00437500
+*   5655-068 (C) COPYRIGHT IBM CORP. 1980, 1993                       * 00475000
+*   SEE COPYRIGHT INSTRUCTIONS                                        * 00512500
+*                                                                     * 00550000
+*   STATUS= HBB5510                                                   * 00587500
+*                                                                 @L4C* 00625000
+*  **END_OF_PROPRIETARY_STATEMENT************************************** 00662500
+*                                                                       00700000
+* FUNCTION:  BUILDS IN-STORAGE PROFILES FOR RACF DEFINED RESOURCES.     00750000
+*            RACLIST PROCESSES ONLY THOSE RESOURCES DESCRIBED BY        00800000
+*            CLASS DESCRIPTORS..                                        00850000
+*                                                                       00900000
+* CHANGE ACTIVITY:                                                      00950000
+*                   $T1=UZ90211,SAF/RF15,810702,CNTDSD:            @T1A 01000000
+*                   UZ90283                                    @ZA90283 01050000
+*                   UZ90284                                    @ZA90284 01100000
+*                   UZ90285                                    @ZA90285 01150000
+*                   $L7=HRF1702,RACF/170,841205,CNTDSD:            @L7A 01200000
+*                   $L8=HRF1802,RACF/180,870323,CNTDSD:            @L8A 01250000
+*                   $M1=JRF1812,RACF/181,871117,CNTDSD:            @M1A 01300000
+*      $L1= VTAMSLS  RACF/190 880222 PDPWB1: VTAM SESSION SEC      @L1A 01350000
+*      $P1= PGW0006  RACF/190 880615 PDRTS1: PGW0006               @P1A 01400000
+*      $P2= PGW0024  RACF/190 880803 PDRTS1: PGW0024               @P2A 01450000
+*      $OY15980 THIS PROBLEM HAS BEEN FIXED IN RELEASE 1.9 WITH L1 FLAG 01500000
+*      $P3= PGP0360  RACF/190 890715 PDB_S1: PGP0360               @P3A 01550000
+*      $P4= PGP0611  RACF/190 890920 PDB_S1: PGP0611               @P4A 01600000
+*      $P5= PGU1528  RACF/190 891220 PDR_G2: PGU1528               @P5A 01650000
+*      $L2= RELID    RACF/192 900904 PDAHW1: RACF 1.9.2 SUPPORT    @L2A 01700000
+*      $P6= PJA0029  RACF/192 910524 PDPSB2: PJA0029               @P6A 01716600
+*      $01= OY58591  RACF/192 921106 PDALF1: DC FOR FILTER KEYWORD @01A 01733200
+*      $L3= HPCS     RACF/210 930426 PDMAS1: RACF 2.1.0 SUPPORT    @L3A 01749800
+*      $L4= OW04015  RACF/210 930507 PDKAF1: RACF 2.1.0 SUPPORT    @L4A 01766400
+*      $P7= PIG3024  RACF/210 930917 PDKAF1: PIG3024               @P7A 01783000
+*      $P8= PIG3428  RACF/210 931028 PDKAF1: PIG3428               @P8A 01799600
+*      $02= OW00768  RACF/210 931206 PDKAF1: OW00768 (PIG3839)     @02A 01816200
+*      $L5= OW10709  RACF/220 940510 PDJMV1: RACF 2.2.0 SUPPORT    @L5A 01832800
+*                                                                       01850000
+* CHANGE DESCRIPTION                                                    01900000
+*      A000000-999999                                          @PC003PY 01950000
+*      A - SUPPORT VERIFY THAT THE SUBPOOL PARAMETER IS VALID      @P3A 02000000
+*      C - '&RELEASE' TO '&RELEASE'(1,3) FOR LOGICAL COMPARISON    @P4A 02050000
+*          WITH '1.9'                                              @P4A 02100000
+*      C - REMOVE RCVTSTAT CHECK                                   @P5C 02150000
+*      A - ADDED CODE TO SUPPORT RACF RELEASE 1.9.2                @L2A 02200000
+*      C - STATUS TO CORRECTLY CORRESPOND TO MVS LEVEL             @P6C 02212500
+*      C - RELEASE TEST FOR FILTER KEYWORD, SO LIST FORM CORRECTLY @01C 02225000
+*          GENERATES DC FOR 1.9 AND LATER                          @01C 02237500
+*      A - ADDED CODE TO SUPPORT GLOBAL=YES                        @L3A 02250000
+*      C - ALLOW RACF RELEASE 2.1 TO BE SPECIFIED                  @L4A 02262500
+*      C - TURN FLAGS ON FOR SPECIFIED RELEASE AND ANY LOWER       @P7A 02275000
+*          RELEASES                                                @P7A 02287500
+*      C - RESET INITIAL VALUE OF OFFSET VARIABLE TO 28, AND       @P8A 02300000
+*          ADD CONDITIONAL INCREMENT OF OFFSET VARIABLE FOR        @P8A 02312500
+*          RELEASES GREATER THAN 2.1.  MISC OTHER CLEANUPS.        @P8A 02325000
+*      A - ALLOW RELEASE= CHECKS WITH SUBSTRINGS TO ACCEPT THAT    @02A 02337500
+*          RELEASE= VALUE MAY BE EMPTY IF VALUE IS BEING DEFAULTED.@02A 02350000
+*      C - ALLOW RACF RELEASE 2.2 TO BE SPECIFIED                  @L5A 02362500
+* @D62CDHH: VSE/ESA COMPATIBILITY WITH MVS/ESA                 @D62CDHH 02375000
+*                                                                       02400000
+*                                                                       02450000
+         MACRO                                                          02500000
+&SYMBOL  RACLIST &LIST=,&CLASS=,&ACEE=,&APPL=,&ENVIR=,&SUBPOOL=,       *02550000
+               &MF=S,&INSTLN=,&OWNER=,&RELEASE=,&LOC=,                 *02600000
+               &FILTER=,&GLOBAL=                                   @L3C 02650000
+.******* DEFINE LOCAL SET SYMBOLS                                       02700000
+.*** THESE BITS MAP TO RLPLFLAG IN ICHRLS00,  PXFLAG IN ICHGLS00,  @L4A 02716600
+.*** AND RLSTFLG2 IN IRRPRLST                                      @L4A 02733200
+         LCLA  &BIT0,&BIT1,&BIT2,&BIT3,&BIT4,&BIT5,&BIT6,&BIT7     @L1A 02750000
+         LCLA  &BIX0,&BIX1,&BIX2,&BIX3,&BIX4,&BIX5,&BIX6,&BIX7     @L1A 02800000
+         LCLA  &OFFSET,&CLNGTH                                          02850000
+.*** THESE BITS MAP TO RLSTFLG2 IN IRRPRLST                        @L3A 02858300
+         LCLA  &GBIT0,&GBIT1,&GBIT2,&GBIT3,&GBIT4,&GBIT5,&GBIT6,&GBIT7  02866600
+         LCLA  &GBIX0,&GBIX1,&GBIX2,&GBIX3,&GBIX4,&GBIX5,&GBIX6,&GBIX7  02874900
+.*                                                                 @L3A 02883200
+         LCLA  &PARMLEN                                            @L3A 02891500
+         LCLB  &MFFLAG                                                  02900000
+         LCLC  &SUBSTR                                                  02950000
+.******* DEFINE GLOBAL SET VARIABLES                               @T1A 03000000
+         GBLB  &ICHRAC              ICHRAC - A FLAG WHICH, WHEN    @T1A 03050000
+.*                                  ON, INDICATES THAT THIS MACRO  @T1A 03100000
+.*                                  IS BEING INVOKED INTERNALLY    @T1A 03150000
+.*                                  BY THE RACROUTE MACRO.         @T1A 03200000
+         GBLC  &ICHL                THIS IS USED TO COMMUNICATE    @T1A 03250000
+.*                                  TO THE RACROUTE MACRO THE      @T1A 03300000
+.*                                  ADDRESS OF THE PARAMETER LIST  @T1A 03350000
+         GBLC  &ICHRLVL             SYMBOL TO BRANCH TO            @L7A 03400000
+.*                                  WHEN INCOMPATIBLE MACRO LEVEL. @L7A 03450000
+&PARMLEN SETA  32                   LENGTH OF PARAMETER LIST       @L3A 03475000
+.******* PERFORM PARAMETER DIAGNOSIS                                    03500000
+.* VALIDATE RELEASE PARAMETER                                      @L7A 03550000
+         AIF   (&ICHRAC).RLVL01                                    @L7A 03600000
+         AGO   .ERRVSE             NOT INVOKED BY RACROUTE     @D62CDHH 03625000
+&ICHRLVL SETC  'ICH&SYSNDX.X'      CREATE LABEL FOR SVC BYPASS     @L7A 03650000
+.RLVL01  ANOP                                                      @L7A 03700000
+         AIF   ('&RELEASE' EQ '').ERLVL1R                          @L7A 03750000
+         AIF   (N'&RELEASE GT 2).ERLVL1  INVALID RELEASE PARAMETER @L7A 03800000
+         AIF   ('&RELEASE(1)' EQ '1.6' OR                              X03850000
+               '&RELEASE(1)' EQ '1.7' OR                               X03900000
+               '&RELEASE(1)' EQ '1.8').NOERLVL                     @P2C 03950000
+         AIF   ('&RELEASE(1)' NE '1.8.1' AND                           X04000000
+               '&RELEASE(1)' NE '1.9' AND                              X04050000
+               '&RELEASE(1)' NE '1.9.2' AND                            X04075000
+               '&RELEASE(1)' NE '2.1'    AND                           X04100000
+               '&RELEASE(1)' NE '2.2'  ).ERLVL1                    @L5C 04125000
+.NOERLVL ANOP                                                      @P2A 04150000
+         AIF   (N'&RELEASE EQ 1).NORLVLC CHECK NOT SPECIFIED       @L7A 04200000
+         AIF   ('&RELEASE(2)' NE 'CHECK').ERLVL1 INVALID VALUE     @L7A 04250000
+         AIF   ('&MF(1)' NE 'E').ERLVL2 CHECK ONLY WITH MF=E       @L7A 04300000
+.ERLVL2R ANOP                                                      @L7A 04350000
+.NORLVLC ANOP                                                      @L7A 04400000
+.ERLVL1R ANOP                                                      @L7A 04450000
+.******* CHECK SPECIFIED PARAMETERS AGAINST RACF LEVEL             @L7A 04500000
+         AIF   ('&RELEASE' GE '1.7').ERLVLAR                       @L8A 04550000
+         AIF   (T'&LOC NE 'O').ERLVLA                              @L7A 04600000
+.ERLVLAR ANOP                                                      @L7A 04650000
+.******* VALIDATE MF PARAMETER                                          04700000
+         AIF   ('&MF' NE 'S' AND '&MF' NE 'L' AND '&MF'(1,2) NE        -04750000
+               '(E' AND '&MF'(1,2) NE '(M').ERR06                  @L1A 04800000
+.ERTN06  ANOP                                                           04850000
+.******* VALIDATE ENVIR PARAMETER                                       04900000
+         AIF   ('&ENVIR' EQ '').ERTN05                                  04950000
+         AIF   ('&ENVIR' NE 'CREATE' AND '&ENVIR' NE 'DELETE').ERR05    05000000
+.ERTN05  ANOP                                                           05050000
+.******* VALIDATE OWNER PARAMETER                                       05100000
+         AIF   ('&OWNER' EQ '').ERTN04                                  05150000
+         AIF   ('&OWNER' NE 'NO' AND '&OWNER' NE 'YES').ERR04           05200000
+.ERTN04  ANOP                                                           05250000
+.******* VALIDATE LOC PARAMETER                                    @L7A 05300000
+         AIF   ('&LOC' EQ '').ERTN11                               @L7A 05350000
+         AIF   ('&LOC' NE 'ANY' AND '&LOC' NE 'ABOVE').ERR11       @L7A 05400000
+.ERTN11  ANOP                                                      @L7A 05450000
+.**      LOC ALLOWED ONLY IF RACLIST INVOKED FROM RACROUTE         @L7A 05500000
+         AIF   ('&LOC' NE '' AND NOT &ICHRAC).ERR12                @L7A 05550000
+.ERTN12  ANOP                                                      @L7A 05600000
+.******* VALIDATE FILTER PARAMETER                                 @L1A 05650000
+         AIF   ('&FILTER' EQ '').ERTN15                            @L1A 05700000
+.**      RELEASE MUST BE 1.9 OR GREATER TO SPECIFY FILTER          @L1A 05750000
+         AIF   ('&RELEASE(1)' EQ '').ERR13                         @P4A 05800000
+         AIF   ('&RELEASE(1)'(1,3) LT '1.9').ERR13                 @P4C 05850000
+.ERTN13  ANOP                                                      @L1A 05900000
+.**      MUST BE CALLED BY RACROUTE MACRO TO SPECIFY FILTER        @L1A 05950000
+         AIF   (NOT &ICHRAC).ERR14                                 @L1A 06000000
+.ERTN14  ANOP                                                      @L1A 06050000
+.**      LIST KEYWORD MUST NOT BE SPECIFIED CONCURRENTLY WITH FILTER    06100000
+         AIF   ('&LIST' NE '').ERR15                               @L1A 06150000
+.ERTN15  ANOP                                                      @L1A 06200000
+.******* VALIDATE GLOBAL PARAMETER                                 @L3A 06203100
+         AIF   ('&GLOBAL' EQ '').ERTN22                            @L3A 06206200
+         AIF   ('&GLOBAL' NE 'YES' AND '&GLOBAL' NE 'NO' ).ERR19   @L3A 06209300
+.ERTN19  ANOP                                                      @L3A 06212400
+         AIF   ('&GLOBAL' NE '' AND NOT &ICHRAC ).ERR20            @L3A 06215500
+.ERTN20  ANOP                                                      @L3A 06218600
+.****************************************************              @L3A 06221700
+.*  VALIDATE THAT FILTER OR LIST ARE NOT SPECIFIED                 @L3A 06224800
+.*  IF GLOBAL=YES                                                  @L3A 06227900
+.****************************************************              @L3A 06231000
+         AIF   ('&GLOBAL' EQ 'NO').ERTN22                          @L3A 06234100
+         AIF   ('&FILTER' NE '').ERR21                             @L3A 06237200
+.ERTN21  ANOP                                                      @L3A 06240300
+         AIF   ('&LIST' NE '').ERR22                               @L3A 06243400
+.ERTN22  ANOP                                                      @L3A 06246500
+         AIF   ('&MF'(1,2) NE '(M').ERTN17                         @L1A 06250000
+.******* MF=M ONLY ALLOWED IF RACLIST INVOKED FROM RACROUTE AND RELEASE 06300000
+.******* IS GREATER OR EQUAL TO 1.9                                @L1A 06350000
+.**      TEST FOR SUPPORTING RELEASE                               @L1A 06400000
+         AIF   ('&RELEASE(1)' EQ '').ERR16                         @P4A 06450000
+         AIF   ('&RELEASE(1)'(1,3) LT '1.9').ERR16                 @P4C 06500000
+.ERTN16  ANOP                                                      @L1A 06550000
+.**      TEST FOR RACROUTE INVOKATION                              @L1A 06600000
+         AIF   (NOT &ICHRAC).ERR17                                 @L1A 06650000
+.ERTN17  ANOP                                                      @L1A 06700000
+.* --------------------------------------------------------------- @P3A 06750000
+.* VALIDATE SUBPOOL PARAMETER                                      @P3A 06800000
+.* IF SUBPOOL IS SPECIFIED AND IS NOT IN THE REGISTER FORMAT       @P3A 06850000
+.* THEN WE VERIFY THAT THE LITERAL IS A NUMERAL AND IS LESS        @P3A 06900000
+.* THAN 255.                                                       @P3A 06950000
+.* IF ERROR IS FOUND IN FIRST SUBPOOL STRING, THE SECOND STRING    @P3A 07000000
+.* IS NOT LOOKED INTO.                                             @P3A 07050000
+.* --------------------------------------------------------------- @P3A 07100000
+         AIF   ('&SUBPOOL' EQ '').NOSPCHK                          @P3A 07150000
+         AIF   ('&SUBPOOL(1)' EQ '').ERR18                         @P3A 07200000
+         AIF   ('&SUBPOOL(1)'(1,1) EQ '(').SP2CHK                  @P3A 07250000
+         AIF   (T'&SUBPOOL(1) NE 'N').SP2CHK                       @P3A 07300000
+         AIF   ('&SUBPOOL(1)' GT '255').ERR18                      @P3A 07350000
+.SP2CHK  ANOP                                                      @P3A 07400000
+         AIF   ('&SUBPOOL(2)' EQ '').NOSPCHK                       @P3A 07450000
+         AIF   ('&SUBPOOL(2)'(1,1) EQ '(').NOSPCHK                 @P3A 07500000
+         AIF   (T'&SUBPOOL(2) NE 'N').NOSPCHK                      @P3A 07550000
+         AIF   ('&SUBPOOL(2)' GT '255').ERR18                      @P3A 07600000
+.ERTN18  ANOP                                                      @P3A 07650000
+.NOSPCHK ANOP                                                      @P3A 07700000
+.*                                                                 @P3A 07750000
+.******* REGISTER SPECIFICATION OF ADDR TYPE PARAMETERS NOT ALLOWED     07800000
+.******* WITH LIST FORM                                                 07850000
+         AIF   ('&MF' NE 'L').RLST070                                   07900000
+         AIF   ('&CLASS' EQ '').RLST010                                 07950000
+         AIF   ('&CLASS'(1,1) EQ '(').ERR07                             08000000
+.RLST010 ANOP                                                           08050000
+         AIF   ('&LIST' EQ '').RLST020                                  08100000
+         AIF   ('&LIST'(1,1) EQ '(').ERR07                              08150000
+.RLST020 ANOP                                                           08200000
+         AIF   ('&ACEE' EQ '').RLST030                                  08250000
+         AIF   ('&ACEE'(1,1) EQ '(').ERR07                              08300000
+.RLST030 ANOP                                                           08350000
+         AIF   ('&INSTLN(1)' NE '&INSTLN').ERR07                        08400000
+.RLST040 ANOP                                                           08450000
+         AIF   ('&APPL' EQ '').RLST050                                  08500000
+         AIF   ('&APPL'(1,1) EQ '(').ERR07                              08550000
+.RLST050 ANOP                                                           08600000
+         AIF   ('&SUBPOOL(1)' EQ '').RLST060                            08650000
+         AIF   ('&SUBPOOL(1)'(1,1) EQ '(').ERR07                        08700000
+.RLST060 ANOP                                                           08750000
+         AIF   ('&SUBPOOL(2)' EQ '').RLST061                            08800000
+         AIF   ('&SUBPOOL(2)'(1,1) EQ '(').ERR07                        08850000
+.RLST061 ANOP                                                           08900000
+         AIF   ('&FILTER' EQ '').RLST065                           @L1A 08950000
+         AIF   ('&FILTER'(1,1) EQ '(').ERR07                       @L1A 09000000
+.RLST065 ANOP                                                      @L1A 09050000
+.ERTN07  ANOP                                                           09100000
+.RLST070 ANOP                                                           09150000
+.******* PRODUCE LIST FORM IF REQUESTED                                 09200000
+         AIF   ('&MF' NE 'L').RLST430                                   09250000
+&SYMBOL  DS    0F                                                       09300000
+.RLST100 ANOP                                                           09350000
+ICH0&SYSNDX EQU *                                                       09400000
+.******* PRODUCE BYTE INFORMATION                                       09450000
+         AIF   ('&SUBPOOL(1)' EQ '').RLST110                            09500000
+         AIF   ('&SUBPOOL(1)'(1,1) EQ '(').RLST110                      09550000
+&ICHL    DC    AL1(&SUBPOOL(1))        INDEX SUBPOOL NUMBER        @T1A 09600000
+         AGO   .RLST115                                                 09650000
+.RLST110 ANOP                                                           09700000
+&ICHL    DC    AL1(255)                INDEX SUBPOOL NUMBER        @T1A 09750000
+.RLST115 ANOP                                                           09800000
+         AIF   ('&SUBPOOL(2)' EQ '').RLST120                            09850000
+         AIF   ('&SUBPOOL(2)'(1,1) EQ '(').RLST120                      09900000
+         DC    AL1(&SUBPOOL(2)) -      PROFILE SUBPOOL NUMBER           09950000
+         AGO   .RLST125                                                 10000000
+.RLST120 ANOP                                                           10050000
+         DC    AL1(255)         -      PROFILE SUBPOOL NUMBER           10100000
+.RLST125 ANOP                                                           10150000
+         DC    AL1(2)           -      RACLIST ENTRY CODE               10200000
+.******* PRODUCE FLAG BYTE 1 FROM ENVIR/OWNER/LOC PARAMETER        @L7A 10250000
+&BIT0    SETA  0                       0 AND 1 INDICATE CREATE    @L4C  10281800
+&BIT1    SETA  0                       '00' OR DELETE '01'        @L4C  10313600
+&BIT2    SETA  0                       ADD OWNER W/ALTER          @L4C  10345400
+&BIT3    SETA  0                       LOC = ABOVE SPECIFIED      @L4C  10377200
+&BIT4    SETA  0                       1.8|1.8.1 SPECIFIED (WARNING    X10409000
+                                        MODE SUPPORTED)           @P8C  10440800
+&BIT5    SETA  0                       1.9 SPECIFIED (FILTER           X10472600
+                                        SUPPORTED)                @P8C  10504400
+&BIT6    SETA  0                       1.9.2 SPECIFIED            @L4A  10536200
+.****** &BIT7 SHOULD NEVER BE TOUCHED, IT IS USED BY AN APAR      @L4A  10568000
+         AIF   ('&ENVIR' EQ '' OR '&ENVIR' EQ 'CREATE').RLST130         10600000
+         AIF   ('&ENVIR' NE 'DELETE').RLST130                           10650000
+&BIT0    SETA  1                                                        10700000
+.RLST130 ANOP                                                           10750000
+         AIF   ('&OWNER' EQ '' OR '&OWNER' EQ 'NO').RLST131             10800000
+         AIF   ('&OWNER' NE 'YES').RLST131                              10850000
+&BIT2    SETA  1                                                        10900000
+.RLST131 ANOP                                                           10950000
+         AIF   ('&LOC' EQ '' OR '&LOC' EQ 'ANY').RLST132           @L7A 11000000
+         AIF   ('&LOC' NE 'ABOVE').RLST132                         @L7A 11050000
+&BIT3    SETA  1                                                   @L7A 11100000
+.RLST132 ANOP                                                      @L7A 11150000
+         AIF   ('&RELEASE(1)' EQ '').RLST135                       @02A 11200000
+         AIF   ('&RELEASE(1)' LT '1.8').RLST135                    @P7C 11250000
+&BIT4    SETA  1       - RELEASE = 1.8|1.8.1 BIT SET ON            @P8C 11300000
+.RLST133 ANOP                                                      @L1A 11350000
+         AIF   ('&RELEASE(1)'(1,3) LT '1.9').RLST135               @P7C 11400000
+&BIT5    SETA  1       - RELEASE = 1.9 BIT SET ON                  @L1A 11450000
+.RLST134 ANOP                                                      @L2A 11500000
+         AIF   ('&RELEASE(1)'(1,5) LT '1.9.2' AND                      X11533300
+                '&RELEASE(1)'(1,1) LT '2').RLST135                 @P7C 11566600
+&BIT6    SETA  1       - RELEASE = 1.9.2 BIT SET ON                @L2A 11600000
+.RLST135 ANOP                                                      @L1A 11650000
+         DC    B'&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6.0' - FLAGS    @L2C 11700000
+.******* PROCESS LIST PARMETER                                          11750000
+         AIF   ('&LIST' EQ '').RLST140                                  11800000
+         AIF   ('&LIST'(1,1) EQ '(').RLST140                            11850000
+         DC    A(&LIST(1)) -           LIST ADDRESS                     11900000
+         AGO   .RLST145                                                 11950000
+.RLST140 ANOP                                                           12000000
+         DC    A(0) -                  LIST ADDRESS                     12050000
+.RLST145 ANOP                                                           12100000
+.******* PROCESS ACEE PARAMETER                                         12150000
+         AIF   ('&ACEE' EQ '').RLST150                                  12200000
+         AIF   ('&ACEE'(1,1) EQ '(').RLST150                            12250000
+         DC    A(&ACEE(1)) -           ACEE ADDRESS                     12300000
+         AGO   .RLST155                                                 12350000
+.RLST150 ANOP                                                           12400000
+         DC    A(0) -                  ACEE ADDRESS                     12450000
+.RLST155 ANOP                                                           12500000
+.******* PROCESS INSTLN PARAMETER                                       12550000
+         AIF   ('&INSTLN' EQ '' OR                                     *12600000
+               '&INSTLN(1)' NE '&INSTLN').RLST160                       12650000
+         DC    A(&INSTLN) -             ADDRESS OF INSTALLATION DATA    12700000
+         AGO   .RLST165                                                 12750000
+.RLST160 ANOP                                                           12800000
+         DC    A(0) -                   ADDRESS OF INSTALLATION DATA    12850000
+.RLST165 ANOP                                                           12900000
+.******* PROCESS APPL PARAMETER                                         12950000
+         AIF   ('&APPL' EQ '').RLST175                                  13000000
+         AIF   ('&APPL'(1,1) EQ '(').RLST175                            13050000
+         AIF   ('&APPL'(1,1) EQ '''').RLST170                           13100000
+         DC    A(&APPL) -               APPL ADDRESS                    13150000
+         AGO   .RLST180                                                 13200000
+.RLST170 ANOP                                                           13250000
+         DC    A(ICH1&SYSNDX) -         APPL ADDRESS                    13300000
+         AGO   .RLST180                                                 13350000
+.RLST175 ANOP                                                           13400000
+         DC    A(0) -                   APPL ADDRESS                    13450000
+.RLST180 ANOP                                                           13500000
+.******* PROCESS CLASS  PARAMETER                                       13550000
+         AIF   ('&CLASS' EQ '').RLST195                                 13600000
+         AIF   ('&CLASS'(1,1) EQ '(').RLST195                           13650000
+         AIF   ('&CLASS'(1,1) EQ '''').RLST190                          13700000
+         DC    A(&CLASS) -              CLASS ADDRESS                   13750000
+         AGO   .RLST200                                                 13800000
+.RLST190 ANOP                                                           13850000
+         DC    A(ICH2&SYSNDX) -         CLASS ADDRESS                   13900000
+         AGO   .RLST200                                                 13950000
+.RLST195 ANOP                                                           14000000
+         DC    A(0) -                  CLASS ADDRESS                    14050000
+.RLST200 ANOP                                                           14100000
+.******* PROCESS FILTER PARAMETER                                  @L1A 14150000
+         AIF   ('&RELEASE(1)' EQ '').RLST205                       @01A 14200000
+         AIF   ('&RELEASE(1)'(1,3) LT '1.9').RLST205               @01C 14250000
+         AIF   ('&FILTER' EQ '').RLST203                           @L1A 14300000
+         AIF   ('&FILTER'(1,1) EQ '(').RLST203                     @L1A 14350000
+         DC    A(&FILTER) -            FILTER STRING ADDRESS       @L1A 14400000
+         AGO   .RLST205                                            @L1A 14450000
+.RLST203 ANOP                                                      @L1A 14500000
+         DC    A(0)       -            FILTER STRING ADDRESS       @L1A 14550000
+.RLST205 ANOP                                                      @L1A 14600000
+         AIF   ('&RELEASE(1)' EQ '').RLST208                       @02A 14602100
+         AIF   ('&RELEASE(1)'(1,1) LT '2').RLST208                 @P8C 14604200
+.******* PRODUCE EXTENDED BYTE 1 FOR RACF 2.1                      @L3A 14606300
+&GBIT0   SETA  0                       RESERVED FOR FUTURE USE     @P8C 14608400
+&GBIT1   SETA  0                       RESERVED FOR FUTURE USE     @P8C 14610500
+&GBIT2   SETA  0                       RESERVED FOR FUTURE USE     @P8C 14612600
+&GBIT3   SETA  0                       RESERVED FOR FUTURE USE     @P8C 14614700
+&GBIT4   SETA  0                       RESERVED FOR FUTURE USE     @P8C 14616800
+&GBIT5   SETA  0                       RESERVED FOR FUTURE USE     @P8C 14618900
+.******* 2.1 OR GREATER WOULD HAVE HAD TO BEEN SPECIFIED TO BE HERE@P8A 14621000
+&GBIT6   SETA  1                       GLOBAL SUPPORTED            @P8C 14623100
+&GBIT7   SETA  0                       GLOBAL=YES SPECIFIED        @P8C 14625200
+.RLST206 ANOP                                                      @L3A 14627300
+.******* SET GLOBAL  BIT TO YES IF GLOBAL=YES                      @L3A 14629400
+         AIF   ('&GLOBAL' NE 'YES').RLST207                        @L3A 14631500
+&GBIT7   SETA  1                                                   @L3A 14633600
+.RLST207 ANOP                                                      @L3A 14635700
+         DC    B'&GBIT0&GBIT1&GBIT2&GBIT3&GBIT4&GBIT5&GBIT6&GBIT7'     X14637800
+                                       EXTENDED FLAGS              @P8C 14639900
+         DC    X'00'                                               @L3A 14642000
+         DC    AL2(&PARMLEN)    LIST LENGTH                        @L3A 14644100
+.RLST208 ANOP                                                      @L3A 14646200
+.******* IF APPL EXPLICITLY SPECIFIED, PRODUCE IT BELOW LIST            14650000
+         AIF   ('&APPL' EQ '').RLST210                                  14700000
+         AIF   ('&APPL'(1,1) NE '''').RLST210                           14750000
+ICH1&SYSNDX DC   CL8&APPL -            APPL NAME                        14800000
+.RLST210 ANOP                                                           14850000
+.******* IF CLASS EXPLICITLY SPECIFIED, PRODUCE IT BELOW LIST           14900000
+         AIF   ('&CLASS' EQ '').RLST220                                 14950000
+         AIF   ('&CLASS'(1,1) NE '''').RLST220                          15000000
+ICH2&SYSNDX DC    CL8&CLASS    -       CLASS NAME                       15050000
+.RLST220 ANOP                                                           15100000
+.******* LIST FORM COMPLETE - TEST FOR STANDARD FORM PASS               15150000
+.******* THROUGH LIST FORM                                              15200000
+         AIF   (&MFFLAG).RLST390                                        15250000
+         MEXIT                                                          15300000
+.RLST430 ANOP                                                           15350000
+         AIF   ('&MF(1)' EQ 'E' OR '&MF(1)' EQ 'M').RLST500        @L1A 15400000
+.******* STANDARD FORM REQUESTED                                        15450000
+&SYMBOL  DS    0H                                                       15500000
+&MFFLAG  SETB  1              SET TRUE FOR PASS THROUGH LIST FORM       15550000
+.******* PROCESS SUBPOOL PARAMETER                                      15600000
+         AIF   ('&SUBPOOL(1)' EQ '').RLST300                            15650000
+         AIF   ('&SUBPOOL(1)'(1,1) NE '(').RLST300                      15700000
+         STC   &SUBPOOL(1),ICH0&SYSNDX -   STORE INDEX SUBPOOL          15750000
+.RLST300 ANOP                                                           15800000
+         AIF   ('&SUBPOOL(2)' EQ '').RLST305                            15850000
+         AIF   ('&SUBPOOL(2)'(1,1) NE '(').RLST305                      15900000
+         STC    &SUBPOOL(2),ICH0&SYSNDX+1 - STORE PROFILE SUBPOOL       15950000
+.RLST305 ANOP                                                           16000000
+.******* PROCESS LIST PARAMETER                                         16050000
+         AIF   ('&LIST' EQ '').RLST310                                  16100000
+         AIF   ('&LIST'(1,1) NE '(').RLST310                            16150000
+         ST    &LIST(1),ICH0&SYSNDX+4 - STORE LIST ADDRESS              16200000
+.RLST310 ANOP                                                           16250000
+.******* PROCESS ACEE PARAMETER                                         16300000
+         AIF   ('&ACEE' EQ '').RLST320                                  16350000
+         AIF   ('&ACEE'(1,1) NE '(').RLST320                            16400000
+         ST    &ACEE(1),ICH0&SYSNDX+8 - STORE ACEE ADDRESS              16450000
+.RLST320 ANOP                                                           16500000
+.******* PROCESS INSTLN PARAMETER                                       16550000
+         AIF   ('&INSTLN' EQ '' OR '&INSTLN(1)' EQ '&INSTLN').RLST330   16600000
+         ST    &INSTLN(1),ICH0&SYSNDX+12 - STORE INSTALLATION DATA ADDR 16650000
+.RLST330 ANOP                                                           16700000
+.******* PROCESS APPL PARAMETER                                         16750000
+         AIF   ('&APPL' EQ '').RLST340                                  16800000
+         AIF   ('&APPL'(1,1) NE '(').RLST340                            16850000
+         ST    &APPL(1),ICH0&SYSNDX+16 - STORE APPL NAME ADDRESS        16900000
+.RLST340 ANOP                                                           16950000
+.******* PROCESS CLASS PARAMETER                                        17000000
+         AIF   ('&CLASS' EQ '').RLST350                                 17050000
+         AIF   ('&CLASS'(1,1) NE '(').RLST350                           17100000
+         ST    &CLASS(1),ICH0&SYSNDX+20 - STORE CLASS NAME ADDRESS      17150000
+.RLST350 ANOP                                                           17200000
+.******* PROCESS FILTER PARAMETER                                  @L1A 17250000
+         AIF   ('&FILTER' EQ '').RLST355                           @L1A 17300000
+         AIF   ('&FILTER'(1,1) NE '(').RLST355                     @L1A 17350000
+         ST    &FILTER(1),ICH0&SYSNDX+24 - STORE FILTER STRING     @P1C 17400000
+.*******                                   ADDRESS                 @P1C 17450000
+.RLST355 ANOP                                                      @L1A 17500000
+.******* LIST FORM MODIFICATION COMPLETE                                17550000
+.******* - PRODUCE LIST FORM WITH BAL AROUND                            17600000
+         CNOP  0,4                                                      17650000
+&OFFSET  SETA  28                                                  @P8C 17700000
+         AIF   ('&APPL' EQ '').RLST380                                  17750000
+         AIF   ('&APPL'(1,1) NE '''').RLST380                           17800000
+&OFFSET  SETA  &OFFSET+8                                                17850000
+.RLST380 ANOP                                                           17900000
+         AIF   ('&CLASS' EQ '').RLST385                                 17950000
+         AIF   ('&CLASS'(1,1) NE '''').RLST385                          18000000
+&OFFSET  SETA  &OFFSET+8                                                18050000
+.RLST385 ANOP                                                           18100000
+         AIF   ('&RELEASE(1)' EQ '').RLST387                       @02A 18150000
+         AIF   ('&RELEASE(1)'(1,3) LT '1.9').RLST386               @P8C 18200000
+&OFFSET  SETA  &OFFSET+4                    - ADD OFFSET OF FILTER @L1A 18250000
+.RLST386 ANOP                                                      @P8A 18262500
+         AIF   ('&RELEASE(1)'(1,1) LT '2').RLST387                 @P8A 18275000
+&OFFSET  SETA  &OFFSET+4                    - ADD OFFSET OF GLOBAL @P8A 18287500
+.RLST387 ANOP                                                      @L1A 18300000
+         BAL   1,*+&OFFSET -  POINT REG 1 AT PARM LIST                  18350000
+         AGO   .RLST100                                                 18400000
+.RLST390 ANOP                                                           18450000
+.***********************************************************       @T1A 18500000
+.* IF THIS MACRO WAS INVOKED INTERNALLY BY THE RACROUTE            @T1A 18550000
+.* MACRO, SIMPLY EXIT RATHER THAN GOING TO THE RACF ROUTINE.       @T1A 18600000
+.***********************************************************       @T1A 18650000
+         AIF   (&ICHRAC).RLST395                                   @T1A 18700000
+.******* RETURN FROM LIST FORM TO PRODUCE SVC                           18750000
+         L     15,16(0,0)            GET CVT ADDRESS                    18800000
+         L     15,X'3E0'(0,15)       GET RACF CVT ADDRESS               18850000
+         LTR   15,15                 RACF CVT EXIST                     18900000
+         BZ    *+12                  NO, BRANCH TO SET NOT ACTIVE  @P5C 18950000
+         CLI   X'AC'(15),X'02'       RACF FUNCTION SUPPORTED (RCVTVERS) 19000000
+         BNL   *+20                  YES, BRANCH                        19050000
+         LA    15,28(0,0)            RACF FUNCTION NOT SUPPORTED        19100000
+         B     *+14                  SKIP CALL                          19150000
+         LA    15,16(0,0)            RACF NOT ACTIVE RET CODE           19200000
+         B     *+6                   SKIP CALL                          19250000
+         SVC   132                   INVOKE RACF SVC ROUTER             19300000
+.ERRVSER ANOP                        VSE EXIT ON ERROR         @D62CDHH 19325000
+.RLST395 ANOP                                                      @T1A 19350000
+         MEXIT                                                          19400000
+.******* PRODUCE EXECUTE FORM OF MACRO                                  19450000
+.RLST500 ANOP                                                           19500000
+         AIF   (&ICHRAC).RLST503                                   @T1A 19550000
+&SYMBOL  IHBINNRA &MF(2) -    POINT REG1 AT LIST FORM                   19600000
+         AGO   .RLST505                                            @T1A 19650000
+.**************************************************************    @T1A 19700000
+.*  IF THIS MACRO WAS INVOKED INTERNALLY BY THE RACROUTE MACRO,    @T1A 19750000
+.*  PICK UP THE ADDRESS OF THE RACLIST PARAMETER LIST FROM THE     @T1A 19800000
+.*  RACROUTE PARAMETER LIST.                                       @T1A 19850000
+.**************************************************************    @T1A 19900000
+.RLST503 ANOP                                                      @T1A 19950000
+         A     1,36(1)           POINT REG 1 AT RACLIST LIST       @T1A 20000000
+.RLST505 ANOP                                                      @T1A 20050000
+.******* PRODUCE INSTRUCTIONS TO MODIFY LIST                            20100000
+         AIF   ('&SUBPOOL(1)' EQ '').RLST515                            20150000
+         AIF   ('&SUBPOOL(1)'(1,1) EQ '(').RLST510                      20200000
+         MVI   0(1),&SUBPOOL(1) -      INDEX SUBPOOL NUMBER             20250000
+         AGO   .RLST515                                                 20300000
+.RLST510 ANOP                                                           20350000
+         STC   &SUBPOOL(1),0(1) -      INDEX SUBPOOL NUMBER             20400000
+.RLST515 ANOP                                                           20450000
+         AIF   ('&SUBPOOL(2)' EQ '').RLST525                            20500000
+         AIF   ('&SUBPOOL(2)'(1,1) EQ '(').RLST520                      20550000
+         MVI   1(1),&SUBPOOL(2) -      PROFILE SUBPOOL NUMBER           20600000
+         AGO   .RLST525                                                 20650000
+.RLST520 ANOP                                                           20700000
+         STC   &SUBPOOL(2),1(1) -      PROFILE SUBPOOL NUMBER           20750000
+.RLST525 ANOP                                                           20800000
+.******* PRODUCE FLAG BYTE                                         @L7A 20850000
+&BIT0    SETA  0                                                        20900000
+&BIT1    SETA  0                                                        20950000
+&BIT2    SETA  0                                                        21000000
+&BIT3    SETA  0                                                   @L7A 21050000
+&BIT4    SETA  0                                                   @L1A 21100000
+&BIT5    SETA  0                                                   @L1A 21150000
+&BIT6    SETA  0                                                   @L4A 21166600
+.****** DON'T TOUCH &BIT7 IT IS USED BY AN APAR                    @L4A 21183200
+&BIX0    SETA  1                                                        21200000
+&BIX1    SETA  1                                                        21250000
+&BIX2    SETA  1                                                        21300000
+&BIX3    SETA  1                                                   @L7A 21350000
+&BIX4    SETA  1                                                   @L1A 21400000
+&BIX5    SETA  1                                                   @L1A 21450000
+&BIX6    SETA  1                                                   @L4A 21466600
+.****** DON'T TOUCH &BIX7 IT IS USED BY AN APAR                    @L4A 21483200
+         AIF   ('&ENVIR&OWNER&LOC&FILTER' EQ '').RLST532           @P2C 21500000
+         AIF   ('&ENVIR' EQ '').RLST530                                 21550000
+&BIX0    SETA  0                                                        21600000
+&BIX1    SETA  0                                                        21650000
+         AIF   ('&ENVIR' EQ 'CREATE').RLST530                           21700000
+         AIF   ('&ENVIR' NE 'DELETE').RLST530                           21750000
+&BIT0    SETA  1                                                        21800000
+.RLST530 ANOP                                                           21850000
+         AIF   ('&OWNER' EQ '').RLST531                                 21900000
+&BIX2    SETA  0                                                        21950000
+         AIF   ('&OWNER' EQ 'NO').RLST531                               22000000
+         AIF   ('&OWNER' NE 'YES').RLST531                              22050000
+&BIT2    SETA  1                                                        22100000
+.RLST531 ANOP                                                           22150000
+         AIF   ('&LOC' EQ '').RLST532                              @L7A 22200000
+&BIX3    SETA  0                                                   @L7A 22250000
+         AIF   ('&LOC' EQ 'ANY').RLST532                           @L7A 22300000
+         AIF   ('&LOC' NE 'ABOVE').RLST532                         @L7A 22350000
+&BIT3    SETA  1                                                   @L7A 22400000
+.RLST532 ANOP                                                      @L7A 22450000
+         AIF   (N'&MF LT 2).RLST536 - NO PARAMETER LIST SUPPLIED   @L2C 22500000
+         AIF   ('&RELEASE(1)' EQ '').RLST535                       @02A 22550000
+         AIF   ('&RELEASE(1)' LT '1.8').RLST535                    @P7C 22600000
+&BIX4    SETA  0    -  CLEAR EXISTING RELEASE=1.8|1.8.1 BIT        @P8C 22650000
+&BIT4    SETA  1    -  SET RELEASE = 1.8|1.8.1 BIT ON              @P8C 22700000
+.RLST533 ANOP                                                      @L1A 22750000
+         AIF   ('&RELEASE(1)'(1,3) LT '1.9').RLST535               @P7C 22800000
+&BIX5    SETA  0    -  CLEAR EXISTING RELEASE=1.9 BIT              @L1A 22850000
+&BIT5    SETA  1    -  SET RELEASE = 1.9 BIT ON                    @L1A 22900000
+.RLST534 ANOP                                                      @L2A 22950000
+         AIF   ('&RELEASE(1)'(1,5) LT '1.9.2' AND                      X22983300
+                '&RELEASE(1)'(1,1) LT '2').RLST535                 @P7C 23016600
+&BIX6    SETA  0    -  CLEAR EXISTING RELEASE=1.9.2 BIT            @L2A 23050000
+&BIT6    SETA  1    -  SET RELEASE = 1.9.2 BIT ON                  @L2A 23100000
+.RLST535 ANOP                                                      @L2C 23150000
+         NI    3(1),B'&BIX0&BIX1&BIX2&BIX3&BIX4&BIX5&BIX6.0'       @L2C 23200000
+         OI    3(1),B'&BIT0&BIT1&BIT2&BIT3&BIT4&BIT5&BIT6.0'           X23233300
+                                        FLAGS                      @P8C 23266600
+.RLST536 ANOP                                                      @L2A 23300000
+.******* PROCESS LIST PARAMETER                                         23350000
+         AIF   ('&LIST' EQ '').RLST545                                  23400000
+         AIF   ('&LIST'(1,1) NE '(').RLST540                            23450000
+         ST    &LIST(1),4(1) -          STORE LIST ADDRESS              23500000
+         AGO   .RLST545                                                 23550000
+.RLST540 ANOP                                                           23600000
+         LA    0,&LIST(1) -             MOVE LIST ADDRESS               23650000
+         ST    0,4(1) -                 INTO PARM LIST                  23700000
+.RLST545 ANOP                                                           23750000
+.******* PROCESS ACEE PARAMETER                                         23800000
+         AIF   ('&ACEE' EQ '').RLST555                                  23850000
+         AIF   ('&ACEE'(1,1) NE '(').RLST550                            23900000
+         ST    &ACEE(1),8(1) -          STORE ACEE ADDRESS              23950000
+         AGO   .RLST555                                                 24000000
+.RLST550 ANOP                                                           24050000
+         LA    0,&ACEE(1) -             MOVE ACEE ADDRESS               24100000
+         ST    0,8(1) -                 INTO PARM LIST                  24150000
+.RLST555 ANOP                                                           24200000
+.******* PRODUCE INSTALLATION DATA ADDRESS                              24250000
+         AIF   ('&INSTLN' EQ '').RLST565                                24300000
+         AIF   ('&INSTLN'(1,1) NE '(').RLST560                          24350000
+         ST    &INSTLN(1),12(1) -       STORE INSTALLATION ADDR         24400000
+         AGO   .RLST565                                                 24450000
+.RLST560 ANOP                                                           24500000
+         LA    0,&INSTLN -              ADDRESS INSTALLATION DATA       24550000
+         ST    0,12(1) -                STORE INSTALLATION DATA ADDRESS 24600000
+.RLST565 ANOP                                                           24650000
+.******* HANDLE APPL PARAMETER                                          24700000
+         AIF   ('&APPL' EQ '').RLST575                                  24750000
+         AIF   ('&APPL'(1,1) EQ '''').ERR10                             24800000
+         AIF   ('&APPL'(1,1) NE '(').RLST570                            24850000
+         ST    &APPL(1),16(1) -         STORE APPL NAME ADDRESS         24900000
+         AGO   .RLST575                                                 24950000
+.RLST570 ANOP                                                           25000000
+         LA    0,&APPL -                MOVE APPL NAME ADDRESS          25050000
+         ST    0,16(1) -                INTO PARM LIST                  25100000
+.ERTN10  ANOP                                                           25150000
+.RLST575 ANOP                                                           25200000
+.******* HANDLE CLASS PARAMETER                                         25250000
+         AIF   ('&CLASS' EQ '').RLST585                                 25300000
+         AIF   ('&CLASS'(1,1) EQ '''').ERR09                            25350000
+         AIF   ('&CLASS'(1,1) NE '(').RLST580                           25400000
+         ST    &CLASS(1),20(1) -        STORE CLASS NAME ADDRESS        25450000
+         AGO   .RLST585                                                 25500000
+.RLST580 ANOP                                                           25550000
+         LA    0,&CLASS -               MOVE CLASS NAME ADDRESS         25600000
+         ST    0,20(1) -                INTO PARM LIST                  25650000
+.ERTN09  ANOP                                                           25700000
+.RLST585 ANOP                                                           25750000
+.******* HANDLE FILTER PARAMETER                                   @L1A 25800000
+         AIF   ('&FILTER' EQ '').RLST595                           @L1A 25850000
+         AIF   ('&FILTER'(1,1) NE '(').RLST590                     @L1A 25900000
+         ST    &FILTER(1),24(1)         - STORE FILTER STRING ADDRESS   25950000
+         AGO   .RLST595                                            @L1A 26000000
+.RLST590 ANOP                                                      @L1A 26050000
+         LA    0,&FILTER -              MOVE FILTER STRING ADDRESS @L1A 26100000
+         ST    0,24(1) -                INTO PARM LIST             @L1A 26150000
+.RLST595 ANOP                                                      @L1A 26200000
+.******* PRODUCE EXTENDED FLAG BYTE                                @L3A 26201300
+.******* SET GLOBAL BIT TO YES IF GLOBAL=YES                       @L3A 26202600
+.******* BYPASS THIS PROCESSING IF RELEASE IS NOT 2.1              @L3A 26203900
+         AIF   ('&RELEASE(1)' EQ '').RLST599                       @02A 26205200
+         AIF   ('&RELEASE(1)'(1,1) LT '2').RLST599                 @P8C 26206500
+&GBIT0   SETA  0                                                   @P8C 26207800
+&GBIT1   SETA  0                                                   @P8C 26209100
+&GBIT2   SETA  0                                                   @P8C 26210400
+&GBIT3   SETA  0                                                   @P8C 26211700
+&GBIT4   SETA  0                                                   @P8C 26213000
+&GBIT5   SETA  0                                                   @P8C 26214300
+.******* 2.1 OR GREATER WOULD HAVE HAD TO BEEN SPECIFIED TO BE HERE@P8A 26215600
+&GBIT6   SETA  1                                                   @P8C 26216900
+&GBIT7   SETA  0                                                   @P8C 26218200
+.******* SET BIT IF GLOBAL=YES WAS SPECIFIED                       @L3A 26219500
+.RLST596 ANOP                                                      @L3A 26220800
+         AIF   ('&GLOBAL' NE 'YES').RLST597                        @L3A 26222100
+&GBIT7   SETA  1                                                   @L3A 26223400
+.RLST597 ANOP                                                      @L3A 26224700
+&GBIX0   SETA  1                                                   @L3A 26226000
+&GBIX1   SETA  1                                                   @L3A 26227300
+&GBIX2   SETA  1                                                   @L3A 26228600
+&GBIX3   SETA  1                                                   @L3A 26229900
+&GBIX4   SETA  1                                                   @L3A 26231200
+&GBIX5   SETA  1                                                   @L3A 26232500
+.******* GBIT6 WOULD HAVE TO BE ON TO GET HERE, SO SET GBIX6 OFF   @P8A 26233800
+&GBIX6   SETA  0                                                   @P8C 26235100
+&GBIX7   SETA  1                                                   @L3A 26236400
+         AIF   ('&GLOBAL' NE 'NO').RLST598                         @L3A 26237700
+&GBIX7   SETA  0                                                   @L3A 26239000
+         AGO  .RLST598                                             @L3A 26240300
+.RLST598 ANOP                                                      @L3A 26241600
+         NI    28(1),B'&GBIX0&GBIX1&GBIX2&GBIX3&GBIX4&GBIX5&GBIX6&GBIX7*26242900
+               '                                                   @L3A 26244200
+         OI    28(1),B'&GBIT0&GBIT1&GBIT2&GBIT3&GBIT4&GBIT5&GBIT6&GBIT7*26245500
+               '                        EXTENDED FLAGS             @P8C 26246800
+.RLST599 ANOP                                                      @L3A 26248100
+.******* MODIFICATION COMPLETE - AGO ABOVE TO PRODUCE ENTRY LOGIC       26250000
+         AGO   .RLST390                                                 26300000
+.******* DIAGNOSTICS                                                    26350000
+.ERR04   ANOP                                                           26400000
+         MNOTE 8,'*** INVALID OWNER PARAMETER SPECIFIED ***'            26450000
+         AGO   .ERTN04                                                  26500000
+.ERR05   ANOP                                                           26550000
+         MNOTE 8,'*** INVALID ENVIR PARAMETER SPECIFIED ***'            26600000
+         AGO   .ERTN05                                                  26650000
+.ERR06   ANOP                                                           26700000
+         MNOTE 8,'*** INVALID MF PARAMETER SPECIFIED ***'               26750000
+         AGO   .ERTN06                                                  26800000
+.ERR07   ANOP                                                           26850000
+         MNOTE 8,'*** REGISTER ADDRESS SPECIFICATION NOT ALLOWED WITH L-26900000
+               IST FORM ***'                                            26950000
+         AGO   .ERTN07                                                  27000000
+.ERR09   ANOP                                                           27050000
+         MNOTE 8,'*** ''CLASSNAME'' FORM NOT ALLOWED WITH MF=E ***'     27100000
+         AGO   .ERTN09                                                  27150000
+.ERR10   ANOP                                                           27200000
+         MNOTE 8,'*** ''APPL'' FORM NOT ALLOWED WITH MF=E ***'          27250000
+         AGO   .ERTN10                                                  27300000
+.ERR11   ANOP                                                      @L7A 27350000
+         MNOTE 8,'*** INVALID LOC PARAMETER SPECIFIED ***'         @L7A 27400000
+         AGO   .ERTN11                                             @L7A 27450000
+.ERR12   ANOP                                                      @L7A 27500000
+         MNOTE 8,'*** ''LOC'' ALLOWED ONLY IF RACLIST IS INVOKED FROM T+27550000
+               HE RACROUTE MACRO ***'                              @L7A 27600000
+         AGO   .ERTN12                                             @L7A 27650000
+.ERR13   ANOP                                                      @L1A 27700000
+         MNOTE 4,'*** ''RELEASE'' INCOMPATIBLE WITH SPECIFIED KEYWORD(SX27750000
+               ) ***'                                              @L1A 27800000
+         AGO   .ERTN13                                             @L1A 27850000
+.ERR14   ANOP                                                      @L1A 27900000
+         MNOTE 8,'*** ''FILTER'' ALLOWED ONLY IF RACLIST IS INVOKED FRO+27950000
+               M THE RACROUTE MACRO ***'                           @L1A 28000000
+         AGO   .ERTN14                                             @L1A 28050000
+.ERR15   ANOP                                                      @L1A 28100000
+         MNOTE 8,'*** ''FILTER'' AND ''LIST'' CANNOT BE USED CONCURRENT+28150000
+               LY ***'                                             @L1A 28200000
+         AGO   .ERTN15                                             @L1A 28250000
+.ERR16   ANOP                                                      @L1A 28300000
+         MNOTE 4,'*** ''RELEASE'' INCOMPATIBLE WITH SPECIFIED KEYWORD(SX28350000
+               ) ***'                                              @L1A 28400000
+         AGO   .ERTN16                                             @L1A 28450000
+.ERR17   ANOP                                                      @L1A 28500000
+         MNOTE 8,'*** ''MF=M'' PARAMETER SPECIFIED ALLOWED ONLY IF RACL+28550000
+               IST IS INVOKED FROM THE RACROUTE MACRO ***'         @L1A 28600000
+         AGO   .ERTN17                                             @L1A 28650000
+.ERR18   ANOP                                                      @P3A 28700000
+         MNOTE 8,'*** INVALID ''SUBPOOL'' PARAMETER ***'           @P3A 28750000
+         AGO   .ERTN18                                             @P3A 28800000
+.ERR19   ANOP                                                      @L3A 28800600
+         MNOTE 8,'*** INVALID GLOBAL PARAMETER SPECIFIED ***'      @L3A 28801200
+         AGO   .ERTN19                                             @L3A 28801800
+.ERR20   ANOP                                                      @L3A 28802400
+         MNOTE 8,'*** ''GLOBAL'' ALLOWED ONLY IF RACLIST IS INVOKED FRO+28803000
+               M THE RACROUTE MACRO ***'                                28803600
+         AGO   .ERTN20                                             @L3A 28804200
+.ERR21   ANOP                                                      @L3A 28804800
+         MNOTE 8,'*** FILTER KEYWORD IS INVALID IF GLOBAL=YES IS SPECIF+28805400
+               IED ***'                                            @L3A 28806000
+         AGO   .ERTN21                                             @L3A 28806600
+.ERR22   ANOP                                                      @L3A 28807200
+         MNOTE 8,'*** LIST KEYWORD IS INVALID IF GLOBAL=YES IS SPECIFIE+28807800
+               D ***'                                              @L3A 28808400
+         AGO   .ERTN22                                             @L3A 28809000
+.ERRVSE  ANOP                                                  @D62CDHH 28810000
+         MNOTE 8,'*** RACLIST CAN BE INVOKED ONLY VIA RACROUTE FOR VSE/-28820000
+               ESA  ***'                                       @D62CDHH 28830000
+         AGO   .ERRVSER                                        @D62CDHH 28840000
+.ERLVL1  MNOTE 8,'*** INCORRECT SPECIFICATION OF ''RELEASE'' ***'  @L7A 28850000
+         AGO   .ERLVL1R                                            @L7A 28900000
+.ERLVL2  MNOTE 4,'*** ''RELEASE-CHECK'' ONLY VALID WITH ''MF=E'' ***'  X28950000
+                                                                   @L7A 29000000
+         AGO   .ERLVL2R                                            @L7A 29050000
+.ERLVLA  MNOTE 4,'*** ''RELEASE'' INCOMPATIBLE WITH SPECIFIED KEYWORD(SX29100000
+               ) ***'                                              @L7A 29150000
+         AGO   .ERLVLAR                                            @L7A 29200000
+         MEND                                                           29250000

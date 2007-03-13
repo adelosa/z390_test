@@ -1,0 +1,207 @@
+*ASM XOPTS(NOEPILOG)                                                            
+         TITLE 'BIMCNEXT - USER EXIT FOR BIMCNSOL '                             
+*                                                                               
+*        BIMCNEXT - USER EXIT FOR BIMCNSOL                                      
+*                                                                               
+*        BIMCNEXT RECEIVES CONTROL FROM BIMCNSOL AFTER A 'CNSL' INPUT           
+*        COMMAND HAS BEEN RECEIVED AND JUST PRIOR TO THE CONSOLE                
+*        MESSAGE, TO BE DISPLAYED, BEING PLACED IN THE TERMINAL I/O             
+*        AREA.  A PASSED COMMAREA IS A CONTROL BLOCK CALLED CNSLCOMM            
+*        USED FOR COMMUNICATION BETWEEN BIMCNSOL AND THE EXIT.                  
+*        THE FIELD LABELLED 'CALLTRAN' IDENTIFIES THE TRANSACTION               
+*        IDENTIFICATION BEING USED TO ACCESS A DOS/VSE HARDCOPY FILE.           
+*        SEE THE COMMENT ON THE CNSLCOMM DSECT FOR FURTHER                      
+*        DOCUMENTATION FOR INDIVIDUAL FIELDS.                                   
+*                                                                               
+*        BIMCNSOL - CALLS THE EXIT FOR EACH CONSOLE MESSAGE WHICH IS            
+*                   ABOUT TO BE INSERTED IN THE OUTPUT TERMINAL                 
+*                   DISPLAY, UNLESS THE CALL HAS BEEN SUPPRESSED BY A           
+*                   PREVIOUS RETURN CODE.  THE FIELD 'RECRDADR'                 
+*                   CONTAINS THE ADDRESS OF THE DOS/VSE CONSOLE MESSAGE         
+*                   AS IT WOULD APPEAR ON THE CONSOLE CRT IF THE                
+*                   MESSAGE IS ALLOWED TO DISPLAY.  THE EXIT MAY RETURN         
+*                   ONE OF THE FOLLOWING VALUES IN THE FIELD 'RETURNCD'         
+*                                                                               
+*                     BLANK - NORMAL RETURN, NO CHANGE                          
+*                     O     - TURN OFF EXIT - EXIT WILL NOT BE ENTERED          
+*                             FOR REMAINING CONSOLE MESSAGES IN THIS            
+*                             RUN                                               
+*                     I     - MESSAGE INSERTED INTO TIOA LINE AREA.             
+*                     S     - SUPPRESS DISPLAY OF THIS CONSOLE MESSAGE          
+*                             ENTRY ONLY.                                       
+*                     M     - COMMAND LINE MODIFIED 'IN' FUNCTION.              
+*                     E     - DISPLAY ERROR MESSAGE RETURNED IN FIELD           
+*                             'ERRORMSG' (72 CHARACTERS ONLY DISPLAYED)         
+*                             AND TERMINATE TRANSACTION.                        
+*                                                                               
+*        SAMPLE CODING IN THIS PROGRAM SHOW LINKAGE FOR BIMCNEXT                
+*        USE, AND MINIMAL EXAMPLE CODING.  SPECIFIC EXAMPLES                    
+*        SHOWN ARE:                                                             
+*          FOR 'DLOG' ENTRY, TEST FOR TERMINAL ID L77A, AND SHOW                
+*                            ONLY DOS/VSE START OF JOB, END OF JOB,             
+*                            AND DATE AND TIME MESSAGES.  ALL OTHER             
+*                            TERMINALS TURN OFF EXIT AND RETURN.                
+*          FOR 'LOGB' ENTRY, TEST FOR TERMINAL ID L77C, AND REPLACE             
+*                            ALL 1Q47I MESSAGES WITH SECURED MESSAGE.           
+*          FOR 'LOGC' ENTRY, TEST FOR TERMINAL ID L77B, AND ALLOW               
+*                            REQUEST.  REJECT ACCESS FOR ANY OTHER              
+*                            TERMINAL.                                          
+*          FOR 'CNSL' ENTRY, TEST FOR CONSOLE INPUT COMMAND OF 'PEND'           
+*                            AND IF EQUAL INDICATE THAT IT IS                   
+*                            UNAUTHORIZED.                                      
+*                            OTHERWISE, ALLOW COMMAND TO BE PASSED TO           
+*                            DOS/VSE.                                           
+*                                                                               
+         SPACE                                                                  
+BIMCNEXT DFHEIENT                                                      -        
+               DATAREG=(13),      BASEREG FOR WORKING STORAGE          -        
+               EIBREG=(7),        BASEREG FOR EXEC INTERFACE BLOCK     -        
+               CODEREG=(11)       BASEREGS FOR PROGRAM CODE                     
+R0       EQU   0                                                                
+R1       EQU   1                                                                
+R2       EQU   2                                                                
+R3       EQU   3                                                                
+R4       EQU   4                                                                
+R5       EQU   5                                                                
+R6       EQU   6                                                                
+R7       EQU   7                   EIB AREA                                     
+R8       EQU   8                   DISPLAY LINE DSECT BASE                      
+R9       EQU   9                   CONSOLE MESSAGE DSECT BASE                   
+R10      EQU   10                  CNSLCOMM DSECT BASE                          
+R11      EQU   11                  PROGRAM BASE REGISTER                        
+R12      EQU   12                                                               
+R13      EQU   13                  DFHEISTG  (WORKING STORAGE)                  
+R14      EQU   14                                                               
+R15      EQU   15                                                               
+         L     R10,DFHEICAP        GET CNSLCOMM BASE ADDRESS                    
+         USING CNSLCOMM,R10        DECLARE IT                                   
+         L     R9,RECRDADR         LOAD CONSOLE MESSAGE ADDRESS                 
+         USING CNSLMSGS,R9         DECLARE CONSOLE MESSAGE DSECT BASE           
+         EXEC CICS ASSIGN OPID(WSOPID) USERID(WSUSRID)                          
+         CLC   CALLTRAN,=C'DLOG'   CHECK FOR TRANSACTION 'DLOG' CALL            
+         BE    DLOGCALL            YES, SHUT OFF EXIT                           
+         CLC   CALLTRAN,=C'LOGB'   CHECK FOR TRANSACTION 'LOGB' CALL            
+         BE    LOGBCALL            YES, CHECK AUTHORIZED TERMINAL               
+         CLC   CALLTRAN,=C'LOGC'   CHECK FOR TRANSACTION 'LOGC' CALL            
+         BE    LOGCCALL            YES, CHECK AUTHORIZED TERMINAL               
+         CLC   CALLTRAN,=C'CNSL'   CHECK FOR TRANSACTION 'CNSL' CALL            
+         BE    CNSLCALL            YES, GO TO CNSL ROUTINE                      
+         B     RETURN              NO, RETURN TO CALLER                         
+         SPACE                                                                  
+DLOGCALL DS    0H                                                               
+         CLC   EIBTRMID,=CL4'L77A'  CHECK FOR SPECIFIC TERMINAL ID              
+         BNE   DLOGEXIT            NO - DISPLAY EVERYTHING                      
+         CLC   CMSGTEXT(7),=C'// JOB ' START OF DOS JOB                         
+         BE    RETURN              YES - RETURN                                 
+         CLC   CMSGTEXT(4),=C'EOJ ' DOS END OF JOB                              
+         BE    RETURN              YES - RETURN                                 
+         CLC   CNSLTEXT+3(5),=C'DATE ' DATE FOR START OR END OF JOB             
+         BE    RETURN              YES - RETURN                                 
+         MVI   RETURNCD,C'S'       OTHERWISE SUPPRESS THE MESSAGE               
+         B     RETURN                                                           
+DLOGEXIT DS    0H                                                               
+         MVI   RETURNCD,C'O'       TURN EXIT OFF FOR RE-DISPLAY                 
+*   THERE WILL BE NO FURTHER ENTRY TO THIS EXIT FOR THIS TRANSACTION            
+         B     RETURN                                                           
+         SPACE                                                                  
+LOGBCALL DS    0H                                                               
+         CLC   EIBTRMID,=CL4'L77C'  CHECK FOR RESTRICTED TERM ID                
+         BNE   RETURN              NO - ALLOW ACCESS                            
+         CLC   CMSGTEXT(5),=C'1Q47I' POWER START OF JOB                         
+         BNE   RETURN              NO - RETURN                                  
+         L     R8,TIOAADDR         ADDRESS OF DISPLAY LINE                      
+         MVC   0(L'SECDMSG,R8),SECDMSG SECURED MESSAGE TO TIOA                  
+         MVI   RETURNCD,C'I'       MESSAGE INSERTED IN TIOA                     
+         B     RETURN                                                           
+LOGCCALL DS    0H                                                               
+         CLC   EIBTRMID,=CL4'L77B'  CHECK FOR PERMITTED TERM ID                 
+         BE    RETURN              YES, ALLOW ACCESS                            
+*        MVI   RETURNCD,C'E'       TERMINATE RUN WITH ERROR                     
+*        MVC   ERRORMSG(L'ACCESMSG),ACCESMSG NO, INSERT MESSAGE                 
+         B     RETURN              RETURN TO BIMCNSOL                           
+         SPACE                                                                  
+CNSLCALL DS    0H                                                               
+         CLC   FUNCTION,=C'IN'     INPUT COMMAND                                
+         BNE   CNSLDSPL            NO - DISPLAY MESSAGE                         
+         CLC   COMMAND(6),=C'Z NET ' VTAM SHUTDOWN                 2.8D         
+         BE    CNSLCOMD            YES, DISALLOW FROM BIMCNSOL     2.8D         
+         CLC   COMMAND(6),=C'REIPL ' REIPL SYSTEM (UNDOCUMENTED)   2.8D         
+         BE    CNSLCOMD            YES, DISALLOW FROM BIMCNSOL     2.8D         
+         CLC   COMMAND(5),=C'PEND ' POWER SHUTDOWN COMMAND                      
+         BNE   CNSLTERM            NO - ALLOW COMMAND                           
+CNSLCOMD DS    0H                                                  2.8D         
+         MVI   RETURNCD,C'E'       TERMINATE RUN WITH ERROR                     
+         MVC   ERRORMSG(L'COMNDMSG),COMNDMSG NO, INSERT MESSAGE                 
+         B     RETURN              RETURN TO BIMCNSOL                           
+CNSLTERM DS    0H                                                               
+         CLC   CMDLENG,=H'1'       CHECK FOR 1 OR 2 CHAR COMMANDS               
+         BNH   CNSLDSPL            NO - DON'T MODIFY COMMAND                    
+         CLC   COMMAND(4),=C'MAP ' CHECK FOR MAP COMMAND                        
+         BE    CNSLDSPL            YES - DON'T MODIFY COMMAND                   
+*        LH    R3,CMDLENG          GET COMMAND LENGTH                           
+*        LA    R4,COMMAND+1(R3)    POINT PAST COMMAND LINE                      
+*        MVC   0(L'CMDTERM,R4),CMDTERM MOVE TERMID MESSAGE AFTER CMD            
+*        MVC   0+L'CMDTERM(4,R4),EIBTRMID MOVE TERMID AFTER MESSAGE             
+*        LA    R3,4+L'CMDTERM(,R3) ADD MESSAGE LENGTH TO CMD LENGTH             
+*        STH   R3,CMDLENG          RETURN NEW COMMAND LENGTH.                   
+*        MVI   RETURNCD,C'M'       SET RETURN CODE TO COMMAND MODIFY            
+*        B     RETURN              RETURN                                       
+CNSLDSPL DS    0H                                                               
+         MVI   RETURNCD,C' '       SET RETURN CODE                              
+         B     RETURN              RETURN                                       
+         SPACE                                                                  
+RETURN   DS    0H                                                               
+         EXEC CICS RETURN ,        RETURN TO BIMCNSOL CALLING PROGRAM           
+         SPACE                                                                  
+ACCESMSG DC    C'*** UNAUTHORIZED CONSOLE ACCESS ***'                           
+COMNDMSG DC    C'*** UNAUTHORIZED CONSOLE COMMAND ***'                          
+SECDMSG  DC    C'*** SECURED MESSAGE ***'                                       
+CMDTERM  DC    C'          ====> FROM TERMID='                                  
+         SPACE                                                                  
+         LTORG                                                                  
+         EJECT                                                                  
+CNSLCOMM DSECT          COMMAREA PASSED FROM BIMCNSOL                           
+CALLTRAN DS    CL4                 CALLING PROGRAM TRANSACTION ID               
+RECRDADR DS    F                   CONSOLE RECORD AREA ADDRESS                  
+TIOAADDR DS    F                   ADDRESS OF 79 BYTE DISPLAY FIELD             
+FUNCTION DS    CL2                 MESSAGE PARTITION ID OR 'IN'PUT              
+*                                  AL = ALL PARTITIONS                          
+*                                  AR, BG, F1-FB                                
+*                                  IN = INPUT COMMAND                           
+DSPLYDIR DS    CL1                 DISPLAY DIRECTION                            
+*                                  B = BACKWARD                                 
+*                                  F = FORWARD                                  
+MSGCONTF DS    CL1                 MESSAGE CONTINUATION FLAG                    
+*                                  C = THIS IS THE SECOND PART OF A MSG         
+RETURNCD DS    CL1                 EXIT RETURN CODE                             
+*                                  BLANK = NORMAL (DISPLAY MESSAGE)             
+*                                  E = ERROR MESSAGE IN FOLLOWING FIELD         
+*                                  M = COMMAND LINE MODIFIED                    
+*                                  O = TURN OFF EXIT FOR THIS RUN               
+ERRORMSG DS    CL72                USER ERROR MESSAGE TO BE DISPLAYED           
+*                                  (RETURNCD=E)                                 
+         DS    CL1                 FILLER FOR ALIGNMENT                         
+CMDLENG  DS    H                   COMMAND LENGTH FOR RETURNCD=M                
+EXITRSVD DS    CL42                RESERVED FOR FUTURE USE BY BIMCNEXT          
+*                                                                               
+*        AREA BELOW IS PROVIDED BY CALLING PROGRAM FOR EXIT'S USE               
+*              AS A WORK AREA.  IF INSUFFICIENT, EXIT MUST ACQUIRE              
+*              A SEPARATE STORAGE AREA, AND RELEASE IT FOR EACH CALL.           
+*                                                                               
+EXITWORK DS    0XL200              EXIT WORK AREA                               
+         SPACE 3                                                                
+CNSLMSGS DSECT                     ,CONSOLE MESSAGE AREA                        
+COMMAND  DS    CL158                                                            
+         ORG   COMMAND                                                          
+PARTPRFX DS    CL2                 CONSOLE PARTITION PREFIX                     
+         DS    CL1                                                              
+REPLYID  DS    CL3                 CONSOLE REPLY ID                             
+         DS    CL1                                                              
+CMSGTEXT DS    CL151               CONSOLE MESSAGE NUMBER                       
+         ORG   COMMAND                                                          
+CNSLTEXT DS    CL158               CONSOLE TEXT (NO PREFIX OR REPLYID)          
+         SPACE 3                                                                
+DFHEISTG DSECT         COMMAND-LEVEL WORKING STORAGE                            
+WSOPID   DS    CL3                 CICS OPERATOR ID                             
+WSUSRID  DS    CL8                 CICS USER ID                                 
+         END                                                                    
