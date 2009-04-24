@@ -1,4 +1,4 @@
-// ZCOBOL PGM=zcobol\demo\HELLO VER=V1.5.00b MM/DD/YY
+// ZCOBOL PGM=zcobol\demo\HELLO VER=V1.5.00cx2 MM/DD/YY
 // ZCOBOL OPTIONS=()
  public class HELLO{
    public static void main(String argv[]){
