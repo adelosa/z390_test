@@ -48,9 +48,13 @@
     <td width="25%" align="left" valign="top">
     <ul>
       <li><b><a href="#zc390_tramslator">zc390 translator</a></b></li>
-      <li><b><a href="#COBOL_Language_Macros">COBOL macros</a></b></li>
+      <li><b><a href="#COBOL_Language_Macros">ZCOBOL macros</a></b></li>
       <li><b><a href="#zCOBOL_Target_Source_Language_Generation_Macros">Generation 
       macros</a></b></li>
+      <li><b>zcobol Examples</b><ul>
+      <li><b><a href="#COMPUTE">COMPUTE</a></b></li>
+    </ul>
+      </li>
     </ul>
     </td>
     <td width="25%" align="left" valign="top">
@@ -117,6 +121,110 @@
     ZSTRMAC SPE</a> structured programming extensions such as AIF, AELSEIF, 
     AELSE, AEND, AWHILE, etc.&nbsp;&nbsp; As a result there are no explicit AGO 
     or AIF labels in these macros.</b><p align="left">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="100%">
+    <p align="center"><b><a name="COMPUTE">COMPUTE Statement Example</a></b></p>
+    <p align="left"><b>The COBOL compute statement now supported in v1.5.00d is a 
+    good example to study to understand how the zcobol compiler works. The steps 
+    followed to compile the following MOVE and COMPUTE statements are as 
+    follows:</b></p>
+    <p align="left"><b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 77&nbsp; FLT-SRT&nbsp; 
+    USAGE FLOAT-SHORT OCCURS 2.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ........<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+    MOVE 1.1 TO FLT-SRT(2)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+    COMPUTE FLT-SRT(2) = FLT-SRT(2)+2.2</b></p>
+    <ol>
+      <li>
+      <p align="left"><b>zc390 translator generates the following 2 zcobol verb 
+      macro call statements<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; MOVE 1.1,'TO',FLT_SRT,&quot;(',2,')'<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; COMPUTE 
+      FLT_SRT,'(',2,')',=,FLT_SRT,'(&quot;,2,')',+,2.2</b></li>
+      <li>
+      <p align="left"><b>The MOVE macro uses shared copybook routine GET_FIELD_PARM 
+      to parse the two fields for MOVE and store resulting field name and symbol 
+      table index.&nbsp; For the literal 1.1 the index is 0, for the subscripted 
+      field, the name is set to explicit register reference including length 
+      0ffset(length,register) and the code is generated to set the register to 
+      address of the subscripted field.</b></li>
+      <li>
+      <p align="left"><b>The MOVE macro next issues call to GEN_MOVE with the 
+      source and target field names and system table indexes.</b></li>
+      <li>
+      <p align="left"><b>The GEN_MOVE macro checks the type of each field and 
+      generates appropriate code to move value from source to target field.&nbsp; 
+      In this case it uses LARL to set register to address of DFP short value of 
+      1.1 in literal table and then generates MVC to move the literal to the 
+      target subscripted field.</b></li>
+      <li>
+      <p align="left"><b>The COMPUTE uses GET_FIELD_PARM to obtain name and index 
+      of target field and then extracts parms in expression following the = and 
+      then calls ZC_CALC macro to generate code for expression and store result 
+      in specified target field.&nbsp; This macro can be used by IF and other 
+      verb macros to calculate expression for loop etc.</b></li>
+      <li>
+      <p align="left"><b>The ZC_CALC macro parsers the expression parameters into 
+      Backus Normal Form&nbsp; using two stacks.&nbsp; One stack has the 
+      operators in expression and the other has the field parm index pointers.&nbsp; 
+      Following the rules of precedence, the operators and associated parameter 
+      pointers are removed from the stacks and stored sequentially in an 
+      operation table containing the operators, 2 operands, and the target field 
+      for each operation.&nbsp; Temporary storage fields are represented using 
+      negative indexes instead of position and a table of temporary fields 
+      created along with their type is maintained.&nbsp; A queue of free 
+      temporary fields is maintained and once a temporary field has been used in 
+      an operation, that temporary field is on the free queue for reuse rather 
+      than allocating a new temporary storage field.&nbsp; Once the expression 
+      has been parsed and all the operation table entries have been generated, 
+      the last target field is replaced with the result field passed to ZC_CALC 
+      and then the operation table is scanned and the generation macros for each 
+      operation are called to generate code to perform the operation.&nbsp; Just 
+      prior to generating code for an operation, the two input parameter types 
+      are used to determine the required type of result to minimize any loss of 
+      precision during the calculations.&nbsp; A call to GEN_MOVE is made to 
+      move the first operand field to the target field prior to performing add, 
+      subtract, etc. on the target field for operation.&nbsp; If the first 
+      operand is the same as the target field, the move can be omitted but that 
+      is not always possible to determine in the case of subscripting and 
+      indexing where different variables may just happen to have the same value.&nbsp; 
+      The called generation macros GEN_ADD, GEN_SUB, GEN_MPY, and GEN_DIV check 
+      the field types and perform the necessary conversion when types do not 
+      match.</b></li>
+    </ol>
+    <p align="left"><b>The generated zcobol HLASM assembler code for these 2 COBOL 
+    statements is as follows:</b></p>
+    <p align="left"><b><font face="Courier New">0000DC (1/99)652 * MOVE 
+    1.1 TO FLT-SRT(2)<br>
+    0000DC (1/100)653 MOVE 1.1,TO,FLT_SRT,'(',2,')'<br>
+    0000DC C02900000004 000004 (29/28)660+ IILF R2,(2-1)*4 (LIT-1)*LEN<br>
+    0000E2 4122D058 000220 (29/29)661+ LA R2,FLT_SRT(R2)<br>
+    0000E6 C0100000006D 0001C0 (30/193)664+ LARL R1,=ED'1.1'<br>
+    0000EC D20320001000 (30/194)665+ MVC 0(4,R2),0(R1)<br>
+    0000F2 (1/101)668 * COMPUTE FLT-SRT(2) = FLT-SRT(2)+2.2<br>
+    0000F2 (1/102)669 COMPUTE FLT_SRT,'(',2,')',=,FLT_SRT,'(',2,')',+,2.2<br>
+    0000F2 C0F900000004 000004 (29/28)677+ IILF R15,(2-1)*4 (LIT-1)*LEN<br>
+    0000F8 41FFD058 000220 (29/29)678+ LA R15,FLT_SRT(R15)<br>
+    0000FC C02900000004 000004 (29/28)688+ IILF R2,(2-1)*4 (LIT-1)*LEN<br>
+    000102 4122D058 000220 (29/29)689+ LA R2,FLT_SRT(R2)<br>
+    000106 D203F0002000 (30/64)694+ MVC 0(4,R15),0(R2)<br>
+    00010C 780F0000 (34/132)697+ LE F0,0(R15)<br>
+    000110 B3D40000 (34/133)698+ LDETR F0,F0,0<br>
+    000114 C0E000000052 0001B8 (34/134)699+ LARL R14,=DD'2.2'<br>
+    00011A 681E0000 (34/135)700+ LD F1,0(R14)<br>
+    00011E B3D21000 (34/136)701+ ADTR F0,F0,F1<br>
+    000122 B3D50000 (34/137)702+ LEDTR F0,0,F0,0<br>
+    000126 700F0000 (34/138)703+ STE F0,0(R15)</font></b></p>
+    <p align="left"><b>See the results for this calculation in the&nbsp; regression 
+    test zcobol\test\TESTSIX1.CBL.&nbsp; Note that using DFP the result is 
+    exactly 3.3 which is not the case when using HFP COMP-1 floating point due 
+    to conversion to base 2 versus base 10.&nbsp; The zcobol\ZC_CALC.MAC macro 
+    is written in
+    <a href="http://www.z390.org/z390_ZSTRMAC_Structured_Macro_Support.htm">
+    ZSTRMAC structured conditional macro assembler</a> consisting of about 850 
+    lines of code with no AGO statements.</b></td>
   </tr>
   <tr>
     <td width="100%">
@@ -263,109 +371,145 @@
     <p align="center"><b><a name="zcobol_Data_Types">zcobol Data Types</a></b></p>
     <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%">
       <tr>
-        <td width="19%" align="left" valign="top"><b>USAGE </b> </td>
-        <td width="18%" align="left" valign="top"><b>PICTURE</b></td>
-        <td width="25%" align="left" valign="top"><b>Z390 Assembler Type</b></td>
+        <td width="21%" align="left" valign="top"><b>USAGE </b> </td>
+        <td width="20%" align="left" valign="top"><b>PICTURE</b></td>
+        <td width="21%" align="left" valign="top"><b>Z390 Assembler Type</b></td>
         <td width="38%" align="left" valign="top"><b>Description</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>COMP</b></td>
-        <td width="18%" align="left" valign="top"><b>S9(4)</b></td>
-        <td width="25%" align="left" valign="top"><b>H</b></td>
+        <td width="21%" align="left" valign="top"><b>COMP</b></td>
+        <td width="20%" align="left" valign="top"><b>S9(4)</b></td>
+        <td width="21%" align="left" valign="top"><b>H</b></td>
         <td width="38%" align="left" valign="top"><b>16 bit binary</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>COMP</b></td>
-        <td width="18%" align="left" valign="top"><b>S9(9)</b></td>
-        <td width="25%" align="left" valign="top"><b>F</b></td>
+        <td width="21%" align="left" valign="top"><b>COMP</b></td>
+        <td width="20%" align="left" valign="top"><b>S9(9)</b></td>
+        <td width="21%" align="left" valign="top"><b>F</b></td>
         <td width="38%" align="left" valign="top"><b>32 bit binary</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>COMP</b></td>
-        <td width="18%" align="left" valign="top"><b>S9(18)</b></td>
-        <td width="25%" align="left" valign="top"><b>G</b></td>
+        <td width="21%" align="left" valign="top"><b>COMP</b></td>
+        <td width="20%" align="left" valign="top"><b>S9(18)</b></td>
+        <td width="21%" align="left" valign="top"><b>G</b></td>
         <td width="38%" align="left" valign="top"><b>64 bit binary</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>COMP-1</b></td>
-        <td width="18%" align="left" valign="top"><b>S9(7)</b></td>
-        <td width="25%" align="left" valign="top"><b>ED, EB, or EH (1)</b></td>
-        <td width="38%" align="left" valign="top"><b>IEEE Short Decimal FP - 
-        exactly 7 digits</b></td>
+        <td width="21%" align="left" valign="top"><b>COMP</b></td>
+        <td width="20%" align="left" valign="top"><b>S9(39)</b></td>
+        <td width="21%" align="left" valign="top"><b>Q</b></td>
+        <td width="38%" align="left" valign="top"><b>128 bit binary</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>COMP-2</b></td>
-        <td width="18%" align="left" valign="top"><b>S9(16)</b></td>
-        <td width="25%" align="left" valign="top"><b>DD, DB, or DH (1)</b></td>
-        <td width="38%" align="left" valign="top"><b>IEEE Long Decimal FP - exactly 
-        16 digits </b> </td>
+        <td width="21%" align="left" valign="top"><b>FLOAT-HEX-7</b></td>
+        <td width="20%" align="left" valign="top"><b>COMP-1</b></td>
+        <td width="21%" align="left" valign="top"><b>EH</b></td>
+        <td width="38%" align="left" valign="top"><b>HFP short 7 digits</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>COMP-3 </b> </td>
-        <td width="18%" align="left" valign="top"><b>S9(31)</b></td>
-        <td width="25%" align="left" valign="top"><b>P (3)</b></td>
+        <td width="21%" align="left" valign="top"><b>FLOAT-HEX-15</b></td>
+        <td width="20%" align="left" valign="top"><b>COMP-2</b></td>
+        <td width="21%" align="left" valign="top"><b>DH</b></td>
+        <td width="38%" align="left" valign="top"><b>HFP long - 15 digits </b> </td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-HEX-30</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>LH</b></td>
+        <td width="38%" align="left" valign="top"><b>HFP extended - 30 digits</b></td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-BINARY-7</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>EB</b></td>
+        <td width="38%" align="left" valign="top"><b>BFP short 7 digits</b></td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-BINARY-16</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>DB</b></td>
+        <td width="38%" align="left" valign="top"><b>BFP long - 16 digits </b> </td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-BINARY-34</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>LB</b></td>
+        <td width="38%" align="left" valign="top"><b>BFP extended - 34 digits</b></td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-DECIMAL-7</b></td>
+        <td width="20%" align="left" valign="top"><b>FLOAT-SHORT</b></td>
+        <td width="21%" align="left" valign="top"><b>EB</b></td>
+        <td width="38%" align="left" valign="top"><b>DFP short 7 digits</b></td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-DECIMAL-16</b></td>
+        <td width="20%" align="left" valign="top"><b>FLOAT-LONG</b></td>
+        <td width="21%" align="left" valign="top"><b>DB</b></td>
+        <td width="38%" align="left" valign="top"><b>DFP long - 16 digits </b> </td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>FLOAT-DECIMAL-34</b></td>
+        <td width="20%" align="left" valign="top"><b>FLOAT-EXTENDED</b></td>
+        <td width="21%" align="left" valign="top"><b>LB</b></td>
+        <td width="38%" align="left" valign="top"><b>DFP extended - 34 digits</b></td>
+      </tr>
+      <tr>
+        <td width="21%" align="left" valign="top"><b>COMP-3 </b> </td>
+        <td width="20%" align="left" valign="top"><b>S9(31)</b></td>
+        <td width="21%" align="left" valign="top"><b>P (3)</b></td>
         <td width="38%" align="left" valign="top"><b>Packed decimal up to 31 digits 
         with option&nbsp; EXTEND</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top">&nbsp;</td>
-        <td width="18%" align="left" valign="top"><b>S9(31)</b></td>
-        <td width="25%" align="left" valign="top"><b>Z (3)</b></td>
+        <td width="21%" align="left" valign="top">&nbsp;</td>
+        <td width="20%" align="left" valign="top"><b>S9(31)</b></td>
+        <td width="21%" align="left" valign="top"><b>Z (3)</b></td>
         <td width="38%" align="left" valign="top"><b>Zoned Decimal up to 31 digits 
         with option EXTEND (uses PD support)</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top">&nbsp;</td>
-        <td width="18%" align="left" valign="top"><b>X</b></td>
-        <td width="25%" align="left" valign="top"><b>X</b></td>
+        <td width="21%" align="left" valign="top">&nbsp;</td>
+        <td width="20%" align="left" valign="top"><b>X</b></td>
+        <td width="21%" align="left" valign="top"><b>X</b></td>
         <td width="38%" align="left" valign="top"><b>Characters</b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>FLOAT-SHORT</b></td>
-        <td width="18%" align="left" valign="top">&nbsp;</td>
-        <td width="25%" align="left" valign="top"><b>EH,EB,ED</b></td>
+        <td width="21%" align="left" valign="top"><b>FLOAT-SHORT</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>EH,EB,ED</b></td>
         <td width="38%" align="left" valign="top"><b>Use option FLOAT(HFP/BFP/DFP)
         </b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>FLOAT-LOG</b></td>
-        <td width="18%" align="left" valign="top">&nbsp;</td>
-        <td width="25%" align="left" valign="top"><b>DH,DB,DD</b></td>
+        <td width="21%" align="left" valign="top"><b>FLOAT-LOG</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>DH,DB,DD</b></td>
         <td width="38%" align="left" valign="top"><b>Use option FLOAT(HFP/BFP/DFP)
         </b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>FLOAT-EXTENDED</b></td>
-        <td width="18%" align="left" valign="top">&nbsp;</td>
-        <td width="25%" align="left" valign="top"><b>LH,LB,LD</b></td>
+        <td width="21%" align="left" valign="top"><b>FLOAT-EXTENDED</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>LH,LB,LD</b></td>
         <td width="38%" align="left" valign="top"><b>Use option FLOAT(HFP/BFP/DFP)
         </b></td>
       </tr>
       <tr>
-        <td width="19%" align="left" valign="top"><b>POINTER<br>
+        <td width="21%" align="left" valign="top"><b>POINTER<br>
         PROCEDURE-POINTER</b></td>
-        <td width="18%" align="left" valign="top">&nbsp;</td>
-        <td width="25%" align="left" valign="top"><b>A</b></td>
+        <td width="20%" align="left" valign="top">&nbsp;</td>
+        <td width="21%" align="left" valign="top"><b>A</b></td>
         <td width="38%" align="left" valign="top"><b>31 bit binary</b></td>
       </tr>
     </table>
     <ol>
-      <li><b>There is an option setting in zcobol\ZCOBOL.MAC macro to change the 
-      default floating point type from IEEE standard decimal (D) to IEEE 
-      standard binary (B) or IBM hexadecimal (H) in cases where compatibility 
-      with other system environments requires it.&nbsp; The preferred default D 
-      maintains the exact number of decimal digits (7,16, or 34) where as type B 
-      and H may introduce errors due to rounding or truncation when converted 
-      between binary and decimal representations. Note use of COMP-1 ED default 
-      format results in mathematical operations are performed in COMP-2 DD 
-      format since there are currently no native single precision decimal 
-      floating point operations (just the conversions between ED and DD using 
-      LOAD LENGTHENED and ROUND).</b></li>
-      <li><b>COMP-L is a zcobol extended USAGE type which is only allowed when the EXTEND option is on to 
-      allow extended data lengths beyond 18 digits.</b></li>
+      <li><b>The zcobol option FLOAT(HEX/BINARY/DECIMAL) can be used to change 
+      the default from DECIMAL to HEX or BINARY for the generic types 
+      FLOAT-SHORT, FLOAT-LONG, and FLOAT-EXTENDED.</b></li>
       <li><b>COMP-3 packed and also zoned decimal are limited to 18 digits per 
-      COBOL standard unless option EXTEND is set on in the zcobol\ZCOBOL 
-      macro.</b></li>
+      COBOL standard unless option EXTEND is set allowing up to 31 digits for 
+      both packed decimal and zoned decimal fields.</b></li>
     </ol>
     </td>
   </tr>
@@ -375,7 +519,7 @@
 &nbsp;of International Business Machines Corporation</font></b></p>
 
 <p align="center"><b><font face="Times New Roman">This page last updated
-<!--webbot bot="Timestamp" S-Type="EDITED" S-Format="%A %B %d, %Y" startspan -->Wednesday February 18, 2009<!--webbot bot="Timestamp" i-checksum="64074" endspan -->.&nbsp;&nbsp;
+<!--webbot bot="Timestamp" S-Type="EDITED" S-Format="%A %B %d, %Y" startspan -->Wednesday May 27, 2009<!--webbot bot="Timestamp" i-checksum="43434" endspan -->.&nbsp;&nbsp;
 <a href="mailto:don@higgins.net?subject=Automated Software Tools z390 Portable Mainframe Assembler and Emulator">Webmaster</a><br>
 Copyright 2009 <a href="http://www.AutomatedSoftwareTools.com">Automated Software Tools Corporation</a></font></b></p>
 
