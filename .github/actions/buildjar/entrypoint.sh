@@ -14,6 +14,11 @@ cd linklib
 ./build.sh
 cd ..
 
+# run assist tests
+cd assist
+./build.sh
+cd ..
+
 # build zcobol lib
 cd zcobol
 ./build.sh
