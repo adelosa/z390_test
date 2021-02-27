@@ -39,8 +39,15 @@ asml() {
 asmlg() {
     filename=$1
     printf "\nAssemble, link and go ${filename}\n\n"
-    shift 
+    shift
+    set +e
     java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
+    exit_status=$?
+    set -e
+    if [ $exit_status -gt 4 ]; then
+        return 4
+    fi
+    set -e
     java -classpath ${basedir}/build -Xrs lz390 ${filename} ${options} "$@"
     set +e
     java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
