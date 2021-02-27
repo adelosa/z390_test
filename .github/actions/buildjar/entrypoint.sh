@@ -9,17 +9,8 @@ javac -d ./build --source-path ./src/*.java -g:none -encoding Windows-1252 -cp .
 # Create the Jar
 jar cvmf ./src/Z390.MAN ./build/z390.jar ./build/*.class
 
-# build linklib members
-cd linklib
-./build.sh
-cd ..
-
-# run assist tests
-cd assist
-./build.sh
-cd ..
-
-# build zcobol lib
-cd zcobol
-./build.sh
-cd ..
+# build and run asm components
+cd linklib && ./build.sh && cd ..
+cd assist && ./build.sh && cd ..
+cd demo && ./build.sh && cd ..
+cd zcobol && ./build.sh && cd ..

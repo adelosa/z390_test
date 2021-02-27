@@ -1,6 +1,6 @@
 #!/bin/bash
 # Standard z390 functions. Source this file to use
-
+set -e
 basedir="$(dirname "$(pwd)")"       # root z390 source folder
 builddir="${basedir}/build"         # build folder
 
