@@ -13,3 +13,8 @@ jar cvmf ./src/Z390.MAN ./build/z390.jar ./build/*.class
 cd linklib
 ./build.sh
 cd ..
+
+# build zcobol lib
+cd zcobol
+./build.sh
+cd ..
