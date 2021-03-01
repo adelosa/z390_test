@@ -1,66 +1,21 @@
-#!/bin/bash
-# Standard z390 functions. Source this file to use
+#!/bin/sh -l
 set -e
-basedir="$(dirname "$(pwd)")"       # root z390 source folder
-builddir="${basedir}/build"         # build folder
+echo "::set-output name=javaversion::$(java -version)"
+# Create build directory
+mkdir -p build
+# Compile MessageBox first, otherwise compile fails
+javac -d ./build ./src/MessageBox.java -g:none -encoding Windows-1252 -verbose
+# Compile remaining modules
+javac -d ./build --source-path ./src/*.java -g:none -encoding Windows-1252 -cp ./build -verbose
+# Create the Jar
+jar cvmf ./src/Z390.MAN ./build/z390.jar ./build/*.class
 
-setoptions() {
-    builddir=$1         # build folder 
-    options="sysmac(+${basedir}/mac+.) syscpy(+${basedir}/mac+.)"
-    options+=" SYSERR(${builddir}) SYSOBJ(${builddir}+${basedir}/build/linklib) SYSLST(${builddir})"
-    options+=" SYSPCH(${builddir}) SYSPRN(${builddir}) SYSTRC(${builddir})"
-    options+=" SYS390(${builddir}+${basedir}/build/linklib) SYSBAL(${builddir}) SYSLOG(${builddir})"
-}
+# build and run asm components
+cd linklib && ./build.sh && cd ..
+cd assist && ./build.sh && cd ..
+cd demo && ./build.sh && cd ..
+cd mfacc && ./build.sh && cd ..
+cd mvs && ./build.sh && cd ..
+cd vsam && ./build.sh && cd ..
 
-# clean generated files
-clean() {
-    rm -rf "${builddir}"
-    mkdir -p "${builddir}"
-}
-
-# asm only
-asm() {
-    filename=$1
-    printf "\nAssemble ${filename}\n\n"
-    shift
-    java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
-}
-
-# asm and link
-asml() {
-    filename=$1
-    printf "\nAssemble and link ${filename}\n\n"
-    shift 
-    java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
-    java -classpath ${basedir}/build -Xrs lz390 ${filename} ${options} "$@"
-}
-
-# asm, link and go
-asmlg() {
-    filename=$1
-    printf "\nAssemble, link and go ${filename}\n\n"
-    shift
-    set +e
-    java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
-    exit_status=$?
-    set -e
-    if [ ${exit_status} -gt 4 ]; then
-        return ${exit_status}
-    fi
-    java -classpath ${basedir}/build -Xrs lz390 ${filename} ${options} "$@"
-    java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
-}
-
-# Exec/run
-exec() {
-    filename=$1
-    printf "\nExec ${filename}\n"
-    shift 
-    set +e
-    java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
-    exit_status=$?
-    set -e
-    if [ ${exit_status} -gt 4 ]; then
-        return ${exit_status}
-    fi
-}
+cd zcobol && ./build.sh && cd ..

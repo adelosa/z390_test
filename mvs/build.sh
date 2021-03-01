@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source ../build.sh 
+source ../buildsrc.sh 
 setoptions "${basedir}/build/mvs"
 options+=" sysmac(${basedir}/mvs/maclib+${basedir}/mac)"
 

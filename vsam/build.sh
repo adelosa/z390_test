@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run RTVSAM1.BAT
 set -e
-source ../build.sh 
+source ../buildsrc.sh 
 setoptions "${basedir}/build/vsam"
 options+=" @${basedir}/vsam/RTVSAM"
 

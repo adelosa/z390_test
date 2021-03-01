@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source ../build.sh 
+source ../buildsrc.sh 
 setoptions "${basedir}/build/assist"
 export XREAD="" XPRNT="" XPNCH="" XGET="" XPUT=""
 

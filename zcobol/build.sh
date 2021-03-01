@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source ../build.sh 
+source ../buildsrc.sh 
 setoptions "${basedir}/build/zcobol"
 
 # clear the generated files

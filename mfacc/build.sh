@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source ../build.sh 
+source ../buildsrc.sh 
 setoptions "${basedir}/build/mfacc"
 options+=" @${basedir}\RT\RT1"   # add required parm file
 
