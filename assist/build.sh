@@ -18,4 +18,4 @@ clean
 # run assist demos
 setassistvars DEMOAST1 && asmlg DEMOAST1 assist notiming stats
 setassistvars TESTAST1 && asmlg TESTAST1 assist notiming stats
-setassistvars solp06; asmlg solp06 assist notiming stats
+setassistvars SOLP06 && asmlg SOLP06 assist notiming stats
