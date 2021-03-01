@@ -8,5 +8,5 @@ options+=" sysmac(${basedir}/mvs/maclib+${basedir}/mac)"
 clean
 asmlg demo/DEMO @${basedir}/RT/RT1
 asml  test/TESTMVS1 bal notiming stats objhex
-asml  test/testcvtx bal notiming stats objhex
-asml  test/testcvt1 bal notiming stats objhex
+asml  test/TESTCVTX bal notiming stats objhex
+asml  test/TESTCVT1 bal notiming stats objhex
