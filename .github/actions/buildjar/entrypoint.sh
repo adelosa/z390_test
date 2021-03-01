@@ -1,4 +1,5 @@
 #!/bin/sh -l
+set -e
 echo "::set-output name=javaversion::$(java -version)"
 # Create build directory
 mkdir build
@@ -13,4 +14,8 @@ jar cvmf ./src/Z390.MAN ./build/z390.jar ./build/*.class
 cd linklib && ./build.sh && cd ..
 cd assist && ./build.sh && cd ..
 cd demo && ./build.sh && cd ..
+cd mfacc && ./build.sh && cd ..
+cd mvs && ./build.sh && cd ..
+cd vsam && ./build.sh && cd ..
+
 cd zcobol && ./build.sh && cd ..

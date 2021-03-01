@@ -8,7 +8,7 @@ setoptions() {
     builddir=$1         # build folder 
     options="sysmac(+${basedir}/mac+.) syscpy(+${basedir}/mac+.)"
     options+=" SYSERR(${builddir}) SYSOBJ(${builddir}+${basedir}/build/linklib) SYSLST(${builddir})"
-    options+=" SYSPCH(${builddir}) SYSPRN(${builddir})"
+    options+=" SYSPCH(${builddir}) SYSPRN(${builddir}) SYSTRC(${builddir})"
     options+=" SYS390(${builddir}+${basedir}/build/linklib) SYSBAL(${builddir}) SYSLOG(${builddir})"
 }
 
@@ -44,14 +44,11 @@ asmlg() {
     java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
     exit_status=$?
     set -e
-    if [ $exit_status -gt 4 ]; then
-        return 4
+    if [ ${exit_status} -gt 4 ]; then
+        return ${exit_status}
     fi
-    set -e
     java -classpath ${basedir}/build -Xrs lz390 ${filename} ${options} "$@"
-    set +e
     java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
-    set -e
 }
 
 # Exec/run
@@ -61,5 +58,9 @@ exec() {
     shift 
     set +e
     java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
+    exit_status=$?
     set -e
+    if [ ${exit_status} -gt 4 ]; then
+        return ${exit_status}
+    fi
 }
