@@ -3,6 +3,7 @@
 set -e
 basedir="$(dirname "$(pwd)")"       # root z390 source folder
 builddir="${basedir}/build"         # build folder
+z390jar="${basedir}/build/z390.jar"
 
 setoptions() {
     builddir=$1         # build folder 
@@ -23,7 +24,7 @@ asm() {
     filename=$1
     printf "\nAssemble ${filename}\n\n"
     shift
-    java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs mz390 ${filename} ${options} "$@"
 }
 
 # asm and link
@@ -31,8 +32,8 @@ asml() {
     filename=$1
     printf "\nAssemble and link ${filename}\n\n"
     shift 
-    java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
-    java -classpath ${basedir}/build -Xrs lz390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs mz390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs lz390 ${filename} ${options} "$@"
 }
 
 # asm, link and go
@@ -41,14 +42,14 @@ asmlg() {
     printf "\nAssemble, link and go ${filename}\n\n"
     shift
     set +e
-    java -classpath ${basedir}/build -Xrs mz390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs mz390 ${filename} ${options} "$@"
     exit_status=$?
     set -e
     if [ ${exit_status} -gt 4 ]; then
         return ${exit_status}
     fi
-    java -classpath ${basedir}/build -Xrs lz390 ${filename} ${options} "$@"
-    java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs lz390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs ez390 ${filename} ${options} "$@"
 }
 
 # Exec/run
@@ -57,10 +58,24 @@ exec() {
     printf "\nExec ${filename}\n"
     shift 
     set +e
-    java -classpath ${basedir}/build -Xrs ez390 ${filename} ${options} "$@"
+    java -classpath ${z390jar} -Xrs ez390 ${filename} ${options} "$@"
     exit_status=$?
     set -e
     if [ ${exit_status} -gt 4 ]; then
         return ${exit_status}
     fi
+}
+
+link() {
+    filename=$1
+    printf "\nLink ${filename}\n\n"
+    shift
+    java -classpath ${z390jar} -Xrs lz390 ${filename} ${options} "$@"
+}
+
+az390() {
+    filename=$1
+    printf "\naz390 ${filename}\n\n"
+    shift
+    java -classpath ${z390jar} -Xrs az390 ${filename} ${options} "$@"
 }
